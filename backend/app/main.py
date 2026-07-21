@@ -1,20 +1,33 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.core.db import init_db
+from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
-from app.modules.profiles.router import router as profiles_router
-from app.modules.discovery.router import router as discovery_router
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.contracts.router import router as contracts_router
+from app.modules.discovery.router import router as discovery_router
 from app.modules.messaging.router import router as messaging_router
 from app.modules.payments.router import router as payments_router
+from app.modules.profiles.router import router as profiles_router
 from app.modules.trust_safety.router import router as trust_safety_router
-from app.modules.admin.router import router as admin_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Creates tables from model metadata. Alembic migrations replace this in
+    # Epic I (KOL-34).
+    init_db()
+    yield
+
 
 app = FastAPI(
     title="Kolabo API",
     description="Bilingual influencer marketing marketplace for Africa",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 

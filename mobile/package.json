@@ -1,0 +1,18 @@
+{
+  "name": "kolabo-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
+    "i18next": "^23.15.1",
+    "react-i18next": "^15.0.2"
+  }
+}

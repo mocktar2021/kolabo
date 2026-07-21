@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kolabo
+      POSTGRES_PASSWORD: kolabo
+      POSTGRES_DB: kolabo
+    ports:
+      - "5432:5432"
+    volumes:
+      - kolabo_db_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://kolabo:kolabo@db:5432/kolabo
+    depends_on:
+      - db
+
+volumes:
+  kolabo_db_data:

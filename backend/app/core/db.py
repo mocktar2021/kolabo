@@ -28,7 +28,9 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    # Import models so they register on Base.metadata before create_all.
-    from app.modules.auth import models  # noqa: F401
+    # Import all module models so they register on Base.metadata before create_all.
+    from app.modules.auth import models as auth_models  # noqa: F401
+    from app.modules.profiles import models as profile_models  # noqa: F401
+    from app.modules.admin import models as admin_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

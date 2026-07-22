@@ -50,6 +50,7 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     profile.bio = payload.bio
     profile.categories = payload.categories
     profile.rate_card = payload.rate_card
+    profile.follower_count = payload.follower_count
     db.commit()
     db.refresh(profile)
     percent, is_searchable = _influencer_completion(profile)
@@ -58,6 +59,7 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
         "bio": profile.bio,
         "categories": profile.categories,
         "rate_card": profile.rate_card,
+        "follower_count": profile.follower_count,
         "completion_percent": percent,
         "is_searchable": is_searchable,
     }
@@ -73,6 +75,7 @@ def get_influencer_profile(db: Session, user_id: str) -> dict:
         "bio": profile.bio,
         "categories": profile.categories,
         "rate_card": profile.rate_card,
+        "follower_count": profile.follower_count,
         "completion_percent": percent,
         "is_searchable": is_searchable,
     }

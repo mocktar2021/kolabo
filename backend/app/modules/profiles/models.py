@@ -7,7 +7,7 @@ document is never persisted.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, JSON, LargeBinary, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -36,6 +36,9 @@ class InfluencerProfile(Base):
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     rate_card: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Self reported for now; to be replaced by verified analytics from
+    # connected social accounts in a later epic.
+    follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

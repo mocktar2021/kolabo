@@ -9,6 +9,7 @@ class InfluencerProfileIn(BaseModel):
     bio: str | None = None
     categories: list[str] = Field(default_factory=list)
     rate_card: dict = Field(default_factory=dict)
+    follower_count: int | None = None
 
 
 class InfluencerProfileOut(BaseModel):
@@ -16,6 +17,7 @@ class InfluencerProfileOut(BaseModel):
     bio: str | None
     categories: list[str]
     rate_card: dict
+    follower_count: int | None = None
     completion_percent: int
     is_searchable: bool
 

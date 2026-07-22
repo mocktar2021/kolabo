@@ -33,5 +33,7 @@ def init_db() -> None:
     from app.modules.profiles import models as profile_models  # noqa: F401
     from app.modules.admin import models as admin_models  # noqa: F401
     from app.modules.discovery import models as discovery_models  # noqa: F401
+    from app.modules.notifications import models as notification_models  # noqa: F401
+    from app.modules.campaigns import models as campaign_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

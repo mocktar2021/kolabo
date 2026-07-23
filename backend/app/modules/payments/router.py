@@ -1,27 +1,67 @@
-"""Epic G (KOL-7): Payments & Escrow. Highest-risk module — see Part 18.
+"""Epic G (KOL-7): Payments and Escrow."""
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
 
-Mobile Money providers sit behind an internal abstraction so provider
-switching doesn't touch escrow/business logic. No provider is wired up
-yet — provider selection is an open item pending direct outreach.
-"""
-from fastapi import APIRouter
+from app.core.db import get_db
+from app.modules.admin.router import get_current_admin
+from app.modules.auth.deps import get_current_user_id
+from app.modules.payments import schemas, service
 
 router = APIRouter()
 
 
-@router.post("/campaigns/{campaign_id}/fund")
-def fund_escrow(campaign_id: str):
-    """See KOL-28."""
-    raise NotImplementedError
+@router.post("/escrow/fund", response_model=schemas.EscrowOut, status_code=status.HTTP_201_CREATED)
+def fund_escrow(
+    payload: schemas.FundIn,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Fund an escrow via Mobile Money for a fully signed contract. KOL-28."""
+    return service.fund_escrow(db, business_user_id, payload.contract_id)
 
 
-@router.post("/campaigns/{campaign_id}/release")
-def release_escrow(campaign_id: str):
-    """See KOL-36. Commission deducted automatically on release."""
-    raise NotImplementedError
+@router.post("/escrow/{escrow_id}/release", response_model=schemas.EscrowOut)
+def release_escrow(
+    escrow_id: str,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Business confirms delivery and releases the escrow, commission deducted. KOL-36."""
+    return service.release_escrow(db, business_user_id, escrow_id)
 
 
-@router.post("/disputes/{campaign_id}/resolve")
-def resolve_dispute(campaign_id: str):
-    """See KOL-37. Admin manual decision at MVP."""
-    raise NotImplementedError
+@router.post("/escrow/{escrow_id}/dispute", response_model=schemas.EscrowOut)
+def dispute_escrow(
+    escrow_id: str,
+    db: Session = Depends(get_db),
+    actor_user_id: str = Depends(get_current_user_id),
+):
+    """Open a dispute, which freezes the escrow. KOL-37."""
+    return service.dispute_escrow(db, actor_user_id, escrow_id)
+
+
+@router.get("/escrow/{escrow_id}", response_model=schemas.EscrowOut)
+def get_escrow(
+    escrow_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    return service.get_escrow(db, user_id, escrow_id)
+
+
+@router.post("/escrow/{escrow_id}/resolve", response_model=schemas.EscrowOut)
+def resolve_dispute(
+    escrow_id: str,
+    payload: schemas.ResolveIn,
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(get_current_admin),
+):
+    """Admin resolves a dispute by releasing or refunding, logged. KOL-37."""
+    return service.resolve_dispute(db, admin_id, escrow_id, payload.decision)
+
+
+@router.post("/escrow/auto-release")
+def run_auto_release(db: Session = Depends(get_db), admin_id: str = Depends(get_current_admin)):
+    """Release escrows past their auto release deadline. Runs the timeout path for KOL-36."""
+    count = service.run_due_auto_releases(db)
+    return {"released": count}

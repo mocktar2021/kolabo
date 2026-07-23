@@ -36,5 +36,6 @@ def init_db() -> None:
     from app.modules.notifications import models as notification_models  # noqa: F401
     from app.modules.campaigns import models as campaign_models  # noqa: F401
     from app.modules.contracts import models as contract_models  # noqa: F401
+    from app.modules.messaging import models as messaging_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

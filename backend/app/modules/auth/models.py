@@ -25,6 +25,7 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     phone: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     country_code: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)

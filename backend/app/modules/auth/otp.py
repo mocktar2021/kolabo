@@ -10,6 +10,8 @@ import logging
 import secrets
 from typing import Protocol
 
+from app.core.config import settings
+
 _log = logging.getLogger("kolabo.auth.otp")
 
 
@@ -21,6 +23,12 @@ class Sender(Protocol):
 class LoggingSender:
     def send(self, phone: str, message: str) -> None:
         _log.info("send to %s: %s", phone, message)
+        # In development, also print to stdout so the code is visible in the
+        # container logs without querying the database. Uvicorn's default
+        # logging does not surface app INFO logs, and this is never enabled in
+        # production (guarded on env).
+        if settings.env == "development":
+            print(f"[DEV OTP] to {phone}: {message}", flush=True)
 
 
 def generate_code() -> str:

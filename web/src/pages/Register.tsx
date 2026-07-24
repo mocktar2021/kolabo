@@ -36,6 +36,7 @@ export default function Register() {
         method: "POST",
         body: { phone, password, country_code: country, role }
       });
+      localStorage.setItem("kolabo_role", role);
       navigate(`/verify?phone=${encodeURIComponent(phone)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");

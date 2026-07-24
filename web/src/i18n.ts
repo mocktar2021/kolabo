@@ -17,7 +17,7 @@ const resources = {
     translation: {
       cat: cat.fr,
       deliverable: deliverable.fr,
-      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", profile: "Profil", logout: "Deconnexion" },
+      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", invitations: "Invitations", profile: "Profil", logout: "Deconnexion" },
       landing: {
         eyebrow: "Marketing d'influence pour l'Afrique",
         title: "La ou les createurs et les marques se rencontrent",
@@ -47,7 +47,8 @@ const resources = {
         welcome: "Bienvenue sur Kolabo", sub: "Que voulez-vous faire aujourd'hui?",
         profileTitle: "Completer mon profil", profileDesc: "Ajoutez vos informations pour etre visible et credible.",
         discoverTitle: "Decouvrir des createurs", discoverDesc: "Recherchez et enregistrez des createurs pour vos campagnes.",
-        campaignTitle: "Creer une campagne", campaignDesc: "Definissez un budget, des livrables et une echeance."
+        campaignTitle: "Mes campagnes", campaignDesc: "Creez et gerez vos campagnes et leurs propositions.",
+        invitationsTitle: "Mes invitations", invitationsDesc: "Repondez aux invitations avec une proposition."
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
@@ -69,7 +70,17 @@ const resources = {
         deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immediatement",
         create: "Creer la campagne", publish: "Publier", published: "Campagne publiee.",
         another: "Creer une autre campagne", noBudget: "Budget non defini",
-        status_draft: "Brouillon", status_published: "Publiee"
+        status_draft: "Brouillon", status_published: "Publiee",
+        listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
+        notFound: "Campagne introuvable.",
+        inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun createur favori a inviter.",
+        invite: "Inviter", invitations: "Invitations", noInvitations: "Aucune invitation pour le moment.",
+        proposals: "Propositions", noProposals: "Aucune proposition pour le moment."
+      },
+      invitation: {
+        title: "Mes invitations", sub: "Les campagnes auxquelles vous etes invite.",
+        empty: "Vous n'avez pas encore d'invitation.",
+        rate: "Tarif propose", days: "Delai (jours)", send: "Envoyer", proposalSent: "Proposition envoyee."
       }
     }
   },
@@ -77,7 +88,7 @@ const resources = {
     translation: {
       cat: cat.en,
       deliverable: deliverable.en,
-      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", profile: "Profile", logout: "Log out" },
+      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", invitations: "Invitations", profile: "Profile", logout: "Log out" },
       landing: {
         eyebrow: "Influencer marketing for Africa",
         title: "Where creators and brands connect",
@@ -107,7 +118,8 @@ const resources = {
         welcome: "Welcome to Kolabo", sub: "What would you like to do today?",
         profileTitle: "Complete my profile", profileDesc: "Add your details to be visible and credible.",
         discoverTitle: "Discover creators", discoverDesc: "Search and save creators for your campaigns.",
-        campaignTitle: "Create a campaign", campaignDesc: "Set a budget, deliverables, and a deadline."
+        campaignTitle: "My campaigns", campaignDesc: "Create and manage your campaigns and their proposals.",
+        invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal."
       },
       profile: {
         title: "Your profile", sub: "This information appears across the platform.",
@@ -129,7 +141,17 @@ const resources = {
         deliverables: "Deliverables", addDeliverable: "Add a deliverable", publishNow: "Publish immediately",
         create: "Create campaign", publish: "Publish", published: "Campaign published.",
         another: "Create another campaign", noBudget: "No budget set",
-        status_draft: "Draft", status_published: "Published"
+        status_draft: "Draft", status_published: "Published",
+        listTitle: "My campaigns", new: "New campaign", listEmpty: "You have no campaigns yet.",
+        notFound: "Campaign not found.",
+        inviteFromFavorites: "Invite from my favorites", noFavorites: "No favorited creators to invite.",
+        invite: "Invite", invitations: "Invitations", noInvitations: "No invitations yet.",
+        proposals: "Proposals", noProposals: "No proposals yet."
+      },
+      invitation: {
+        title: "My invitations", sub: "Campaigns you have been invited to.",
+        empty: "You have no invitations yet.",
+        rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent."
       }
     }
   }

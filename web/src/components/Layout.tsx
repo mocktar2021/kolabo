@@ -29,9 +29,9 @@ export function Layout({ children }: { children: ReactNode }) {
             {isAuthenticated ? (
               <>
                 <Link className="btn btn-ghost" to="/discover">{t("nav.discover")}</Link>
-                <Link className="btn btn-ghost" to="/campaigns/new">{t("nav.campaigns")}</Link>
+                <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>
+                <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>
                 <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
-                <Link className="btn btn-ghost" to="/dashboard">{t("nav.dashboard")}</Link>
                 <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>
               </>
             ) : (

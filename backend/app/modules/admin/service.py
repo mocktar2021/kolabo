@@ -66,3 +66,64 @@ def decide_social(db: Session, admin_id: str, social_id: str, decision: str, rea
     _log(db, admin_id, f"social_{decision}", "social_account", account.id, reason)
     db.commit()
     return {"id": account.id, "status": account.status, "reviewer_id": account.reviewer_id}
+
+
+def dashboard_summary(db: Session) -> dict:
+    """Single operational view: queue counts plus recent decisions (KOL-33).
+
+    Drill-down uses the existing queue endpoints (verification queue, reports
+    queue, escrow lookups). This returns the counts an admin needs to triage the
+    day and the tail of the action log for accountability.
+    """
+    from app.modules.payments import models as payments
+    from app.modules.trust_safety import models as trust_safety
+
+    now = utcnow()
+
+    pending_documents = (
+        db.query(profiles.VerificationDocument)
+        .filter(profiles.VerificationDocument.status == profiles.PENDING)
+        .count()
+    )
+    pending_social = (
+        db.query(profiles.SocialAccount)
+        .filter(profiles.SocialAccount.status == profiles.PENDING)
+        .count()
+    )
+    open_disputes = (
+        db.query(payments.Escrow).filter(payments.Escrow.status == payments.DISPUTED).count()
+    )
+    held = db.query(payments.Escrow).filter(payments.Escrow.status == payments.HELD).count()
+    due_for_release = (
+        db.query(payments.Escrow)
+        .filter(payments.Escrow.status == payments.HELD, payments.Escrow.due_release_at <= now)
+        .count()
+    )
+    open_reports = (
+        db.query(trust_safety.Report).filter(trust_safety.Report.status == trust_safety.OPEN).count()
+    )
+
+    recent = (
+        db.query(AdminActionLog)
+        .order_by(AdminActionLog.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    recent_actions = [
+        {
+            "admin_id": a.admin_id,
+            "action": a.action,
+            "target_type": a.target_type,
+            "target_id": a.target_id,
+            "created_at": a.created_at.isoformat(),
+        }
+        for a in recent
+    ]
+
+    return {
+        "verification": {"pending_documents": pending_documents, "pending_social_accounts": pending_social},
+        "disputes": {"open": open_disputes},
+        "payouts": {"held": held, "due_for_release": due_for_release},
+        "reports": {"open": open_reports},
+        "recent_actions": recent_actions,
+    }

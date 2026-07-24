@@ -1,4 +1,4 @@
-"""Epic I placeholder plus Epic B verification queue (KOL-18).
+"""Admin operations (Epic B verification queue, Epic I dashboard and config).
 
 Admin authentication and role based access control are not built yet, so admin
 identity is taken from an X-Admin-Id header for now. This is a deliberate
@@ -8,9 +8,10 @@ attribute and log decisions during the manual pilot.
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.country_config import COUNTRY_CONFIG
 from app.core.db import get_db
 from app.modules.admin import service
+from app.modules.config import service as config_service
+from app.modules.config.schemas import CountryConfigIn, CountryConfigOut, EnabledIn
 
 router = APIRouter()
 
@@ -22,15 +23,40 @@ def get_current_admin(x_admin_id: str | None = Header(default=None)) -> str:
 
 
 @router.get("/dashboard")
-def dashboard_summary():
-    """See KOL-33 (Epic I)."""
-    raise NotImplementedError
+def dashboard_summary(db: Session = Depends(get_db), admin_id: str = Depends(get_current_admin)):
+    """Queue counts across verification, disputes, payouts, and reports. KOL-33."""
+    return service.dashboard_summary(db)
 
 
-@router.get("/countries")
-def list_countries():
-    """See KOL-34 (Epic I)."""
-    return COUNTRY_CONFIG
+@router.get("/countries", response_model=list[CountryConfigOut])
+def list_countries(
+    enabled_only: bool = False,
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(get_current_admin),
+):
+    """List configured countries from the database. KOL-34."""
+    return config_service.list_countries(db, enabled_only)
+
+
+@router.post("/countries", response_model=CountryConfigOut, status_code=201)
+def upsert_country(
+    payload: CountryConfigIn,
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(get_current_admin),
+):
+    """Add or edit a country as config, no deploy required. KOL-34."""
+    return config_service.upsert_country(db, admin_id, payload.model_dump())
+
+
+@router.post("/countries/{code}/enabled", response_model=CountryConfigOut)
+def set_country_enabled(
+    code: str,
+    payload: EnabledIn,
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(get_current_admin),
+):
+    """Turn a market on or off. KOL-34."""
+    return config_service.set_enabled(db, admin_id, code, payload.enabled)
 
 
 @router.get("/verification-queue")

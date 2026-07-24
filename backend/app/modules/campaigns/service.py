@@ -150,3 +150,73 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         "timeline_days": proposal.timeline_days,
         "status": proposal.status,
     }
+
+
+def _invitation_out(inv: models.CampaignInvitation) -> dict:
+    return {
+        "id": inv.id,
+        "campaign_id": inv.campaign_id,
+        "influencer_user_id": inv.influencer_user_id,
+        "status": inv.status,
+    }
+
+
+def _proposal_out(p: models.Proposal) -> dict:
+    return {
+        "id": p.id,
+        "campaign_id": p.campaign_id,
+        "influencer_user_id": p.influencer_user_id,
+        "version": p.version,
+        "rate_amount": p.rate_amount,
+        "rate_currency": p.rate_currency,
+        "timeline_days": p.timeline_days,
+        "status": p.status,
+    }
+
+
+def list_my_campaigns(db: Session, business_user_id: str) -> list[dict]:
+    rows = (
+        db.query(models.Campaign)
+        .filter(models.Campaign.business_user_id == business_user_id)
+        .order_by(models.Campaign.created_at.desc())
+        .all()
+    )
+    return [_to_out(c) for c in rows]
+
+
+def get_campaign_detail(db: Session, campaign_id: str, business_user_id: str) -> dict:
+    campaign = _require_campaign_owner(db, campaign_id, business_user_id)
+    invitations = (
+        db.query(models.CampaignInvitation)
+        .filter(models.CampaignInvitation.campaign_id == campaign_id)
+        .order_by(models.CampaignInvitation.created_at.desc())
+        .all()
+    )
+    proposals = (
+        db.query(models.Proposal)
+        .filter(models.Proposal.campaign_id == campaign_id)
+        .order_by(models.Proposal.version.desc())
+        .all()
+    )
+    out = _to_out(campaign)
+    out["invitations"] = [_invitation_out(i) for i in invitations]
+    out["proposals"] = [_proposal_out(p) for p in proposals]
+    return out
+
+
+def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
+    invitations = (
+        db.query(models.CampaignInvitation)
+        .filter(models.CampaignInvitation.influencer_user_id == influencer_user_id)
+        .order_by(models.CampaignInvitation.created_at.desc())
+        .all()
+    )
+    result = []
+    for inv in invitations:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == inv.campaign_id).first()
+        if campaign is None:
+            continue
+        item = _invitation_out(inv)
+        item["campaign"] = _to_out(campaign)
+        result.append(item)
+    return result

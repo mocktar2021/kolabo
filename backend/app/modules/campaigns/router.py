@@ -9,6 +9,34 @@ from app.modules.campaigns import schemas, service
 router = APIRouter()
 
 
+@router.get("/mine", response_model=list[schemas.CampaignOut])
+def my_campaigns(
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """List the campaigns owned by the current business."""
+    return service.list_my_campaigns(db, business_user_id)
+
+
+@router.get("/invitations/mine", response_model=list[schemas.InvitationWithCampaign])
+def my_invitations(
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """List the campaign invitations for the current influencer."""
+    return service.list_my_invitations(db, influencer_user_id)
+
+
+@router.get("/{campaign_id}", response_model=schemas.CampaignDetailOut)
+def campaign_detail(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Full campaign view with its invitations and proposals (owner only)."""
+    return service.get_campaign_detail(db, campaign_id, business_user_id)
+
+
 @router.post("/", response_model=schemas.CampaignOut, status_code=status.HTTP_201_CREATED)
 def create_campaign(
     payload: schemas.CampaignCreate,

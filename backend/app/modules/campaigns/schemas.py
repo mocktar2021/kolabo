@@ -52,3 +52,16 @@ class ProposalOut(BaseModel):
     rate_currency: str
     timeline_days: int
     status: str
+
+
+class CampaignDetailOut(CampaignOut):
+    invitations: list[InvitationOut] = Field(default_factory=list)
+    proposals: list[ProposalOut] = Field(default_factory=list)
+
+
+class InvitationWithCampaign(BaseModel):
+    id: str
+    campaign_id: str
+    influencer_user_id: str
+    status: str
+    campaign: CampaignOut

@@ -1,9 +1,20 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import VerifyOtp from "./pages/VerifyOtp";
+import Dashboard from "./pages/Dashboard";
+
 export default function App() {
   return (
-    <main style={{ fontFamily: "sans-serif", padding: "2rem" }}>
-      <h1>Kolabo</h1>
-      <p>Bilingual influencer marketing marketplace for Africa — web app scaffold.</p>
-      <p>Backend health check: <code>{import.meta.env.VITE_API_URL}/health</code></p>
-    </main>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify" element={<VerifyOtp />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

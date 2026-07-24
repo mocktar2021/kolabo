@@ -49,7 +49,7 @@ def _user(client, phone, role, verified=True):
 
 
 def _published_campaign(client, headers):
-    return client.post("/campaigns/", json={
+    r = client.post("/campaigns/", json={
         "title": "Launch push",
         "budget_amount": 50000,
         "budget_currency": "XOF",
@@ -57,6 +57,7 @@ def _published_campaign(client, headers):
         "deadline": "2026-09-01",
         "publish": True,
     }, headers=headers)
+    return r
 
 
 def test_draft_save_allows_missing_fields(client):
@@ -119,10 +120,12 @@ def test_proposal_versions_and_supersede(client):
     assert r1.json()["rate_currency"] == "XOF"
     r2 = client.post(f"/campaigns/{camp['id']}/proposals", json={"rate_amount": 12000, "rate_currency": "XOF", "timeline_days": 10}, headers=inf)
     assert r2.json()["version"] == 2
+    # The business owner is notified of the proposal.
     from app.modules.notifications.models import Notification
-    from app.modules.campaigns.models import Proposal
     db = client.session_factory()
     notes = db.query(Notification).filter(Notification.type == "proposal_submitted").all()
+    # First submitted proposal is now superseded.
+    from app.modules.campaigns.models import Proposal
     v1 = db.query(Proposal).filter(Proposal.version == 1).first()
     db.close()
     assert len(notes) == 2
@@ -132,3 +135,55 @@ def test_proposal_versions_and_supersede(client):
 def test_endpoints_require_auth(client):
     r = client.post("/campaigns/", json={"title": "x"})
     assert r.status_code == 401
+
+
+def test_list_my_campaigns_only_mine(client):
+    _, biz_a = _user(client, "+22990000101", "business")
+    _, biz_b = _user(client, "+22990000102", "business")
+    _published_campaign(client, biz_a)
+    client.post("/campaigns/", json={"title": "Draft only"}, headers=biz_a)
+    _published_campaign(client, biz_b)
+
+    mine = client.get("/campaigns/mine", headers=biz_a).json()
+    assert len(mine) == 2
+    assert {c["title"] for c in mine} == {"Launch push", "Draft only"}
+    other = client.get("/campaigns/mine", headers=biz_b).json()
+    assert len(other) == 1
+
+
+def test_campaign_detail_shows_invitations_and_proposals(client):
+    _, biz = _user(client, "+22990000103", "business")
+    inf_id, inf = _user(client, "+22990000104", "influencer")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/invitations", json={"influencer_id": inf_id}, headers=biz)
+    client.post(f"/campaigns/{cid}/proposals", json={"rate_amount": 40000, "rate_currency": "XOF", "timeline_days": 7}, headers=inf)
+
+    detail = client.get(f"/campaigns/{cid}", headers=biz).json()
+    assert detail["id"] == cid
+    assert len(detail["invitations"]) == 1
+    assert detail["invitations"][0]["influencer_user_id"] == inf_id
+    assert len(detail["proposals"]) == 1
+    assert detail["proposals"][0]["rate_amount"] == 40000
+
+
+def test_campaign_detail_owner_only(client):
+    _, biz = _user(client, "+22990000105", "business")
+    _, other = _user(client, "+22990000106", "business")
+    cid = _published_campaign(client, biz).json()["id"]
+    assert client.get(f"/campaigns/{cid}", headers=other).status_code == 403
+
+
+def test_list_my_invitations_for_influencer(client):
+    _, biz = _user(client, "+22990000107", "business")
+    inf_id, inf = _user(client, "+22990000108", "influencer")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/invitations", json={"influencer_id": inf_id}, headers=biz)
+
+    invites = client.get("/campaigns/invitations/mine", headers=inf).json()
+    assert len(invites) == 1
+    assert invites[0]["campaign"]["id"] == cid
+    assert invites[0]["campaign"]["title"] == "Launch push"
+
+
+def test_mine_requires_auth(client):
+    assert client.get("/campaigns/mine").status_code == 401

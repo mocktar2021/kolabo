@@ -7,12 +7,17 @@ const cat = {
   fr: { fashion: "Mode", beauty: "Beaute", tech: "Tech", food: "Cuisine", travel: "Voyage", fitness: "Fitness", music: "Musique", comedy: "Humour", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" },
   en: { fashion: "Fashion", beauty: "Beauty", tech: "Tech", food: "Food", travel: "Travel", fitness: "Fitness", music: "Music", comedy: "Comedy", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" }
 };
+const deliverable = {
+  fr: { post: "Publication", story: "Story", reel: "Reel", video: "Video", short: "Short" },
+  en: { post: "Post", story: "Story", reel: "Reel", video: "Video", short: "Short" }
+};
 
 const resources = {
   fr: {
     translation: {
       cat: cat.fr,
-      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", profile: "Profil", logout: "Deconnexion" },
+      deliverable: deliverable.fr,
+      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", profile: "Profil", logout: "Deconnexion" },
       landing: {
         eyebrow: "Marketing d'influence pour l'Afrique",
         title: "La ou les createurs et les marques se rencontrent",
@@ -41,7 +46,8 @@ const resources = {
       dash: {
         welcome: "Bienvenue sur Kolabo", sub: "Que voulez-vous faire aujourd'hui?",
         profileTitle: "Completer mon profil", profileDesc: "Ajoutez vos informations pour etre visible et credible.",
-        discoverTitle: "Decouvrir des createurs", discoverDesc: "Recherchez et enregistrez des createurs pour vos campagnes."
+        discoverTitle: "Decouvrir des createurs", discoverDesc: "Recherchez et enregistrez des createurs pour vos campagnes.",
+        campaignTitle: "Creer une campagne", campaignDesc: "Definissez un budget, des livrables et une echeance."
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
@@ -56,13 +62,22 @@ const resources = {
         category: "Categorie", country: "Pays", minFollowers: "Abonnes min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun createur trouve.",
         creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer"
+      },
+      campaign: {
+        title: "Creer une campagne", sub: "Decrivez votre besoin pour recevoir des propositions.",
+        name: "Titre de la campagne", budget: "Budget", currency: "Devise", deadline: "Echeance",
+        deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immediatement",
+        create: "Creer la campagne", publish: "Publier", published: "Campagne publiee.",
+        another: "Creer une autre campagne", noBudget: "Budget non defini",
+        status_draft: "Brouillon", status_published: "Publiee"
       }
     }
   },
   en: {
     translation: {
       cat: cat.en,
-      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", profile: "Profile", logout: "Log out" },
+      deliverable: deliverable.en,
+      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", profile: "Profile", logout: "Log out" },
       landing: {
         eyebrow: "Influencer marketing for Africa",
         title: "Where creators and brands connect",
@@ -91,7 +106,8 @@ const resources = {
       dash: {
         welcome: "Welcome to Kolabo", sub: "What would you like to do today?",
         profileTitle: "Complete my profile", profileDesc: "Add your details to be visible and credible.",
-        discoverTitle: "Discover creators", discoverDesc: "Search and save creators for your campaigns."
+        discoverTitle: "Discover creators", discoverDesc: "Search and save creators for your campaigns.",
+        campaignTitle: "Create a campaign", campaignDesc: "Set a budget, deliverables, and a deadline."
       },
       profile: {
         title: "Your profile", sub: "This information appears across the platform.",
@@ -106,6 +122,14 @@ const resources = {
         category: "Category", country: "Country", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
         creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save"
+      },
+      campaign: {
+        title: "Create a campaign", sub: "Describe your brief to receive proposals.",
+        name: "Campaign title", budget: "Budget", currency: "Currency", deadline: "Deadline",
+        deliverables: "Deliverables", addDeliverable: "Add a deliverable", publishNow: "Publish immediately",
+        create: "Create campaign", publish: "Publish", published: "Campaign published.",
+        another: "Create another campaign", noBudget: "No budget set",
+        status_draft: "Draft", status_published: "Published"
       }
     }
   }

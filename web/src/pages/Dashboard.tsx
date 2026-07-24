@@ -25,6 +25,7 @@ export default function Dashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginTop: 18 }}>
           <ActionCard to="/profile" title={t("dash.profileTitle")} desc={t("dash.profileDesc")} />
           <ActionCard to="/discover" title={t("dash.discoverTitle")} desc={t("dash.discoverDesc")} />
+          <ActionCard to="/campaigns/new" title={t("dash.campaignTitle")} desc={t("dash.campaignDesc")} />
         </div>
       </div>
     </Layout>

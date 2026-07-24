@@ -6,6 +6,7 @@ import VerifyOtp from "./pages/VerifyOtp";
 import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
 import Discover from "./pages/Discover";
+import CampaignNew from "./pages/CampaignNew";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<ProfileSetup />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/campaigns/new" element={<CampaignNew />} />
       </Routes>
     </BrowserRouter>
   );

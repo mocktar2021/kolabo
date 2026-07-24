@@ -29,6 +29,7 @@ def client():
         finally:
             db.close()
 
+    # Fresh mock provider per test so we can inspect collections and payouts.
     pay_service.payment_provider = provider_module.MockProvider()
 
     app = FastAPI()
@@ -92,6 +93,7 @@ def test_release_deducts_commission(client):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "released"
+    # 15 percent of 10000 is 1500 commission; payout is 8500.
     assert body["commission_amount"] == 1500
     assert pay_service.payment_provider.payouts[0]["amount"] == 8500
 
@@ -105,6 +107,7 @@ def test_only_business_can_release(client):
 def test_auto_release_after_timeout(client):
     biz, inf, cid = _signed_contract(client)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
+    # Force the due date into the past.
     db = client.session_factory()
     e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow["id"]).first()
     e.due_release_at = pay_models.utcnow().replace(year=2020)
@@ -120,10 +123,12 @@ def test_dispute_freezes_then_admin_refunds(client):
     eid = escrow["id"]
     r = client.post(f"/payments/escrow/{eid}/dispute", headers=_headers(inf))
     assert r.json()["status"] == "disputed"
+    # A disputed escrow cannot be released by the business directly.
     assert client.post(f"/payments/escrow/{eid}/release", headers=_headers(biz)).status_code == 400
     r = client.post(f"/payments/escrow/{eid}/resolve", json={"decision": "refund"}, headers=ADMIN)
     assert r.json()["status"] == "refunded"
     assert pay_service.payment_provider.payouts[-1]["amount"] == 20000
+    # Admin decision is logged.
     from app.modules.admin.models import AdminActionLog
     db = client.session_factory()
     log = db.query(AdminActionLog).filter(AdminActionLog.target_id == eid).first()
@@ -151,3 +156,18 @@ def test_resolve_requires_admin_header(client):
 def test_fund_requires_auth(client):
     biz, inf, cid = _signed_contract(client)
     assert client.post("/payments/escrow/fund", json={"contract_id": cid}).status_code == 401
+
+
+def test_escrow_by_contract_lookup(client):
+    biz, inf, cid = _signed_contract(client)
+    escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
+    found = client.get(f"/payments/escrow/by-contract/{cid}", headers=_headers(biz))
+    assert found.status_code == 200
+    assert found.json()["id"] == escrow["id"]
+    # The influencer, a party, can also find it.
+    assert client.get(f"/payments/escrow/by-contract/{cid}", headers=_headers(inf)).status_code == 200
+
+
+def test_escrow_by_contract_404_when_unfunded(client):
+    biz, inf, cid = _signed_contract(client)
+    assert client.get(f"/payments/escrow/by-contract/{cid}", headers=_headers(biz)).status_code == 404

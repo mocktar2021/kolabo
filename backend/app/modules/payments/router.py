@@ -40,6 +40,16 @@ def dispute_escrow(
     return service.dispute_escrow(db, actor_user_id, escrow_id)
 
 
+@router.get("/escrow/by-contract/{contract_id}", response_model=schemas.EscrowOut)
+def escrow_by_contract(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Find the escrow for a contract, if it has been funded."""
+    return service.get_escrow_by_contract(db, user_id, contract_id)
+
+
 @router.get("/escrow/{escrow_id}", response_model=schemas.EscrowOut)
 def get_escrow(
     escrow_id: str,

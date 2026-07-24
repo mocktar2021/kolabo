@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # Days a held escrow waits before it auto releases if the business does
     # not confirm delivery.
     auto_release_days: int = 7
+    # Comma separated list of origins allowed to call the API from a browser
+    # (the web app in dev and, later, the deployed web origins). Override via
+    # the CORS_ORIGINS environment variable.
+    cors_origins: str = "http://localhost:5173,http://localhost:4173,http://localhost:3000"
 
     class Config:
         env_file = ".env"

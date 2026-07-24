@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import init_db
@@ -29,6 +30,16 @@ app = FastAPI(
     description="Bilingual influencer marketing marketplace for Africa",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# Allow the browser based web app to call the API cross origin. Origins are
+# configured via settings so dev and production can differ without code change.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

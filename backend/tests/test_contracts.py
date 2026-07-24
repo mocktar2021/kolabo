@@ -74,6 +74,7 @@ def test_generate_contract_from_submitted_proposal(client):
     assert body["status"] == "pending_signatures"
     assert body["rate_amount"] == 10000
     assert body["fully_signed"] is False
+    # Proposal is now accepted.
     db = client.session_factory()
     p = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == prop).first()
     db.close()
@@ -110,6 +111,7 @@ def test_both_signatures_required_then_immutable(client):
     r = client.post(f"/contracts/{cid}/sign", json={"signature": "The Creator"}, headers=_headers(inf))
     assert r.json()["fully_signed"] is True
     assert r.json()["status"] == "signed"
+    # Immutable once fully signed.
     r = client.post(f"/contracts/{cid}/sign", json={"signature": "again"}, headers=_headers(biz))
     assert r.status_code == 400
 
@@ -150,3 +152,20 @@ def test_audit_trail_recorded(client):
     assert "signed_business" in events
     assert "signed_influencer" in events
     assert "fully_signed" in events
+
+
+def test_contract_by_proposal_lookup(client):
+    biz, inf, camp, prop = _setup(client)
+    created = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz)).json()
+    found = client.get(f"/contracts/by-proposal/{prop}", headers=_headers(biz))
+    assert found.status_code == 200
+    assert found.json()["id"] == created["id"]
+    # The influencer, a party, can also find it.
+    assert client.get(f"/contracts/by-proposal/{prop}", headers=_headers(inf)).status_code == 200
+    # A non-party cannot.
+    assert client.get(f"/contracts/by-proposal/{prop}", headers=_headers("stranger")).status_code == 403
+
+
+def test_contract_by_proposal_404_when_none(client):
+    biz, inf, camp, prop = _setup(client)
+    assert client.get(f"/contracts/by-proposal/{prop}", headers=_headers(biz)).status_code == 404

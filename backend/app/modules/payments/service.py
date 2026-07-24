@@ -175,3 +175,12 @@ def get_escrow(db: Session, user_id: str, escrow_id: str) -> dict:
     if user_id not in (escrow.business_user_id, escrow.influencer_user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow")
     return _out(escrow)
+
+
+def get_escrow_by_contract(db: Session, user_id: str, contract_id: str) -> dict:
+    escrow = db.query(models.Escrow).filter(models.Escrow.contract_id == contract_id).first()
+    if escrow is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No escrow for this contract")
+    if user_id not in (escrow.business_user_id, escrow.influencer_user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow")
+    return _out(escrow)

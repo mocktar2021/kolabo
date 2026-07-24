@@ -154,3 +154,12 @@ def sign_contract(db: Session, contract_id: str, user_id: str, signature: str) -
     db.commit()
     db.refresh(contract)
     return _out(contract)
+
+
+def get_contract_by_proposal(db: Session, proposal_id: str, user_id: str) -> dict:
+    contract = db.query(models.Contract).filter(models.Contract.proposal_id == proposal_id).first()
+    if contract is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No contract for this proposal")
+    if user_id not in (contract.business_user_id, contract.influencer_user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract")
+    return _out(contract)

@@ -106,6 +106,18 @@ async def upload_verification_document(
     return service.upload_verification_document(db, user_id, doc_type, file.filename, content)
 
 
+@router.get("/{user_id}/social-accounts", response_model=list[schemas.SocialAccountOut])
+def list_social_accounts(user_id: str, db: Session = Depends(get_db)):
+    """Social accounts connected to this profile."""
+    return service.list_social_accounts(db, user_id)
+
+
+@router.get("/{user_id}/onboarding-status", response_model=schemas.OnboardingStatusOut)
+def onboarding_status(user_id: str, db: Session = Depends(get_db)):
+    """What is still missing before the creator profile can go live."""
+    return service.onboarding_status(db, user_id)
+
+
 @router.post(
     "/{user_id}/social-accounts",
     response_model=schemas.SocialAccountOut,

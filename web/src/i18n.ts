@@ -26,7 +26,9 @@ const resources = {
         ctaBusiness: "Je suis une marque",
         f1t: "Confiance verifiee", f1d: "Profils et entreprises verifies, pour collaborer en toute serenite.",
         f2t: "Paiements securises", f2d: "Les fonds sont bloques en sequestre et liberes une fois le travail livre.",
-        f3t: "Bilingue et local", f3d: "Francais et anglais, pensee pour les paiements mobiles et les reseaux locaux."
+        f3t: "Bilingue et local", f3d: "Francais et anglais, pensee pour les paiements mobiles et les reseaux locaux.",
+        searchCreators: "Rechercher", freeToSearch: "La recherche est gratuite, aucun compte requis.",
+        featured: "Createurs en vedette", seeAll: "Voir tout", whyKolabo: "Pourquoi Kolabo"
       },
       auth: {
         loginTitle: "Content de vous revoir", loginSub: "Connectez-vous a votre compte Kolabo.",
@@ -66,7 +68,7 @@ const resources = {
         title: "Decouvrir des createurs", sub: "Trouvez le bon createur pour votre campagne.",
         category: "Categorie", country: "Pays", minFollowers: "Abonnes min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun createur trouve.",
-        creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer", viewProfile: "Voir le profil"
+        creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
       public: { notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.", order: "Commander", orderSoon: "La commande directe arrive bientot." },
       campaign: {
@@ -121,7 +123,9 @@ const resources = {
         ctaBusiness: "I am a brand",
         f1t: "Verified trust", f1d: "Verified profiles and businesses, so you collaborate with confidence.",
         f2t: "Secure payments", f2d: "Funds are held in escrow and released once the work is delivered.",
-        f3t: "Bilingual and local", f3d: "English and French, built for mobile money and local networks."
+        f3t: "Bilingual and local", f3d: "English and French, built for mobile money and local networks.",
+        searchCreators: "Search", freeToSearch: "Searching is free, no account needed.",
+        featured: "Featured creators", seeAll: "See all", whyKolabo: "Why Kolabo"
       },
       auth: {
         loginTitle: "Welcome back", loginSub: "Log in to your Kolabo account.",
@@ -161,7 +165,7 @@ const resources = {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
         category: "Category", country: "Country", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
-        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile"
+        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
       },
       public: { notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.", order: "Order", orderSoon: "Direct ordering is coming soon." },
       campaign: {

@@ -20,7 +20,9 @@ const fr = {
     heroA: "Le marketing d'influence en Afrique, de la", heroAccent: "recherche", heroB: "au paiement.",
     platform: "Plateforme", allPlatforms: "Toutes les plateformes",
     searchPlaceholder: "Rechercher par nom, niche ou mot clé...",
-    featuredSub: "Des créateurs vérifiés, prêts à collaborer.",
+    featured: "Des créateurs prêts à collaborer",
+    featuredSub: "Profils vérifiés, tarifs affichés.",
+    seeAll: "Voir tous les créateurs",
     trustedBy: "Ils nous font confiance (exemples à remplacer)",
     howItWorks: "Comment ça marche", howItWorksSub: "De la recherche au paiement, en quatre étapes.",
     step1t: "Trouvez un créateur", step1d: "Recherchez par niche, pays et audience. La recherche est gratuite.",
@@ -28,10 +30,12 @@ const fr = {
     step3t: "Signez et payez en séquestre", step3d: "Le contrat est signé par les deux parties, puis les fonds sont bloqués.",
     step4t: "Validez et libérez", step4d: "Le créateur livre, vous validez, le paiement part par Mobile Money.",
     whySub: "Ce qui compte vraiment sur nos marchés.",
-    statCountriesValue: "7", statCountries: "Pays cibles",
-    statEscrowValue: "100%", statEscrow: "Paiements en séquestre",
-    statLangValue: "2", statLang: "Langues (FR et EN)",
-    statFeeValue: "15%", statFee: "Commission plateforme",
+    /* Product promises, not metrics: this band deliberately carries no numbers
+       until there are real traction numbers worth showing. */
+    stat1t: "Paiement par Mobile Money", stat1d: "Le moyen de paiement que tout le monde utilise déjà.",
+    stat2t: "Fonds bloqués jusqu'à la livraison", stat2d: "Le séquestre protège la marque comme le créateur.",
+    stat3t: "Profils créateurs vérifiés", stat3d: "Des comptes contrôlés avant d'être mis en avant.",
+    stat4t: "Français et anglais", stat4d: "Toute la plateforme, dans les deux langues.",
     testimonials: "Ce qu'ils en disent", testimonialsSub: "Exemples de témoignages.",
     quote1: "Nous avons trouvé trois créateurs pertinents en une après-midi, et le paiement en séquestre a rassuré tout le monde.",
     quote1Who: "Nom à venir", quote1Role: "Marque, Cotonou",
@@ -45,7 +49,13 @@ const fr = {
     faq2q: "Comment fonctionne le paiement?", faq2a: "Les fonds sont bloqués en séquestre dès la signature du contrat, puis libérés au créateur une fois la livraison validée. Une commission plateforme est prélevée à la libération.",
     faq3q: "Quels pays sont couverts?", faq3a: "Le pilote démarre au Bénin et au Togo. Côte d'Ivoire, Ghana, Sénégal, Cameroun et Nigeria suivront.",
     faq4q: "Comment suis-je payé?", faq4a: "Par Mobile Money, dans votre devise locale. Le fournisseur est en cours de sélection pour le lancement.",
-    ctaTitle: "Prêt à lancer votre première collaboration?", ctaSub: "Créez votre compte gratuitement et publiez votre profil ou votre campagne en quelques minutes."
+    ctaTitle: "Prêt à lancer votre première collaboration?",
+    ctaBrandTitle: "Je cherche des créateurs",
+    ctaBrandSub: "Parcourez les profils, comparez les prix, commandez en toute sécurité.",
+    ctaBrandBtn: "Découvrir les créateurs",
+    ctaCreatorTitle: "Je suis créateur",
+    ctaCreatorSub: "Créez votre profil gratuit et recevez des demandes de marques.",
+    ctaCreatorBtn: "Créer mon profil"
   }
 };
 
@@ -66,7 +76,9 @@ const en = {
     heroA: "Influencer marketing in Africa, from", heroAccent: "first search", heroB: "to final payment.",
     platform: "Platform", allPlatforms: "All platforms",
     searchPlaceholder: "Search creators by name, niche, or keyword...",
-    featuredSub: "Verified creators, ready to collaborate.",
+    featured: "Creators ready to collaborate",
+    featuredSub: "Verified profiles, visible pricing.",
+    seeAll: "See all creators",
     trustedBy: "Trusted by (placeholder examples)",
     howItWorks: "How it works", howItWorksSub: "From search to payment, in four steps.",
     step1t: "Find a creator", step1d: "Search by niche, country, and audience. Searching is free.",
@@ -74,10 +86,12 @@ const en = {
     step3t: "Sign and fund escrow", step3d: "Both parties sign the contract, then the funds are held.",
     step4t: "Approve and release", step4d: "The creator delivers, you approve, payment goes out by Mobile Money.",
     whySub: "What actually matters in our markets.",
-    statCountriesValue: "7", statCountries: "Target countries",
-    statEscrowValue: "100%", statEscrow: "Payments held in escrow",
-    statLangValue: "2", statLang: "Languages (EN and FR)",
-    statFeeValue: "15%", statFee: "Platform commission",
+    /* Product promises, not metrics: this band deliberately carries no numbers
+       until there are real traction numbers worth showing. */
+    stat1t: "Mobile Money payments", stat1d: "The payment method everyone already uses.",
+    stat2t: "Funds held until delivery", stat2d: "Escrow protects the brand and the creator alike.",
+    stat3t: "Verified creator profiles", stat3d: "Accounts are checked before being put forward.",
+    stat4t: "French and English", stat4d: "The whole platform, in both languages.",
     testimonials: "What people say", testimonialsSub: "Example testimonials.",
     quote1: "We found three relevant creators in an afternoon, and escrow made everyone comfortable.",
     quote1Who: "Name to come", quote1Role: "Brand, Cotonou",
@@ -91,7 +105,13 @@ const en = {
     faq2q: "How does payment work?", faq2a: "Funds are held in escrow once the contract is signed, then released to the creator after you approve delivery. A platform commission is taken at release.",
     faq3q: "Which countries are covered?", faq3a: "The pilot starts in Benin and Togo. Cote d'Ivoire, Ghana, Senegal, Cameroon, and Nigeria follow.",
     faq4q: "How do I get paid?", faq4a: "By Mobile Money, in your local currency. The provider is being selected for launch.",
-    ctaTitle: "Ready to start your first collaboration?", ctaSub: "Create a free account and publish your profile or campaign in minutes."
+    ctaTitle: "Ready to start your first collaboration?",
+    ctaBrandTitle: "I'm looking for creators",
+    ctaBrandSub: "Browse profiles, compare prices, order securely.",
+    ctaBrandBtn: "Discover creators",
+    ctaCreatorTitle: "I'm a creator",
+    ctaCreatorSub: "Create your free profile and receive requests from brands.",
+    ctaCreatorBtn: "Create my profile"
   }
 };
 

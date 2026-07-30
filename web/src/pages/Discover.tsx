@@ -1,35 +1,22 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { CreatorCard } from "../components/CreatorCard";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { COUNTRIES } from "../lib/countries";
-
-type Result = {
-  user_id: string;
-  bio: string | null;
-  categories: string[];
-  follower_count: number | null;
-  country_code: string;
-  is_verified: boolean;
-};
-
-function formatFollowers(n: number | null): string {
-  if (n === null) return "-";
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}
+import type { SearchResult } from "../lib/types";
 
 export default function Discover() {
   const { t } = useTranslation();
   const { token, isAuthenticated } = useAuth();
-  const [category, setCategory] = useState("");
-  const [country, setCountry] = useState("");
-  const [minFollowers, setMinFollowers] = useState("");
-  const [results, setResults] = useState<Result[]>([]);
+  const [params, setParams] = useSearchParams();
+  const [category, setCategory] = useState(params.get("category") || "");
+  const [country, setCountry] = useState(params.get("country") || "");
+  const [minFollowers, setMinFollowers] = useState(params.get("min_followers") || "");
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,11 +25,11 @@ export default function Discover() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (category) params.set("category", category);
-      if (country) params.set("country", country);
-      if (minFollowers) params.set("min_followers", minFollowers);
-      const data = await api<Result[]>(`/discovery/search?${params.toString()}`);
+      const qs = new URLSearchParams();
+      if (category) qs.set("category", category);
+      if (country) qs.set("country", country);
+      if (minFollowers) qs.set("min_followers", minFollowers);
+      const data = await api<SearchResult[]>(`/discovery/search?${qs.toString()}`);
       setResults(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -53,10 +40,15 @@ export default function Discover() {
 
   useEffect(() => {
     search();
+  }, [search]);
+
+  // Favorites are a signed-in feature; browsing stays public.
+  useEffect(() => {
+    if (!isAuthenticated) return;
     api<{ influencer_user_id: string }[]>("/discovery/favorites", { token })
       .then((favs) => setFavorites(new Set(favs.map((f) => f.influencer_user_id))))
       .catch(() => undefined);
-  }, [search, token]);
+  }, [isAuthenticated, token]);
 
   async function toggleFavorite(id: string) {
     const isFav = favorites.has(id);
@@ -75,10 +67,13 @@ export default function Discover() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const next = new URLSearchParams();
+    if (category) next.set("category", category);
+    if (country) next.set("country", country);
+    if (minFollowers) next.set("min_followers", minFollowers);
+    setParams(next);
     search();
   }
-
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (
     <Layout>
@@ -119,43 +114,18 @@ export default function Discover() {
           ) : results.length === 0 ? (
             <p className="muted">{t("discover.empty")}</p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
               {results.map((r) => (
-                <div key={r.user_id} className="card" style={{ padding: 18 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: "var(--gradient-brand)" }} aria-hidden="true" />
-                    <button
-                      className="btn btn-ghost"
-                      style={{ padding: "6px 10px" }}
-                      onClick={() => toggleFavorite(r.user_id)}
-                      aria-label={t("discover.favorite")}
-                    >
+                <CreatorCard
+                  key={r.user_id}
+                  r={r}
+                  action={isAuthenticated ? (
+                    <button className="btn btn-ghost" style={{ padding: "4px 9px" }}
+                      onClick={() => toggleFavorite(r.user_id)} aria-label={t("discover.favorite")}>
                       {favorites.has(r.user_id) ? "♥" : "♡"}
                     </button>
-                  </div>
-                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                    <strong>{t("discover.creator")}</strong>
-                    {r.is_verified && (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--teal-600)", background: "#e7f7f5", padding: "2px 8px", borderRadius: 999 }}>
-                        {t("discover.verified")}
-                      </span>
-                    )}
-                  </div>
-                  <div className="muted" style={{ fontSize: 13, margin: "4px 0 10px" }}>
-                    {formatFollowers(r.follower_count)} {t("discover.followers")} - {r.country_code}
-                  </div>
-                  {r.bio && <p style={{ fontSize: 13.5, margin: "0 0 10px" }}>{r.bio}</p>}
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {r.categories.slice(0, 3).map((c) => (
-                      <span key={c} style={{ fontSize: 11.5, color: "var(--muted)", background: "var(--surface-2)", padding: "3px 9px", borderRadius: 999 }}>
-                        {t(`cat.${c}`, c)}
-                      </span>
-                    ))}
-                  </div>
-                  <Link to={`/u/${r.user_id}`} className="btn btn-ghost" style={{ marginTop: 12, width: "100%" }}>
-                    {t("discover.viewProfile")}
-                  </Link>
-                </div>
+                  ) : undefined}
+                />
               ))}
             </div>
           )}

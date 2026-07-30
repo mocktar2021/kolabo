@@ -66,3 +66,51 @@ export type Escrow = {
   commission_amount: number | null;
   status: string;
 };
+
+export type InfluencerProfile = {
+  user_id: string;
+  display_name: string | null;
+  headline: string | null;
+  location: string | null;
+  avatar_media_id: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  categories: string[];
+  rate_card: Record<string, number>;
+  follower_count: number | null;
+  completion_percent: number;
+  is_searchable: boolean;
+};
+
+export type Package = {
+  id: string;
+  user_id: string;
+  platform: string;
+  deliverable_type: string;
+  title: string;
+  description: string | null;
+  price_amount: number;
+  currency: string;
+  is_active: boolean;
+};
+
+export type PortfolioItem = { id: string; media_id: string; url: string };
+
+export type SocialAccountPublic = { id: string; platform: string; handle: string; method: string; status: string };
+
+export type PublicProfile = {
+  user_id: string;
+  display_name: string | null;
+  headline: string | null;
+  location: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  categories: string[];
+  follower_count: number | null;
+  is_searchable: boolean;
+  average_stars: number | null;
+  review_count: number;
+  packages: Package[];
+  portfolio: PortfolioItem[];
+  social_accounts: SocialAccountPublic[];
+};

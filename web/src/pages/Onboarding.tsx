@@ -6,7 +6,8 @@ import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
-import { PLATFORMS, DELIVERABLE_TYPES, CURRENCIES } from "../lib/campaignOptions";
+import { CURRENCIES } from "../lib/campaignOptions";
+import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import type { InfluencerProfile, Package } from "../lib/types";
 
 type Social = { id: string; platform: string; handle: string; status: string; enriched?: boolean };
@@ -275,11 +276,16 @@ export default function Onboarding() {
               )}
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <select className="select" value={pkg.platform} onChange={(e) => setPkg({ ...pkg, platform: e.target.value })}>
-                  {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+                <select className="select" value={pkg.platform}
+                  onChange={(e) => {
+                    const platform = e.target.value;
+                    // The old deliverable may not exist on the new platform, so reset it.
+                    setPkg({ ...pkg, platform, deliverable_type: deliverablesFor(platform)[0] || "" });
+                  }}>
+                  {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
                 <select className="select" value={pkg.deliverable_type} onChange={(e) => setPkg({ ...pkg, deliverable_type: e.target.value })}>
-                  {DELIVERABLE_TYPES.map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
+                  {deliverablesFor(pkg.platform).map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
                 </select>
               </div>
               <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")}

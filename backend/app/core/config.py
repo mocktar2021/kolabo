@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
     # no app review), so setting this turns on YouTube profile auto fill.
     youtube_api_key: str = ""
+    # Anthropic API key for AI drafted profile bios. Unset means the feature is
+    # reported as unavailable rather than half working.
+    anthropic_api_key: str = ""
+    bio_model: str = "claude-sonnet-5"
+    # How many times one creator may regenerate a bio. A retry button with no
+    # cap is an open tab on the inference bill.
+    bio_generation_limit: int = 10
 
     class Config:
         env_file = ".env"

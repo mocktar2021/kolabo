@@ -11,16 +11,36 @@ instant-hire model and the shareable creator page.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.country_config import COUNTRY_CONFIG, default_language
 from app.core.crypto import encrypt_bytes
 from app.core.platforms import PLATFORM_DELIVERABLES, PLATFORMS_WITH_AUDIENCE, is_valid_pair
 from app.modules.auth.models import User
-from app.modules.profiles import enrichment, models, schemas
+from app.modules.profiles import bio_ai, enrichment, models, schemas
 
 INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 social_enricher = enrichment.default_enricher
+bio_generator = bio_ai.default_generator
+
+
+def _any_bio(profile: models.InfluencerProfile) -> str | None:
+    """A profile counts as having a bio when either language is filled. The
+    legacy single column is still honoured until it is dropped."""
+    return profile.bio_fr or profile.bio_en or profile.bio
+
+
+def resolve_bio(profile: models.InfluencerProfile, language: str | None = None) -> str | None:
+    """The bio to show a viewer. Prefer their language, but never show an empty
+    profile to someone whose language the creator has not filled in yet: a bio
+    in the other language is far better than nothing."""
+    if language == "en":
+        return profile.bio_en or profile.bio_fr or profile.bio
+    if language == "fr":
+        return profile.bio_fr or profile.bio_en or profile.bio
+    return _any_bio(profile)
 
 
 def _require_user(db: Session, user_id: str) -> User:
@@ -36,7 +56,7 @@ def _media_url(media_id: str | None) -> str | None:
 
 def _influencer_completion(profile: models.InfluencerProfile) -> tuple[int, bool]:
     present = 0
-    if profile.bio:
+    if _any_bio(profile):
         present += 1
     if profile.categories:
         present += 1
@@ -57,7 +77,9 @@ def _influencer_out(profile: models.InfluencerProfile) -> dict:
         "location": profile.location,
         "avatar_media_id": profile.avatar_media_id,
         "avatar_url": _media_url(profile.avatar_media_id),
-        "bio": profile.bio,
+        "bio": _any_bio(profile),
+        "bio_fr": profile.bio_fr,
+        "bio_en": profile.bio_en,
         "categories": profile.categories,
         "rate_card": profile.rate_card,
         "follower_count": profile.follower_count,
@@ -77,6 +99,8 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     profile.location = payload.location
     profile.avatar_media_id = payload.avatar_media_id
     profile.bio = payload.bio
+    profile.bio_fr = payload.bio_fr
+    profile.bio_en = payload.bio_en
     profile.categories = payload.categories
     profile.rate_card = payload.rate_card
     profile.follower_count = payload.follower_count
@@ -185,8 +209,15 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, acc
     if not profile.display_name and data.get("display_name"):
         profile.display_name = data["display_name"]
         filled = True
-    if not profile.bio and data.get("bio"):
-        profile.bio = data["bio"]
+    if data.get("bio") and not _any_bio(profile):
+        # A platform bio is written in one language; file it under the one the
+        # creator's country uses rather than guessing it covers both.
+        user = db.query(User).filter(User.id == user_id).first()
+        language = default_language(user.country_code if user else None)
+        if language == "en":
+            profile.bio_en = data["bio"]
+        else:
+            profile.bio_fr = data["bio"]
         filled = True
     if data.get("follower_count") is not None:
         # The count belongs to the platform account; the profile keeps a total
@@ -209,6 +240,64 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, acc
     if filled:
         db.commit()
     return filled
+
+
+def generate_bio(db: Session, user_id: str, payload: schemas.BioGenerateIn) -> dict:
+    """Draft a bio from facts the platform already holds.
+
+    The result is returned, not saved. The creator accepts it by saving the
+    profile, so a draft they dislike never lands on their public page.
+    """
+    user = _require_user(db, user_id)
+    profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+
+    if not getattr(bio_generator, "available", False):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Bio generation is not configured. Write your bio yourself for now.",
+        )
+
+    remaining = settings.bio_generation_limit - (profile.bio_generations or 0)
+    if remaining <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have reached the limit for generated bios. Edit the text yourself instead.",
+        )
+
+    accounts = list_social_accounts(db, user_id)
+    facts = {
+        "display_name": profile.display_name,
+        # The country name, never the code: "BJ" in a bio prompt reads as noise
+        # and the model has no reason to expand it correctly.
+        "location": profile.location or (COUNTRY_CONFIG.get(user.country_code) or {}).get("name"),
+        "categories": profile.categories or [],
+        "platforms": [a["platform"] for a in accounts],
+    }
+    if not bio_ai.has_enough_facts(facts):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Choose at least one content category first, so the bio describes you and not a generic creator.",
+        )
+
+    text = bio_generator.generate(facts, payload.language)
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not draft a bio right now. Try again, or write your own.",
+        )
+
+    # Counted on success only: a failed call costs the creator nothing.
+    profile.bio_generations = (profile.bio_generations or 0) + 1
+    db.commit()
+
+    return {
+        "language": payload.language,
+        "bio": text,
+        "saved": False,
+        "generations_remaining": settings.bio_generation_limit - profile.bio_generations,
+    }
 
 
 def list_social_accounts(db: Session, user_id: str) -> list[dict]:
@@ -236,7 +325,7 @@ def onboarding_status(db: Session, user_id: str) -> dict:
         .count()
         > 0
     )
-    has_bio = bool(profile and profile.bio)
+    has_bio = bool(profile and _any_bio(profile))
     has_categories = bool(profile and profile.categories)
     has_pricing = bool(profile and profile.rate_card) or has_packages
     return {
@@ -392,7 +481,7 @@ def remove_portfolio_item(db: Session, item_id: str, user_id: str) -> None:
 
 # ---- Public profile aggregate ----
 
-def get_public_profile(db: Session, user_id: str) -> dict:
+def get_public_profile(db: Session, user_id: str, language: str | None = None) -> dict:
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
@@ -411,7 +500,9 @@ def get_public_profile(db: Session, user_id: str) -> dict:
         "headline": profile.headline,
         "location": profile.location,
         "avatar_url": _media_url(profile.avatar_media_id),
-        "bio": profile.bio,
+        "bio": resolve_bio(profile, language),
+        "bio_fr": profile.bio_fr,
+        "bio_en": profile.bio_en,
         "categories": profile.categories,
         "follower_count": profile.follower_count,
         "is_searchable": _influencer_completion(profile)[1],

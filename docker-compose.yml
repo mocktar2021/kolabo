@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   db:
     image: postgres:16
@@ -10,10 +9,19 @@ services:
       - "5432:5432"
     volumes:
       - kolabo_db_data:/var/lib/postgresql/data
+    # depends_on alone waits for the container, not for Postgres to accept
+    # connections, which is not enough for a migration step.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kolabo -d kolabo"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Migrations run on every start so the running schema always matches the
+    # models. Alembic is idempotent: it is a no-op when already at head.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./backend:/app
     ports:
@@ -21,7 +29,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://kolabo:kolabo@db:5432/kolabo
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   kolabo_db_data:

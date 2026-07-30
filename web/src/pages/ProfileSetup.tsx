@@ -5,7 +5,8 @@ import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
-import { PLATFORMS, DELIVERABLE_TYPES, CURRENCIES } from "../lib/campaignOptions";
+import { CURRENCIES } from "../lib/campaignOptions";
+import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
@@ -137,11 +138,16 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
 
       <form onSubmit={add}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <select className="select" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}>
-            {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+          <select className="select" value={form.platform}
+            onChange={(e) => {
+              const platform = e.target.value;
+              // The old deliverable may not exist on the new platform, so reset it.
+              setForm({ ...form, platform, deliverable_type: deliverablesFor(platform)[0] || "" });
+            }}>
+            {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
           <select className="select" value={form.deliverable_type} onChange={(e) => setForm({ ...form, deliverable_type: e.target.value })}>
-            {DELIVERABLE_TYPES.map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
+            {deliverablesFor(form.platform).map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
           </select>
         </div>
         <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />

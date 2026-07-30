@@ -12,9 +12,23 @@ class InfluencerProfileIn(BaseModel):
     location: str | None = Field(default=None, max_length=120)
     avatar_media_id: str | None = None
     bio: str | None = None
+    bio_fr: str | None = None
+    bio_en: str | None = None
     categories: list[str] = Field(default_factory=list)
     rate_card: dict = Field(default_factory=dict)
     follower_count: int | None = None
+
+
+class BioGenerateIn(BaseModel):
+    language: str = Field(pattern="^(fr|en)$")
+
+
+class BioGenerateOut(BaseModel):
+    language: str
+    bio: str
+    # A draft, not a saved value: the creator accepts it by saving the profile.
+    saved: bool = False
+    generations_remaining: int
 
 
 class InfluencerProfileOut(BaseModel):
@@ -25,6 +39,8 @@ class InfluencerProfileOut(BaseModel):
     avatar_media_id: str | None = None
     avatar_url: str | None = None
     bio: str | None
+    bio_fr: str | None = None
+    bio_en: str | None = None
     categories: list[str]
     rate_card: dict
     follower_count: int | None = None
@@ -123,7 +139,10 @@ class PublicProfileOut(BaseModel):
     headline: str | None
     location: str | None
     avatar_url: str | None
+    # Resolved to the viewer's language, falling back to whichever is filled.
     bio: str | None
+    bio_fr: str | None = None
+    bio_en: str | None = None
     categories: list[str]
     follower_count: int | None
     is_searchable: bool

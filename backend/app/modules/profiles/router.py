@@ -22,9 +22,13 @@ def upsert_influencer_profile(
 
 
 @router.get("/influencer/{user_id}/public", response_model=schemas.PublicProfileOut)
-def public_influencer_profile(user_id: str, db: Session = Depends(get_db)):
-    """Public creator page: profile, packages, portfolio, rating, socials."""
-    return service.get_public_profile(db, user_id)
+def public_influencer_profile(user_id: str, language: str | None = None, db: Session = Depends(get_db)):
+    """Public creator page: profile, packages, portfolio, rating, socials.
+
+    `language` (fr or en) picks which bio to show, falling back to the other
+    when the creator has only filled one.
+    """
+    return service.get_public_profile(db, user_id, language)
 
 
 @router.get("/influencer/{user_id}", response_model=schemas.InfluencerProfileOut)
@@ -104,6 +108,15 @@ async def upload_verification_document(
     """Upload a verification document, stored encrypted with status pending. KOL-16."""
     content = await file.read()
     return service.upload_verification_document(db, user_id, doc_type, file.filename, content)
+
+
+@router.post("/{user_id}/bio/generate", response_model=schemas.BioGenerateOut)
+def generate_bio(user_id: str, payload: schemas.BioGenerateIn, db: Session = Depends(get_db)):
+    """Draft a bio in French or English from the creator's own profile facts.
+
+    Returns a draft; nothing is written to the profile until the creator saves.
+    """
+    return service.generate_bio(db, user_id, payload)
 
 
 @router.get("/{user_id}/social-accounts", response_model=list[schemas.SocialAccountOut])

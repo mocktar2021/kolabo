@@ -182,6 +182,15 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str) -> 
     if profile.follower_count is None and data.get("follower_count") is not None:
         profile.follower_count = data["follower_count"]
         filled = True
+    if not profile.avatar_media_id and data.get("avatar_image_url"):
+        downloaded = enrichment.fetch_image(data["avatar_image_url"])
+        if downloaded:
+            content, content_type = downloaded
+            asset = models.MediaAsset(owner_user_id=user_id, content_type=content_type, data=content)
+            db.add(asset)
+            db.flush()
+            profile.avatar_media_id = asset.id
+            filled = True
     if filled:
         db.commit()
     return filled

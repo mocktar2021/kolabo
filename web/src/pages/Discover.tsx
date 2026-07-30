@@ -16,6 +16,7 @@ export default function Discover() {
   const [category, setCategory] = useState(params.get("category") || "");
   const [country, setCountry] = useState(params.get("country") || "");
   const [minFollowers, setMinFollowers] = useState(params.get("min_followers") || "");
+  const q = params.get("q") || "";
   const [results, setResults] = useState<SearchResult[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ export default function Discover() {
       if (category) qs.set("category", category);
       if (country) qs.set("country", country);
       if (minFollowers) qs.set("min_followers", minFollowers);
+      if (q) qs.set("q", q);
       const data = await api<SearchResult[]>(`/discovery/search?${qs.toString()}`);
       setResults(data);
     } catch (err) {
@@ -36,7 +38,7 @@ export default function Discover() {
     } finally {
       setLoading(false);
     }
-  }, [category, country, minFollowers]);
+  }, [category, country, minFollowers, q]);
 
   useEffect(() => {
     search();
@@ -71,6 +73,7 @@ export default function Discover() {
     if (category) next.set("category", category);
     if (country) next.set("country", country);
     if (minFollowers) next.set("min_followers", minFollowers);
+    if (q) next.set("q", q);
     setParams(next);
     search();
   }

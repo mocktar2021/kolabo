@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.
     cors_origins: str = "http://localhost:5173,http://localhost:4173,http://localhost:3000"
+    # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
+    # no app review), so setting this turns on YouTube profile auto fill.
+    youtube_api_key: str = ""
 
     class Config:
         env_file = ".env"

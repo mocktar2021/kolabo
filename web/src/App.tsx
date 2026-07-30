@@ -14,6 +14,7 @@ import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
+import MarketingPage from "./pages/MarketingPage";
 
 export default function App() {
   return (
@@ -34,6 +35,9 @@ export default function App() {
         <Route path="/contracts" element={<ContractsList />} />
         <Route path="/contracts/:id" element={<ContractPage />} />
         <Route path="/u/:userId" element={<PublicProfilePage />} />
+        <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
+        <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />
+        <Route path="/pricing" element={<MarketingPage titleKey="marketingPage.pricingTitle" bodyKey="marketingPage.pricingBody" />} />
       </Routes>
     </BrowserRouter>
   );

@@ -94,16 +94,17 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     if profile is None:
         profile = models.InfluencerProfile(user_id=user_id)
         db.add(profile)
-    profile.display_name = payload.display_name
-    profile.headline = payload.headline
-    profile.location = payload.location
-    profile.avatar_media_id = payload.avatar_media_id
-    profile.bio = payload.bio
-    profile.bio_fr = payload.bio_fr
-    profile.bio_en = payload.bio_en
-    profile.categories = payload.categories
-    profile.rate_card = payload.rate_card
-    profile.follower_count = payload.follower_count
+    # Only apply what the client actually sent. Assigning every column
+    # unconditionally meant a form that did not know about a field deleted it:
+    # the onboarding wizard omits avatar_media_id, so pressing Continue wiped
+    # the avatar that enrichment had just downloaded from YouTube.
+    #
+    # exclude_unset draws the line at omission, not at emptiness: a field the
+    # client explicitly sent as null IS still cleared, because that is how a
+    # creator deletes their headline or removes their photo. Only leaving the
+    # key out entirely is now a no-op.
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(profile, field, value)
     db.commit()
     db.refresh(profile)
     return _influencer_out(profile)

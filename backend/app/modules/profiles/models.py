@@ -39,7 +39,15 @@ class InfluencerProfile(Base):
     headline: Mapped[str | None] = mapped_column(String, nullable=True)
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar_media_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Kolabo is bilingual, and the bio is the most read part of a profile: an
+    # Ivorian brand should not land on an English bio, nor a Ghanaian brand on
+    # a French one. `bio` is the pre-split column, kept until the backfill has
+    # been checked in production and then dropped.
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bio_fr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bio_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Counts AI draft requests so one creator cannot loop the retry button.
+    bio_generations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     rate_card: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     # Self reported for now; to be replaced by verified analytics from

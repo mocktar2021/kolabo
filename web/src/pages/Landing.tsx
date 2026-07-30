@@ -12,6 +12,13 @@ import type { SearchResult } from "../lib/types";
    land; kept obviously generic so nothing here reads as a claim we cannot back. */
 const PLACEHOLDER_BRANDS = ["Votre marque", "Brand", "Enterprise", "Startup", "Agence", "NGO"];
 
+/* The featured grid renders only with at least this many creators. Fewer than
+   four and the landing page shows a half-empty shelf: one or two lonely cards
+   read as "nobody is here", which is worse than showing nothing at all. The
+   same guard keeps our honesty automatic; until enough real profiles are
+   seeded and searchable, the section simply stays hidden. */
+const MIN_FEATURED_CREATORS = 4;
+
 export default function Landing() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -20,6 +27,9 @@ export default function Landing() {
   const [featured, setFeatured] = useState<SearchResult[]>([]);
 
   useEffect(() => {
+    // Silent failure by design: if discovery is down the list stays empty and
+    // the featured section simply does not render. The landing page must never
+    // show an error state for an optional proof section.
     api<SearchResult[]>("/discovery/search?limit=8").then(setFeatured).catch(() => undefined);
   }, []);
 
@@ -31,11 +41,15 @@ export default function Landing() {
     navigate(`/discover?${qs.toString()}`);
   }
 
+  /* Concrete product promises, not vanity numbers. The old band advertised
+     configuration (country count, language count, our own commission), which
+     proves nothing about traction; these four statements describe what the
+     product actually does for both sides. */
   const stats = [
-    { value: t("landing.statCountriesValue"), label: t("landing.statCountries") },
-    { value: t("landing.statEscrowValue"), label: t("landing.statEscrow") },
-    { value: t("landing.statLangValue"), label: t("landing.statLang") },
-    { value: t("landing.statFeeValue"), label: t("landing.statFee") }
+    { t: t("landing.stat1t"), d: t("landing.stat1d") },
+    { t: t("landing.stat2t"), d: t("landing.stat2d") },
+    { t: t("landing.stat3t"), d: t("landing.stat3d") },
+    { t: t("landing.stat4t"), d: t("landing.stat4d") }
   ];
 
   const steps = [
@@ -79,7 +93,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {featured.length > 0 && (
+      {featured.length >= MIN_FEATURED_CREATORS && (
         <section className="container section">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
             <div>
@@ -143,9 +157,9 @@ export default function Landing() {
         <div className="container">
           <div className="stat-grid">
             {stats.map((s) => (
-              <div key={s.label}>
-                <div className="stat-value">{s.value}</div>
-                <div className="stat-label">{s.label}</div>
+              <div key={s.t}>
+                <div className="stat-value" style={{ fontSize: 18 }}>{s.t}</div>
+                <div className="stat-label">{s.d}</div>
               </div>
             ))}
           </div>
@@ -186,15 +200,22 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* One closing door per audience: brands go straight to the catalogue,
+          creators to registration with the same role hint the old CTA used. */}
       <section className="cta-band">
         <div className="container">
           <h2>{t("landing.ctaTitle")}</h2>
-          <p>{t("landing.ctaSub")}</p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="btn btn-lg" style={{ background: "#fff", color: "var(--indigo)" }}
-              onClick={() => navigate("/register?role=influencer")}>{t("landing.ctaCreator")}</button>
-            <button className="btn btn-lg" style={{ background: "rgba(255,255,255,0.16)", color: "#fff", borderColor: "rgba(255,255,255,0.4)" }}
-              onClick={() => navigate("/register?role=business")}>{t("landing.ctaBusiness")}</button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18, maxWidth: 760, margin: "0 auto", textAlign: "left" }}>
+            <div className="card" style={{ padding: 24 }}>
+              <h3 style={{ fontSize: 18, color: "var(--ink)", marginBottom: 8 }}>{t("landing.ctaBrandTitle")}</h3>
+              <p style={{ color: "var(--muted)", fontSize: 14.5, margin: "0 0 18px" }}>{t("landing.ctaBrandSub")}</p>
+              <Link className="btn btn-primary" to="/discover">{t("landing.ctaBrandBtn")}</Link>
+            </div>
+            <div className="card" style={{ padding: 24 }}>
+              <h3 style={{ fontSize: 18, color: "var(--ink)", marginBottom: 8 }}>{t("landing.ctaCreatorTitle")}</h3>
+              <p style={{ color: "var(--muted)", fontSize: 14.5, margin: "0 0 18px" }}>{t("landing.ctaCreatorSub")}</p>
+              <Link className="btn btn-teal" to="/register?role=influencer">{t("landing.ctaCreatorBtn")}</Link>
+            </div>
           </div>
         </div>
       </section>

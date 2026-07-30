@@ -4,18 +4,18 @@ import { initReactI18next } from "react-i18next";
 /* Bilingual from day one. French is the default because the pilot markets
    (Benin and Togo) are francophone; English is a first class toggle. */
 const cat = {
-  fr: { fashion: "Mode", beauty: "Beaute", tech: "Tech", food: "Cuisine", travel: "Voyage", fitness: "Fitness", music: "Musique", comedy: "Humour", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" },
+  fr: { fashion: "Mode", beauty: "Beauté", tech: "Tech", food: "Cuisine", travel: "Voyage", fitness: "Fitness", music: "Musique", comedy: "Humour", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Éducation" },
   en: { fashion: "Fashion", beauty: "Beauty", tech: "Tech", food: "Food", travel: "Travel", fitness: "Fitness", music: "Music", comedy: "Comedy", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" }
 };
 /* Every deliverable id in backend/app/core/platforms.py needs a label in both
    languages, otherwise a package shows the buyer a raw id like "photo_post". */
 const deliverable = {
   fr: {
-    post: "Publication", story: "Story", reel: "Reel", video: "Video", short: "Short",
+    post: "Publication", story: "Story", reel: "Reel", video: "Vidéo", short: "Short",
     carousel: "Carrousel", live: "Live", photo_post: "Publication photo",
-    community_post: "Post communaute", snap: "Snap", spotlight: "Spotlight",
+    community_post: "Post communauté", snap: "Snap", spotlight: "Spotlight",
     thread: "Fil", article: "Article", status: "Statut", server_post: "Publication serveur",
-    ugc_video: "Video UGC", ugc_photo: "Photo UGC"
+    ugc_video: "Vidéo UGC", ugc_photo: "Photo UGC"
   },
   en: {
     post: "Post", story: "Story", reel: "Reel", video: "Video", short: "Short",
@@ -31,97 +31,97 @@ const resources = {
     translation: {
       cat: cat.fr,
       deliverable: deliverable.fr,
-      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", invitations: "Invitations", contracts: "Contrats", profile: "Profil", logout: "Deconnexion" },
+      nav: { login: "Se connecter", signup: "Créer un compte", dashboard: "Tableau de bord", discover: "Découvrir", campaigns: "Campagnes", invitations: "Invitations", contracts: "Contrats", profile: "Profil", logout: "Déconnexion" },
       landing: {
         eyebrow: "Marketing d'influence pour l'Afrique",
-        title: "La ou les createurs et les marques se rencontrent",
-        lead: "Kolabo connecte les createurs de contenu africains et les entreprises: collaborations securisees, paiements proteges, et resultats mesurables.",
-        ctaCreator: "Je suis createur",
+        title: "Là où les créateurs et les marques se rencontrent",
+        lead: "Kolabo connecte les créateurs de contenu africains et les entreprises: collaborations sécurisées, paiements protégés, et résultats mesurables.",
+        ctaCreator: "Je suis créateur",
         ctaBusiness: "Je suis une marque",
-        f1t: "Confiance verifiee", f1d: "Profils et entreprises verifies, pour collaborer en toute serenite.",
-        f2t: "Paiements securises", f2d: "Les fonds sont bloques en sequestre et liberes une fois le travail livre.",
-        f3t: "Bilingue et local", f3d: "Francais et anglais, pensee pour les paiements mobiles et les reseaux locaux.",
+        f1t: "Confiance vérifiée", f1d: "Profils et entreprises vérifiés, pour collaborer en toute sérénité.",
+        f2t: "Paiements sécurisés", f2d: "Les fonds sont bloqués en séquestre et libérés une fois le travail livré.",
+        f3t: "Bilingue et local", f3d: "Français et anglais, pensée pour les paiements mobiles et les réseaux locaux.",
         searchCreators: "Rechercher", freeToSearch: "La recherche est gratuite, aucun compte requis.",
-        featured: "Createurs en vedette", seeAll: "Voir tout", whyKolabo: "Pourquoi Kolabo"
+        featured: "Créateurs en vedette", seeAll: "Voir tout", whyKolabo: "Pourquoi Kolabo"
       },
       auth: {
-        loginTitle: "Content de vous revoir", loginSub: "Connectez-vous a votre compte Kolabo.",
-        registerTitle: "Creer votre compte", registerSub: "Rejoignez Kolabo en quelques secondes.",
-        phone: "Numero de telephone", password: "Mot de passe", country: "Pays", role: "Je suis",
-        roleInfluencer: "Createur", roleInfluencerD: "J'ai une audience",
-        roleBusiness: "Entreprise", roleBusinessD: "Je cherche des createurs",
-        roleAgency: "Agence", roleAgencyD: "Je gere des campagnes",
+        loginTitle: "Content de vous revoir", loginSub: "Connectez-vous à votre compte Kolabo.",
+        registerTitle: "Créer votre compte", registerSub: "Rejoignez Kolabo en quelques secondes.",
+        phone: "Numéro de téléphone", password: "Mot de passe", country: "Pays", role: "Je suis",
+        roleInfluencer: "Créateur", roleInfluencerD: "J'ai une audience",
+        roleBusiness: "Entreprise", roleBusinessD: "Je cherche des créateurs",
+        roleAgency: "Agence", roleAgencyD: "Je gère des campagnes",
         submitLogin: "Se connecter", submitRegister: "Continuer",
-        needAccount: "Pas encore de compte?", haveAccount: "Vous avez deja un compte?",
-        signupLink: "Creer un compte", loginLink: "Se connecter",
-        otpTitle: "Verifiez votre numero", otpSub: "Entrez le code a 6 chiffres envoye par SMS.",
-        otpCode: "Code de verification", otpSubmit: "Verifier",
-        otpDevHint: "En developpement, le code est ecrit dans les logs du serveur.",
+        needAccount: "Pas encore de compte?", haveAccount: "Vous avez déjà un compte?",
+        signupLink: "Créer un compte", loginLink: "Se connecter",
+        otpTitle: "Vérifiez votre numéro", otpSub: "Entrez le code à 6 chiffres envoyé par SMS.",
+        otpCode: "Code de vérification", otpSubmit: "Vérifier",
+        otpDevHint: "En développement, le code est écrit dans les logs du serveur.",
         working: "Un instant..."
       },
       dash: {
         welcome: "Bienvenue sur Kolabo", sub: "Que voulez-vous faire aujourd'hui?",
-        profileTitle: "Completer mon profil", profileDesc: "Ajoutez vos informations pour etre visible et credible.",
-        discoverTitle: "Decouvrir des createurs", discoverDesc: "Recherchez et enregistrez des createurs pour vos campagnes.",
-        campaignTitle: "Mes campagnes", campaignDesc: "Creez et gerez vos campagnes et leurs propositions.",
-        invitationsTitle: "Mes invitations", invitationsDesc: "Repondez aux invitations avec une proposition.",
-        contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gerez les paiements."
+        profileTitle: "Compléter mon profil", profileDesc: "Ajoutez vos informations pour être visible et crédible.",
+        discoverTitle: "Découvrir des créateurs", discoverDesc: "Recherchez et enregistrez des créateurs pour vos campagnes.",
+        campaignTitle: "Mes campagnes", campaignDesc: "Créez et gérez vos campagnes et leurs propositions.",
+        invitationsTitle: "Mes invitations", invitationsDesc: "Répondez aux invitations avec une proposition.",
+        contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gérez les paiements."
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
-        asCreator: "Profil createur", asBusiness: "Profil entreprise",
-        bio: "Bio", categories: "Categories", followers: "Nombre d'abonnes",
+        asCreator: "Profil créateur", asBusiness: "Profil entreprise",
+        bio: "Bio", categories: "Catégories", followers: "Nombre d'abonnés",
         rate: "Tarif par publication", rateHint: "Montant indicatif en devise locale.",
         company: "Nom de l'entreprise", industry: "Secteur", description: "Description",
-        save: "Enregistrer", saved: "Profil enregistre.",
-        displayName: "Nom d'affichage", headline: "Titre", headlinePlaceholder: "Ex: Createur lifestyle", location: "Localisation",
+        save: "Enregistrer", saved: "Profil enregistré.",
+        displayName: "Nom d'affichage", headline: "Titre", headlinePlaceholder: "Ex: Créateur lifestyle", location: "Localisation",
         uploadPhoto: "Ajouter une photo", viewPublic: "Voir ma page publique", portfolio: "Portfolio", addImage: "Ajouter une image",
-        packages: "Mes offres", packagesHint: "Proposez des prestations a prix fixe.", packageTitle: "Titre de l'offre", addPackage: "Ajouter une offre"
+        packages: "Mes offres", packagesHint: "Proposez des prestations à prix fixe.", packageTitle: "Titre de l'offre", addPackage: "Ajouter une offre"
       },
       discover: {
-        title: "Decouvrir des createurs", sub: "Trouvez le bon createur pour votre campagne.",
-        category: "Categorie", country: "Pays", minFollowers: "Abonnes min.", any: "Tous",
-        searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun createur trouve.",
-        creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
+        title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
+        category: "Catégorie", country: "Pays", minFollowers: "Abonnés min.", any: "Tous",
+        searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun créateur trouvé.",
+        creator: "Créateur", verified: "Vérifié", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
-      public: { notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.", order: "Commander", orderSoon: "La commande directe arrive bientot." },
+      public: { notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.", order: "Commander", orderSoon: "La commande directe arrive bientôt." },
       campaign: {
-        title: "Creer une campagne", sub: "Decrivez votre besoin pour recevoir des propositions.",
-        name: "Titre de la campagne", budget: "Budget", currency: "Devise", deadline: "Echeance",
-        deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immediatement",
-        create: "Creer la campagne", publish: "Publier", published: "Campagne publiee.",
-        another: "Creer une autre campagne", noBudget: "Budget non defini",
-        status_draft: "Brouillon", status_published: "Publiee",
+        title: "Créer une campagne", sub: "Décrivez votre besoin pour recevoir des propositions.",
+        name: "Titre de la campagne", budget: "Budget", currency: "Devise", deadline: "Échéance",
+        deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immédiatement",
+        create: "Créer la campagne", publish: "Publier", published: "Campagne publiée.",
+        another: "Créer une autre campagne", noBudget: "Budget non défini",
+        status_draft: "Brouillon", status_published: "Publiée",
         listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
         notFound: "Campagne introuvable.",
-        inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun createur favori a inviter.",
+        inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun créateur favori à inviter.",
         invite: "Inviter", invitations: "Invitations", noInvitations: "Aucune invitation pour le moment.",
         proposals: "Propositions", noProposals: "Aucune proposition pour le moment.",
-        accept: "Accepter et creer le contrat", viewContract: "Voir le contrat"
+        accept: "Accepter et créer le contrat", viewContract: "Voir le contrat"
       },
       invitation: {
-        title: "Mes invitations", sub: "Les campagnes auxquelles vous etes invite.",
+        title: "Mes invitations", sub: "Les campagnes auxquelles vous êtes invité.",
         empty: "Vous n'avez pas encore d'invitation.",
-        rate: "Tarif propose", days: "Delai (jours)", send: "Envoyer", proposalSent: "Proposition envoyee."
+        rate: "Tarif proposé", days: "Délai (jours)", send: "Envoyer", proposalSent: "Proposition envoyée."
       },
       contract: {
         listTitle: "Mes contrats", listSub: "Signez vos contrats et suivez les paiements.",
         listEmpty: "Vous n'avez pas encore de contrat.", notFound: "Contrat introuvable.",
-        title: "Contrat", rate: "Montant convenu", timeline: "Delai",
-        businessSigned: "Signe par l'entreprise", creatorSigned: "Signe par le createur", yes: "Oui", no: "En attente",
-        document: "Document du contrat", signHeading: "Signature electronique",
+        title: "Contrat", rate: "Montant convenu", timeline: "Délai",
+        businessSigned: "Signé par l'entreprise", creatorSigned: "Signé par le créateur", yes: "Oui", no: "En attente",
+        document: "Document du contrat", signHeading: "Signature électronique",
         typeName: "Tapez votre nom pour signer", namePlaceholder: "Nom complet", sign: "Signer",
-        waitingOther: "Vous avez signe. En attente de l'autre partie.",
-        payment: "Paiement (sequestre)", fundHint: "Bloquez les fonds en sequestre via Mobile Money.",
-        fund: "Financer le sequestre", awaitingFunding: "En attente du financement par l'entreprise.",
-        escrowStatus: "Statut du sequestre", amount: "Montant", commission: "Commission",
-        release: "Confirmer et liberer", dispute: "Ouvrir un litige",
-        released: "Sequestre libere, le paiement est en route.",
+        waitingOther: "Vous avez signé. En attente de l'autre partie.",
+        payment: "Paiement (séquestre)", fundHint: "Bloquez les fonds en séquestre via Mobile Money.",
+        fund: "Financer le séquestre", awaitingFunding: "En attente du financement par l'entreprise.",
+        escrowStatus: "Statut du séquestre", amount: "Montant", commission: "Commission",
+        release: "Confirmer et libérer", dispute: "Ouvrir un litige",
+        released: "Séquestre libéré, le paiement est en route.",
         disputed: "Litige en cours, un administrateur va trancher.",
-        refunded: "Le sequestre a ete rembourse a l'entreprise.",
-        status_pending_signatures: "En attente de signatures", status_signed: "Signe"
+        refunded: "Le séquestre a été remboursé à l'entreprise.",
+        status_pending_signatures: "En attente de signatures", status_signed: "Signé"
       },
-      escrow: { status_held: "Bloque", status_released: "Libere", status_disputed: "En litige", status_refunded: "Rembourse" }
+      escrow: { status_held: "Bloqué", status_released: "Libéré", status_disputed: "En litige", status_refunded: "Remboursé" }
     }
   },
   en: {

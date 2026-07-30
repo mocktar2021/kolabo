@@ -189,6 +189,54 @@ def test_profile_saves_and_loads_new_fields(client):
     assert got["location"] == "Cotonou, BJ"
 
 
+def test_saving_without_avatar_keeps_the_existing_one(client):
+    """The onboarding wizard does not send avatar_media_id. Omitting the field
+    must not delete the avatar that enrichment downloaded from YouTube."""
+    uid = _make_user(client)
+    media_id = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["id"]
+    client.put(f"/profiles/influencer/{uid}", json={
+        "display_name": "Ama K.", "avatar_media_id": media_id,
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {},
+    })
+    # A save that never mentions the avatar leaves it alone.
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "display_name": "Ama K.", "bio": "Hi again", "categories": ["fashion"], "rate_card": {},
+    })
+    assert r.status_code == 200
+    assert r.json()["avatar_media_id"] == media_id
+    assert client.get(f"/profiles/influencer/{uid}").json()["avatar_url"] == f"/profiles/media/{media_id}"
+
+
+def test_explicit_null_avatar_still_clears_it(client):
+    """Omission is a no-op, but an explicit null is how a creator removes their
+    photo, so that must keep working."""
+    uid = _make_user(client)
+    media_id = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["id"]
+    client.put(f"/profiles/influencer/{uid}", json={
+        "avatar_media_id": media_id, "bio": "Hi", "categories": ["fashion"], "rate_card": {},
+    })
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "avatar_media_id": None, "bio": "Hi", "categories": ["fashion"], "rate_card": {},
+    })
+    assert r.status_code == 200
+    assert r.json()["avatar_media_id"] is None
+    assert r.json()["avatar_url"] is None
+
+
+def test_saving_without_bio_fr_keeps_the_existing_one(client):
+    """Same class of bug as the avatar: a form that only knows the legacy `bio`
+    column must not wipe the bilingual bios."""
+    uid = _make_user(client)
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio_fr": "Bonjour, je suis créatrice à Cotonou.", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    assert r.status_code == 200
+    assert r.json()["bio_fr"] == "Bonjour, je suis créatrice à Cotonou."
+
+
 def test_media_upload_and_serve(client):
     uid = _make_user(client)
     up = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")})

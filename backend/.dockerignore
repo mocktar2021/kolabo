@@ -1,0 +1,25 @@
+# The Dockerfile copies the whole build context (COPY . .), so anything left
+# here ends up in an image layer and survives into any registry that image is
+# pushed to. Deleting the file in a later layer does not remove it.
+
+# Secrets. The dev container still reads backend/.env through the compose
+# volume mount, so excluding it here costs nothing.
+.env
+.env.*
+!.env.example
+
+# Local caches and virtualenvs. These bloat the image and a copied .venv can
+# shadow the dependencies pip installed inside the container.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Not needed at runtime.
+.git
+.gitignore
+*.md
+!README.md

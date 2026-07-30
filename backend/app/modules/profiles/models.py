@@ -1,13 +1,15 @@
-"""Profile and verification models for Epic B.
+"""Profile and verification models for Epic B, plus creator packages and media.
 
 Datetimes are naive UTC for consistent comparison across SQLite and PostgreSQL.
 Verification document bytes are stored encrypted (see app.core.crypto); the raw
-document is never persisted.
+document is never persisted. Public profile images (avatar, portfolio) are NOT
+sensitive and are stored as-is in media_assets; object storage replaces the
+in-database blob before production.
 """
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -33,6 +35,10 @@ class InfluencerProfile(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), unique=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    headline: Mapped[str | None] = mapped_column(String, nullable=True)
+    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    avatar_media_id: Mapped[str | None] = mapped_column(String, nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
     categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     rate_card: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
@@ -83,3 +89,46 @@ class VerificationDocument(Base):
     reviewer_id: Mapped[str | None] = mapped_column(String, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class MediaAsset(Base):
+    """Public profile image (avatar or portfolio). Blob in the database for now;
+    swap for object storage before production."""
+
+    __tablename__ = "media_assets"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    content_type: Mapped[str] = mapped_column(String, nullable=False)
+    data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class PortfolioItem(Base):
+    """An image in a creator's portfolio gallery, ordered by position."""
+
+    __tablename__ = "portfolio_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    media_id: Mapped[str] = mapped_column(ForeignKey("media_assets.id"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class Package(Base):
+    """A fixed-price offering on a creator's profile (the instant-hire model)."""
+
+    __tablename__ = "packages"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    platform: Mapped[str] = mapped_column(String, nullable=False)
+    deliverable_type: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price_amount: Mapped[int] = mapped_column(Integer, nullable=False)  # minor units
+    currency: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)

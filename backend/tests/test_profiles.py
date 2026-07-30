@@ -21,6 +21,8 @@ def client():
         future=True,
     )
     testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    from app.core.db import import_all_models
+    import_all_models()
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():
@@ -56,11 +58,13 @@ ADMIN = {"X-Admin-Id": "admin-1"}
 
 def test_influencer_profile_completion_and_searchable(client):
     uid = _make_user(client)
+    # Partial profile is not searchable and under 100 percent.
     r = client.put(f"/profiles/influencer/{uid}", json={"bio": "Creator", "categories": [], "rate_card": {}})
     assert r.status_code == 200
     body = r.json()
     assert body["completion_percent"] == 33
     assert body["is_searchable"] is False
+    # Complete profile is searchable at 100 percent.
     r = client.put(
         f"/profiles/influencer/{uid}",
         json={"bio": "Creator", "categories": ["fashion"], "rate_card": {"post": 100}},
@@ -91,6 +95,7 @@ def test_verification_document_stored_encrypted_and_pending(client):
     )
     assert r.status_code == 201
     assert r.json()["status"] == "pending"
+    # The stored bytes must be ciphertext, never the raw document.
     from app.modules.profiles.models import VerificationDocument
     db = client.session_factory()
     doc = db.query(VerificationDocument).first()
@@ -136,6 +141,7 @@ def test_admin_can_approve_document_and_decision_is_logged(client):
     assert r.status_code == 200
     assert r.json()["status"] == "approved"
     assert r.json()["reviewer_id"] == "admin-1"
+    # Decision is recorded in the audit log.
     from app.modules.admin.models import AdminActionLog
     db = client.session_factory()
     log = db.query(AdminActionLog).first()
@@ -162,3 +168,109 @@ def test_document_rejection_requires_reason(client):
     )
     assert r.status_code == 200
     assert r.json()["status"] == "rejected"
+
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\nfakepngdata"
+
+
+def test_profile_saves_and_loads_new_fields(client):
+    uid = _make_user(client)
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "display_name": "Ama K.", "headline": "Lifestyle creator", "location": "Cotonou, BJ",
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {}, "follower_count": 12000,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["display_name"] == "Ama K."
+    assert body["headline"] == "Lifestyle creator"
+    # Reload returns the saved values.
+    got = client.get(f"/profiles/influencer/{uid}").json()
+    assert got["display_name"] == "Ama K."
+    assert got["location"] == "Cotonou, BJ"
+
+
+def test_media_upload_and_serve(client):
+    uid = _make_user(client)
+    up = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")})
+    assert up.status_code == 201
+    media_id = up.json()["id"]
+    assert up.json()["url"] == f"/profiles/media/{media_id}"
+    served = client.get(f"/profiles/media/{media_id}")
+    assert served.status_code == 200
+    assert served.content == PNG_BYTES
+    assert served.headers["content-type"].startswith("image/png")
+
+
+def test_media_rejects_non_image(client):
+    uid = _make_user(client)
+    r = client.post(f"/profiles/{uid}/media", files={"file": ("a.txt", b"hello", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_package_crud(client):
+    uid = _make_user(client)
+    created = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "1 IG Reel",
+        "description": "A 30s reel", "price_amount": 50000, "currency": "xof",
+    })
+    assert created.status_code == 201
+    pkg = created.json()
+    assert pkg["currency"] == "XOF"  # normalized
+    assert pkg["is_active"] is True
+    # List
+    assert len(client.get(f"/profiles/{uid}/packages").json()) == 1
+    # Update
+    upd = client.put(f"/profiles/{uid}/packages/{pkg['id']}", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "1 IG Reel",
+        "price_amount": 60000, "currency": "XOF", "is_active": False,
+    })
+    assert upd.json()["price_amount"] == 60000
+    assert upd.json()["is_active"] is False
+    # active_only filter hides it
+    assert client.get(f"/profiles/{uid}/packages?active_only=true").json() == []
+    # Delete
+    assert client.delete(f"/profiles/{uid}/packages/{pkg['id']}").status_code == 204
+    assert client.get(f"/profiles/{uid}/packages").json() == []
+
+
+def test_package_update_requires_ownership(client):
+    a = _make_user(client, phone="+22990000010")
+    b = _make_user(client, phone="+22990000011")
+    pkg = client.post(f"/profiles/{a}/packages", json={
+        "platform": "tiktok", "deliverable_type": "video", "title": "TikTok",
+        "price_amount": 40000, "currency": "XOF",
+    }).json()
+    r = client.put(f"/profiles/{b}/packages/{pkg['id']}", json={
+        "platform": "tiktok", "deliverable_type": "video", "title": "TikTok",
+        "price_amount": 1, "currency": "XOF",
+    })
+    assert r.status_code == 403
+
+
+def test_portfolio_add_and_remove(client):
+    uid = _make_user(client)
+    media_id = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["id"]
+    item = client.post(f"/profiles/{uid}/portfolio", json={"media_id": media_id})
+    assert item.status_code == 201
+    assert item.json()["url"] == f"/profiles/media/{media_id}"
+    assert len(client.get(f"/profiles/{uid}/portfolio").json()) == 1
+    assert client.delete(f"/profiles/{uid}/portfolio/{item.json()['id']}").status_code == 204
+    assert client.get(f"/profiles/{uid}/portfolio").json() == []
+
+
+def test_public_profile_aggregate(client):
+    uid = _make_user(client)
+    client.put(f"/profiles/influencer/{uid}", json={
+        "display_name": "Ama K.", "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 1000},
+    })
+    client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 30000, "currency": "XOF",
+    })
+    pub = client.get(f"/profiles/influencer/{uid}/public")
+    assert pub.status_code == 200
+    body = pub.json()
+    assert body["display_name"] == "Ama K."
+    assert len(body["packages"]) == 1
+    assert body["review_count"] == 0
+    assert body["average_stars"] is None

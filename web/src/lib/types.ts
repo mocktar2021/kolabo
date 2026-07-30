@@ -114,3 +114,19 @@ export type PublicProfile = {
   portfolio: PortfolioItem[];
   social_accounts: SocialAccountPublic[];
 };
+
+export type SearchResult = {
+  user_id: string;
+  display_name: string | null;
+  headline: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  categories: string[];
+  follower_count: number | null;
+  country_code: string;
+  is_verified: boolean;
+  starting_price_amount: number | null;
+  starting_price_currency: string | null;
+  average_stars: number | null;
+  review_count: number;
+};

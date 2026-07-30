@@ -6,17 +6,55 @@ data volume the candidate set is small (hundreds), so filtering and ordering
 run in application code; this can move to PostgreSQL indexes or full text search
 when volume grows.
 KOL-20: favorites shortlist for a business, persisted and removable.
+
+Results carry the display name, photo, rating, and starting package price so a
+result card can be shown without a second request per creator.
 """
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.discovery.models import Favorite
 from app.modules.profiles import models as profiles
+from app.modules.trust_safety import models as trust_safety
 
 
-def _is_searchable(p: profiles.InfluencerProfile) -> bool:
-    return bool(p.bio) and bool(p.categories) and bool(p.rate_card)
+def _is_searchable(p: profiles.InfluencerProfile, has_package: bool) -> bool:
+    """A profile is discoverable once it says who it is, what it covers, and
+    what it costs. A published package counts as pricing, so a creator using
+    packages does not also have to fill the legacy rate card."""
+    return bool(p.bio) and bool(p.categories) and (bool(p.rate_card) or has_package)
+
+
+def _starting_prices(db: Session) -> dict:
+    """Cheapest active package per creator, as {user_id: (amount, currency)}."""
+    rows = (
+        db.query(profiles.Package.user_id, profiles.Package.price_amount, profiles.Package.currency)
+        .filter(profiles.Package.is_active.is_(True))
+        .order_by(profiles.Package.user_id, profiles.Package.price_amount.asc())
+        .all()
+    )
+    out: dict = {}
+    for user_id, amount, currency in rows:
+        if user_id not in out:
+            out[user_id] = (amount, currency)
+    return out
+
+
+def _rating_summary(db: Session) -> dict:
+    """Revealed review average and count per creator, as {user_id: (avg, count)}."""
+    rows = (
+        db.query(
+            trust_safety.Review.reviewee_user_id,
+            func.avg(trust_safety.Review.stars),
+            func.count(trust_safety.Review.id),
+        )
+        .filter(trust_safety.Review.revealed.is_(True))
+        .group_by(trust_safety.Review.reviewee_user_id)
+        .all()
+    )
+    return {uid: (round(float(avg), 2), int(count)) for uid, avg, count in rows}
 
 
 def search_influencers(
@@ -34,9 +72,12 @@ def search_influencers(
         .join(User, User.id == profiles.InfluencerProfile.user_id)
         .all()
     )
+    prices = _starting_prices(db)
+    ratings = _rating_summary(db)
+
     matched = []
     for prof, user in rows:
-        if not _is_searchable(prof):
+        if not _is_searchable(prof, prof.user_id in prices):
             continue
         if country and user.country_code != country:
             continue
@@ -50,8 +91,10 @@ def search_influencers(
                 continue
             if max_followers is not None and fc > max_followers:
                 continue
-        if q and (not prof.bio or q.lower() not in prof.bio.lower()):
-            continue
+        if q:
+            haystack = " ".join(filter(None, [prof.bio, prof.display_name, prof.headline])).lower()
+            if q.lower() not in haystack:
+                continue
         matched.append((prof, user))
 
     # Verified first, then higher follower count, then oldest profile first.
@@ -62,17 +105,29 @@ def search_influencers(
 
     matched.sort(key=sort_key)
     page = matched[offset : offset + limit]
-    return [
-        {
-            "user_id": prof.user_id,
-            "bio": prof.bio,
-            "categories": prof.categories,
-            "follower_count": prof.follower_count,
-            "country_code": user.country_code,
-            "is_verified": user.is_verified,
-        }
-        for prof, user in page
-    ]
+
+    results = []
+    for prof, user in page:
+        price = prices.get(prof.user_id)
+        avg, count = ratings.get(prof.user_id, (None, 0))
+        results.append(
+            {
+                "user_id": prof.user_id,
+                "display_name": prof.display_name,
+                "headline": prof.headline,
+                "avatar_url": f"/profiles/media/{prof.avatar_media_id}" if prof.avatar_media_id else None,
+                "bio": prof.bio,
+                "categories": prof.categories,
+                "follower_count": prof.follower_count,
+                "country_code": user.country_code,
+                "is_verified": user.is_verified,
+                "starting_price_amount": price[0] if price else None,
+                "starting_price_currency": price[1] if price else None,
+                "average_stars": avg,
+                "review_count": count,
+            }
+        )
+    return results
 
 
 def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> dict:

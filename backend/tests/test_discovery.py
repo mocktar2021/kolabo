@@ -22,6 +22,8 @@ def client():
         future=True,
     )
     testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    from app.core.db import import_all_models
+    import_all_models()
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():
@@ -72,6 +74,7 @@ def _make_business_token(client, phone="+22990000100"):
 def test_search_returns_only_searchable_and_matches_category(client):
     _make_influencer(client, "+22990000001", True, ["fashion"], 5000)
     _make_influencer(client, "+22990000002", True, ["tech"], 8000)
+    # An incomplete profile (no bio) must not appear.
     db = client.session_factory()
     u = User(phone="+22990000003", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
     db.add(u); db.commit(); db.refresh(u)
@@ -111,6 +114,7 @@ def test_favorites_add_list_remove(client):
     inf = _make_influencer(client, "+22990000009", True, ["fashion"], 3000)
     _, headers = _make_business_token(client)
     assert client.post(f"/discovery/favorites/{inf}", headers=headers).status_code == 201
+    # Idempotent add does not duplicate.
     client.post(f"/discovery/favorites/{inf}", headers=headers)
     favs = client.get("/discovery/favorites", headers=headers).json()
     assert len(favs) == 1
@@ -122,3 +126,77 @@ def test_favorites_add_list_remove(client):
 def test_favorite_unknown_influencer_404(client):
     _, headers = _make_business_token(client, phone="+22990000200")
     assert client.post("/discovery/favorites/nope", headers=headers).status_code == 404
+
+
+def _profile_without_rate(client, phone, categories, followers, bio="Creator"):
+    """A creator who filled bio and categories but left the legacy rate card empty."""
+    db = client.session_factory()
+    try:
+        user = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        db.add(user); db.commit(); db.refresh(user)
+        prof = pmodels.InfluencerProfile(
+            user_id=user.id, bio=bio, categories=categories, rate_card={}, follower_count=followers,
+            display_name="Ama K.", headline="Lifestyle creator",
+        )
+        db.add(prof); db.commit()
+        return user.id
+    finally:
+        db.close()
+
+
+def test_profile_without_rate_or_package_is_not_searchable(client):
+    _profile_without_rate(client, "+22990000201", ["fashion"], 5000)
+    assert client.get("/discovery/search").json() == []
+
+
+def test_active_package_makes_profile_searchable(client):
+    uid = _profile_without_rate(client, "+22990000202", ["fashion"], 5000)
+    db = client.session_factory()
+    db.add(pmodels.Package(
+        user_id=uid, platform="instagram", deliverable_type="post", title="1 IG Post",
+        price_amount=30000, currency="XOF", is_active=True,
+    ))
+    db.commit(); db.close()
+
+    results = client.get("/discovery/search").json()
+    assert len(results) == 1
+    assert results[0]["user_id"] == uid
+    assert results[0]["starting_price_amount"] == 30000
+    assert results[0]["starting_price_currency"] == "XOF"
+    assert results[0]["display_name"] == "Ama K."
+
+
+def test_inactive_package_does_not_make_searchable(client):
+    uid = _profile_without_rate(client, "+22990000203", ["fashion"], 5000)
+    db = client.session_factory()
+    db.add(pmodels.Package(
+        user_id=uid, platform="instagram", deliverable_type="post", title="Hidden",
+        price_amount=30000, currency="XOF", is_active=False,
+    ))
+    db.commit(); db.close()
+    assert client.get("/discovery/search").json() == []
+
+
+def test_starting_price_is_the_cheapest_active_package(client):
+    uid = _profile_without_rate(client, "+22990000204", ["fashion"], 5000)
+    db = client.session_factory()
+    db.add_all([
+        pmodels.Package(user_id=uid, platform="instagram", deliverable_type="reel", title="Reel",
+                        price_amount=90000, currency="XOF", is_active=True),
+        pmodels.Package(user_id=uid, platform="instagram", deliverable_type="story", title="Story",
+                        price_amount=15000, currency="XOF", is_active=True),
+    ])
+    db.commit(); db.close()
+    results = client.get("/discovery/search").json()
+    assert results[0]["starting_price_amount"] == 15000
+
+
+def test_search_is_public_and_returns_card_fields(client):
+    _make_influencer(client, "+22990000205", True, ["fashion"], 8000)
+    # No Authorization header at all: search must stay public.
+    r = client.get("/discovery/search")
+    assert r.status_code == 200
+    body = r.json()[0]
+    for key in ("display_name", "headline", "avatar_url", "starting_price_amount", "average_stars", "review_count"):
+        assert key in body
+    assert body["review_count"] == 0

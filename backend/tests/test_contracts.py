@@ -169,3 +169,14 @@ def test_contract_by_proposal_lookup(client):
 def test_contract_by_proposal_404_when_none(client):
     biz, inf, camp, prop = _setup(client)
     assert client.get(f"/contracts/by-proposal/{prop}", headers=_headers(biz)).status_code == 404
+
+
+def test_list_my_contracts_for_both_parties(client):
+    biz, inf, camp, prop = _setup(client)
+    created = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz)).json()
+    biz_list = client.get("/contracts/mine", headers=_headers(biz)).json()
+    inf_list = client.get("/contracts/mine", headers=_headers(inf)).json()
+    assert [c["id"] for c in biz_list] == [created["id"]]
+    assert [c["id"] for c in inf_list] == [created["id"]]
+    # A non-party sees none.
+    assert client.get("/contracts/mine", headers=_headers("stranger")).json() == []

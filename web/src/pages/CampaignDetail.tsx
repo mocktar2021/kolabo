@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import type { CampaignDetail } from "../lib/types";
+import type { CampaignDetail, Contract } from "../lib/types";
 
 function shortId(id: string): string {
   return id.slice(0, 8);
@@ -14,6 +14,7 @@ export default function CampaignDetailPage() {
   const { t } = useTranslation();
   const { token, isAuthenticated } = useAuth();
   const { id } = useParams();
+  const navigate = useNavigate();
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,32 @@ export default function CampaignDetailPage() {
     try {
       await api(`/campaigns/${campaign.id}/invitations`, { method: "POST", token, body: { influencer_id: influencerId } });
       await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptProposal(proposalId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const contract = await api<Contract>(`/contracts/from-proposal/${proposalId}`, { method: "POST", token });
+      navigate(`/contracts/${contract.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function viewContract(proposalId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const contract = await api<Contract>(`/contracts/by-proposal/${proposalId}`, { token });
+      navigate(`/contracts/${contract.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -139,9 +166,17 @@ export default function CampaignDetailPage() {
                 <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.noProposals")}</p>
               ) : (
                 campaign.proposals.map((p) => (
-                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 14, padding: "6px 0", borderTop: "1px solid var(--line)" }}>
-                    <span>{t("discover.creator")} {shortId(p.influencer_user_id)} - v{p.version}</span>
-                    <span>{p.rate_amount} {p.rate_currency} - {p.timeline_days}d <span className="muted">({p.status})</span></span>
+                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+                    <div>
+                      <div>{t("discover.creator")} {shortId(p.influencer_user_id)} - v{p.version}</div>
+                      <div className="muted">{p.rate_amount} {p.rate_currency} - {p.timeline_days}d ({p.status})</div>
+                    </div>
+                    {p.status === "submitted" && (
+                      <button className="btn btn-primary" disabled={busy} onClick={() => acceptProposal(p.id)}>{t("campaign.accept")}</button>
+                    )}
+                    {p.status === "accepted" && (
+                      <button className="btn btn-ghost" disabled={busy} onClick={() => viewContract(p.id)}>{t("campaign.viewContract")}</button>
+                    )}
                   </div>
                 ))
               )}

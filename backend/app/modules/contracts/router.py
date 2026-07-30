@@ -19,6 +19,15 @@ def generate_from_proposal(
     return service.generate_from_proposal(db, business_user_id, proposal_id)
 
 
+@router.get("/mine", response_model=list[schemas.ContractOut])
+def my_contracts(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """List contracts the current user is a party to (business or influencer)."""
+    return service.list_my_contracts(db, user_id)
+
+
 @router.get("/by-proposal/{proposal_id}", response_model=schemas.ContractOut)
 def contract_by_proposal(
     proposal_id: str,

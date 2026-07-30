@@ -1,70 +1,32 @@
-"""
-Country configuration as data, not code.
+"""Country settings: currency, rollout state, and the language a creator's
+profile defaults to.
 
-Per Part 6.10 / Part 17 of the project plan: currency, payment provider,
-phone format, verification method, and enabled features are modeled as
-configuration entries so that adding a new country is a data change, not
-a platform rebuild. This starter dict will move to a DB-backed table
-(see backend/app/modules/admin) once the admin config UI exists — kept
-as a plain dict here so the pilot (Benin, Togo) can ship without waiting
-on that UI.
-
-Provider names are placeholders pending direct provider outreach
-(Part 18 open item) — do not treat as confirmed integrations.
+`language` is a starting point for the interface and for which bio field is
+written first, never a restriction: every creator can fill both the French and
+English bio. Cameroon is officially bilingual and is defaulted to French
+because the creator market is concentrated in the francophone regions; a
+Cameroonian anglophone creator simply switches.
 """
+
+DEFAULT_LANGUAGE = "fr"
 
 COUNTRY_CONFIG = {
-    "BJ": {
-        "name": "Benin",
-        "currency": "XOF",
-        "language_default": "fr",
-        "languages_supported": ["fr"],
-        "phone_country_code": "+229",
-        "mobile_money_providers": ["mtn_momo", "moov_money"],  # TBD — pending provider outreach
-        "manual_payout_allowed": True,
-        "enabled": True,
-    },
-    "TG": {
-        "name": "Togo",
-        "currency": "XOF",
-        "language_default": "fr",
-        "languages_supported": ["fr"],
-        "phone_country_code": "+228",
-        "mobile_money_providers": ["tmoney", "flooz"],  # TBD
-        "manual_payout_allowed": True,
-        "enabled": True,
-    },
-    "CI": {
-        "name": "Côte d'Ivoire", "currency": "XOF", "language_default": "fr",
-        "languages_supported": ["fr"], "phone_country_code": "+225",
-        "mobile_money_providers": ["orange_money", "mtn_momo", "moov_money", "wave"],
-        "manual_payout_allowed": False, "enabled": False,
-    },
-    "GH": {
-        "name": "Ghana", "currency": "GHS", "language_default": "en",
-        "languages_supported": ["en"], "phone_country_code": "+233",
-        "mobile_money_providers": ["mtn_momo", "telecel_cash", "airteltigo_money"],
-        "manual_payout_allowed": False, "enabled": False,
-    },
-    "SN": {
-        "name": "Senegal", "currency": "XOF", "language_default": "fr",
-        "languages_supported": ["fr"], "phone_country_code": "+221",
-        "mobile_money_providers": ["orange_money", "wave", "free_money"],
-        "manual_payout_allowed": False, "enabled": False,
-    },
-    "CM": {
-        "name": "Cameroon", "currency": "XAF", "language_default": "fr",
-        "languages_supported": ["fr", "en"], "phone_country_code": "+237",
-        "mobile_money_providers": ["mtn_momo", "orange_money", "wave"],
-        "manual_payout_allowed": False, "enabled": False,
-    },
-    "NG": {
-        "name": "Nigeria", "currency": "NGN", "language_default": "en",
-        "languages_supported": ["en"], "phone_country_code": "+234",
-        "mobile_money_providers": ["opay", "palmpay", "moniepoint"],
-        "manual_payout_allowed": False, "enabled": False,
-    },
+    "BJ": {"name": "Benin", "currency": "XOF", "language": "fr", "enabled": True},
+    "TG": {"name": "Togo", "currency": "XOF", "language": "fr", "enabled": True},
+    "CI": {"name": "Cote d'Ivoire", "currency": "XOF", "language": "fr", "enabled": False},
+    "GH": {"name": "Ghana", "currency": "GHS", "language": "en", "enabled": False},
+    "SN": {"name": "Senegal", "currency": "XOF", "language": "fr", "enabled": False},
+    "CM": {"name": "Cameroon", "currency": "XAF", "language": "fr", "enabled": False},
+    "NG": {"name": "Nigeria", "currency": "NGN", "language": "en", "enabled": False},
 }
+
+
+def default_language(country_code: str | None) -> str:
+    """The language a creator in this country writes in first. Unknown or
+    missing countries fall back rather than raising: a bio default is never
+    worth failing a request over."""
+    cfg = COUNTRY_CONFIG.get(country_code or "")
+    return cfg["language"] if cfg else DEFAULT_LANGUAGE
 
 
 def get_enabled_countries() -> list[str]:

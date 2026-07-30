@@ -7,9 +7,23 @@ const cat = {
   fr: { fashion: "Mode", beauty: "Beaute", tech: "Tech", food: "Cuisine", travel: "Voyage", fitness: "Fitness", music: "Musique", comedy: "Humour", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" },
   en: { fashion: "Fashion", beauty: "Beauty", tech: "Tech", food: "Food", travel: "Travel", fitness: "Fitness", music: "Music", comedy: "Comedy", lifestyle: "Lifestyle", gaming: "Gaming", business: "Business", education: "Education" }
 };
+/* Every deliverable id in backend/app/core/platforms.py needs a label in both
+   languages, otherwise a package shows the buyer a raw id like "photo_post". */
 const deliverable = {
-  fr: { post: "Publication", story: "Story", reel: "Reel", video: "Video", short: "Short" },
-  en: { post: "Post", story: "Story", reel: "Reel", video: "Video", short: "Short" }
+  fr: {
+    post: "Publication", story: "Story", reel: "Reel", video: "Video", short: "Short",
+    carousel: "Carrousel", live: "Live", photo_post: "Publication photo",
+    community_post: "Post communaute", snap: "Snap", spotlight: "Spotlight",
+    thread: "Fil", article: "Article", status: "Statut", server_post: "Publication serveur",
+    ugc_video: "Video UGC", ugc_photo: "Photo UGC"
+  },
+  en: {
+    post: "Post", story: "Story", reel: "Reel", video: "Video", short: "Short",
+    carousel: "Carousel", live: "Live", photo_post: "Photo post",
+    community_post: "Community post", snap: "Snap", spotlight: "Spotlight",
+    thread: "Thread", article: "Article", status: "Status", server_post: "Server post",
+    ugc_video: "UGC video", ugc_photo: "UGC photo"
+  }
 };
 
 const resources = {

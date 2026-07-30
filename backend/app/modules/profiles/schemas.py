@@ -1,7 +1,8 @@
 """Schemas for the profiles module."""
 from pydantic import BaseModel, Field
 
-SOCIAL_PLATFORMS = {"instagram", "tiktok", "facebook", "youtube", "linkedin", "snapchat", "x"}
+from app.core.platforms import SOCIAL_PLATFORMS  # noqa: F401  (re-exported)
+
 SOCIAL_METHODS = {"oauth", "manual"}
 
 
@@ -49,6 +50,7 @@ class SocialAccountConnect(BaseModel):
     handle: str = Field(min_length=1)
     method: str
     proof_url: str | None = None
+    follower_count: int | None = Field(default=None, ge=0)
 
 
 class SocialAccountOut(BaseModel):
@@ -57,6 +59,7 @@ class SocialAccountOut(BaseModel):
     handle: str
     method: str
     status: str
+    follower_count: int | None = None
     enriched: bool = False
 
 

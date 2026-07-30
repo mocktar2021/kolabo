@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.crypto import encrypt_bytes
+from app.core.platforms import PLATFORM_DELIVERABLES, PLATFORMS_WITH_AUDIENCE, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.profiles import enrichment, models, schemas
 
@@ -138,6 +139,11 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
     if payload.method == "manual" and not payload.proof_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Manual connection requires a proof_url")
 
+    # WhatsApp Status, Discord and UGC expose no public follower metric, so any
+    # number supplied for them is unverifiable. Drop it rather than show a buyer
+    # a figure the platform itself cannot confirm.
+    follower_count = payload.follower_count if payload.platform in PLATFORMS_WITH_AUDIENCE else None
+
     new_status = models.VERIFIED if payload.method == "oauth" else models.PENDING
     account = models.SocialAccount(
         user_id=user_id,
@@ -146,23 +152,26 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
         method=payload.method,
         status=new_status,
         proof_url=payload.proof_url,
+        follower_count=follower_count,
     )
     db.add(account)
     db.commit()
     db.refresh(account)
 
-    enriched = _apply_enrichment(db, user_id, payload.platform, payload.handle)
+    enriched = _apply_enrichment(db, user_id, payload.platform, payload.handle, account)
+    db.refresh(account)
     return {
         "id": account.id,
         "platform": account.platform,
         "handle": account.handle,
         "method": account.method,
         "status": account.status,
+        "follower_count": account.follower_count,
         "enriched": enriched,
     }
 
 
-def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str) -> bool:
+def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, account=None) -> bool:
     """Fill empty profile fields from the platform, never overwriting the
     creator's own edits. Returns whether anything was filled."""
     data = social_enricher.fetch(platform, handle)
@@ -179,9 +188,15 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str) -> 
     if not profile.bio and data.get("bio"):
         profile.bio = data["bio"]
         filled = True
-    if profile.follower_count is None and data.get("follower_count") is not None:
-        profile.follower_count = data["follower_count"]
-        filled = True
+    if data.get("follower_count") is not None:
+        # The count belongs to the platform account; the profile keeps a total
+        # only as a fallback for creators who never connected an account.
+        if account is not None and account.follower_count is None:
+            account.follower_count = data["follower_count"]
+            filled = True
+        if profile.follower_count is None:
+            profile.follower_count = data["follower_count"]
+            filled = True
     if not profile.avatar_media_id and data.get("avatar_image_url"):
         downloaded = enrichment.fetch_image(data["avatar_image_url"])
         if downloaded:
@@ -204,7 +219,10 @@ def list_social_accounts(db: Session, user_id: str) -> list[dict]:
         .all()
     )
     return [
-        {"id": a.id, "platform": a.platform, "handle": a.handle, "method": a.method, "status": a.status}
+        {
+            "id": a.id, "platform": a.platform, "handle": a.handle, "method": a.method,
+            "status": a.status, "follower_count": a.follower_count,
+        }
         for a in accounts
     ]
 
@@ -276,8 +294,18 @@ def list_packages(db: Session, user_id: str, active_only: bool = False) -> list[
     return [_package_out(p) for p in query.order_by(models.Package.created_at.asc()).all()]
 
 
+def _validate_pair(platform: str, deliverable_type: str) -> None:
+    if not is_valid_pair(platform, deliverable_type):
+        allowed = ", ".join(PLATFORM_DELIVERABLES.get(platform, [])) or "none"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{deliverable_type} is not available on {platform}. Allowed: {allowed}",
+        )
+
+
 def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dict:
     _require_user(db, user_id)
+    _validate_pair(payload.platform, payload.deliverable_type)
     pkg = models.Package(
         user_id=user_id,
         platform=payload.platform,
@@ -300,6 +328,7 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package not found")
     if pkg.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
+    _validate_pair(payload.platform, payload.deliverable_type)
     pkg.platform = payload.platform
     pkg.deliverable_type = payload.deliverable_type
     pkg.title = payload.title
@@ -391,7 +420,10 @@ def get_public_profile(db: Session, user_id: str) -> dict:
         "packages": list_packages(db, user_id, active_only=True),
         "portfolio": list_portfolio(db, user_id),
         "social_accounts": [
-            {"id": s.id, "platform": s.platform, "handle": s.handle, "method": s.method, "status": s.status}
+            {
+                "id": s.id, "platform": s.platform, "handle": s.handle, "method": s.method,
+                "status": s.status, "follower_count": s.follower_count,
+            }
             for s in social
         ],
     }

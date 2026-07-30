@@ -10,6 +10,7 @@ Epic G will check before unlocking payment), and once signed the contract is
 immutable. A ContractEvent audit row is written for every lifecycle event.
 """
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
@@ -163,3 +164,13 @@ def get_contract_by_proposal(db: Session, proposal_id: str, user_id: str) -> dic
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract")
     return _out(contract)
+
+
+def list_my_contracts(db: Session, user_id: str) -> list[dict]:
+    rows = (
+        db.query(models.Contract)
+        .filter(or_(models.Contract.business_user_id == user_id, models.Contract.influencer_user_id == user_id))
+        .order_by(models.Contract.created_at.desc())
+        .all()
+    )
+    return [_out(c) for c in rows]

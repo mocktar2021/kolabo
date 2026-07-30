@@ -10,6 +10,8 @@ import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
 import CampaignDetailPage from "./pages/CampaignDetail";
 import MyInvitations from "./pages/MyInvitations";
+import ContractsList from "./pages/ContractsList";
+import ContractPage from "./pages/ContractPage";
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
         <Route path="/campaigns/new" element={<CampaignNew />} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/invitations" element={<MyInvitations />} />
+        <Route path="/contracts" element={<ContractsList />} />
+        <Route path="/contracts/:id" element={<ContractPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -36,3 +36,33 @@ export type CampaignDetail = Campaign & {
 };
 
 export type InvitationWithCampaign = Invitation & { campaign: Campaign };
+
+export type Contract = {
+  id: string;
+  campaign_id: string;
+  proposal_id: string;
+  business_user_id: string;
+  influencer_user_id: string;
+  language: string;
+  status: string;
+  rate_amount: number;
+  rate_currency: string;
+  timeline_days: number;
+  business_signed: boolean;
+  influencer_signed: boolean;
+  fully_signed: boolean;
+};
+
+export type ContractDetail = Contract & { body: string };
+
+export type Escrow = {
+  id: string;
+  contract_id: string;
+  campaign_id: string;
+  business_user_id: string;
+  influencer_user_id: string;
+  amount: number;
+  currency: string;
+  commission_amount: number | null;
+  status: string;
+};

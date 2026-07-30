@@ -69,6 +69,9 @@ class SocialAccount(Base):
     platform: Mapped[str] = mapped_column(String, nullable=False)
     handle: Mapped[str] = mapped_column(String, nullable=False)
     method: Mapped[str] = mapped_column(String, nullable=False)  # oauth or manual
+    # Audience on this specific platform. Self reported until the platform
+    # API confirms it; None where the platform exposes no public metric.
+    follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String, default=PENDING, nullable=False)
     proof_url: Mapped[str | None] = mapped_column(String, nullable=True)
     reviewer_id: Mapped[str | None] = mapped_column(String, nullable=True)

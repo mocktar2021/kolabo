@@ -2,11 +2,20 @@
 from pydantic import BaseModel
 
 
+class SocialSummary(BaseModel):
+    platform: str
+    handle: str
+    follower_count: int | None = None
+
+
 class InfluencerSearchResult(BaseModel):
     user_id: str
     display_name: str | None = None
     headline: str | None = None
+    location: str | None = None
     avatar_url: str | None = None
+    cover_url: str | None = None
+    socials: list[SocialSummary] = []
     bio: str | None
     categories: list[str]
     follower_count: int | None

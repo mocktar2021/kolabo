@@ -7,8 +7,9 @@ run in application code; this can move to PostgreSQL indexes or full text search
 when volume grows.
 KOL-20: favorites shortlist for a business, persisted and removable.
 
-Results carry the display name, photo, rating, and starting package price so a
-result card can be shown without a second request per creator.
+Results carry the display name, cover image, per platform audience, rating, and
+starting package price so a result card can be shown without a second request
+per creator.
 """
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -57,6 +58,36 @@ def _rating_summary(db: Session) -> dict:
     return {uid: (round(float(avg), 2), int(count)) for uid, avg, count in rows}
 
 
+def _socials_by_user(db: Session) -> dict:
+    """Connected accounts per creator, biggest audience first."""
+    rows = (
+        db.query(profiles.SocialAccount)
+        .order_by(profiles.SocialAccount.created_at.asc())
+        .all()
+    )
+    out: dict = {}
+    for a in rows:
+        out.setdefault(a.user_id, []).append(
+            {"platform": a.platform, "handle": a.handle, "follower_count": a.follower_count}
+        )
+    for items in out.values():
+        items.sort(key=lambda i: i["follower_count"] or -1, reverse=True)
+    return out
+
+
+def _cover_by_user(db: Session) -> dict:
+    """First portfolio image per creator, used as the card cover."""
+    rows = (
+        db.query(profiles.PortfolioItem)
+        .order_by(profiles.PortfolioItem.user_id, profiles.PortfolioItem.position.asc())
+        .all()
+    )
+    out: dict = {}
+    for item in rows:
+        out.setdefault(item.user_id, f"/profiles/media/{item.media_id}")
+    return out
+
+
 def search_influencers(
     db: Session,
     category: str | None = None,
@@ -74,6 +105,8 @@ def search_influencers(
     )
     prices = _starting_prices(db)
     ratings = _rating_summary(db)
+    socials = _socials_by_user(db)
+    covers = _cover_by_user(db)
 
     matched = []
     for prof, user in rows:
@@ -115,7 +148,10 @@ def search_influencers(
                 "user_id": prof.user_id,
                 "display_name": prof.display_name,
                 "headline": prof.headline,
+                "location": prof.location,
                 "avatar_url": f"/profiles/media/{prof.avatar_media_id}" if prof.avatar_media_id else None,
+                "cover_url": covers.get(prof.user_id),
+                "socials": socials.get(prof.user_id, []),
                 "bio": prof.bio,
                 "categories": prof.categories,
                 "follower_count": prof.follower_count,

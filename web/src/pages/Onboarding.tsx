@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { ApiError, api } from "../lib/api";
+import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
@@ -11,6 +11,7 @@ import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import type { InfluencerProfile, Package } from "../lib/types";
 
 type Social = { id: string; platform: string; handle: string; status: string; enriched?: boolean };
+type MediaOut = { id: string; url: string };
 type Status = {
   has_bio: boolean; has_categories: boolean; has_pricing: boolean;
   has_packages: boolean; has_social: boolean; is_live: boolean;
@@ -90,6 +91,9 @@ export default function Onboarding() {
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [followers, setFollowers] = useState("");
+  const [avatarMediaId, setAvatarMediaId] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const avatarRef = useRef<HTMLInputElement>(null);
 
   // Packages
   const [packages, setPackages] = useState<Package[]>([]);
@@ -105,6 +109,8 @@ export default function Onboarding() {
         setBio(p.bio ?? "");
         setCategories(p.categories ?? []);
         setFollowers(p.follower_count ? String(p.follower_count) : "");
+        setAvatarMediaId(p.avatar_media_id ?? null);
+        setAvatarUrl(p.avatar_url ?? null);
       })
       .catch((err) => { if (!(err instanceof ApiError && err.status === 404)) setError(err.message); });
   }, [userId]);
@@ -139,6 +145,22 @@ export default function Onboarding() {
     }
   }
 
+  async function onAvatar(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const media = await uploadFile<MediaOut>(`/profiles/${userId}/media`, file, token);
+      setAvatarMediaId(media.id);
+      setAvatarUrl(media.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveProfile() {
     if (!userId) return;
     setBusy(true);
@@ -148,6 +170,7 @@ export default function Onboarding() {
         method: "PUT",
         body: {
           display_name: displayName || null, headline: headline || null, location: location || null,
+          avatar_media_id: avatarMediaId,
           bio: bio || null, categories, rate_card: {},
           follower_count: followers ? Number(followers) : null
         }
@@ -215,6 +238,15 @@ export default function Onboarding() {
             </div>
 
             <div className="card" style={{ marginTop: 16 }}>
+              <div className="field" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 72, height: 72, borderRadius: "50%", background: avatarUrl ? "transparent" : "var(--gradient-brand)", overflow: "hidden", flexShrink: 0 }}>
+                  {avatarUrl && <img src={mediaSrc(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                </div>
+                <div>
+                  <input ref={avatarRef} type="file" accept="image/*" onChange={onAvatar} style={{ display: "none" }} />
+                  <button type="button" className="btn btn-ghost" onClick={() => avatarRef.current?.click()} disabled={busy}>{t("profile.uploadPhoto")}</button>
+                </div>
+              </div>
               <div className="field">
                 <label className="label" htmlFor="o-dn">{t("profile.displayName")}</label>
                 <input id="o-dn" className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Ama K." />

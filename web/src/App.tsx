@@ -13,6 +13,7 @@ import MyInvitations from "./pages/MyInvitations";
 import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
 import PublicProfilePage from "./pages/PublicProfile";
+import Onboarding from "./pages/Onboarding";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/verify" element={<VerifyOtp />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/profile" element={<ProfileSetup />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/campaigns" element={<CampaignList />} />

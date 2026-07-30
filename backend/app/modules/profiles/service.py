@@ -13,11 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.core.crypto import encrypt_bytes
 from app.modules.auth.models import User
-from app.modules.profiles import models, schemas
+from app.modules.profiles import enrichment, models, schemas
 
 INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+social_enricher = enrichment.default_enricher
 
 
 def _require_user(db: Session, user_id: str) -> User:
@@ -148,7 +150,76 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
     db.add(account)
     db.commit()
     db.refresh(account)
-    return {"id": account.id, "platform": account.platform, "handle": account.handle, "method": account.method, "status": account.status}
+
+    enriched = _apply_enrichment(db, user_id, payload.platform, payload.handle)
+    return {
+        "id": account.id,
+        "platform": account.platform,
+        "handle": account.handle,
+        "method": account.method,
+        "status": account.status,
+        "enriched": enriched,
+    }
+
+
+def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str) -> bool:
+    """Fill empty profile fields from the platform, never overwriting the
+    creator's own edits. Returns whether anything was filled."""
+    data = social_enricher.fetch(platform, handle)
+    if not data:
+        return False
+    profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
+    if profile is None:
+        profile = models.InfluencerProfile(user_id=user_id)
+        db.add(profile)
+    filled = False
+    if not profile.display_name and data.get("display_name"):
+        profile.display_name = data["display_name"]
+        filled = True
+    if not profile.bio and data.get("bio"):
+        profile.bio = data["bio"]
+        filled = True
+    if profile.follower_count is None and data.get("follower_count") is not None:
+        profile.follower_count = data["follower_count"]
+        filled = True
+    if filled:
+        db.commit()
+    return filled
+
+
+def list_social_accounts(db: Session, user_id: str) -> list[dict]:
+    accounts = (
+        db.query(models.SocialAccount)
+        .filter(models.SocialAccount.user_id == user_id)
+        .order_by(models.SocialAccount.created_at.asc())
+        .all()
+    )
+    return [
+        {"id": a.id, "platform": a.platform, "handle": a.handle, "method": a.method, "status": a.status}
+        for a in accounts
+    ]
+
+
+def onboarding_status(db: Session, user_id: str) -> dict:
+    """What the creator still needs before the profile can go live."""
+    profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
+    has_packages = (
+        db.query(models.Package)
+        .filter(models.Package.user_id == user_id, models.Package.is_active.is_(True))
+        .count()
+        > 0
+    )
+    has_bio = bool(profile and profile.bio)
+    has_categories = bool(profile and profile.categories)
+    has_pricing = bool(profile and profile.rate_card) or has_packages
+    return {
+        "has_bio": has_bio,
+        "has_categories": has_categories,
+        "has_pricing": has_pricing,
+        "has_packages": has_packages,
+        "has_social": len(list_social_accounts(db, user_id)) > 0,
+        "is_live": has_bio and has_categories and has_pricing,
+    }
 
 
 # ---- Media ----

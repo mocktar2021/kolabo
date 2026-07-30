@@ -57,6 +57,16 @@ class SocialAccountOut(BaseModel):
     handle: str
     method: str
     status: str
+    enriched: bool = False
+
+
+class OnboardingStatusOut(BaseModel):
+    has_bio: bool
+    has_categories: bool
+    has_pricing: bool
+    has_packages: bool
+    has_social: bool
+    is_live: bool
 
 
 class VerificationDocumentOut(BaseModel):

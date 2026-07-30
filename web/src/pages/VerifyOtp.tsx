@@ -22,7 +22,9 @@ export default function VerifyOtp() {
     try {
       const res = await api<TokenResponse>("/auth/verify-otp", { method: "POST", body: { phone, code } });
       login(res.access_token);
-      navigate("/dashboard");
+      // Creators go straight into profile setup; businesses to the dashboard.
+      const role = localStorage.getItem("kolabo_role");
+      navigate(role === "influencer" ? "/onboarding" : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {

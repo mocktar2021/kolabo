@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
@@ -152,6 +152,9 @@ export default function Discover() {
                       </span>
                     ))}
                   </div>
+                  <Link to={`/u/${r.user_id}`} className="btn btn-ghost" style={{ marginTop: 12, width: "100%" }}>
+                    {t("discover.viewProfile")}
+                  </Link>
                 </div>
               ))}
             </div>

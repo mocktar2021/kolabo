@@ -17,7 +17,7 @@ const resources = {
     translation: {
       cat: cat.fr,
       deliverable: deliverable.fr,
-      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", invitations: "Invitations", profile: "Profil", logout: "Deconnexion" },
+      nav: { login: "Se connecter", signup: "Creer un compte", dashboard: "Tableau de bord", discover: "Decouvrir", campaigns: "Campagnes", invitations: "Invitations", contracts: "Contrats", profile: "Profil", logout: "Deconnexion" },
       landing: {
         eyebrow: "Marketing d'influence pour l'Afrique",
         title: "La ou les createurs et les marques se rencontrent",
@@ -48,7 +48,8 @@ const resources = {
         profileTitle: "Completer mon profil", profileDesc: "Ajoutez vos informations pour etre visible et credible.",
         discoverTitle: "Decouvrir des createurs", discoverDesc: "Recherchez et enregistrez des createurs pour vos campagnes.",
         campaignTitle: "Mes campagnes", campaignDesc: "Creez et gerez vos campagnes et leurs propositions.",
-        invitationsTitle: "Mes invitations", invitationsDesc: "Repondez aux invitations avec une proposition."
+        invitationsTitle: "Mes invitations", invitationsDesc: "Repondez aux invitations avec une proposition.",
+        contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gerez les paiements."
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
@@ -56,14 +57,18 @@ const resources = {
         bio: "Bio", categories: "Categories", followers: "Nombre d'abonnes",
         rate: "Tarif par publication", rateHint: "Montant indicatif en devise locale.",
         company: "Nom de l'entreprise", industry: "Secteur", description: "Description",
-        save: "Enregistrer", saved: "Profil enregistre."
+        save: "Enregistrer", saved: "Profil enregistre.",
+        displayName: "Nom d'affichage", headline: "Titre", headlinePlaceholder: "Ex: Createur lifestyle", location: "Localisation",
+        uploadPhoto: "Ajouter une photo", viewPublic: "Voir ma page publique", portfolio: "Portfolio", addImage: "Ajouter une image",
+        packages: "Mes offres", packagesHint: "Proposez des prestations a prix fixe.", packageTitle: "Titre de l'offre", addPackage: "Ajouter une offre"
       },
       discover: {
         title: "Decouvrir des createurs", sub: "Trouvez le bon createur pour votre campagne.",
         category: "Categorie", country: "Pays", minFollowers: "Abonnes min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun createur trouve.",
-        creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer"
+        creator: "Createur", verified: "Verifie", followers: "abonnes", favorite: "Enregistrer", viewProfile: "Voir le profil"
       },
+      public: { notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.", order: "Commander", orderSoon: "La commande directe arrive bientot." },
       campaign: {
         title: "Creer une campagne", sub: "Decrivez votre besoin pour recevoir des propositions.",
         name: "Titre de la campagne", budget: "Budget", currency: "Devise", deadline: "Echeance",
@@ -75,20 +80,39 @@ const resources = {
         notFound: "Campagne introuvable.",
         inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun createur favori a inviter.",
         invite: "Inviter", invitations: "Invitations", noInvitations: "Aucune invitation pour le moment.",
-        proposals: "Propositions", noProposals: "Aucune proposition pour le moment."
+        proposals: "Propositions", noProposals: "Aucune proposition pour le moment.",
+        accept: "Accepter et creer le contrat", viewContract: "Voir le contrat"
       },
       invitation: {
         title: "Mes invitations", sub: "Les campagnes auxquelles vous etes invite.",
         empty: "Vous n'avez pas encore d'invitation.",
         rate: "Tarif propose", days: "Delai (jours)", send: "Envoyer", proposalSent: "Proposition envoyee."
-      }
+      },
+      contract: {
+        listTitle: "Mes contrats", listSub: "Signez vos contrats et suivez les paiements.",
+        listEmpty: "Vous n'avez pas encore de contrat.", notFound: "Contrat introuvable.",
+        title: "Contrat", rate: "Montant convenu", timeline: "Delai",
+        businessSigned: "Signe par l'entreprise", creatorSigned: "Signe par le createur", yes: "Oui", no: "En attente",
+        document: "Document du contrat", signHeading: "Signature electronique",
+        typeName: "Tapez votre nom pour signer", namePlaceholder: "Nom complet", sign: "Signer",
+        waitingOther: "Vous avez signe. En attente de l'autre partie.",
+        payment: "Paiement (sequestre)", fundHint: "Bloquez les fonds en sequestre via Mobile Money.",
+        fund: "Financer le sequestre", awaitingFunding: "En attente du financement par l'entreprise.",
+        escrowStatus: "Statut du sequestre", amount: "Montant", commission: "Commission",
+        release: "Confirmer et liberer", dispute: "Ouvrir un litige",
+        released: "Sequestre libere, le paiement est en route.",
+        disputed: "Litige en cours, un administrateur va trancher.",
+        refunded: "Le sequestre a ete rembourse a l'entreprise.",
+        status_pending_signatures: "En attente de signatures", status_signed: "Signe"
+      },
+      escrow: { status_held: "Bloque", status_released: "Libere", status_disputed: "En litige", status_refunded: "Rembourse" }
     }
   },
   en: {
     translation: {
       cat: cat.en,
       deliverable: deliverable.en,
-      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", invitations: "Invitations", profile: "Profile", logout: "Log out" },
+      nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", invitations: "Invitations", contracts: "Contracts", profile: "Profile", logout: "Log out" },
       landing: {
         eyebrow: "Influencer marketing for Africa",
         title: "Where creators and brands connect",
@@ -119,7 +143,8 @@ const resources = {
         profileTitle: "Complete my profile", profileDesc: "Add your details to be visible and credible.",
         discoverTitle: "Discover creators", discoverDesc: "Search and save creators for your campaigns.",
         campaignTitle: "My campaigns", campaignDesc: "Create and manage your campaigns and their proposals.",
-        invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal."
+        invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal.",
+        contractsTitle: "My contracts", contractsDesc: "Sign your contracts and manage payments."
       },
       profile: {
         title: "Your profile", sub: "This information appears across the platform.",
@@ -127,14 +152,18 @@ const resources = {
         bio: "Bio", categories: "Categories", followers: "Follower count",
         rate: "Rate per post", rateHint: "Indicative amount in local currency.",
         company: "Company name", industry: "Industry", description: "Description",
-        save: "Save", saved: "Profile saved."
+        save: "Save", saved: "Profile saved.",
+        displayName: "Display name", headline: "Headline", headlinePlaceholder: "e.g. Lifestyle creator", location: "Location",
+        uploadPhoto: "Upload a photo", viewPublic: "View my public page", portfolio: "Portfolio", addImage: "Add an image",
+        packages: "My packages", packagesHint: "Offer fixed-price services.", packageTitle: "Package title", addPackage: "Add a package"
       },
       discover: {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
         category: "Category", country: "Country", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
-        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save"
+        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile"
       },
+      public: { notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.", order: "Order", orderSoon: "Direct ordering is coming soon." },
       campaign: {
         title: "Create a campaign", sub: "Describe your brief to receive proposals.",
         name: "Campaign title", budget: "Budget", currency: "Currency", deadline: "Deadline",
@@ -146,13 +175,32 @@ const resources = {
         notFound: "Campaign not found.",
         inviteFromFavorites: "Invite from my favorites", noFavorites: "No favorited creators to invite.",
         invite: "Invite", invitations: "Invitations", noInvitations: "No invitations yet.",
-        proposals: "Proposals", noProposals: "No proposals yet."
+        proposals: "Proposals", noProposals: "No proposals yet.",
+        accept: "Accept and create contract", viewContract: "View contract"
       },
       invitation: {
         title: "My invitations", sub: "Campaigns you have been invited to.",
         empty: "You have no invitations yet.",
         rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent."
-      }
+      },
+      contract: {
+        listTitle: "My contracts", listSub: "Sign your contracts and track payments.",
+        listEmpty: "You have no contracts yet.", notFound: "Contract not found.",
+        title: "Contract", rate: "Agreed amount", timeline: "Timeline",
+        businessSigned: "Signed by business", creatorSigned: "Signed by creator", yes: "Yes", no: "Pending",
+        document: "Contract document", signHeading: "Electronic signature",
+        typeName: "Type your name to sign", namePlaceholder: "Full name", sign: "Sign",
+        waitingOther: "You have signed. Waiting for the other party.",
+        payment: "Payment (escrow)", fundHint: "Hold the funds in escrow via Mobile Money.",
+        fund: "Fund escrow", awaitingFunding: "Waiting for the business to fund.",
+        escrowStatus: "Escrow status", amount: "Amount", commission: "Commission",
+        release: "Confirm and release", dispute: "Open a dispute",
+        released: "Escrow released, the payout is on the way.",
+        disputed: "Dispute open, an admin will resolve it.",
+        refunded: "The escrow was refunded to the business.",
+        status_pending_signatures: "Pending signatures", status_signed: "Signed"
+      },
+      escrow: { status_held: "Held", status_released: "Released", status_disputed: "Disputed", status_refunded: "Refunded" }
     }
   }
 };

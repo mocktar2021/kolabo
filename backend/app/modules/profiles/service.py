@@ -8,6 +8,8 @@ KOL-17: connect a social account (OAuth verified, manual pending).
 Packages, portfolio images, and a public profile aggregate support the
 instant-hire model and the shareable creator page.
 """
+from datetime import date
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -15,12 +17,20 @@ from app.core.config import settings
 from app.core.country_config import COUNTRY_CONFIG, default_language
 from app.core.crypto import encrypt_bytes
 from app.core.platforms import PLATFORM_DELIVERABLES, PLATFORMS_WITH_AUDIENCE, is_valid_pair
+from app.core.pricing import MIN_LIVE_PACKAGES, min_price
 from app.modules.auth.models import User
 from app.modules.profiles import bio_ai, enrichment, models, schemas
 
-INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
+# What a complete profile needs: a bio, categories, and a storefront of
+# packages (MIN_LIVE_PACKAGES active ones). The legacy rate card no longer
+# counts as pricing — product decision: a free-text rate card cannot be
+# ordered, so it kept profiles "complete" with nothing a buyer could buy.
+INFLUENCER_REQUIRED = ("bio", "categories", "packages")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+# Creators must be adults: legal register, child-safety item.
+MINIMUM_CREATOR_AGE = 18
 
 # How many reviews the public page lists. The page needs recent proof, not a
 # full history; the average still covers every revealed review.
@@ -54,17 +64,45 @@ def _require_user(db: Session, user_id: str) -> User:
     return user
 
 
+def _require_adult(birth_date: date) -> None:
+    """Creators must be adults; reject any birth date under MINIMUM_CREATOR_AGE.
+
+    A person is 18 on their 18th birthday, not the day after: the (month, day)
+    tuple comparison subtracts a year only while this year's birthday is still
+    ahead, which also handles the not-yet-had-their-birthday-this-year case.
+    """
+    today = date.today()
+    age = today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+    if age < MINIMUM_CREATOR_AGE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must be at least 18 to create a creator profile.",
+        )
+
+
 def _media_url(media_id: str | None) -> str | None:
     return f"/profiles/media/{media_id}" if media_id else None
 
 
-def _influencer_completion(profile: models.InfluencerProfile) -> tuple[int, bool]:
+def _active_package_count(db: Session, user_id: str) -> int:
+    return (
+        db.query(models.Package)
+        .filter(models.Package.user_id == user_id, models.Package.is_active.is_(True))
+        .count()
+    )
+
+
+def _influencer_completion(profile: models.InfluencerProfile, active_package_count: int) -> tuple[int, bool]:
     present = 0
     if _any_bio(profile):
         present += 1
     if profile.categories:
         present += 1
-    if profile.rate_card:
+    # Pricing means a storefront: MIN_LIVE_PACKAGES active packages. The
+    # legacy rate card no longer counts — see INFLUENCER_REQUIRED.
+    if active_package_count >= MIN_LIVE_PACKAGES:
         present += 1
     total = len(INFLUENCER_REQUIRED)
     percent = round(present / total * 100)
@@ -72,8 +110,8 @@ def _influencer_completion(profile: models.InfluencerProfile) -> tuple[int, bool
     return percent, is_searchable
 
 
-def _influencer_out(profile: models.InfluencerProfile) -> dict:
-    percent, is_searchable = _influencer_completion(profile)
+def _influencer_out(db: Session, profile: models.InfluencerProfile) -> dict:
+    percent, is_searchable = _influencer_completion(profile, _active_package_count(db, profile.user_id))
     return {
         "user_id": profile.user_id,
         "display_name": profile.display_name,
@@ -88,6 +126,12 @@ def _influencer_out(profile: models.InfluencerProfile) -> dict:
         "rate_card": profile.rate_card,
         "faq": profile.faq or {},
         "follower_count": profile.follower_count,
+        # Owner-facing view: birth_date and gender belong here (the edit form
+        # prefills from them) and only here; the public payload never carries
+        # either.
+        "birth_date": profile.birth_date,
+        "gender": profile.gender,
+        "languages": profile.languages or [],
         "completion_percent": percent,
         "is_searchable": is_searchable,
     }
@@ -108,18 +152,24 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     # client explicitly sent as null IS still cleared, because that is how a
     # creator deletes their headline or removes their photo. Only leaving the
     # key out entirely is now a no-op.
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    # The 18+ gate runs on write, every time the field is present: a stored
+    # birth date is re-validated the moment the client sends it again, so
+    # resubmitting the form cannot bypass a value that is already saved.
+    if data.get("birth_date") is not None:
+        _require_adult(data["birth_date"])
+    for field, value in data.items():
         setattr(profile, field, value)
     db.commit()
     db.refresh(profile)
-    return _influencer_out(profile)
+    return _influencer_out(db, profile)
 
 
 def get_influencer_profile(db: Session, user_id: str) -> dict:
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-    return _influencer_out(profile)
+    return _influencer_out(db, profile)
 
 
 def _business_out(profile: models.BusinessProfile) -> dict:
@@ -338,25 +388,73 @@ def list_social_accounts(db: Session, user_id: str) -> list[dict]:
     ]
 
 
+def _require_own_social_account(db: Session, user_id: str, account_id: str) -> models.SocialAccount:
+    """404 before 403: an attacker probing other people's account ids learns
+    nothing more than a stranger guessing random ids would."""
+    account = db.query(models.SocialAccount).filter(models.SocialAccount.id == account_id).first()
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Social account not found")
+    if account.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your social account")
+    return account
+
+
+def update_social_account(db: Session, user_id: str, account_id: str, payload: schemas.SocialAccountUpdate) -> dict:
+    account = _require_own_social_account(db, user_id, account_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "handle" in data and data["handle"] != account.handle:
+        # A verified badge belongs to the account that was verified. A new
+        # handle points at a different account, so the badge must not survive
+        # the edit: back to pending until that account passes review too.
+        if account.status == models.VERIFIED:
+            account.status = models.PENDING
+        account.handle = data["handle"]
+    if "follower_count" in data:
+        # Same rule as connect: platforms without a public audience metric
+        # cannot back the number, so it is discarded rather than displayed.
+        account.follower_count = (
+            data["follower_count"] if account.platform in PLATFORMS_WITH_AUDIENCE else None
+        )
+    if "proof_url" in data:
+        account.proof_url = data["proof_url"]
+    db.commit()
+    db.refresh(account)
+    return {
+        "id": account.id, "platform": account.platform, "handle": account.handle,
+        "method": account.method, "status": account.status, "follower_count": account.follower_count,
+    }
+
+
+def delete_social_account(db: Session, user_id: str, account_id: str) -> None:
+    account = _require_own_social_account(db, user_id, account_id)
+    db.delete(account)
+    db.commit()
+
+
 def onboarding_status(db: Session, user_id: str) -> dict:
     """What the creator still needs before the profile can go live."""
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
-    has_packages = (
-        db.query(models.Package)
-        .filter(models.Package.user_id == user_id, models.Package.is_active.is_(True))
-        .count()
-        > 0
-    )
+    active_packages = _active_package_count(db, user_id)
     has_bio = bool(profile and _any_bio(profile))
     has_categories = bool(profile and profile.categories)
-    has_pricing = bool(profile and profile.rate_card) or has_packages
+    # Pricing now means a storefront: at least MIN_LIVE_PACKAGES active
+    # packages. Product decision — the legacy rate card no longer suffices,
+    # because a free-text rate card cannot be ordered; it kept profiles "live"
+    # with nothing a buyer could actually buy. No grandfathering: a profile
+    # that was live on rate card alone drops back until it adds packages.
+    has_pricing = active_packages >= MIN_LIVE_PACKAGES
+    # Going live requires the 18+ gate to have been passed: the birth date is
+    # private data, but its presence is a hard prerequisite.
+    has_birth_date = bool(profile and profile.birth_date)
     return {
         "has_bio": has_bio,
         "has_categories": has_categories,
         "has_pricing": has_pricing,
-        "has_packages": has_packages,
+        "has_packages": active_packages > 0,
         "has_social": len(list_social_accounts(db, user_id)) > 0,
-        "is_live": has_bio and has_categories and has_pricing,
+        "has_birth_date": has_birth_date,
+        "active_package_count": active_packages,
+        "is_live": has_bio and has_categories and has_pricing and has_birth_date,
     }
 
 
@@ -414,9 +512,25 @@ def _validate_pair(platform: str, deliverable_type: str) -> None:
         )
 
 
+def _validate_price_floor(price_amount: int, currency: str) -> None:
+    """Reject prices below the per-currency floor (spam defence).
+
+    `currency` must already be uppercased; unknown currencies have no floor
+    and pass — see app.core.pricing.min_price.
+    """
+    floor = min_price(currency)
+    if floor is not None and price_amount < floor:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Minimum price for {currency} is {floor}.",
+        )
+
+
 def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dict:
     _require_user(db, user_id)
     _validate_pair(payload.platform, payload.deliverable_type)
+    currency = payload.currency.upper()
+    _validate_price_floor(payload.price_amount, currency)
     pkg = models.Package(
         user_id=user_id,
         platform=payload.platform,
@@ -424,7 +538,7 @@ def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dic
         title=payload.title,
         description=payload.description,
         price_amount=payload.price_amount,
-        currency=payload.currency.upper(),
+        currency=currency,
         is_active=payload.is_active,
     )
     db.add(pkg)
@@ -440,12 +554,14 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
     if pkg.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
     _validate_pair(payload.platform, payload.deliverable_type)
+    currency = payload.currency.upper()
+    _validate_price_floor(payload.price_amount, currency)
     pkg.platform = payload.platform
     pkg.deliverable_type = payload.deliverable_type
     pkg.title = payload.title
     pkg.description = payload.description
     pkg.price_amount = payload.price_amount
-    pkg.currency = payload.currency.upper()
+    pkg.currency = currency
     pkg.is_active = payload.is_active
     db.commit()
     db.refresh(pkg)
@@ -536,11 +652,23 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
             .filter(models.InfluencerProfile.user_id.in_(reviewer_ids))
             .all()
         )
+    # Every connected account is shown, not only verified ones. Manual
+    # connections stay pending until OAuth verification ships, so during the
+    # pilot a verified-only filter emptied the audience section and follower
+    # chips for every single creator. Product decision: show them all with
+    # their status, and let the frontend badge the verified ones. The filter
+    # can come back the day verification is real.
     social = (
         db.query(models.SocialAccount)
-        .filter(models.SocialAccount.user_id == user_id, models.SocialAccount.status == models.VERIFIED)
+        .filter(models.SocialAccount.user_id == user_id)
+        .order_by(models.SocialAccount.created_at.asc())
         .all()
     )
+    # Of the identity fields, only languages is public. birth_date and gender
+    # are deliberately absent from this payload: they exist for the 18+ gate
+    # and analytics, and a public endpoint exposing a creator's age or gender
+    # would be a privacy leak, not a feature. The owner-facing
+    # InfluencerProfileOut is the only place they appear.
     return {
         "user_id": profile.user_id,
         "display_name": profile.display_name,
@@ -551,8 +679,9 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         "bio_fr": profile.bio_fr,
         "bio_en": profile.bio_en,
         "categories": profile.categories,
+        "languages": profile.languages or [],
         "follower_count": profile.follower_count,
-        "is_searchable": _influencer_completion(profile)[1],
+        "is_searchable": _influencer_completion(profile, _active_package_count(db, user_id))[1],
         # Only the answers the creator wrote: an empty answer is an unanswered
         # question, and the page simply does not show it.
         "faq": {key: answer for key, answer in (profile.faq or {}).items() if answer},

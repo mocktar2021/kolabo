@@ -5,14 +5,17 @@ import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
-import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
+import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { CURRENCIES } from "../lib/campaignOptions";
-import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
+import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
+import { minPrice } from "../lib/pricing";
+import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
+type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null };
 
 function PortfolioSection({ userId, token }: { userId: string; token: string | null }) {
   const { t } = useTranslation();
@@ -81,6 +84,171 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
   );
 }
 
+/* Connected social accounts: list, inline edit, delete, and add. The add flow
+   reuses the platform-tile + handle-modal pattern from onboarding as a light
+   local implementation rather than a shared component. */
+function SocialSection({ userId, token }: { userId: string; token: string | null }) {
+  const { t } = useTranslation();
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editHandle, setEditHandle] = useState("");
+  const [editFollowers, setEditFollowers] = useState("");
+  const [adding, setAdding] = useState<{ id: string; label: string; prefix: string } | null>(null);
+  const [newHandle, setNewHandle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    api<SocialAccount[]>(`/profiles/${userId}/social-accounts`).then(setAccounts).catch(() => undefined);
+  }
+  useEffect(load, [userId]);
+
+  function startEdit(a: SocialAccount) {
+    setEditingId(a.id);
+    setEditHandle(a.handle);
+    setEditFollowers(a.follower_count ? String(a.follower_count) : "");
+  }
+
+  async function saveEdit(id: string) {
+    if (!editHandle) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // The response carries the new status: editing the handle resets a
+      // verified account to pending, and the chip must reflect that at once.
+      const updated = await api<SocialAccount>(`/profiles/${userId}/social-accounts/${id}`, {
+        method: "PUT", token,
+        body: { handle: editHandle, follower_count: editFollowers ? Number(editFollowers) : null }
+      });
+      setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
+      setEditingId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!window.confirm(t("profile.socialDeleteConfirm"))) return;
+    await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token }).catch(() => undefined);
+    load();
+  }
+
+  async function add(handle: string) {
+    if (!adding) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/profiles/${userId}/social-accounts`, {
+        method: "POST", token,
+        body: { platform: adding.id, handle, method: "manual", proof_url: `https://${adding.prefix}${handle}` }
+      });
+      setAdding(null);
+      setNewHandle("");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const connected = new Set(accounts.map((a) => a.platform));
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{t("profile.socialTitle")}</h3>
+      {error && <div className="alert alert-error">{error}</div>}
+
+      {accounts.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13.5 }}>{t("profile.socialEmpty")}</p>
+      ) : (
+        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          {accounts.map((a) =>
+            editingId === a.id ? (
+              <div key={a.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
+                <strong style={{ fontSize: 14 }}>{PLATFORM_LABELS[a.platform] ?? a.platform}</strong>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                  <input className="input" aria-label={t("onb.yourHandle")} value={editHandle}
+                    onChange={(e) => setEditHandle(e.target.value.replace(/^@/, "").trim())} />
+                  <input className="input" aria-label={t("profile.followers")} inputMode="numeric" placeholder={t("profile.followers")}
+                    value={editFollowers} onChange={(e) => setEditFollowers(e.target.value.replace(/\D/g, ""))} />
+                </div>
+                <div className="hint">{t("profile.socialEditHint")}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button type="button" className="btn btn-primary" style={{ padding: "7px 14px", fontSize: 13 }} disabled={busy || !editHandle} onClick={() => saveEdit(a.id)}>
+                    {busy ? t("auth.working") : t("profile.save")}
+                  </button>
+                  <button type="button" className="btn btn-ghost" style={{ padding: "7px 14px", fontSize: 13 }} onClick={() => setEditingId(null)}>{t("onb.cancel")}</button>
+                </div>
+              </div>
+            ) : (
+              <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ fontSize: 14 }}>{PLATFORM_LABELS[a.platform] ?? a.platform}</strong>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    @{a.handle}{a.follower_count !== null && ` · ${a.follower_count.toLocaleString()} ${t("public.audienceUnit")}`}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{
+                    fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+                    background: a.status === "verified" ? "#e7f6f0" : "var(--surface-2)",
+                    color: a.status === "verified" ? "var(--success)" : "var(--muted)"
+                  }}>
+                    {a.status === "verified" ? t("profile.socialVerified") : t("profile.socialPending")}
+                  </span>
+                  <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => startEdit(a)}>{t("profile.socialEdit")}</button>
+                  <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(a.id)}>{t("profile.socialDelete")}</button>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      <span className="label">{t("profile.socialAdd")}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>
+        {SOCIAL_PLATFORMS.map((p) => {
+          const isOn = connected.has(p.id);
+          return (
+            <button key={p.id} type="button" className="btn btn-ghost"
+              style={{ flexDirection: "column", padding: "14px 10px", borderColor: isOn ? "var(--teal)" : undefined, background: isOn ? "#e7f7f5" : undefined }}
+              onClick={() => !isOn && setAdding({ id: p.id, label: p.label, prefix: p.prefix })}>
+              <span style={{ fontWeight: 600 }}>{p.label}</span>
+              {isOn && <span style={{ fontSize: 11.5, color: "var(--teal-600)" }}>{t("onb.added")}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {adding && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(21,24,36,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}
+          onClick={() => { setAdding(null); setNewHandle(""); }}>
+          <div className="card" style={{ maxWidth: 460, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>{t("onb.handleQuestion", { platform: adding.label })}</h3>
+            <div style={{ display: "flex", alignItems: "stretch", marginTop: 12 }}>
+              <span style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRight: "none", borderRadius: "8px 0 0 8px", padding: "11px 12px", fontSize: 14, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                {adding.prefix}
+              </span>
+              <input className="input" autoFocus style={{ borderRadius: "0 8px 8px 0" }} placeholder={t("onb.yourHandle")}
+                value={newHandle} onChange={(e) => setNewHandle(e.target.value.replace(/^@/, "").trim())}
+                onKeyDown={(e) => { if (e.key === "Enter" && newHandle) add(newHandle); }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+              <button className="btn btn-ghost" onClick={() => { setAdding(null); setNewHandle(""); }}>{t("onb.cancel")}</button>
+              <button className="btn btn-primary" disabled={!newHandle || busy} onClick={() => add(newHandle)}>
+                {busy ? t("auth.working") : t("onb.addToProfile")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const emptyPkg = { platform: "instagram", deliverable_type: "post", title: "", price: "", currency: "XOF", description: "" };
 
 function PackagesSection({ userId, token }: { userId: string; token: string | null }) {
@@ -89,18 +257,47 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
   const [form, setForm] = useState({ ...emptyPkg });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Platforms of the connected social accounts; null while loading.
+  const [socialPlatforms, setSocialPlatforms] = useState<Set<string> | null>(null);
 
   function load() {
     api<Package[]>(`/profiles/${userId}/packages`).then(setPackages).catch(() => undefined);
   }
   useEffect(load, [userId]);
 
+  useEffect(() => {
+    api<SocialAccount[]>(`/profiles/${userId}/social-accounts`)
+      .then((list) => setSocialPlatforms(new Set(list.map((a) => a.platform))))
+      .catch(() => setSocialPlatforms(new Set()));
+  }, [userId]);
+
+  // Product rule: a creator sells only where they exist, so the platform
+  // options come from the connected accounts. UGC is always offered because
+  // it is delivered to the brand, never posted on the creator's own account.
+  const platformOptions = SELLABLE_PLATFORMS.filter((p) => p.id === "ugc" || (socialPlatforms?.has(p.id) ?? false));
+
+  // The default ("instagram") may not be sellable for this creator; once the
+  // accounts arrive, snap the selection back to the first allowed platform.
+  useEffect(() => {
+    if (socialPlatforms === null) return;
+    setForm((f) => {
+      if (f.platform === "ugc" || socialPlatforms.has(f.platform)) return f;
+      const first = SELLABLE_PLATFORMS.find((p) => p.id === "ugc" || socialPlatforms.has(p.id));
+      return first ? { ...f, platform: first.id, deliverable_type: deliverablesFor(first.id)[0] || "" } : f;
+    });
+  }, [socialPlatforms]);
+
+  const floor = minPrice(form.currency);
+  const belowFloor = form.price !== "" && Number(form.price) < floor;
+
   async function add(e: FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.price) return;
+    if (!form.title || !form.price || belowFloor) return;
     setBusy(true);
     setError(null);
     try {
+      // The backend re-checks the price floor and answers 400 if the form
+      // check is ever bypassed; that message lands in the error banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST",
         token,
@@ -113,7 +310,7 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
           currency: form.currency
         }
       });
-      setForm({ ...emptyPkg });
+      setForm({ ...emptyPkg, platform: form.platform, deliverable_type: form.deliverable_type, currency: form.currency });
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -158,12 +355,15 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
               // The old deliverable may not exist on the new platform, so reset it.
               setForm({ ...form, platform, deliverable_type: deliverablesFor(platform)[0] || "" });
             }}>
-            {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            {platformOptions.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
           <select className="select" value={form.deliverable_type} onChange={(e) => setForm({ ...form, deliverable_type: e.target.value })}>
             {deliverablesFor(form.platform).map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
           </select>
         </div>
+        {socialPlatforms !== null && socialPlatforms.size === 0 && (
+          <div className="hint">{t("profile.connectSocialHint")}</div>
+        )}
         <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginTop: 8 }}>
           <input className="input" inputMode="numeric" placeholder="50000" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value.replace(/\D/g, "") })} />
@@ -171,7 +371,12 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <button className="btn btn-ghost" type="submit" style={{ marginTop: 10 }} disabled={busy || !form.title || !form.price}>
+        {floor > 0 && (
+          <div className="hint" style={{ color: belowFloor ? "var(--danger)" : undefined }}>
+            {t("profile.minPrice", { n: floor, currency: form.currency })}
+          </div>
+        )}
+        <button className="btn btn-ghost" type="submit" style={{ marginTop: 10 }} disabled={busy || !form.title || !form.price || belowFloor}>
           + {t("profile.addPackage")}
         </button>
       </form>
@@ -197,12 +402,17 @@ export default function ProfileSetup() {
   // save; see joinLocation/splitLocation in lib/countries.
   const [locCountry, setLocCountry] = useState("");
   const [locCity, setLocCity] = useState("");
+  const [cityOther, setCityOther] = useState(false);
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [followers, setFollowers] = useState("");
   const [rate, setRate] = useState("");
   const [avatarMediaId, setAvatarMediaId] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Identity: never shown publicly except languages; see lib/types.
+  const [birthDate, setBirthDate] = useState("");
+  const [gender, setGender] = useState("");
+  const [languages, setLanguages] = useState<string[]>([]);
   // FAQ answers to the two fixed profile questions.
   const [faqAudience, setFaqAudience] = useState("");
   const [faqBrands, setFaqBrands] = useState("");
@@ -232,6 +442,9 @@ export default function ProfileSetup() {
         setRate(p.rate_card && p.rate_card.post ? String(p.rate_card.post) : "");
         setAvatarMediaId(p.avatar_media_id ?? null);
         setAvatarUrl(p.avatar_url ?? null);
+        setBirthDate(p.birth_date ?? "");
+        setGender(p.gender ?? "");
+        setLanguages(p.languages ?? []);
         setFaqAudience(p.faq?.audience ?? "");
         setFaqBrands(p.faq?.brands ?? "");
       })
@@ -265,6 +478,10 @@ export default function ProfileSetup() {
 
   function toggleCategory(c: string) {
     setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  }
+
+  function toggleLanguage(code: string) {
+    setLanguages((prev) => (prev.includes(code) ? prev.filter((x) => x !== code) : [...prev, code]));
   }
 
   async function onAvatar(e: ChangeEvent<HTMLInputElement>) {
@@ -301,6 +518,11 @@ export default function ProfileSetup() {
             categories,
             rate_card: rate ? { post: Number(rate) } : {},
             follower_count: followers ? Number(followers) : null,
+            // birth_date goes null when cleared; the API enforces 18+ and its
+            // 400 message lands in the error banner above.
+            birth_date: birthDate || null,
+            gender: gender || null,
+            languages,
             // Only the two fixed answers travel; the questions themselves are
             // product copy that lives in i18n, not user data.
             faq: {
@@ -323,14 +545,25 @@ export default function ProfileSetup() {
     }
   }
 
+  const cityList = CITIES[locCountry] ?? [];
+  // The droplist covers major cities only. "Other…" flips back to free text so
+  // an unusual or missing city never blocks saving, and a saved city outside
+  // the list also renders as free text instead of being silently dropped.
+  const cityIsFree = cityList.length === 0 || cityOther || (locCity !== "" && !cityList.includes(locCity));
+
   return (
     <Layout>
       <div className="container page" style={{ maxWidth: 640 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0 }}>{t("profile.title")}</h1>
-          {kind === "influencer" && userId && (
-            <Link className="btn btn-ghost" to={`/u/${userId}`}>{t("profile.viewPublic")}</Link>
-          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            {/* Profile setup is a leaf page: both roles get an explicit way
+                back into the app next to the public-page link. */}
+            <Link className="btn btn-ghost" to="/dashboard">{t("nav.dashboard")}</Link>
+            {kind === "influencer" && userId && (
+              <Link className="btn btn-ghost" to={`/u/${userId}`}>{t("profile.viewPublic")}</Link>
+            )}
+          </div>
         </div>
         <p className="muted">{t("profile.sub")}</p>
 
@@ -360,11 +593,52 @@ export default function ProfileSetup() {
                 <div className="field">
                   <span className="label">{t("profile.location")}</span>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <select className="select" aria-label={t("profile.locationCountry")} value={locCountry} onChange={(e) => setLocCountry(e.target.value)}>
+                    <select className="select" aria-label={t("profile.locationCountry")} value={locCountry}
+                      onChange={(e) => { setLocCountry(e.target.value); setCityOther(false); }}>
                       <option value="">{t("profile.locationCountry")}</option>
                       {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                     </select>
-                    <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                    {cityIsFree ? (
+                      <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                    ) : (
+                      <select className="select" aria-label={t("profile.locationCity")} value={locCity}
+                        onChange={(e) => {
+                          if (e.target.value === "__other__") { setCityOther(true); setLocCity(""); }
+                          else setLocCity(e.target.value);
+                        }}>
+                        <option value="">{t("profile.locationCity")}</option>
+                        {cityList.map((c) => <option key={c} value={c}>{c}</option>)}
+                        <option value="__other__">{t("profile.cityOther")}</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="bd">{t("profile.birthDate")}</label>
+                  <input id="bd" type="date" className="input" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                  <div className="hint">{t("profile.birthDateHint")}</div>
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="gender">{t("profile.gender")}</label>
+                  <select id="gender" className="select" value={gender} onChange={(e) => setGender(e.target.value)}>
+                    <option value="">—</option>
+                    <option value="female">{t("profile.genderFemale")}</option>
+                    <option value="male">{t("profile.genderMale")}</option>
+                    <option value="other">{t("profile.genderOther")}</option>
+                    <option value="prefer_not_to_say">{t("profile.genderNoSay")}</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <span className="label">{t("profile.languages")}</span>
+                  <div style={{ display: "flex", gap: 18 }}>
+                    {/* Language names are written in their own language, so the
+                        labels are identical in both locales and stay out of i18n. */}
+                    {[{ code: "fr", label: "Français" }, { code: "en", label: "English" }].map((l) => (
+                      <label key={l.code} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, cursor: "pointer" }}>
+                        <input type="checkbox" checked={languages.includes(l.code)} onChange={() => toggleLanguage(l.code)} />
+                        {l.label}
+                      </label>
+                    ))}
                   </div>
                 </div>
                 <div className="field">
@@ -437,6 +711,7 @@ export default function ProfileSetup() {
 
         {kind === "influencer" && userId && (
           <>
+            <SocialSection userId={userId} token={token} />
             <PortfolioSection userId={userId} token={token} />
             <PackagesSection userId={userId} token={token} />
           </>

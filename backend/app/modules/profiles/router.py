@@ -151,3 +151,18 @@ def connect_social_account(
 ):
     """Connect a social account via OAuth (verified) or manual proof (pending). KOL-17."""
     return service.connect_social_account(db, user_id, payload)
+
+
+@router.put("/{user_id}/social-accounts/{account_id}", response_model=schemas.SocialAccountOut)
+def update_social_account(
+    user_id: str, account_id: str, payload: schemas.SocialAccountUpdate, db: Session = Depends(get_db)
+):
+    """Edit a connected account. Changing the handle of a verified account
+    resets it to pending: the badge was earned by the old handle."""
+    return service.update_social_account(db, user_id, account_id, payload)
+
+
+@router.delete("/{user_id}/social-accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_social_account(user_id: str, account_id: str, db: Session = Depends(get_db)):
+    """Disconnect a social account from the profile."""
+    service.delete_social_account(db, user_id, account_id)

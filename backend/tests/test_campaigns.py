@@ -10,6 +10,7 @@ from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
+from app.modules.profiles.models import BusinessProfile
 
 
 @pytest.fixture()
@@ -44,6 +45,15 @@ def _user(client, phone, role, verified=True):
         u = User(phone=phone, password_hash="x", country_code="BJ", role=role, is_verified=verified)
         db.add(u); db.commit(); db.refresh(u)
         return u.id, {"Authorization": f"Bearer {create_access_token(u.id)}"}
+    finally:
+        db.close()
+
+
+def _business_profile(client, user_id, company_name):
+    db = client.session_factory()
+    try:
+        db.add(BusinessProfile(user_id=user_id, company_name=company_name))
+        db.commit()
     finally:
         db.close()
 
@@ -183,6 +193,39 @@ def test_list_my_invitations_for_influencer(client):
     assert len(invites) == 1
     assert invites[0]["campaign"]["id"] == cid
     assert invites[0]["campaign"]["title"] == "Launch push"
+
+
+def test_invitation_carries_the_full_brief_and_company_name(client):
+    """The invitation card is where a creator decides what to charge, so it
+    carries what they are pricing — deliverables as stored, budget, deadline,
+    title — and the name of the buyer asking for it."""
+    biz_id, biz = _user(client, "+22990000109", "business")
+    inf_id, inf = _user(client, "+22990000110", "influencer")
+    _business_profile(client, biz_id, "Maison Kola")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/invitations", json={"influencer_id": inf_id}, headers=biz)
+
+    row = client.get("/campaigns/invitations/mine", headers=inf).json()[0]
+    assert row["business_company_name"] == "Maison Kola"
+    brief = row["campaign"]
+    assert brief["deliverables"] == [{"platform": "instagram", "type": "post", "quantity": 2}]
+    assert brief["title"] == "Launch push"
+    assert brief["budget_amount"] == 50000
+    assert brief["budget_currency"] == "XOF"
+    assert brief["deadline"] == "2026-09-01"
+
+
+def test_invitation_company_name_is_null_without_a_business_profile(client):
+    """No profile means no name. It must never fall back to the users table:
+    the only identifier there is a phone number."""
+    biz_id, biz = _user(client, "+22990000111", "business")
+    inf_id, inf = _user(client, "+22990000112", "influencer")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/invitations", json={"influencer_id": inf_id}, headers=biz)
+
+    row = client.get("/campaigns/invitations/mine", headers=inf).json()[0]
+    assert row["business_company_name"] is None
+    assert "+22990000111" not in str(row)
 
 
 def test_mine_requires_auth(client):

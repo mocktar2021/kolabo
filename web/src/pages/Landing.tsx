@@ -8,10 +8,6 @@ import { CATEGORIES } from "../lib/categories";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import type { SearchResult } from "../lib/types";
 
-/* Placeholder social proof. Replace with real pilot names and numbers as they
-   land; kept obviously generic so nothing here reads as a claim we cannot back. */
-const PLACEHOLDER_BRANDS = ["Votre marque", "Brand", "Enterprise", "Startup", "Agence", "NGO"];
-
 /* The featured grid renders only with at least this many creators. Fewer than
    four and the landing page shows a half-empty shelf: one or two lonely cards
    read as "nobody is here", which is worse than showing nothing at all. The
@@ -25,6 +21,7 @@ export default function Landing() {
   const [platform, setPlatform] = useState("");
   const [q, setQ] = useState("");
   const [featured, setFeatured] = useState<SearchResult[]>([]);
+  const [wfActive, setWfActive] = useState(0);
 
   useEffect(() => {
     // Silent failure by design: if discovery is down the list stays empty and
@@ -41,15 +38,14 @@ export default function Landing() {
     navigate(`/discover?${qs.toString()}`);
   }
 
-  /* Concrete product promises, not vanity numbers. The old band advertised
-     configuration (country count, language count, our own commission), which
-     proves nothing about traction; these four statements describe what the
-     product actually does for both sides. */
-  const stats = [
-    { t: t("landing.stat1t"), d: t("landing.stat1d") },
-    { t: t("landing.stat2t"), d: t("landing.stat2d") },
-    { t: t("landing.stat3t"), d: t("landing.stat3d") },
-    { t: t("landing.stat4t"), d: t("landing.stat4d") }
+  /* PLACEHOLDER metrics — replace with real numbers before public launch.
+     This is the one band allowed to carry made-up numbers, and only with the
+     visible "exemples" note right under it. */
+  const trustStats = [
+    { v: t("landing.tb1v"), l: t("landing.tb1l") },
+    { v: t("landing.tb2v"), l: t("landing.tb2l") },
+    { v: t("landing.tb3v"), l: t("landing.tb3l") },
+    { v: t("landing.tb4v"), l: t("landing.tb4l") }
   ];
 
   const steps = [
@@ -57,6 +53,100 @@ export default function Landing() {
     { t: t("landing.step2t"), d: t("landing.step2d") },
     { t: t("landing.step3t"), d: t("landing.step3d") },
     { t: t("landing.step4t"), d: t("landing.step4d") }
+  ];
+
+  /* Workflow tabs: one per shipped product area, nothing aspirational. The
+     copy lives in marketingStrings.ts; the tab label doubles as the panel
+     title. */
+  const wfTabs = [
+    { tab: t("landing.wf1Tab"), d: t("landing.wf1D"), chips: [t("landing.wf1C1"), t("landing.wf1C2"), t("landing.wf1C3")] },
+    { tab: t("landing.wf2Tab"), d: t("landing.wf2D"), chips: [t("landing.wf2C1"), t("landing.wf2C2"), t("landing.wf2C3")] },
+    { tab: t("landing.wf3Tab"), d: t("landing.wf3D"), chips: [t("landing.wf3C1"), t("landing.wf3C2"), t("landing.wf3C3")] },
+    { tab: t("landing.wf4Tab"), d: t("landing.wf4D"), chips: [t("landing.wf4C1"), t("landing.wf4C2"), t("landing.wf4C3")] },
+    { tab: t("landing.wf5Tab"), d: t("landing.wf5D"), chips: [t("landing.wf5C1"), t("landing.wf5C2")] },
+    { tab: t("landing.wf6Tab"), d: t("landing.wf6D"), chips: [t("landing.wf6C1"), t("landing.wf6C2"), t("landing.wf6C3")] }
+  ];
+  const wfTints = ["wf-tint-a", "wf-tint-b", "wf-tint-c", "wf-tint-d"];
+
+  /* Illustrative vignettes for the workflow panels: styled divs only, no
+     images to load and almost nothing extra to localise. */
+  function wfArt(i: number) {
+    switch (i) {
+      case 0:
+        return (
+          <div className="mock-card">
+            <div className="mock-row">
+              <span className="mock-avatar" />
+              <span className="mock-lines"><span className="mock-line w-60" /><span className="mock-line w-40" /></span>
+              <span className="mock-pill">25 000 XOF</span>
+            </div>
+            <div className="mock-row">
+              <span className="mock-avatar" />
+              <span className="mock-lines"><span className="mock-line w-70" /><span className="mock-line w-50" /></span>
+              <span className="mock-pill">40 000 XOF</span>
+            </div>
+            <div className="mock-row">
+              <span className="mock-avatar" />
+              <span className="mock-lines"><span className="mock-line w-50" /><span className="mock-line w-40" /></span>
+              <span className="mock-pill">15 000 XOF</span>
+            </div>
+          </div>
+        );
+      case 1:
+        return (
+          <div className="mock-card">
+            <span className="mock-line w-70" style={{ height: 10 }} />
+            <div className="mock-chip-row">
+              <span className="mock-chip">2 × Reel</span>
+              <span className="mock-chip">1 × Story</span>
+              <span className="mock-chip">500 000 XOF</span>
+            </div>
+            <span className="mock-line w-40" />
+          </div>
+        );
+      case 2:
+        return (
+          <div className="mock-card">
+            <span className="mock-line w-80" />
+            <span className="mock-line w-60" />
+            <div className="mock-sign"><span className="mock-check">✓</span>{t("contract.businessSigned")}</div>
+            <div className="mock-sign"><span className="mock-check">✓</span>{t("contract.creatorSigned")}</div>
+          </div>
+        );
+      case 3:
+        return (
+          <div className="mock-card">
+            <div className="mock-kv"><span>{t("contract.escrowStatus")}</span><span className="mock-status held">{t("escrow.status_held")}</span></div>
+            <div className="mock-amount">250 000 XOF</div>
+            <div className="mock-kv"><span>Mobile Money</span><span className="mock-status released">{t("escrow.status_released")}</span></div>
+          </div>
+        );
+      case 4:
+        return (
+          <div className="mock-chat">
+            <div className="mock-bubble">{t("landing.wfChat1")}</div>
+            <div className="mock-bubble me">{t("landing.wfChat2")}</div>
+          </div>
+        );
+      default:
+        return (
+          <div className="mock-card">
+            <div className="mock-stars">★★★★★</div>
+            <p className="mock-quote">{t("landing.wfReview")}</p>
+            <div className="mock-row">
+              <span className="mock-avatar" />
+              <span className="mock-lines"><span className="mock-line w-40" /></span>
+            </div>
+          </div>
+        );
+    }
+  }
+
+  const teams = [
+    { t: t("landing.team1t"), d: t("landing.team1d"), b: t("landing.team1b"), to: "/discover", tint: "wf-tint-a" },
+    { t: t("landing.team2t"), d: t("landing.team2d"), b: t("landing.team2b"), to: "/register?role=agency", tint: "wf-tint-b" },
+    { t: t("landing.team3t"), d: t("landing.team3d"), b: t("landing.team3b"), to: "/discover", tint: "wf-tint-c" },
+    { t: t("landing.team4t"), d: t("landing.team4d"), b: t("landing.team4b"), to: "/register", tint: "wf-tint-d" }
   ];
 
   const faqs = [
@@ -108,11 +198,18 @@ export default function Landing() {
         </section>
       )}
 
+      {/* PLACEHOLDER metrics — replace with real numbers before public launch */}
       <section className="container section-tight">
         <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 13.5, marginBottom: 18 }}>{t("landing.trustedBy")}</p>
-        <div className="logo-row">
-          {PLACEHOLDER_BRANDS.map((b) => <span key={b} className="logo-chip">{b}</span>)}
+        <div className="tb-grid">
+          {trustStats.map((s) => (
+            <div key={s.l}>
+              <div className="tb-value">{s.v}</div>
+              <div className="tb-label">{s.l}</div>
+            </div>
+          ))}
         </div>
+        <p className="hint" style={{ textAlign: "center", marginTop: 14 }}>{t("landing.trustedByNote")}</p>
       </section>
 
       <section className="section" style={{ background: "var(--surface)" }}>
@@ -128,6 +225,63 @@ export default function Landing() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="container section">
+        <h2>{t("landing.wfTitle")}</h2>
+        <p className="section-sub">{t("landing.wfSub")}</p>
+        <div className="wf-tabs" role="tablist">
+          {wfTabs.map((w, i) => (
+            <button
+              key={w.tab}
+              type="button"
+              role="tab"
+              aria-selected={i === wfActive}
+              className={`wf-tab ${i === wfActive ? "active" : ""}`}
+              onClick={() => setWfActive(i)}
+            >
+              {w.tab}
+            </button>
+          ))}
+        </div>
+        <div className={`wf-panel ${wfTints[wfActive % wfTints.length]}`}>
+          <div>
+            <h3>{wfTabs[wfActive].tab}</h3>
+            <p className="wf-desc">{wfTabs[wfActive].d}</p>
+            <div className="wf-chips">
+              {wfTabs[wfActive].chips.map((c) => (
+                <span key={c} className="wf-chip"><span className="wf-check" aria-hidden="true">✓</span>{c}</span>
+              ))}
+            </div>
+          </div>
+          <div aria-hidden="true">{wfArt(wfActive)}</div>
+        </div>
+      </section>
+
+      {/* Text-only tool tiles: naming the everyday tools Kolabo replaces is
+          fine, imitating their trademarked logos is not — so plain labels. */}
+      <section className="section tools-band">
+        <div className="container tools-grid">
+          <div>
+            <h2>{t("landing.toolsTitle")}</h2>
+            <p className="section-sub" style={{ marginBottom: 0 }}>{t("landing.toolsBody")}</p>
+          </div>
+          <div className="tool-tiles" aria-hidden="true">
+            {["toolsT1", "toolsT2", "toolsT3", "toolsT4", "toolsT5", "toolsT6"].map((k) => (
+              <span key={k} className="tool-tile">{t(`landing.${k}`)}</span>
+            ))}
+            <span className="tool-tile tool-hub">{t("landing.toolsHub")}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="time-band">
+        <div className="container">
+          <p className="time-kicker">{t("landing.timeKicker")}</p>
+          <h2><s>{t("landing.timeOld")}</s> <span className="time-arrow">→</span> {t("landing.timeNew")}</h2>
+          <p className="time-line">{t("landing.timeLine")}</p>
+          <Link className="btn btn-teal btn-lg" to="/register">{t("landing.timeCta")}</Link>
         </div>
       </section>
 
@@ -155,11 +309,14 @@ export default function Landing() {
 
       <section className="section" style={{ background: "var(--surface)" }}>
         <div className="container">
-          <div className="stat-grid">
-            {stats.map((s) => (
-              <div key={s.t}>
-                <div className="stat-value" style={{ fontSize: 18 }}>{s.t}</div>
-                <div className="stat-label">{s.d}</div>
+          <h2>{t("landing.teamsTitle")}</h2>
+          <p className="section-sub">{t("landing.teamsSub")}</p>
+          <div className="team-grid">
+            {teams.map((c) => (
+              <div key={c.t} className={`team-card ${c.tint}`}>
+                <h3>{c.t}</h3>
+                <p>{c.d}</p>
+                <Link className="btn btn-ghost" to={c.to}>{c.b}</Link>
               </div>
             ))}
           </div>
@@ -200,11 +357,15 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* One closing door per audience: brands go straight to the catalogue,
-          creators to registration with the same role hint the old CTA used. */}
-      <section className="cta-band">
+      {/* Closing band: one dark door out, with the same two audience cards as
+          before — brands go straight to the catalogue, creators to
+          registration with the same role hint the old CTA used. */}
+      <section className="close-band">
         <div className="container">
-          <h2>{t("landing.ctaTitle")}</h2>
+          <h2>
+            {t("landing.closeA")} <span className="close-accent">{t("landing.closeAccent")}</span>{t("landing.closeB")}
+          </h2>
+          <p className="close-sub">{t("landing.closeSub")}</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18, maxWidth: 760, margin: "0 auto", textAlign: "left" }}>
             <div className="card" style={{ padding: 24 }}>
               <h3 style={{ fontSize: 18, color: "var(--ink)", marginBottom: 8 }}>{t("landing.ctaBrandTitle")}</h3>
@@ -216,6 +377,11 @@ export default function Landing() {
               <p style={{ color: "var(--muted)", fontSize: 14.5, margin: "0 0 18px" }}>{t("landing.ctaCreatorSub")}</p>
               <Link className="btn btn-teal" to="/register?role=influencer">{t("landing.ctaCreatorBtn")}</Link>
             </div>
+          </div>
+          <div className="close-chips">
+            <span className="close-chip">{t("landing.closeChip1")}</span>
+            <span className="close-chip">{t("landing.closeChip2")}</span>
+            <span className="close-chip">{t("landing.closeChip3")}</span>
           </div>
         </div>
       </section>

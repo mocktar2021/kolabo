@@ -1,7 +1,9 @@
 """Campaigns and collaboration business logic (Epic D).
 
 KOL-21: create a campaign brief. Draft save is allowed with any fields;
-publishing requires budget, deliverables, and a deadline.
+publishing requires budget, deliverables, and a deadline. Every deliverable a
+brief does name is validated against the shared platform catalog, the same
+source of truth packages sell from.
 KOL-22: invite a specific influencer. Blocked if the influencer is not verified;
 the influencer is notified.
 KOL-23: submit a proposal. A proposal is locked once submitted, so an edit is a
@@ -10,9 +12,15 @@ new version and the previous one is superseded; the business is notified.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas
 from app.modules.notifications.service import notify
+
+# Nobody briefs a hundred-plus of anything in one campaign; past that the
+# number is a typo (an amount pasted into the quantity box), so reject it
+# instead of inviting creators to an impossible job.
+MAX_DELIVERABLE_QUANTITY = 100
 
 
 def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str) -> models.Campaign:
@@ -22,6 +30,41 @@ def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str
     if campaign.business_user_id != business_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your campaign")
     return campaign
+
+
+def _validate_deliverables(deliverables: list) -> None:
+    """Reject briefs that ask for something no platform sells.
+
+    Same catalog and same message style as the packages module's
+    _validate_pair: the error names the offending pair and lists what IS
+    allowed, so the fix is in the message. An empty list passes untouched —
+    drafts are allowed to have no deliverables yet; whether a campaign may be
+    published without any is _publish_ready's call, not this one's.
+    """
+    for d in deliverables:
+        platform = d.get("platform")
+        deliverable_type = d.get("type")
+        if platform not in PLATFORM_DELIVERABLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{platform} is not a supported platform. Allowed: {', '.join(sorted(PLATFORM_DELIVERABLES))}",
+            )
+        if not is_valid_pair(platform, deliverable_type):
+            allowed = ", ".join(PLATFORM_DELIVERABLES.get(platform, [])) or "none"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{deliverable_type} is not available on {platform}. Allowed: {allowed}",
+            )
+        quantity = d.get("quantity")
+        # bool is an int subclass in Python, so `true` would otherwise slip
+        # through as a quantity of 1.
+        if not isinstance(quantity, int) or isinstance(quantity, bool) or not (
+            1 <= quantity <= MAX_DELIVERABLE_QUANTITY
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Deliverable quantity must be a whole number between 1 and {MAX_DELIVERABLE_QUANTITY}",
+            )
 
 
 def _publish_ready(campaign: models.Campaign) -> bool:
@@ -43,6 +86,10 @@ def _to_out(campaign: models.Campaign) -> dict:
 
 def create_campaign(db: Session, business_user_id: str, payload: schemas.CampaignCreate) -> dict:
     deliverables = [d.model_dump() for d in payload.deliverables]
+    # Validated even for drafts: a draft with deliverables the catalog does
+    # not recognise would only blow up later, at publish, when the fix is no
+    # longer fresh in the author's mind.
+    _validate_deliverables(deliverables)
     campaign = models.Campaign(
         business_user_id=business_user_id,
         title=payload.title,
@@ -72,6 +119,10 @@ def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> di
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Budget, deliverables, and deadline are required to publish",
         )
+    # Re-checked at publish even though create validates too: rows saved
+    # before this validation existed (or edited outside the API) must not
+    # become a live brief asking creators for something that does not exist.
+    _validate_deliverables(campaign.deliverables or [])
     campaign.status = models.PUBLISHED
     db.commit()
     db.refresh(campaign)

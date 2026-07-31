@@ -4,9 +4,18 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { PLATFORMS, DELIVERABLE_TYPES, CURRENCIES } from "../lib/campaignOptions";
+import { CURRENCIES } from "../lib/campaignOptions";
+import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 
 type Deliverable = { platform: string; type: string; quantity: number };
+
+/* A fresh row starts on the first platform's first deliverable so the pair is
+   valid by construction; the backend validates every pair against the same
+   catalog and answers 400 for anything else. */
+function emptyDeliverable(): Deliverable {
+  const platform = SELLABLE_PLATFORMS[0].id;
+  return { platform, type: deliverablesFor(platform)[0], quantity: 1 };
+}
 
 type Campaign = {
   id: string;
@@ -26,7 +35,7 @@ export default function CampaignNew() {
   const [budget, setBudget] = useState("");
   const [currency, setCurrency] = useState("XOF");
   const [deadline, setDeadline] = useState("");
-  const [deliverables, setDeliverables] = useState<Deliverable[]>([{ platform: "instagram", type: "post", quantity: 1 }]);
+  const [deliverables, setDeliverables] = useState<Deliverable[]>([emptyDeliverable()]);
   const [publishNow, setPublishNow] = useState(false);
 
   const [created, setCreated] = useState<Campaign | null>(null);
@@ -38,8 +47,14 @@ export default function CampaignNew() {
   function updateDeliverable(i: number, patch: Partial<Deliverable>) {
     setDeliverables((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
   }
+  /* Switching platform resets the type to that platform's first deliverable:
+     keeping the old type would silently build an invalid pair (e.g. a TikTok
+     "reel") that only surfaces as a 400 on submit. */
+  function changePlatform(i: number, platform: string) {
+    updateDeliverable(i, { platform, type: deliverablesFor(platform)[0] });
+  }
   function addDeliverable() {
-    setDeliverables((prev) => [...prev, { platform: "instagram", type: "post", quantity: 1 }]);
+    setDeliverables((prev) => [...prev, emptyDeliverable()]);
   }
   function removeDeliverable(i: number) {
     setDeliverables((prev) => prev.filter((_, idx) => idx !== i));
@@ -106,7 +121,7 @@ export default function CampaignNew() {
             </p>
             <ul style={{ margin: "0 0 14px", paddingLeft: 18, fontSize: 14 }}>
               {created.deliverables.map((d, i) => (
-                <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {d.platform}</li>
+                <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
               ))}
             </ul>
             {created.status !== "published" ? (
@@ -146,11 +161,11 @@ export default function CampaignNew() {
               <span className="label">{t("campaign.deliverables")}</span>
               {deliverables.map((d, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px auto", gap: 8, marginBottom: 8 }}>
-                  <select className="select" value={d.platform} onChange={(e) => updateDeliverable(i, { platform: e.target.value })}>
-                    {PLATFORMS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  <select className="select" value={d.platform} onChange={(e) => changePlatform(i, e.target.value)}>
+                    {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                   </select>
                   <select className="select" value={d.type} onChange={(e) => updateDeliverable(i, { type: e.target.value })}>
-                    {DELIVERABLE_TYPES.map((ty) => <option key={ty} value={ty}>{t(`deliverable.${ty}`, ty)}</option>)}
+                    {deliverablesFor(d.platform).map((ty) => <option key={ty} value={ty}>{t(`deliverable.${ty}`, ty)}</option>)}
                   </select>
                   <input className="input" inputMode="numeric" value={d.quantity}
                     onChange={(e) => updateDeliverable(i, { quantity: Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1) })} />

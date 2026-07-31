@@ -9,6 +9,9 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     country_code: str = Field(min_length=2, max_length=2)
     role: str
+    # Optional referral attribution. A code that resolves to nobody is ignored
+    # server-side, never fatal — see _attribute_referral in the service.
+    referral_code: str | None = None
 
 
 class RegisterResponse(BaseModel):
@@ -41,6 +44,11 @@ class DeleteAccountRequest(BaseModel):
     # bearer token says who is asking, but only the current password proves
     # it is really them.
     password: str
+
+
+class ReferralOut(BaseModel):
+    code: str
+    referred_count: int
 
 
 class PasswordResetRequest(BaseModel):

@@ -65,7 +65,8 @@ const resources = {
         otpTitle: "Vérifiez votre numéro", otpSub: "Entrez le code à 6 chiffres envoyé par SMS.",
         otpCode: "Code de vérification", otpSubmit: "Vérifier",
         otpDevHint: "En développement, le code est écrit dans les logs du serveur.",
-        working: "Un instant..."
+        working: "Un instant...",
+        referredHint: "Parrainé·e par un créateur Kolabo."
       },
       dash: {
         welcome: "Bienvenue sur Kolabo", sub: "Que voulez-vous faire aujourd'hui?",
@@ -73,7 +74,14 @@ const resources = {
         discoverTitle: "Découvrir des créateurs", discoverDesc: "Recherchez et enregistrez des créateurs pour vos campagnes.",
         campaignTitle: "Mes campagnes", campaignDesc: "Créez et gérez vos campagnes et leurs propositions.",
         invitationsTitle: "Mes invitations", invitationsDesc: "Répondez aux invitations avec une proposition.",
-        contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gérez les paiements."
+        contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gérez les paiements.",
+        /* Referral card. The explainer is a teaser on purpose: rewards are a
+           later business decision, so it promises nothing specific. */
+        referralTitle: "Parrainage",
+        referralExplain: "Invitez d'autres créateurs — les récompenses arrivent bientôt.",
+        referralCount: "{{n}} créateur(s) inscrit(s) grâce à vous",
+        referralWhatsapp: "Partager sur WhatsApp",
+        referralInvite: "Rejoins-moi sur Kolabo, la plateforme qui connecte créateurs et marques en Afrique. Inscris-toi ici : {{link}}"
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
@@ -213,7 +221,8 @@ const resources = {
         otpTitle: "Verify your number", otpSub: "Enter the 6 digit code sent by SMS.",
         otpCode: "Verification code", otpSubmit: "Verify",
         otpDevHint: "In development the code is written to the server logs.",
-        working: "One moment..."
+        working: "One moment...",
+        referredHint: "Referred by a Kolabo creator."
       },
       dash: {
         welcome: "Welcome to Kolabo", sub: "What would you like to do today?",
@@ -221,7 +230,14 @@ const resources = {
         discoverTitle: "Discover creators", discoverDesc: "Search and save creators for your campaigns.",
         campaignTitle: "My campaigns", campaignDesc: "Create and manage your campaigns and their proposals.",
         invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal.",
-        contractsTitle: "My contracts", contractsDesc: "Sign your contracts and manage payments."
+        contractsTitle: "My contracts", contractsDesc: "Sign your contracts and manage payments.",
+        /* Referral card. The explainer is a teaser on purpose: rewards are a
+           later business decision, so it promises nothing specific. */
+        referralTitle: "Referrals",
+        referralExplain: "Invite other creators — rewards are coming soon.",
+        referralCount: "{{n}} creator(s) joined thanks to you",
+        referralWhatsapp: "Share on WhatsApp",
+        referralInvite: "Join me on Kolabo, the platform connecting African creators and brands. Sign up here: {{link}}"
       },
       profile: {
         title: "Your profile", sub: "This information appears across the platform.",

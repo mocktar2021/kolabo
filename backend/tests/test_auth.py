@@ -68,9 +68,27 @@ def test_register_creates_unverified_account_and_blocks_login(client):
     assert resp.status_code == 403
 
 
-def test_country_must_be_enabled(client):
-    # Nigeria is present in config but not enabled at pilot.
-    assert _register(client, country="NG").status_code == 400
+def test_all_seven_pilot_countries_can_register(client):
+    # Product decision: registration is open in every pilot market, including
+    # the five that launched disabled.
+    for i, country in enumerate(["BJ", "TG", "CI", "GH", "SN", "CM", "NG"]):
+        resp = _register(client, phone=f"+2299000010{i}", country=country)
+        assert resp.status_code == 201, resp.text
+
+
+def test_disabled_country_still_rejected(client, monkeypatch):
+    """All seven countries are open now, so disable one artificially: the
+    config gate is the mechanism that closes a market again, and it must
+    keep rejecting registrations the day it is flipped back."""
+    from app.core import country_config
+    monkeypatch.setitem(
+        country_config.COUNTRY_CONFIG,
+        "NG",
+        {**country_config.COUNTRY_CONFIG["NG"], "enabled": False},
+    )
+    resp = _register(client, country="NG")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Country is not available yet"
 
 
 def test_invalid_role_rejected(client):

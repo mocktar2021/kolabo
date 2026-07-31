@@ -47,9 +47,12 @@ def test_seed_populates_seven_markets(client):
     assert {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"} == codes
 
 
-def test_only_pilot_markets_enabled_by_default(client):
+def test_all_seven_markets_enabled_by_default(client):
+    # Product decision: registration is open across all seven markets. The
+    # enabled flag is kept anyway, because closing a market again must stay a
+    # config write — see test_enable_and_disable_market for the mechanism.
     enabled = client.get("/admin/countries?enabled_only=true", headers=ADMIN).json()
-    assert {c["code"] for c in enabled} == {"BJ", "TG"}
+    assert {c["code"] for c in enabled} == {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"}
 
 
 def test_add_new_country_without_deploy(client):
@@ -63,7 +66,8 @@ def test_add_new_country_without_deploy(client):
     # Code and currency are normalized to upper case.
     assert body["code"] == "KE" and body["currency"] == "KES"
     assert body["mobile_money_provider"] == "mpesa"
-    assert client.get("/admin/countries?enabled_only=true", headers=ADMIN).json().__len__() == 3
+    # All seven seeded markets are enabled, plus the new one.
+    assert client.get("/admin/countries?enabled_only=true", headers=ADMIN).json().__len__() == 8
 
 
 def test_upsert_edits_existing_country(client):
@@ -79,8 +83,10 @@ def test_upsert_edits_existing_country(client):
 
 
 def test_enable_and_disable_market(client):
-    assert client.post("/admin/countries/GH/enabled", json={"enabled": True}, headers=ADMIN).json()["enabled"] is True
+    # The rollout gate must keep working now that everything ships enabled:
+    # disabling is how a market is closed again without a deploy.
     assert client.post("/admin/countries/GH/enabled", json={"enabled": False}, headers=ADMIN).json()["enabled"] is False
+    assert client.post("/admin/countries/GH/enabled", json={"enabled": True}, headers=ADMIN).json()["enabled"] is True
 
 
 def test_enable_unknown_country_404(client):

@@ -7,9 +7,9 @@ sensitive and are stored as-is in media_assets; object storage replaces the
 in-database blob before production.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -55,6 +55,17 @@ class InfluencerProfile(Base):
     # so it renders in the viewer's language; only the creator's free-text
     # answers are stored, and two fixed questions do not justify a table.
     faq: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Backs the 18+ gate: creators must be adults (legal register,
+    # child-safety item). Enforced in the service on every write, and never
+    # exposed on any public payload.
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Optional self-description from a closed set validated at the schema
+    # (female, male, other, prefer_not_to_say). Never public: collected for
+    # analytics and support, not for buyers.
+    gender: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Languages the creator works in, e.g. ["fr", "en"]. Public: brands pick
+    # creators by the language their audience speaks.
+    languages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     # Self reported for now; to be replaced by verified analytics from
     # connected social accounts in a later epic.
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

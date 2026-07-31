@@ -8,6 +8,8 @@ KOL-17: connect a social account (OAuth verified, manual pending).
 Packages, portfolio images, and a public profile aggregate support the
 instant-hire model and the shareable creator page.
 """
+from datetime import date
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,9 @@ from app.modules.profiles import bio_ai, enrichment, models, schemas
 INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+# Creators must be adults: legal register, child-safety item.
+MINIMUM_CREATOR_AGE = 18
 
 # How many reviews the public page lists. The page needs recent proof, not a
 # full history; the average still covers every revealed review.
@@ -52,6 +57,24 @@ def _require_user(db: Session, user_id: str) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+def _require_adult(birth_date: date) -> None:
+    """Creators must be adults; reject any birth date under MINIMUM_CREATOR_AGE.
+
+    A person is 18 on their 18th birthday, not the day after: the (month, day)
+    tuple comparison subtracts a year only while this year's birthday is still
+    ahead, which also handles the not-yet-had-their-birthday-this-year case.
+    """
+    today = date.today()
+    age = today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+    if age < MINIMUM_CREATOR_AGE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must be at least 18 to create a creator profile.",
+        )
 
 
 def _media_url(media_id: str | None) -> str | None:
@@ -88,6 +111,12 @@ def _influencer_out(profile: models.InfluencerProfile) -> dict:
         "rate_card": profile.rate_card,
         "faq": profile.faq or {},
         "follower_count": profile.follower_count,
+        # Owner-facing view: birth_date and gender belong here (the edit form
+        # prefills from them) and only here; the public payload never carries
+        # either.
+        "birth_date": profile.birth_date,
+        "gender": profile.gender,
+        "languages": profile.languages or [],
         "completion_percent": percent,
         "is_searchable": is_searchable,
     }
@@ -108,7 +137,13 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     # client explicitly sent as null IS still cleared, because that is how a
     # creator deletes their headline or removes their photo. Only leaving the
     # key out entirely is now a no-op.
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    # The 18+ gate runs on write, every time the field is present: a stored
+    # birth date is re-validated the moment the client sends it again, so
+    # resubmitting the form cannot bypass a value that is already saved.
+    if data.get("birth_date") is not None:
+        _require_adult(data["birth_date"])
+    for field, value in data.items():
         setattr(profile, field, value)
     db.commit()
     db.refresh(profile)
@@ -393,13 +428,17 @@ def onboarding_status(db: Session, user_id: str) -> dict:
     has_bio = bool(profile and _any_bio(profile))
     has_categories = bool(profile and profile.categories)
     has_pricing = bool(profile and profile.rate_card) or has_packages
+    # Going live requires the 18+ gate to have been passed: the birth date is
+    # private data, but its presence is a hard prerequisite.
+    has_birth_date = bool(profile and profile.birth_date)
     return {
         "has_bio": has_bio,
         "has_categories": has_categories,
         "has_pricing": has_pricing,
         "has_packages": has_packages,
         "has_social": len(list_social_accounts(db, user_id)) > 0,
-        "is_live": has_bio and has_categories and has_pricing,
+        "has_birth_date": has_birth_date,
+        "is_live": has_bio and has_categories and has_pricing and has_birth_date,
     }
 
 
@@ -591,6 +630,11 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         .order_by(models.SocialAccount.created_at.asc())
         .all()
     )
+    # Of the identity fields, only languages is public. birth_date and gender
+    # are deliberately absent from this payload: they exist for the 18+ gate
+    # and analytics, and a public endpoint exposing a creator's age or gender
+    # would be a privacy leak, not a feature. The owner-facing
+    # InfluencerProfileOut is the only place they appear.
     return {
         "user_id": profile.user_id,
         "display_name": profile.display_name,
@@ -601,6 +645,7 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         "bio_fr": profile.bio_fr,
         "bio_en": profile.bio_en,
         "categories": profile.categories,
+        "languages": profile.languages or [],
         "follower_count": profile.follower_count,
         "is_searchable": _influencer_completion(profile)[1],
         # Only the answers the creator wrote: an empty answer is an unanswered

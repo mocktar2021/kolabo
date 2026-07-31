@@ -80,10 +80,14 @@ def test_onboarding_status_tracks_readiness(client):
     uid = _user(client, "+22990000022")
     s0 = client.get(f"/profiles/{uid}/onboarding-status").json()
     assert s0["is_live"] is False and s0["has_social"] is False
+    assert s0["has_birth_date"] is False
 
-    client.put(f"/profiles/influencer/{uid}", json={"bio": "Hi", "categories": ["fashion"], "rate_card": {}})
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {},
+        "birth_date": "1995-05-14",
+    })
     s1 = client.get(f"/profiles/{uid}/onboarding-status").json()
-    assert s1["has_bio"] and s1["has_categories"]
+    assert s1["has_bio"] and s1["has_categories"] and s1["has_birth_date"]
     assert s1["has_pricing"] is False and s1["is_live"] is False
 
     client.post(f"/profiles/{uid}/packages", json={

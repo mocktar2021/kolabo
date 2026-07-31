@@ -1,5 +1,5 @@
 """Schemas for the profiles module."""
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,14 @@ class InfluencerProfileIn(BaseModel):
     # other field, so a form that does not know about the faq cannot wipe it.
     faq: dict = Field(default_factory=dict)
     follower_count: int | None = None
+    # Required to go live (creators must be 18+; the service enforces the
+    # age), never shown publicly.
+    birth_date: date | None = None
+    # Optional and never public. A closed set so analytics see categories,
+    # not free text.
+    gender: str | None = Field(default=None, pattern="^(female|male|other|prefer_not_to_say)$")
+    # Languages the creator works in, e.g. ["fr", "en"]. Public.
+    languages: list[str] = Field(default_factory=list)
 
 
 class BioGenerateIn(BaseModel):
@@ -51,6 +59,11 @@ class InfluencerProfileOut(BaseModel):
     rate_card: dict
     faq: dict = {}
     follower_count: int | None = None
+    # Owner-facing only: birth_date and gender prefill the edit form here but
+    # are deliberately absent from PublicProfileOut.
+    birth_date: date | None = None
+    gender: str | None = None
+    languages: list[str] = []
     completion_percent: int
     is_searchable: bool
 
@@ -102,6 +115,8 @@ class OnboardingStatusOut(BaseModel):
     has_pricing: bool
     has_packages: bool
     has_social: bool
+    # The 18+ gate: a profile without a date of birth cannot go live.
+    has_birth_date: bool
     is_live: bool
 
 
@@ -173,6 +188,8 @@ class PublicProfileOut(BaseModel):
     bio_fr: str | None = None
     bio_en: str | None = None
     categories: list[str]
+    # Public on purpose; birth_date and gender never appear on this schema.
+    languages: list[str] = []
     follower_count: int | None
     is_searchable: bool
     # Only the answers the creator actually wrote; the question wording is

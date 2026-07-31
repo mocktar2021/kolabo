@@ -22,6 +22,10 @@ INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
+# How many reviews the public page lists. The page needs recent proof, not a
+# full history; the average still covers every revealed review.
+PUBLIC_REVIEWS_LIMIT = 20
+
 social_enricher = enrichment.default_enricher
 bio_generator = bio_ai.default_generator
 
@@ -82,6 +86,7 @@ def _influencer_out(profile: models.InfluencerProfile) -> dict:
         "bio_en": profile.bio_en,
         "categories": profile.categories,
         "rate_card": profile.rate_card,
+        "faq": profile.faq or {},
         "follower_count": profile.follower_count,
         "completion_percent": percent,
         "is_searchable": is_searchable,
@@ -503,9 +508,34 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
 
+    from app.modules.trust_safety import models as trust_safety
     from app.modules.trust_safety.service import user_reviews
 
     reviews = user_reviews(db, user_id)
+    # The page shows the reviews behind the average, not just the number:
+    # revealed only (double blind still applies), newest first, capped so the
+    # page carries recent proof rather than a full history.
+    revealed_reviews = (
+        db.query(trust_safety.Review)
+        .filter(
+            trust_safety.Review.reviewee_user_id == user_id,
+            trust_safety.Review.revealed.is_(True),
+        )
+        .order_by(trust_safety.Review.created_at.desc())
+        .limit(PUBLIC_REVIEWS_LIMIT)
+        .all()
+    )
+    # Only an influencer profile carries a public display name today; business
+    # reviewers stay unnamed until business profiles gain one. Nothing is ever
+    # taken from the users table: its only identifier is a phone number.
+    reviewer_names: dict = {}
+    reviewer_ids = {r.reviewer_user_id for r in revealed_reviews}
+    if reviewer_ids:
+        reviewer_names = dict(
+            db.query(models.InfluencerProfile.user_id, models.InfluencerProfile.display_name)
+            .filter(models.InfluencerProfile.user_id.in_(reviewer_ids))
+            .all()
+        )
     social = (
         db.query(models.SocialAccount)
         .filter(models.SocialAccount.user_id == user_id, models.SocialAccount.status == models.VERIFIED)
@@ -523,8 +553,20 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         "categories": profile.categories,
         "follower_count": profile.follower_count,
         "is_searchable": _influencer_completion(profile)[1],
+        # Only the answers the creator wrote: an empty answer is an unanswered
+        # question, and the page simply does not show it.
+        "faq": {key: answer for key, answer in (profile.faq or {}).items() if answer},
         "average_stars": reviews["average_stars"],
         "review_count": reviews["count"],
+        "reviews": [
+            {
+                "stars": r.stars,
+                "comment": r.comment,
+                "created_at": r.created_at,
+                "reviewer_display_name": reviewer_names.get(r.reviewer_user_id),
+            }
+            for r in revealed_reviews
+        ],
         "packages": list_packages(db, user_id, active_only=True),
         "portfolio": list_portfolio(db, user_id),
         "social_accounts": [

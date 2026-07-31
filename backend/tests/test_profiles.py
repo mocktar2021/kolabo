@@ -256,6 +256,79 @@ def test_saving_without_bio_fr_keeps_the_existing_one(client):
     assert r.json()["bio_fr"] == "Bonjour, je suis créatrice à Cotonou."
 
 
+def test_faq_saves_and_round_trips(client):
+    uid = _make_user(client, phone="+22990000014")
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+        "faq": {"audience": "Mostly 18-24 in Cotonou", "brands": "Fashion and beauty"},
+    })
+    assert r.status_code == 200
+    assert r.json()["faq"]["audience"] == "Mostly 18-24 in Cotonou"
+    got = client.get(f"/profiles/influencer/{uid}").json()
+    assert got["faq"] == {"audience": "Mostly 18-24 in Cotonou", "brands": "Fashion and beauty"}
+
+
+def test_saving_without_faq_preserves_it(client):
+    """Same contract as the avatar: a form that does not know about the faq
+    (omits the key entirely) must not wipe the creator's answers."""
+    uid = _make_user(client, phone="+22990000015")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+        "faq": {"audience": "Mostly Cotonou", "brands": "Local fashion"},
+    })
+    r = client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi again", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    assert r.status_code == 200
+    assert r.json()["faq"] == {"audience": "Mostly Cotonou", "brands": "Local fashion"}
+
+
+def test_public_profile_omits_empty_faq_answers(client):
+    """An empty answer is an unanswered question: the public page shows only
+    what the creator actually wrote."""
+    uid = _make_user(client, phone="+22990000016")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+        "faq": {"audience": "Mostly Cotonou", "brands": ""},
+    })
+    pub = client.get(f"/profiles/influencer/{uid}/public").json()
+    assert pub["faq"] == {"audience": "Mostly Cotonou"}
+    # The owner's own view still round-trips the empty answer, so the edit
+    # form can show the question as unanswered.
+    assert client.get(f"/profiles/influencer/{uid}").json()["faq"]["brands"] == ""
+
+
+def test_public_profile_lists_only_revealed_reviews(client):
+    """The public page shows the reviews behind the average: revealed only
+    (double blind), with the reviewer named from their influencer profile."""
+    uid = _make_user(client, phone="+22990000017")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    reviewer = _make_user(client, phone="+22990000018")
+    client.put(f"/profiles/influencer/{reviewer}", json={"display_name": "Kofi A."})
+    business_reviewer = _make_user(client, phone="+22990000019", role="business")
+
+    from app.modules.trust_safety.models import Review
+    db = client.session_factory()
+    db.add(Review(escrow_id="esc-1", campaign_id="c-1", reviewer_user_id=reviewer,
+                  reviewee_user_id=uid, stars=5, comment="Great work", revealed=True))
+    # The other side has not reviewed yet, so this one stays hidden.
+    db.add(Review(escrow_id="esc-2", campaign_id="c-2", reviewer_user_id=business_reviewer,
+                  reviewee_user_id=uid, stars=1, comment="Not revealed yet", revealed=False))
+    db.commit()
+    db.close()
+
+    pub = client.get(f"/profiles/influencer/{uid}/public").json()
+    assert pub["review_count"] == 1
+    assert len(pub["reviews"]) == 1
+    review = pub["reviews"][0]
+    assert review["stars"] == 5
+    assert review["comment"] == "Great work"
+    assert review["reviewer_display_name"] == "Kofi A."
+    assert review["created_at"] is not None
+
+
 def test_media_upload_and_serve(client):
     uid = _make_user(client)
     up = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")})
@@ -341,3 +414,4 @@ def test_public_profile_aggregate(client):
     assert len(body["packages"]) == 1
     assert body["review_count"] == 0
     assert body["average_stars"] is None
+    assert body["reviews"] == []

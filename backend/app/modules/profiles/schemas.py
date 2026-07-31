@@ -1,4 +1,6 @@
 """Schemas for the profiles module."""
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.core.platforms import SOCIAL_PLATFORMS  # noqa: F401  (re-exported)
@@ -16,6 +18,10 @@ class InfluencerProfileIn(BaseModel):
     bio_en: str | None = None
     categories: list[str] = Field(default_factory=list)
     rate_card: dict = Field(default_factory=dict)
+    # Answers to the two standard profile questions, keyed by stable question
+    # id ("audience", "brands"). Rides the exclude_unset upsert like every
+    # other field, so a form that does not know about the faq cannot wipe it.
+    faq: dict = Field(default_factory=dict)
     follower_count: int | None = None
 
 
@@ -43,6 +49,7 @@ class InfluencerProfileOut(BaseModel):
     bio_en: str | None = None
     categories: list[str]
     rate_card: dict
+    faq: dict = {}
     follower_count: int | None = None
     completion_percent: int
     is_searchable: bool
@@ -133,6 +140,18 @@ class PortfolioItemOut(BaseModel):
     url: str
 
 
+class ReviewOut(BaseModel):
+    """A single revealed review shown on the public creator page."""
+
+    stars: int
+    comment: str | None = None
+    created_at: datetime
+    # From the reviewer's influencer profile when they have one. Business
+    # reviewers stay null until business profiles carry a public name; the
+    # users table only holds a phone number, which is never exposed.
+    reviewer_display_name: str | None = None
+
+
 class PublicProfileOut(BaseModel):
     user_id: str
     display_name: str | None
@@ -146,8 +165,13 @@ class PublicProfileOut(BaseModel):
     categories: list[str]
     follower_count: int | None
     is_searchable: bool
+    # Only the answers the creator actually wrote; the question wording is
+    # rendered by the frontend from i18n, in the viewer's language.
+    faq: dict = {}
     average_stars: float | None
     review_count: int
+    # Revealed reviews only, newest first, capped at 20.
+    reviews: list[ReviewOut] = []
     packages: list[PackageOut]
     portfolio: list[PortfolioItemOut]
     social_accounts: list[SocialAccountOut]

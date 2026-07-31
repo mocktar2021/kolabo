@@ -15,6 +15,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.platforms import SOCIAL_PLATFORMS
 from app.modules.auth.models import User
 from app.modules.discovery.models import Favorite
 from app.modules.profiles import models as profiles
@@ -88,6 +89,18 @@ def _cover_by_user(db: Session) -> dict:
     return out
 
 
+def _active_package_platforms(db: Session) -> set:
+    """(user_id, platform) pairs with an active package. An active package
+    counts as presence on a platform: a UGC creator has no account to connect,
+    the package itself is what they sell there."""
+    rows = (
+        db.query(profiles.Package.user_id, profiles.Package.platform)
+        .filter(profiles.Package.is_active.is_(True))
+        .all()
+    )
+    return set(rows)
+
+
 def search_influencers(
     db: Session,
     category: str | None = None,
@@ -95,9 +108,17 @@ def search_influencers(
     max_followers: int | None = None,
     country: str | None = None,
     q: str | None = None,
+    platform: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> list[dict]:
+    # An unknown platform can match nobody. Treat it like an unknown category
+    # (empty results) rather than erroring the whole search page: the filter
+    # values come from a UI selector, not free text, so a mismatch means a
+    # stale client, and a quiet empty list degrades better than a 400.
+    if platform is not None and platform not in SOCIAL_PLATFORMS:
+        return []
+
     rows = (
         db.query(profiles.InfluencerProfile, User)
         .join(User, User.id == profiles.InfluencerProfile.user_id)
@@ -107,6 +128,7 @@ def search_influencers(
     ratings = _rating_summary(db)
     socials = _socials_by_user(db)
     covers = _cover_by_user(db)
+    package_platforms = _active_package_platforms(db) if platform else set()
 
     matched = []
     for prof, user in rows:
@@ -116,6 +138,13 @@ def search_influencers(
             continue
         if category and category not in (prof.categories or []):
             continue
+        if platform:
+            # Presence on a platform is a connected social account or an
+            # active package sold on it. Accounts come from the same map the
+            # result card shows, so the filter and the card always agree.
+            has_account = any(s["platform"] == platform for s in socials.get(prof.user_id, []))
+            if not has_account and (prof.user_id, platform) not in package_platforms:
+                continue
         if min_followers is not None or max_followers is not None:
             fc = prof.follower_count
             if fc is None:

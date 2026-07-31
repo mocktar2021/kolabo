@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { CURRENCIES } from "../lib/campaignOptions";
@@ -387,13 +387,12 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
 export default function ProfileSetup() {
   const { t } = useTranslation();
   const { userId, token, isAuthenticated } = useAuth();
-  const stored = (localStorage.getItem("kolabo_role") as Kind) || "influencer";
   /* The account role decides which profile exists on the backend, so the
-     stored role is read once and only that form renders. The old
-     influencer/business toggle let a creator flip to the business form (and
-     vice versa), which could only produce a profile the rest of the app
-     ignores. The state variable stays so the rest of the file is untouched. */
-  const [kind] = useState<Kind>(stored === "business" ? "business" : "influencer");
+     stored role is read once and only that form renders. Agencies resolve to
+     the business form through isBusinessLike: they buy creator services the
+     way businesses do, and get the business UX until agency specific tooling
+     exists. */
+  const [kind] = useState<Kind>(isBusinessLike(getStoredRole()) ? "business" : "influencer");
 
   // Influencer fields
   const [displayName, setDisplayName] = useState("");

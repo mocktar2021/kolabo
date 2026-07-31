@@ -54,5 +54,7 @@ export async function uploadFile<T>(path: string, file: File, token?: string | n
   return data as T;
 }
 
-export type TokenResponse = { access_token: string; token_type: string };
+/* The role rides along with every token grant so the frontend can restore
+   the right experience after a fresh login. */
+export type TokenResponse = { access_token: string; token_type: string; role: "influencer" | "business" | "agency" };
 export type RegisterResponse = { user_id: string; message: string };

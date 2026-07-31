@@ -20,7 +20,10 @@ export default function Login() {
     setBusy(true);
     try {
       const res = await api<TokenResponse>("/auth/login", { method: "POST", body: { phone, password } });
-      login(res.access_token);
+      // The response carries the stored role; login persists it so the app
+      // renders the right experience even after a logout wiped nothing but
+      // the token.
+      login(res.access_token, res.role);
       navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");

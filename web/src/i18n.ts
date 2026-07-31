@@ -103,7 +103,11 @@ const resources = {
         how2: "2. Le créateur livre le contenu pour validation.",
         how3: "3. Vous validez, le paiement est libéré.",
         relatedCategories: "Catégories associées",
-        share: "Partager"
+        share: "Partager",
+        shareTitle: "Partager le profil de {{name}}",
+        copy: "Copier", copied: "Copié !",
+        shareEmail: "E-mail", shareEmailSubject: "Découvrez {{name}} sur Kolabo",
+        close: "Fermer"
       },
       campaign: {
         title: "Créer une campagne", sub: "Décrivez votre besoin pour recevoir des propositions.",
@@ -220,7 +224,11 @@ const resources = {
         how2: "2. The creator delivers the content for review.",
         how3: "3. You approve and the payment is released.",
         relatedCategories: "Related categories",
-        share: "Share"
+        share: "Share",
+        shareTitle: "Share {{name}}'s profile",
+        copy: "Copy", copied: "Copied!",
+        shareEmail: "Email", shareEmailSubject: "Discover {{name}} on Kolabo",
+        close: "Close"
       },
       campaign: {
         title: "Create a campaign", sub: "Describe your brief to receive proposals.",

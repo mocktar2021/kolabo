@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { ShareModal } from "../components/ShareModal";
 import { api, mediaSrc } from "../lib/api";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { Package, PublicProfile } from "../lib/types";
@@ -23,6 +24,7 @@ export default function PublicProfilePage() {
   const [audienceTab, setAudienceTab] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<Set<string>>(new Set());
   const [howOpen, setHowOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const lang = i18n.language.startsWith("en") ? "en" : "fr";
   const locale = lang === "fr" ? "fr-FR" : "en-US";
@@ -81,6 +83,7 @@ export default function PublicProfilePage() {
         ) : error || !profile ? (
           <p className="muted">{t("public.notFound")}</p>
         ) : (
+          <>
           <div className="pp-grid">
             <div>
               {/* Banner gallery: the first three portfolio images. No lightbox
@@ -115,8 +118,7 @@ export default function PublicProfilePage() {
                   {profile.headline && <p className="muted" style={{ margin: "4px 0 0" }}>{profile.headline}</p>}
                   {profile.location && <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{profile.location}</div>}
                 </div>
-                {/* Wired to the share modal in the follow-up commit. */}
-                <button className="btn btn-ghost" style={{ marginLeft: "auto" }} disabled>{t("public.share")}</button>
+                <button className="btn btn-ghost" style={{ marginLeft: "auto" }} onClick={() => setShareOpen(true)}>{t("public.share")}</button>
               </div>
 
               {profile.social_accounts.length > 0 && (
@@ -302,11 +304,16 @@ export default function PublicProfilePage() {
                 ) : (
                   <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("public.noPackages")}</p>
                 )}
-                {/* Wired to the share modal in the follow-up commit. */}
-                <button className="btn btn-ghost btn-block" style={{ marginTop: 16 }} disabled>{t("public.share")}</button>
+                <button className="btn btn-ghost btn-block" style={{ marginTop: 16 }} onClick={() => setShareOpen(true)}>{t("public.share")}</button>
               </div>
             </aside>
           </div>
+          {shareOpen && (
+            <ShareModal name={profile.display_name || t("discover.creator")}
+              url={`${window.location.origin}/u/${profile.user_id}`}
+              onClose={() => setShareOpen(false)} />
+          )}
+          </>
         )}
       </div>
     </Layout>

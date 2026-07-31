@@ -5,6 +5,15 @@ import i18n from "../i18n";
 
 const fr = {
   marketingNav: { findCreators: "Trouver des créateurs", forBrands: "Pour les marques", forCreators: "Pour les créateurs", pricing: "Tarifs" },
+  featuresMenu: {
+    label: "Fonctionnalités",
+    searchT: "Recherche de créateurs", searchD: "Filtrez par niche, pays, audience et plateforme.",
+    campaignsT: "Campagnes", campaignsD: "Créez un brief, invitez des créateurs, recevez des propositions.",
+    contractsT: "Contrats", contractsD: "Contrats bilingues générés et signés en ligne.",
+    paymentsT: "Paiements sécurisés", paymentsD: "Fonds bloqués en séquestre, libérés à la livraison validée.",
+    messagingT: "Messagerie", messagingD: "Les échanges vivent dans chaque campagne, tout au même endroit.",
+    reviewsT: "Avis vérifiés", reviewsD: "Des avis liés à de vraies collaborations, visibles sur les profils."
+  },
   marketingPage: {
     placeholder: "Cette page est en cours de rédaction. Le produit, lui, est déjà utilisable.",
     brandsTitle: "Pour les marques", brandsBody: "Trouvez des créateurs vérifiés, lancez une campagne et payez en toute sécurité.",
@@ -61,6 +70,15 @@ const fr = {
 
 const en = {
   marketingNav: { findCreators: "Find creators", forBrands: "For brands", forCreators: "For creators", pricing: "Pricing" },
+  featuresMenu: {
+    label: "Features",
+    searchT: "Creator search", searchD: "Filter by niche, country, audience, and platform.",
+    campaignsT: "Campaigns", campaignsD: "Create a brief, invite creators, receive proposals.",
+    contractsT: "Contracts", contractsD: "Bilingual contracts generated and signed online.",
+    paymentsT: "Secure payments", paymentsD: "Funds held in escrow, released once delivery is approved.",
+    messagingT: "Messaging", messagingD: "Conversations live inside each campaign, all in one place.",
+    reviewsT: "Verified reviews", reviewsD: "Reviews tied to real collaborations, shown on profiles."
+  },
   marketingPage: {
     placeholder: "This page is still being written. The product itself is already usable.",
     brandsTitle: "For brands", brandsBody: "Find verified creators, run a campaign, and pay securely.",

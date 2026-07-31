@@ -1,6 +1,6 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { ReactNode } from "react";
 import { Logo } from "./Logo";
 import { useAuth } from "../lib/auth";
 
@@ -14,6 +14,56 @@ function LanguageSwitch() {
   );
 }
 
+/* Click-toggled dropdown listing what the product does today. Every entry
+   links to a live route: payments point at the pricing page where the escrow
+   model is explained, and messaging points at campaigns because conversations
+   live inside each campaign. Nothing here advertises a feature that does not
+   exist yet. */
+function FeaturesMenu() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on any click outside the menu. A document listener needs no new
+  // dependency and survives clicks on elements that never receive focus.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const items = [
+    { to: "/discover", title: t("featuresMenu.searchT"), desc: t("featuresMenu.searchD") },
+    { to: "/campaigns", title: t("featuresMenu.campaignsT"), desc: t("featuresMenu.campaignsD") },
+    { to: "/contracts", title: t("featuresMenu.contractsT"), desc: t("featuresMenu.contractsD") },
+    { to: "/pricing", title: t("featuresMenu.paymentsT"), desc: t("featuresMenu.paymentsD") },
+    { to: "/campaigns", title: t("featuresMenu.messagingT"), desc: t("featuresMenu.messagingD") },
+    { to: "/discover", title: t("featuresMenu.reviewsT"), desc: t("featuresMenu.reviewsD") }
+  ];
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button type="button" className="nav-link" aria-haspopup="true" aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}>
+        {t("featuresMenu.label")} ▾
+      </button>
+      {open && (
+        <div className="menu-panel" role="menu">
+          {items.map((it) => (
+            <Link key={it.title} className="menu-item" role="menuitem" to={it.to} onClick={() => setOpen(false)}>
+              <span className="t">{it.title}</span>
+              <span className="d">{it.desc}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Two different navigations. Signed out visitors get a marketing menu; the app
    menu only appears once there is an account to use it with. */
 function MarketingNav() {
@@ -21,6 +71,7 @@ function MarketingNav() {
   return (
     <div className="nav-links">
       <Link className="nav-link" to="/discover">{t("marketingNav.findCreators")}</Link>
+      <FeaturesMenu />
       <Link className="nav-link" to="/for-brands">{t("marketingNav.forBrands")}</Link>
       <Link className="nav-link" to="/for-creators">{t("marketingNav.forCreators")}</Link>
       <Link className="nav-link" to="/pricing">{t("marketingNav.pricing")}</Link>

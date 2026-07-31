@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { COUNTRIES } from "../lib/countries";
+import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import type { SearchResult } from "../lib/types";
 
 export default function Discover() {
@@ -15,6 +16,9 @@ export default function Discover() {
   const [params, setParams] = useSearchParams();
   const [category, setCategory] = useState(params.get("category") || "");
   const [country, setCountry] = useState(params.get("country") || "");
+  // Seeded from the URL so the landing hero's platform choice (passed the same
+  // way as the free-text q) lands directly in the filter.
+  const [platform, setPlatform] = useState(params.get("platform") || "");
   const [minFollowers, setMinFollowers] = useState(params.get("min_followers") || "");
   const q = params.get("q") || "";
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -29,6 +33,7 @@ export default function Discover() {
       const qs = new URLSearchParams();
       if (category) qs.set("category", category);
       if (country) qs.set("country", country);
+      if (platform) qs.set("platform", platform);
       if (minFollowers) qs.set("min_followers", minFollowers);
       if (q) qs.set("q", q);
       const data = await api<SearchResult[]>(`/discovery/search?${qs.toString()}`);
@@ -38,7 +43,7 @@ export default function Discover() {
     } finally {
       setLoading(false);
     }
-  }, [category, country, minFollowers, q]);
+  }, [category, country, platform, minFollowers, q]);
 
   useEffect(() => {
     search();
@@ -72,6 +77,7 @@ export default function Discover() {
     const next = new URLSearchParams();
     if (category) next.set("category", category);
     if (country) next.set("country", country);
+    if (platform) next.set("platform", platform);
     if (minFollowers) next.set("min_followers", minFollowers);
     if (q) next.set("q", q);
     setParams(next);
@@ -85,7 +91,7 @@ export default function Discover() {
         <p className="muted" style={{ marginTop: -6 }}>{t("discover.sub")}</p>
 
         <form className="card" style={{ marginTop: 16, padding: 18 }} onSubmit={onSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
             <div>
               <label className="label" htmlFor="f-cat">{t("discover.category")}</label>
               <select id="f-cat" className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -98,6 +104,13 @@ export default function Discover() {
               <select id="f-country" className="select" value={country} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">{t("discover.any")}</option>
                 {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="f-platform">{t("discover.platform")}</label>
+              <select id="f-platform" className="select" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+                <option value="">{t("discover.any")}</option>
+                {SOCIAL_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </div>
             <div>

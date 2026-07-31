@@ -17,7 +17,9 @@
   --ink: #151824;
   --muted: #5b6472;
   --line: #e6e8ef;
-  --bg: #ffffff;
+  /* Pure white reads harsh next to photography; a barely-warm neutral makes
+     creator photos and white cards read intentional. */
+  --bg: #fbfaf8;
   --surface: #f6f8fc;
   --surface-2: #eef1f8;
 
@@ -189,6 +191,18 @@ a:hover { text-decoration: underline; }
   padding: 8px 12px; border-radius: var(--radius-sm);
 }
 .nav-link:hover { background: var(--surface); text-decoration: none; }
+
+/* ---- Features dropdown (marketing nav) ---- */
+button.nav-link { background: none; border: none; cursor: pointer; font-family: var(--font-body); }
+.menu-panel {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 30; width: 330px;
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-md); padding: 8px;
+}
+.menu-item { display: block; padding: 10px 12px; border-radius: var(--radius-sm); text-decoration: none; }
+.menu-item:hover { background: var(--surface); text-decoration: none; }
+.menu-item .t { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+.menu-item .d { display: block; font-size: 12.5px; color: var(--muted); margin-top: 1px; white-space: normal; }
 
 /* ---- Dark marketing hero ---- */
 .hero-dark { background: #14161f; color: #fff; padding: 64px 0 56px; }

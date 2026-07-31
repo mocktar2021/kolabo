@@ -84,7 +84,7 @@ const resources = {
       },
       discover: {
         title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
-        category: "Catégorie", country: "Pays", minFollowers: "Abonnés min.", any: "Tous",
+        category: "Catégorie", country: "Pays", platform: "Plateforme", minFollowers: "Abonnés min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun créateur trouvé.",
         creator: "Créateur", verified: "Vérifié", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
@@ -185,7 +185,7 @@ const resources = {
       },
       discover: {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
-        category: "Category", country: "Country", minFollowers: "Min. followers", any: "Any",
+        category: "Category", country: "Country", platform: "Platform", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
         creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
       },

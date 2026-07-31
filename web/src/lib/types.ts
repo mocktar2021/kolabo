@@ -101,8 +101,28 @@ export type Package = {
 
 export type PortfolioItem = { id: string; media_id: string; url: string };
 
-export type SocialAccountPublic = { id: string; platform: string; handle: string; method: string; status: string };
+export type SocialAccountPublic = {
+  id: string;
+  platform: string;
+  handle: string;
+  method: string;
+  status: string;
+  follower_count: number | null;
+};
 
+/* A revealed review as the public page shows it. reviewer_display_name is
+   null when the reviewer has no public display name (business reviewers,
+   until business profiles gain one). */
+export type PublicReview = {
+  stars: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_display_name: string | null;
+};
+
+/* Mirror of get_public_profile in backend/app/modules/profiles/service.py:
+   the whole marketplace page in one aggregate. faq carries only the answered
+   keys; packages are active only; reviews are revealed only, newest first. */
 export type PublicProfile = {
   user_id: string;
   display_name: string | null;
@@ -110,11 +130,15 @@ export type PublicProfile = {
   location: string | null;
   avatar_url: string | null;
   bio: string | null;
+  bio_fr: string | null;
+  bio_en: string | null;
   categories: string[];
   follower_count: number | null;
   is_searchable: boolean;
+  faq: ProfileFaq;
   average_stars: number | null;
   review_count: number;
+  reviews: PublicReview[];
   packages: Package[];
   portfolio: PortfolioItem[];
   social_accounts: SocialAccountPublic[];

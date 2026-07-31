@@ -88,7 +88,23 @@ const resources = {
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun créateur trouvé.",
         creator: "Créateur", verified: "Vérifié", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
-      public: { notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.", order: "Commander", orderSoon: "La commande directe arrive bientôt." },
+      public: {
+        notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.",
+        order: "Commander (bientôt)", orderSoon: "La commande directe arrive bientôt.",
+        allPhotos: "Toutes les photos",
+        reviewsTitle: "Avis", reviewCount_one: "{{count}} avis", reviewCount_other: "{{count}} avis",
+        verifiedClient: "Client vérifié",
+        audienceTitle: "Audience", audienceUnit: "abonnés",
+        audienceNote: "Données démographiques détaillées disponibles après connexion officielle de la plateforme.",
+        filterAll: "Tous", seeMore: "Voir plus", seeLess: "Voir moins",
+        choosePackage: "Choisir une offre",
+        howItWorks: "Comment ça marche ?",
+        how1: "1. Vous commandez et les fonds sont bloqués en séquestre.",
+        how2: "2. Le créateur livre le contenu pour validation.",
+        how3: "3. Vous validez, le paiement est libéré.",
+        relatedCategories: "Catégories associées",
+        share: "Partager"
+      },
       campaign: {
         title: "Créer une campagne", sub: "Décrivez votre besoin pour recevoir des propositions.",
         name: "Titre de la campagne", budget: "Budget", currency: "Devise", deadline: "Échéance",
@@ -189,7 +205,23 @@ const resources = {
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
         creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
       },
-      public: { notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.", order: "Order", orderSoon: "Direct ordering is coming soon." },
+      public: {
+        notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.",
+        order: "Order (soon)", orderSoon: "Direct ordering is coming soon.",
+        allPhotos: "All photos",
+        reviewsTitle: "Reviews", reviewCount_one: "{{count}} review", reviewCount_other: "{{count}} reviews",
+        verifiedClient: "Verified client",
+        audienceTitle: "Audience", audienceUnit: "followers",
+        audienceNote: "Detailed demographics become available once the platform account is officially connected.",
+        filterAll: "All", seeMore: "See more", seeLess: "See less",
+        choosePackage: "Choose a package",
+        howItWorks: "How does it work?",
+        how1: "1. You order and the funds are held in escrow.",
+        how2: "2. The creator delivers the content for review.",
+        how3: "3. You approve and the payment is released.",
+        relatedCategories: "Related categories",
+        share: "Share"
+      },
       campaign: {
         title: "Create a campaign", sub: "Describe your brief to receive proposals.",
         name: "Campaign title", budget: "Budget", currency: "Currency", deadline: "Deadline",

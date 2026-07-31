@@ -65,16 +65,19 @@ function FeaturesMenu() {
 }
 
 /* Two different navigations. Signed out visitors get a marketing menu; the app
-   menu only appears once there is an account to use it with. */
+   menu only appears once there is an account to use it with. The
+   nav-secondary links hide first at laptop widths (see the nav
+   responsiveness rules in theme.css); they stay reachable through the
+   footer. */
 function MarketingNav() {
   const { t } = useTranslation();
   return (
     <div className="nav-links">
       <Link className="nav-link" to="/discover">{t("marketingNav.findCreators")}</Link>
       <FeaturesMenu />
-      <Link className="nav-link" to="/for-brands">{t("marketingNav.forBrands")}</Link>
-      <Link className="nav-link" to="/for-creators">{t("marketingNav.forCreators")}</Link>
-      <Link className="nav-link" to="/pricing">{t("marketingNav.pricing")}</Link>
+      <Link className="nav-link nav-secondary" to="/for-brands">{t("marketingNav.forBrands")}</Link>
+      <Link className="nav-link nav-secondary" to="/for-creators">{t("marketingNav.forCreators")}</Link>
+      <Link className="nav-link nav-secondary" to="/pricing">{t("marketingNav.pricing")}</Link>
       <LanguageSwitch />
       <Link className="btn btn-ghost" to="/login">{t("nav.login")}</Link>
       <Link className="btn btn-primary" to="/register">{t("nav.signup")}</Link>

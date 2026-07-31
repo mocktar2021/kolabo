@@ -156,6 +156,16 @@ class Package(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price_amount: Mapped[int] = mapped_column(Integer, nullable=False)  # minor units
     currency: Mapped[str] = mapped_column(String, nullable=False)
+    # Collabstr-style package specs: quantity renders as the "×10" chip and
+    # duration as "30 Seconds". Quantity is how many deliverables the bundle
+    # contains; the duration pair describes each one and is only set where
+    # length is part of the spec (a reel, not a story mention), which is why
+    # it stays nullable.
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    duration_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # One of seconds/minutes/hours — closed set enforced at the schema, and
+    # always paired with duration_value (service rule).
+    duration_unit: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)

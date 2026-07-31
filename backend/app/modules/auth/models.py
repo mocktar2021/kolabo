@@ -30,6 +30,10 @@ class User(Base):
     country_code: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Referral MVP: a shareable code (minted lazily, see the auth service) and
+    # who brought this user in. Attribution only — no reward mechanics yet.
+    referral_code: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
+    referred_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 

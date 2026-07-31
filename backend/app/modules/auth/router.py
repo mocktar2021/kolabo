@@ -36,10 +36,12 @@ def my_referral(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """The caller's referral code and how many signups carried it.
+    """The caller's referral code, who it brought in, and what it has earned.
 
-    The code is minted on the first call and stable afterwards. MVP scope:
-    codes and attribution only — no reward mechanics yet.
+    The code is minted on the first call and stable afterwards. Counts are
+    split between creators and businesses because one code brings in both, and
+    each referral carries whether that person has actually ordered — the only
+    status that pays. See app.modules.auth.referrals for why.
     """
     return service.get_my_referral(db, user_id)
 

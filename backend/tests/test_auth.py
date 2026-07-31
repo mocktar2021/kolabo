@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.rewards import REFERRAL_CREDIT
 from app.modules.auth import models
 from app.modules.auth.router import router as auth_router
 
@@ -197,6 +198,37 @@ def test_delete_account_removes_user_and_dependents(client):
         db.close()
 
 
+def test_delete_account_takes_own_credits_but_spares_the_other_half(client):
+    """A credit belongs to whoever earned it. The leaving account's own rows
+    go; rows where they were merely the source survive with the pointer
+    cleared, because that money was earned by somebody else."""
+    token = _verified_token(client)
+    user_id = _user_id(client)
+    _register(client, phone="+22990000071")
+    other_id = _user_id(client, "+22990000071")
+    db = client.session_factory()
+    try:
+        db.add(models.ReferralCredit(user_id=user_id, amount=2000, currency="XOF",
+                                     kind="referrer", source_user_id=other_id, contract_id="contract-1"))
+        db.add(models.ReferralCredit(user_id=other_id, amount=2000, currency="XOF",
+                                     kind="referee", source_user_id=user_id, contract_id="contract-1"))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.request("DELETE", "/auth/me", json={"password": PASSWORD}, headers=_auth_headers(token))
+    assert r.status_code == 204
+    db = client.session_factory()
+    try:
+        assert db.query(models.ReferralCredit).filter(models.ReferralCredit.user_id == user_id).first() is None
+        survivor = db.query(models.ReferralCredit).filter(models.ReferralCredit.user_id == other_id).first()
+        assert survivor is not None
+        assert survivor.amount == 2000
+        assert survivor.source_user_id is None
+    finally:
+        db.close()
+
+
 def test_delete_account_with_contract_history_409(client):
     """Once a contract exists the account cannot self-delete: counterparties
     keep their contract and review history, and money trails are never
@@ -269,6 +301,18 @@ def test_referral_code_stable_and_well_formed(client):
     assert set(code) <= set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
 
+def test_referral_screen_shows_an_honest_zero_before_anything_is_earned(client):
+    """A brand new code has earned nothing, and the screen says so in the
+    owner's own currency rather than leaving the amount blank."""
+    token = _verified_token(client)
+    body = client.get("/auth/me/referral", headers=_auth_headers(token)).json()
+    assert body["referred_creators"] == 0
+    assert body["referred_businesses"] == 0
+    assert body["credit_total"] == 0
+    assert body["credit_currency"] == "XOF"
+    assert body["referrals"] == []
+
+
 def test_referral_endpoint_requires_auth(client):
     assert client.get("/auth/me/referral").status_code == 401
 
@@ -303,3 +347,43 @@ def test_register_with_garbage_referral_code_still_succeeds(client):
         assert newcomer.referred_by_user_id is None
     finally:
         db.close()
+
+
+def test_referral_report_splits_counts_and_marks_who_ordered(client):
+    """One code brings in creators and buyers alike. The screen tells them
+    apart, sums what the code has earned, and marks who actually ordered —
+    the only status that ever paid anything."""
+    token = _verified_token(client)
+    referrer_id = _user_id(client)
+    code = client.get("/auth/me/referral", headers=_auth_headers(token)).json()["code"]
+
+    _register(client, phone="+22990000061", role="influencer", referral_code=code)
+    _register(client, phone="+22990000062", role="business", referral_code=code)
+    creator_id = _user_id(client, "+22990000061")
+
+    # Only the creator has completed an order. The "referee" row is what says
+    # so, exactly as the escrow release path writes it.
+    db = client.session_factory()
+    try:
+        db.add(models.ReferralCredit(user_id=creator_id, amount=REFERRAL_CREDIT["XOF"], currency="XOF",
+                                     kind="referee", source_user_id=referrer_id, contract_id="contract-1"))
+        db.add(models.ReferralCredit(user_id=referrer_id, amount=REFERRAL_CREDIT["XOF"], currency="XOF",
+                                     kind="referrer", source_user_id=creator_id, contract_id="contract-1"))
+        db.commit()
+    finally:
+        db.close()
+
+    body = client.get("/auth/me/referral", headers=_auth_headers(token)).json()
+    assert body["referred_count"] == 2
+    assert body["referred_creators"] == 1
+    assert body["referred_businesses"] == 1
+    # Only the referrer's own row counts towards their balance.
+    assert body["credit_total"] == REFERRAL_CREDIT["XOF"]
+    assert body["credit_currency"] == "XOF"
+    assert {r["role"]: r["status"] for r in body["referrals"]} == {
+        "influencer": "ordered",
+        "business": "signed_up",
+    }
+    # Newest first: the business signed up second.
+    assert body["referrals"][0]["role"] == "business"
+    assert body["referrals"][0]["joined_at"]

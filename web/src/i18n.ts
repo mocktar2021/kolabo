@@ -75,13 +75,22 @@ const resources = {
         campaignTitle: "Mes campagnes", campaignDesc: "Créez et gérez vos campagnes et leurs propositions.",
         invitationsTitle: "Mes invitations", invitationsDesc: "Répondez aux invitations avec une proposition.",
         contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gérez les paiements.",
-        /* Referral card. The explainer is a teaser on purpose: rewards are a
-           later business decision, so it promises nothing specific. */
-        referralTitle: "Parrainage",
-        referralExplain: "Invitez d'autres créateurs — les récompenses arrivent bientôt.",
-        referralCount: "{{n}} créateur(s) inscrit(s) grâce à vous",
+        /* Referral panel. The explainer states the rule the backend actually
+           applies: credit is minted on the referred account's first completed
+           order, not at signup. Anything vaguer reads as a promise we would
+           be breaking on every dashboard load. */
+        referralTitle: "Parrainez, gagnez du crédit",
+        referralExplain: "Vous et la personne parrainée recevez du crédit Kolabo dès sa première commande terminée.",
+        referralShare: "Partager mon lien",
         referralWhatsapp: "Partager sur WhatsApp",
-        referralInvite: "Rejoins-moi sur Kolabo, la plateforme qui connecte créateurs et marques en Afrique. Inscris-toi ici : {{link}}"
+        referralInvite: "Rejoins-moi sur Kolabo, la plateforme qui connecte créateurs et marques en Afrique. Inscris-toi ici : {{link}}",
+        referralStatTotal: "Parrainages",
+        referralBreakdown: "{{c}} créateurs · {{b}} marques",
+        referralStatCredit: "Crédit gagné",
+        referralColDate: "Date", referralColType: "Type", referralColStatus: "Statut",
+        referralTypeCreator: "Créateur", referralTypeBrand: "Marque",
+        referralStatusSignedUp: "Inscrit", referralStatusOrdered: "A commandé",
+        referralEmpty: "Personne pour l'instant. Partagez votre lien pour commencer."
       },
       profile: {
         title: "Votre profil", sub: "Ces informations apparaissent sur la plateforme.",
@@ -157,6 +166,7 @@ const resources = {
         deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immédiatement",
         create: "Créer la campagne", publish: "Publier", published: "Campagne publiée.",
         another: "Créer une autre campagne", noBudget: "Budget non défini",
+        noDeliverables: "Livrables non précisés",
         status_draft: "Brouillon", status_published: "Publiée",
         listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
         notFound: "Campagne introuvable.",
@@ -168,6 +178,9 @@ const resources = {
       invitation: {
         title: "Mes invitations", sub: "Les campagnes auxquelles vous êtes invité.",
         empty: "Vous n'avez pas encore d'invitation.",
+        /* The brief the creator prices against: who is asking, for what, by
+           when. brandFallback covers a business that has not named itself yet. */
+        brandFallback: "Marque", noDeadline: "Pas d'échéance", yourProposal: "Votre proposition",
         rate: "Tarif proposé", days: "Délai (jours)", send: "Envoyer", proposalSent: "Proposition envoyée."
       },
       contract: {
@@ -231,13 +244,22 @@ const resources = {
         campaignTitle: "My campaigns", campaignDesc: "Create and manage your campaigns and their proposals.",
         invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal.",
         contractsTitle: "My contracts", contractsDesc: "Sign your contracts and manage payments.",
-        /* Referral card. The explainer is a teaser on purpose: rewards are a
-           later business decision, so it promises nothing specific. */
-        referralTitle: "Referrals",
-        referralExplain: "Invite other creators — rewards are coming soon.",
-        referralCount: "{{n}} creator(s) joined thanks to you",
+        /* Referral panel. The explainer states the rule the backend actually
+           applies: credit is minted on the referred account's first completed
+           order, not at signup. Anything vaguer reads as a promise we would
+           be breaking on every dashboard load. */
+        referralTitle: "Refer and earn credit",
+        referralExplain: "You and the person you refer both receive Kolabo credit as soon as their first order is completed.",
+        referralShare: "Share my link",
         referralWhatsapp: "Share on WhatsApp",
-        referralInvite: "Join me on Kolabo, the platform connecting African creators and brands. Sign up here: {{link}}"
+        referralInvite: "Join me on Kolabo, the platform connecting African creators and brands. Sign up here: {{link}}",
+        referralStatTotal: "Referrals",
+        referralBreakdown: "{{c}} creators · {{b}} brands",
+        referralStatCredit: "Credit earned",
+        referralColDate: "Date", referralColType: "Type", referralColStatus: "Status",
+        referralTypeCreator: "Creator", referralTypeBrand: "Brand",
+        referralStatusSignedUp: "Signed up", referralStatusOrdered: "Ordered",
+        referralEmpty: "No one yet. Share your link to get started."
       },
       profile: {
         title: "Your profile", sub: "This information appears across the platform.",
@@ -313,6 +335,7 @@ const resources = {
         deliverables: "Deliverables", addDeliverable: "Add a deliverable", publishNow: "Publish immediately",
         create: "Create campaign", publish: "Publish", published: "Campaign published.",
         another: "Create another campaign", noBudget: "No budget set",
+        noDeliverables: "Deliverables not specified",
         status_draft: "Draft", status_published: "Published",
         listTitle: "My campaigns", new: "New campaign", listEmpty: "You have no campaigns yet.",
         notFound: "Campaign not found.",
@@ -324,6 +347,9 @@ const resources = {
       invitation: {
         title: "My invitations", sub: "Campaigns you have been invited to.",
         empty: "You have no invitations yet.",
+        /* The brief the creator prices against: who is asking, for what, by
+           when. brandFallback covers a business that has not named itself yet. */
+        brandFallback: "Brand", noDeadline: "No deadline", yourProposal: "Your proposal",
         rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent."
       },
       contract: {

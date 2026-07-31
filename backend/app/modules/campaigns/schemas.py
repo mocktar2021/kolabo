@@ -64,4 +64,11 @@ class InvitationWithCampaign(BaseModel):
     campaign_id: str
     influencer_user_id: str
     status: str
+    # The whole brief, not a summary of it: the creator prices from this card,
+    # and deliverables, budget and deadline are exactly what they price
+    # against. CampaignOut already carries all of it, so it is nested rather
+    # than copied field by field onto the row.
     campaign: CampaignOut
+    # Who is asking. Null while the business has not filled in a profile — the
+    # users table has only a phone number to offer, and that is never exposed.
+    business_company_name: str | None = None

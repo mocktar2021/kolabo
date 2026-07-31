@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
+import { PLATFORM_LABELS } from "../lib/platforms";
 import type { InvitationWithCampaign } from "../lib/types";
 
 function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () => void }) {
@@ -62,6 +63,64 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
   );
 }
 
+/* One invitation, read top to bottom the way the decision is actually made:
+   who is asking, what they want made, what they budgeted, by when — and only
+   at the bottom, what the creator wants to be paid. Quoting a number before
+   seeing the deliverables was guesswork. */
+function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: () => void }) {
+  const { t } = useTranslation();
+  const c = inv.campaign;
+
+  return (
+    <div className="card">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div>
+          {/* business_company_name is null until the brand fills its profile;
+              a generic label beats an empty line above the title. */}
+          <div className="muted" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            {inv.business_company_name || t("invitation.brandFallback")}
+          </div>
+          <strong style={{ fontFamily: "var(--font-display)", fontSize: 18 }}>{c.title}</strong>
+        </div>
+        <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 24px", marginTop: 10, fontSize: 14 }}>
+        <span>
+          <span className="muted">{t("campaign.budget")} : </span>
+          {c.budget_amount ? `${c.budget_amount} ${c.budget_currency ?? ""}`.trim() : t("campaign.noBudget")}
+        </span>
+        <span>
+          <span className="muted">{t("campaign.deadline")} : </span>
+          {c.deadline || t("invitation.noDeadline")}
+        </span>
+      </div>
+
+      {/* Same one-line-per-deliverable shape as the campaign recap, so the
+          creator is pricing exactly the list the brand wrote. */}
+      <div style={{ marginTop: 16 }}>
+        <span className="label">{t("campaign.deliverables")}</span>
+        {c.deliverables.length === 0 ? (
+          <p className="muted" style={{ fontSize: 14, margin: 0 }}>{t("campaign.noDeliverables")}</p>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
+            {c.deliverables.map((d, i) => (
+              <li key={i}>{d.quantity} × {t(`deliverable.${d.type}`, d.type)} — {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* The rule above the line is the brand's; everything below it is the
+          creator's answer, so the two are separated visually. */}
+      <div style={{ borderTop: "1px solid var(--line)", marginTop: 20, paddingTop: 16 }}>
+        <span className="label" style={{ marginBottom: 10 }}>{t("invitation.yourProposal")}</span>
+        <ProposalForm campaignId={inv.campaign_id} onDone={onDone} />
+      </div>
+    </div>
+  );
+}
+
 export default function MyInvitations() {
   const { t } = useTranslation();
   const { token, isAuthenticated } = useAuth();
@@ -96,17 +155,7 @@ export default function MyInvitations() {
           ) : (
             <div style={{ display: "grid", gap: 16 }}>
               {invitations.map((inv) => (
-                <div key={inv.id} className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <strong style={{ fontFamily: "var(--font-display)", fontSize: 16 }}>{inv.campaign.title}</strong>
-                    <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
-                  </div>
-                  <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
-                    {inv.campaign.budget_amount ? `${inv.campaign.budget_amount} ${inv.campaign.budget_currency}` : t("campaign.noBudget")}
-                    {inv.campaign.deadline ? ` - ${inv.campaign.deadline}` : ""}
-                  </p>
-                  <ProposalForm campaignId={inv.campaign_id} onDone={load} />
-                </div>
+                <InvitationCard key={inv.id} inv={inv} onDone={load} />
               ))}
             </div>
           )}

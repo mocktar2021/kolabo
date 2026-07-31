@@ -35,7 +35,16 @@ export type CampaignDetail = Campaign & {
   proposals: Proposal[];
 };
 
-export type InvitationWithCampaign = Invitation & { campaign: Campaign };
+/* A row of GET /campaigns/invitations/mine. The brand's company name rides at
+   row level rather than inside campaign: it is who is asking, not part of the
+   brief. It can be null while a business has not filled its profile, so the
+   UI falls back to a generic "Marque" label. Everything the creator prices
+   against — title, budget, deadline, deliverables — comes nested under
+   campaign. */
+export type InvitationWithCampaign = Invitation & {
+  campaign: Campaign;
+  business_company_name: string | null;
+};
 
 export type Contract = {
   id: string;
@@ -65,6 +74,34 @@ export type Escrow = {
   currency: string;
   commission_amount: number | null;
   status: string;
+};
+
+/* Referrals (GET /auth/me/referral).
+
+   status is the only part of this that carries money: "signed_up" means the
+   invited account exists, "ordered" means its first order completed — which
+   is the event that actually mints credit for both sides. Keeping the two
+   apart is what lets the dashboard show a referrer why a name in the list has
+   not paid them anything yet. */
+export type ReferralStatus = "signed_up" | "ordered";
+
+/* role is the referred account's role. It is a plain string rather than the
+   Role union because the label only needs the creator/brand split, and
+   isBusinessLike already folds agencies in with businesses. */
+export type ReferralEntry = {
+  joined_at: string;
+  role: string;
+  status: ReferralStatus;
+};
+
+export type ReferralInfo = {
+  code: string;
+  referred_count: number;
+  referred_creators: number;
+  referred_businesses: number;
+  credit_total: number;
+  credit_currency: string;
+  referrals: ReferralEntry[];
 };
 
 /* Answers to the two fixed profile questions; the question wording is product

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "./Logo";
-import { useAuth } from "../lib/auth";
+import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 
 function LanguageSwitch() {
   const { i18n } = useTranslation();
@@ -89,11 +89,16 @@ function AppNav() {
   const { t } = useTranslation();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  /* Campaigns are a brand-side artifact: only businesses and agencies can own
+     one, so for a creator /campaigns is a page that can never hold anything.
+     Their equivalent surface is packages on the profile, and the briefs they
+     are actually offered arrive under Invitations. */
+  const canOwnCampaigns = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
       <LanguageSwitch />
       <Link className="btn btn-ghost" to="/discover">{t("nav.discover")}</Link>
-      <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>
+      {canOwnCampaigns && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>

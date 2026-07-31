@@ -263,3 +263,38 @@ def test_deliverable_quantity_over_cap_rejected(client):
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 101}],
     }, headers=headers)
     assert r.status_code == 400
+
+
+def test_influencer_cannot_create_campaign(client):
+    """A campaign is a brand-side brief; a creator's equivalent is packages.
+    Creators posting briefs muddles who is buying, and everything downstream
+    of a campaign assumes a business counterparty."""
+    _, headers = _user(client, "+22990000301", "influencer")
+    r = client.post("/campaigns/", json={"title": "Hire me"}, headers=headers)
+    assert r.status_code == 403
+    assert r.json()["detail"] == "Only businesses and agencies can create campaigns."
+
+
+def test_influencer_blocked_before_payload_validation(client):
+    """The gate is about the caller, not the brief: a creator gets the role
+    error, not a lecture about their deliverables."""
+    _, headers = _user(client, "+22990000302", "influencer")
+    r = client.post("/campaigns/", json={
+        "title": "Hire me",
+        "deliverables": [{"platform": "instagramm", "type": "post", "quantity": 1}],
+    }, headers=headers)
+    assert r.status_code == 403
+
+
+def test_business_can_create_campaign(client):
+    _, headers = _user(client, "+22990000303", "business")
+    r = client.post("/campaigns/", json={"title": "Brand brief"}, headers=headers)
+    assert r.status_code == 201
+
+
+def test_agency_can_create_campaign(client):
+    """Agencies buy on behalf of brands: same side of the market as a
+    business, so they brief just like one."""
+    _, headers = _user(client, "+22990000304", "agency")
+    r = client.post("/campaigns/", json={"title": "Client brief"}, headers=headers)
+    assert r.status_code == 201

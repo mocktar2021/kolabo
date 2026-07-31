@@ -22,6 +22,11 @@ from app.modules.notifications.service import notify
 # instead of inviting creators to an impossible job.
 MAX_DELIVERABLE_QUANTITY = 100
 
+# The role that may not author a brief. Stated as who is excluded rather than
+# who is allowed: a new buyer-side role should be able to brief on the day it
+# is introduced, without anyone remembering to add it to a whitelist here.
+AUTHOR_EXCLUDED_ROLE = "influencer"
+
 
 def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str) -> models.Campaign:
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
@@ -30,6 +35,30 @@ def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str
     if campaign.business_user_id != business_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your campaign")
     return campaign
+
+
+def _require_campaign_author(db: Session, user_id: str) -> User:
+    """Only the buying side of the market may author a brief.
+
+    A campaign is a brand-side artifact: a brief with a budget that creators
+    bid on. A creator's equivalent is a package, which they price and sell
+    themselves. A brief posted by a creator muddles who is buying, and every
+    step after this one assumes a business counterparty — invitations go from
+    the campaign owner to a creator, proposals come back the other way, and
+    the contract names the campaign owner as the payer.
+
+    Agencies buy on behalf of brands, so they sit on the same side as a
+    business and are allowed through.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role == AUTHOR_EXCLUDED_ROLE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only businesses and agencies can create campaigns.",
+        )
+    return user
 
 
 def _validate_deliverables(deliverables: list) -> None:
@@ -85,6 +114,11 @@ def _to_out(campaign: models.Campaign) -> dict:
 
 
 def create_campaign(db: Session, business_user_id: str, payload: schemas.CampaignCreate) -> dict:
+    # Checked before anything is validated or written: who may author a brief
+    # is a question about the caller, not about the payload, and answering it
+    # first keeps a creator from getting field-level errors on a request that
+    # was never going to be accepted.
+    _require_campaign_author(db, business_user_id)
     deliverables = [d.model_dump() for d in payload.deliverables]
     # Validated even for drafts: a draft with deliverables the catalog does
     # not recognise would only blow up later, at publish, when the fix is no

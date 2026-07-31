@@ -4,6 +4,26 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
    session. The user id is read from the token subject (the backend keys
    profiles by user id). */
 const KEY = "kolabo_token";
+/* The account role as the API last reported it. Registration writes a first
+   guess; every login and verify-otp response overwrites it with the stored
+   truth, so the role survives logout/login instead of falling back to a
+   default. */
+const ROLE_KEY = "kolabo_role";
+
+export type Role = "influencer" | "business" | "agency";
+
+/* Agencies buy creator services the same way businesses do, so they get the
+   business UX (business profile form, business dashboard, business routing)
+   until agency specific tooling exists. Every role branch in the app goes
+   through this helper instead of comparing against "business" directly. */
+export function isBusinessLike(role: string | null | undefined): boolean {
+  return role === "business" || role === "agency";
+}
+
+export function getStoredRole(): Role | null {
+  const r = localStorage.getItem(ROLE_KEY);
+  return r === "influencer" || r === "business" || r === "agency" ? r : null;
+}
 
 function decodeUserId(token: string | null): string | null {
   if (!token) return null;
@@ -20,7 +40,7 @@ type AuthValue = {
   token: string | null;
   userId: string | null;
   isAuthenticated: boolean;
-  login: (token: string) => void;
+  login: (token: string, role?: string) => void;
   logout: () => void;
 };
 
@@ -38,8 +58,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       userId: decodeUserId(token),
       isAuthenticated: !!token,
-      login: (t: string) => {
+      login: (t: string, role?: string) => {
         localStorage.setItem(KEY, t);
+        // The role rides along with the token; persisting it here is what
+        // keeps an agency an agency across sessions.
+        if (role) localStorage.setItem(ROLE_KEY, role);
         setToken(t);
       },
       logout: () => {

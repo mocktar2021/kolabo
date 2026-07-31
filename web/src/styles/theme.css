@@ -130,10 +130,14 @@ a:hover { text-decoration: underline; }
 
 /* Nav */
 .nav { border-bottom: 1px solid var(--line); background: #fff; position: sticky; top: 0; z-index: 20; }
-.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 64px; }
 .nav-links { display: flex; align-items: center; gap: 8px; }
 
-.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+/* flex:none matters: overflow:hidden lets a flex item's automatic minimum
+   width resolve to zero, which made the switch the only nav item able to
+   shrink — every width deficit landed here and visually clipped the EN
+   button. See the nav responsiveness rules further down. */
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex: none; }
 .lang-switch button {
   border: none; background: #fff; padding: 6px 12px; font-size: 13px; font-weight: 600;
   color: var(--muted); cursor: pointer;
@@ -191,6 +195,33 @@ a:hover { text-decoration: underline; }
   padding: 8px 12px; border-radius: var(--radius-sm);
 }
 .nav-link:hover { background: var(--surface); text-decoration: none; }
+
+/* ---- Nav responsiveness ----
+   Every other nav item refuses to shrink: .btn sets white-space: nowrap and
+   a flex item's min-width:auto keeps text at its content size. With the
+   language switch now flex:none too (see .lang-switch), nothing absorbs a
+   width deficit silently — so the nav must shed demand in stages instead.
+   The full French marketing set is wider than the 1120px container, hence
+   the first two tiers fire even on laptops. */
+@media (max-width: 1280px) {
+  .nav-link { padding: 8px 9px; font-size: 14px; }
+  .nav-links { gap: 6px; }
+}
+@media (max-width: 1200px) {
+  /* The secondary marketing links yield first; they stay reachable from the
+     footer on every page. */
+  .nav-link.nav-secondary { display: none; }
+}
+@media (max-width: 1100px) {
+  /* Signed-in nav: six ghost buttons plus the switch need tighter buttons
+     to share the row. */
+  .nav-links .btn { padding: 8px 12px; font-size: 14px; }
+}
+@media (max-width: 960px) {
+  /* Below this even the reduced link set cannot share the row with the
+     auth buttons. */
+  .nav-link { display: none; }
+}
 
 /* ---- Features dropdown (marketing nav) ---- */
 button.nav-link { background: none; border: none; cursor: pointer; font-family: var(--font-body); }
@@ -278,7 +309,6 @@ button.nav-link { background: none; border: none; cursor: pointer; font-family: 
   .search-bar select { border-right: none; border-bottom: 1px solid var(--line); border-radius: 0; }
   .search-bar button { border-radius: var(--radius-sm); }
   .footer-grid { grid-template-columns: 1fr 1fr; }
-  .nav-link { display: none; }
 }
 
 /* ---- Public creator profile (marketplace layout) ---- */

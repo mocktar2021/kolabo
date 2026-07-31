@@ -7,6 +7,10 @@ from app.core.platforms import SOCIAL_PLATFORMS  # noqa: F401  (re-exported)
 
 SOCIAL_METHODS = {"oauth", "manual"}
 
+# The closed set behind the duration chip. Data, not free text, so the chip
+# can be rendered (and translated) from the unit.
+DURATION_UNITS = {"seconds", "minutes", "hours"}
+
 
 class InfluencerProfileIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=120)
@@ -142,6 +146,14 @@ class PackageIn(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     price_amount: int = Field(ge=1)
     currency: str = Field(min_length=3, max_length=3)
+    # Collabstr-style spec chips: quantity is the "×10", the duration pair is
+    # the "30 Seconds". quantity is capped so a typo (×1000 stories) cannot
+    # become a listing. The unit is a closed set (see DURATION_UNITS); the
+    # cross-field rule that value and unit come together lives in the service,
+    # because it is about the pair, not the shape of either field.
+    quantity: int = Field(default=1, ge=1, le=100)
+    duration_value: int | None = Field(default=None, ge=1)
+    duration_unit: str | None = Field(default=None, pattern="^(seconds|minutes|hours)$")
     is_active: bool = True
 
 
@@ -154,6 +166,9 @@ class PackageOut(BaseModel):
     description: str | None
     price_amount: int
     currency: str
+    quantity: int = 1
+    duration_value: int | None = None
+    duration_unit: str | None = None
     is_active: bool
 
 

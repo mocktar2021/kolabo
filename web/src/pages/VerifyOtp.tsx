@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api, type TokenResponse } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { isBusinessLike, useAuth } from "../lib/auth";
 
 export default function VerifyOtp() {
   const { t } = useTranslation();
@@ -21,10 +21,12 @@ export default function VerifyOtp() {
     setBusy(true);
     try {
       const res = await api<TokenResponse>("/auth/verify-otp", { method: "POST", body: { phone, code } });
-      login(res.access_token);
-      // Creators go straight into profile setup; businesses to the dashboard.
-      const role = localStorage.getItem("kolabo_role");
-      navigate(role === "influencer" ? "/onboarding" : "/dashboard");
+      // The response's role is the backend truth; it overwrites whatever
+      // registration stored locally.
+      login(res.access_token, res.role);
+      // Creators go straight into profile setup; business-like accounts
+      // (businesses and agencies) go to the dashboard.
+      navigate(isBusinessLike(res.role) ? "/dashboard" : "/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {

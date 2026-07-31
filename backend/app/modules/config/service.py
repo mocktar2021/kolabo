@@ -10,16 +10,19 @@ from sqlalchemy.orm import Session
 from app.modules.admin.models import AdminActionLog
 from app.modules.config import models
 
-# Seed values for the seven target markets. Phone prefixes are country calling
-# codes. Providers are intentionally left unset until one is chosen per country.
+# Seed values for the seven target markets, all open for registration — the
+# same product decision as app.core.country_config: `enabled` gates rollout
+# only, not payments readiness, and stays so a market can be closed again
+# with one config write. Phone prefixes are country calling codes. Providers
+# are intentionally left unset until one is chosen per country.
 SEED = [
     {"code": "BJ", "name": "Benin", "currency": "XOF", "phone_prefix": "+229", "enabled": True},
     {"code": "TG", "name": "Togo", "currency": "XOF", "phone_prefix": "+228", "enabled": True},
-    {"code": "CI", "name": "Cote d'Ivoire", "currency": "XOF", "phone_prefix": "+225", "enabled": False},
-    {"code": "GH", "name": "Ghana", "currency": "GHS", "phone_prefix": "+233", "enabled": False},
-    {"code": "SN", "name": "Senegal", "currency": "XOF", "phone_prefix": "+221", "enabled": False},
-    {"code": "CM", "name": "Cameroon", "currency": "XAF", "phone_prefix": "+237", "enabled": False},
-    {"code": "NG", "name": "Nigeria", "currency": "NGN", "phone_prefix": "+234", "enabled": False},
+    {"code": "CI", "name": "Cote d'Ivoire", "currency": "XOF", "phone_prefix": "+225", "enabled": True},
+    {"code": "GH", "name": "Ghana", "currency": "GHS", "phone_prefix": "+233", "enabled": True},
+    {"code": "SN", "name": "Senegal", "currency": "XOF", "phone_prefix": "+221", "enabled": True},
+    {"code": "CM", "name": "Cameroon", "currency": "XAF", "phone_prefix": "+237", "enabled": True},
+    {"code": "NG", "name": "Nigeria", "currency": "NGN", "phone_prefix": "+234", "enabled": True},
 ]
 
 

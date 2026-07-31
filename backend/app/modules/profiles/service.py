@@ -338,6 +338,49 @@ def list_social_accounts(db: Session, user_id: str) -> list[dict]:
     ]
 
 
+def _require_own_social_account(db: Session, user_id: str, account_id: str) -> models.SocialAccount:
+    """404 before 403: an attacker probing other people's account ids learns
+    nothing more than a stranger guessing random ids would."""
+    account = db.query(models.SocialAccount).filter(models.SocialAccount.id == account_id).first()
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Social account not found")
+    if account.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your social account")
+    return account
+
+
+def update_social_account(db: Session, user_id: str, account_id: str, payload: schemas.SocialAccountUpdate) -> dict:
+    account = _require_own_social_account(db, user_id, account_id)
+    data = payload.model_dump(exclude_unset=True)
+    if "handle" in data and data["handle"] != account.handle:
+        # A verified badge belongs to the account that was verified. A new
+        # handle points at a different account, so the badge must not survive
+        # the edit: back to pending until that account passes review too.
+        if account.status == models.VERIFIED:
+            account.status = models.PENDING
+        account.handle = data["handle"]
+    if "follower_count" in data:
+        # Same rule as connect: platforms without a public audience metric
+        # cannot back the number, so it is discarded rather than displayed.
+        account.follower_count = (
+            data["follower_count"] if account.platform in PLATFORMS_WITH_AUDIENCE else None
+        )
+    if "proof_url" in data:
+        account.proof_url = data["proof_url"]
+    db.commit()
+    db.refresh(account)
+    return {
+        "id": account.id, "platform": account.platform, "handle": account.handle,
+        "method": account.method, "status": account.status, "follower_count": account.follower_count,
+    }
+
+
+def delete_social_account(db: Session, user_id: str, account_id: str) -> None:
+    account = _require_own_social_account(db, user_id, account_id)
+    db.delete(account)
+    db.commit()
+
+
 def onboarding_status(db: Session, user_id: str) -> dict:
     """What the creator still needs before the profile can go live."""
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
@@ -536,9 +579,16 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
             .filter(models.InfluencerProfile.user_id.in_(reviewer_ids))
             .all()
         )
+    # Every connected account is shown, not only verified ones. Manual
+    # connections stay pending until OAuth verification ships, so during the
+    # pilot a verified-only filter emptied the audience section and follower
+    # chips for every single creator. Product decision: show them all with
+    # their status, and let the frontend badge the verified ones. The filter
+    # can come back the day verification is real.
     social = (
         db.query(models.SocialAccount)
-        .filter(models.SocialAccount.user_id == user_id, models.SocialAccount.status == models.VERIFIED)
+        .filter(models.SocialAccount.user_id == user_id)
+        .order_by(models.SocialAccount.created_at.asc())
         .all()
     )
     return {

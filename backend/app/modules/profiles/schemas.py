@@ -76,6 +76,16 @@ class SocialAccountConnect(BaseModel):
     follower_count: int | None = Field(default=None, ge=0)
 
 
+class SocialAccountUpdate(BaseModel):
+    """Partial edit of a connected account. Follows the profile upsert's
+    exclude_unset contract: only fields the client actually sent are applied,
+    so a form that does not know about proof_url cannot wipe it."""
+
+    handle: str | None = Field(default=None, min_length=1)
+    follower_count: int | None = Field(default=None, ge=0)
+    proof_url: str | None = None
+
+
 class SocialAccountOut(BaseModel):
     id: str
     platform: str

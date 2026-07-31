@@ -141,6 +141,87 @@ def test_manual_social_requires_proof(client):
     assert r.status_code == 400
 
 
+def test_social_account_edit_round_trips_and_resets_verification(client):
+    """Editing the handle of a verified account must send it back to pending:
+    the badge was earned by the old handle, not whatever it now points at."""
+    uid = _make_user(client, phone="+22990000030")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "instagram", "handle": "old_handle", "method": "oauth",
+    }).json()
+    assert acc["status"] == "verified"
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"handle": "new_handle"})
+    assert r.status_code == 200
+    assert r.json()["handle"] == "new_handle"
+    assert r.json()["status"] == "pending"
+    listed = client.get(f"/profiles/{uid}/social-accounts").json()
+    assert listed[0]["handle"] == "new_handle"
+    assert listed[0]["status"] == "pending"
+
+
+def test_social_account_edit_without_handle_change_keeps_verification(client):
+    """Updating the follower count is not pointing at a different account, so
+    the verified badge survives."""
+    uid = _make_user(client, phone="+22990000031")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "instagram", "handle": "ama", "method": "oauth",
+    }).json()
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"follower_count": 9000})
+    assert r.status_code == 200
+    assert r.json()["status"] == "verified"
+    assert r.json()["follower_count"] == 9000
+
+
+def test_social_account_edit_discards_unverifiable_follower_count(client):
+    """Same rule as connect: WhatsApp exposes no public metric, so an edited
+    count is dropped rather than displayed."""
+    uid = _make_user(client, phone="+22990000036")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "whatsapp", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"follower_count": 5000})
+    assert r.status_code == 200
+    assert r.json()["follower_count"] is None
+
+
+def test_social_account_edit_requires_ownership(client):
+    a = _make_user(client, phone="+22990000032")
+    b = _make_user(client, phone="+22990000033")
+    acc = client.post(f"/profiles/{a}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    assert client.put(f"/profiles/{b}/social-accounts/{acc['id']}", json={"handle": "stolen"}).status_code == 403
+    assert client.delete(f"/profiles/{b}/social-accounts/{acc['id']}").status_code == 403
+    assert client.put(f"/profiles/{a}/social-accounts/missing", json={"handle": "x"}).status_code == 404
+
+
+def test_social_account_delete_removes_it_from_the_list(client):
+    uid = _make_user(client, phone="+22990000034")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    assert client.delete(f"/profiles/{uid}/social-accounts/{acc['id']}").status_code == 204
+    assert client.get(f"/profiles/{uid}/social-accounts").json() == []
+
+
+def test_public_profile_shows_pending_accounts_with_status(client):
+    """During the pilot every manual connection is pending (OAuth verification
+    has not shipped), so a verified-only filter emptied the audience section
+    for everyone. The page now shows every connected account with its status
+    and the frontend badges the verified ones."""
+    uid = _make_user(client, phone="+22990000035")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual",
+        "proof_url": "https://p", "follower_count": 4200,
+    })
+    pub = client.get(f"/profiles/influencer/{uid}/public").json()
+    assert len(pub["social_accounts"]) == 1
+    assert pub["social_accounts"][0]["status"] == "pending"
+    assert pub["social_accounts"][0]["follower_count"] == 4200
+
+
 def test_admin_queue_requires_admin_header(client):
     r = client.get("/admin/verification-queue")
     assert r.status_code == 401

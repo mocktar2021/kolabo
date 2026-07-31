@@ -12,6 +12,7 @@ the decision is logged, and both parties are notified.
 No real money moves: all provider calls go through the mock provider until a real
 Mobile Money provider is contracted.
 """
+import logging
 from datetime import timedelta
 
 from fastapi import HTTPException, status
@@ -20,9 +21,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.admin.models import AdminActionLog
 from app.modules.auth.models import User
+from app.modules.auth.referrals import award_for_completed_order
 from app.modules.contracts import models as contracts
 from app.modules.notifications.service import notify
 from app.modules.payments import models, provider
+
+logger = logging.getLogger(__name__)
 
 payment_provider: provider.MobileMoneyProvider = provider.default_provider
 
@@ -83,6 +87,31 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
     return _out(escrow)
 
 
+def _award_referral_credits(db: Session, escrow: models.Escrow) -> None:
+    """Referral rewards for a completed order — deliberately unable to fail.
+
+    A released escrow is an order completed: the payout has ALREADY been made
+    at the provider by the time this runs. NOTHING HERE MAY EVER PROPAGATE.
+    A bug in the rewards code must not turn a successful payment into a failed
+    request, because the two failures are not comparable — missing credit is a
+    support ticket somebody can fix later, while a release that 500s is a
+    creator who was not paid and an escrow stuck in a state nobody trusts.
+    Hence the bare except: it is not laziness, it is the requirement.
+
+    Both parties are offered up, not just the influencer: a creator's code
+    brings in businesses too, so either side of the contract may be somebody's
+    referee.
+    """
+    try:
+        award_for_completed_order(
+            db,
+            (escrow.influencer_user_id, escrow.business_user_id),
+            escrow.contract_id,
+        )
+    except Exception:  # noqa: BLE001 - swallowing is the point; see the docstring
+        logger.exception("Referral credit award failed for escrow %s", escrow.id)
+
+
 def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     influencer = db.query(User).filter(User.id == escrow.influencer_user_id).first()
     commission = escrow.amount * settings.commission_bps // 10000
@@ -95,6 +124,11 @@ def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     _event(db, escrow, actor_id, "released")
     notify(db, escrow.influencer_user_id, "payment", "Escrow released, your payout is on the way")
     notify(db, escrow.business_user_id, "payment", "Escrow released to the influencer")
+    # Last, and only once the release itself is settled in the session: this is
+    # the single point every release passes through — business confirmation,
+    # auto release after timeout, and an admin resolving a dispute — so the
+    # reward hangs off order completion rather than off one button.
+    _award_referral_credits(db, escrow)
 
 
 def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:

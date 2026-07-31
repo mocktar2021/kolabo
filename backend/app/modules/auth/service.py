@@ -11,8 +11,9 @@ Design notes tied to the Jira acceptance criteria:
 - KOL-14: reset tokens expire after 30 minutes and each phone is limited to 3
   reset requests per hour.
 
-Referral MVP scope: codes and attribution only — reward mechanics are a later
-business decision, so nothing here touches money.
+Registration still only records attribution — signing up with a code is worth
+nothing on its own, deliberately. What a referral eventually earns, and when,
+lives in app.modules.auth.referrals.
 """
 import secrets
 from datetime import timedelta
@@ -26,10 +27,12 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.modules.auth import otp
+from app.modules.auth import otp, referrals
 from app.modules.auth.models import (
+    REFEREE,
     OtpChallenge,
     PasswordResetToken,
+    ReferralCredit,
     User,
     utcnow,
 )
@@ -92,7 +95,7 @@ def _attribute_referral(db: Session, user: User, raw_code: str) -> None:
 
 
 def get_my_referral(db: Session, user_id: str) -> dict:
-    """The caller's referral code and how many signups carried it.
+    """The caller's referral code, who it brought in, and what it has earned.
 
     The code is minted lazily on the first request rather than at
     registration: most accounts never open the referral screen, and a code
@@ -116,8 +119,61 @@ def get_my_referral(db: Session, user_id: str) -> dict:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Could not generate a referral code, try again",
             )
-    referred_count = db.query(User).filter(User.referred_by_user_id == user_id).count()
-    return {"code": user.referral_code, "referred_count": referred_count}
+
+    referred = (
+        db.query(User)
+        .filter(User.referred_by_user_id == user_id)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    # One code brings in creators and buyers alike, so the counts are split
+    # here rather than in the code itself: "3 people joined" does not tell a
+    # creator whether they are recruiting peers or bringing in the businesses
+    # that will pay them.
+    referred_creators = sum(1 for u in referred if u.role in referrals.CREATOR_ROLES)
+    referred_businesses = len(referred) - referred_creators
+
+    credits = db.query(ReferralCredit).filter(ReferralCredit.user_id == user_id).all()
+    credit_total = sum(c.amount for c in credits)
+    # A user's credits are always denominated in their own market, so every
+    # row shares one currency. Before the first one is earned there is no row
+    # to read it from, so the country config answers instead and the screen
+    # can show an honest zero rather than a blank.
+    credit_currency = credits[0].currency if credits else referrals.market_currency(user)
+
+    # Capped and newest first: a proof panel on a referral screen, not an
+    # export of everyone the user has ever brought in.
+    listed = referred[: referrals.REFERRAL_LIST_LIMIT]
+    ordered_ids: set[str] = set()
+    if listed:
+        # One query rather than one per row. A "referee" credit exists exactly
+        # for the people whose first order has completed.
+        ordered_ids = {
+            row[0]
+            for row in db.query(ReferralCredit.user_id)
+            .filter(
+                ReferralCredit.kind == REFEREE,
+                ReferralCredit.user_id.in_([u.id for u in listed]),
+            )
+            .all()
+        }
+
+    return {
+        "code": user.referral_code,
+        "referred_count": len(referred),
+        "referred_creators": referred_creators,
+        "referred_businesses": referred_businesses,
+        "credit_total": credit_total,
+        "credit_currency": credit_currency,
+        "referrals": [
+            {
+                "joined_at": u.created_at,
+                "role": u.role,
+                "status": "ordered" if u.id in ordered_ids else "signed_up",
+            }
+            for u in listed
+        ],
+    }
 
 
 def register(db: Session, payload: RegisterRequest) -> dict:
@@ -314,6 +370,14 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     db.query(Report).filter(Report.reporter_user_id == user_id).delete(synchronize_session=False)
     db.query(OtpChallenge).filter(OtpChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user_id).delete(synchronize_session=False)
+    # Referral credits the user owns leave with them. Rows where they were
+    # merely the other half of somebody else's pair survive with the pointer
+    # cleared: that credit was earned by a different person and is not this
+    # account's to take away.
+    db.query(ReferralCredit).filter(ReferralCredit.user_id == user_id).delete(synchronize_session=False)
+    db.query(ReferralCredit).filter(ReferralCredit.source_user_id == user_id).update(
+        {ReferralCredit.source_user_id: None}, synchronize_session=False
+    )
     # Accounts referred by this user keep existing; their attribution pointer
     # is cleared rather than cascaded — deleting a referrer must never touch
     # the people they brought in.

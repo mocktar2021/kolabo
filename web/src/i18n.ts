@@ -25,12 +25,20 @@ const deliverable = {
     ugc_video: "UGC video", ugc_photo: "UGC photo"
   }
 };
+/* Chip labels on package rows (×3, 30 s, 5 min, 1 h). The unit abbreviations
+   happen to be identical in both languages, but each locale still carries its
+   own copy so a future divergence stays a one-line change. */
+const pkg = {
+  fr: { qty: "×{{n}}", duration_seconds: "{{n}} s", duration_minutes: "{{n}} min", duration_hours: "{{n}} h" },
+  en: { qty: "×{{n}}", duration_seconds: "{{n}} s", duration_minutes: "{{n}} min", duration_hours: "{{n}} h" }
+};
 
 const resources = {
   fr: {
     translation: {
       cat: cat.fr,
       deliverable: deliverable.fr,
+      pkg: pkg.fr,
       nav: { login: "Se connecter", signup: "Créer un compte", dashboard: "Tableau de bord", discover: "Découvrir", campaigns: "Campagnes", invitations: "Invitations", contracts: "Contrats", profile: "Profil", logout: "Déconnexion" },
       landing: {
         eyebrow: "Marketing d'influence pour l'Afrique",
@@ -86,6 +94,10 @@ const resources = {
         faqAudience: "Qui est votre audience ?", faqBrands: "Avec quelles marques avez-vous travaillé ?",
         packages: "Mes offres", packagesHint: "Proposez des prestations à prix fixe.", packageTitle: "Titre de l'offre", addPackage: "Ajouter une offre",
         minPrice: "Minimum : {{n}} {{currency}}",
+        packageQuantity: "Nombre",
+        packageDuration: "Durée (optionnel)",
+        durationUnitSeconds: "Secondes", durationUnitMinutes: "Minutes", durationUnitHours: "Heures",
+        durationTogether: "Indiquez la durée et son unité ensemble.",
         connectSocialHint: "Connectez un réseau social pour proposer d'autres plateformes.",
         socialTitle: "Réseaux sociaux", socialAdd: "Ajouter un réseau",
         socialEmpty: "Aucun compte connecté pour le moment.",
@@ -93,6 +105,15 @@ const resources = {
         socialEdit: "Modifier", socialDelete: "Supprimer",
         socialDeleteConfirm: "Supprimer ce compte ?",
         socialEditHint: "Modifier l'identifiant nécessite une nouvelle vérification."
+      },
+      danger: {
+        title: "Zone dangereuse",
+        explain: "La suppression est définitive : profil, offres, photos et conversations seront effacés.",
+        delete: "Supprimer mon compte",
+        confirmPassword: "Confirmez votre mot de passe",
+        deleteForever: "Supprimer définitivement",
+        wrongPassword: "Mot de passe incorrect.",
+        hasHistory: "Votre compte a un historique de transactions. Contactez le support pour le fermer."
       },
       discover: {
         title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
@@ -165,6 +186,7 @@ const resources = {
     translation: {
       cat: cat.en,
       deliverable: deliverable.en,
+      pkg: pkg.en,
       nav: { login: "Log in", signup: "Sign up", dashboard: "Dashboard", discover: "Discover", campaigns: "Campaigns", invitations: "Invitations", contracts: "Contracts", profile: "Profile", logout: "Log out" },
       landing: {
         eyebrow: "Influencer marketing for Africa",
@@ -220,6 +242,10 @@ const resources = {
         faqAudience: "Who is your audience?", faqBrands: "What brands have you worked with?",
         packages: "My packages", packagesHint: "Offer fixed-price services.", packageTitle: "Package title", addPackage: "Add a package",
         minPrice: "Minimum: {{n}} {{currency}}",
+        packageQuantity: "Quantity",
+        packageDuration: "Duration (optional)",
+        durationUnitSeconds: "Seconds", durationUnitMinutes: "Minutes", durationUnitHours: "Hours",
+        durationTogether: "Set the duration value and its unit together.",
         connectSocialHint: "Connect a social account to offer other platforms.",
         socialTitle: "Social accounts", socialAdd: "Add an account",
         socialEmpty: "No accounts connected yet.",
@@ -227,6 +253,15 @@ const resources = {
         socialEdit: "Edit", socialDelete: "Delete",
         socialDeleteConfirm: "Delete this account?",
         socialEditHint: "Changing the handle requires a new verification."
+      },
+      danger: {
+        title: "Danger zone",
+        explain: "Deletion is permanent: your profile, packages, photos, and conversations will be erased.",
+        delete: "Delete my account",
+        confirmPassword: "Confirm your password",
+        deleteForever: "Delete permanently",
+        wrongPassword: "Incorrect password.",
+        hasHistory: "Your account has transaction history. Contact support to close it."
       },
       discover: {
         title: "Discover creators", sub: "Find the right creator for your campaign.",

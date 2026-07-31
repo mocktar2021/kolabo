@@ -62,6 +62,23 @@ export default function PublicProfilePage() {
   const price = (p: Package) => `${p.price_amount.toLocaleString(locale)} ${p.currency}`;
   const platformLabel = (id: string) => PLATFORM_LABELS[id] ?? id;
 
+  /* The ×N and duration chips shown on package rows and the order card. Both
+     fields are optional server-side: quantity 1 stays silent, and duration
+     only renders when value and unit arrived together. */
+  const pkgChips = (p: Package) => {
+    const chips: string[] = [];
+    if ((p.quantity ?? 1) > 1) chips.push(t("pkg.qty", { n: p.quantity }));
+    if (p.duration_value != null && p.duration_unit) chips.push(t(`pkg.duration_${p.duration_unit}`, { n: p.duration_value }));
+    if (chips.length === 0) return null;
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+        {chips.map((c) => (
+          <span key={c} className="pp-chip" style={{ fontSize: 12, padding: "3px 10px" }}>{c}</span>
+        ))}
+      </div>
+    );
+  };
+
   /* Verified accounts get a quiet checkmark; pending ones simply show none:
      the absence of the checkmark is the signal. A loud "unverified" label
      would punish every pilot creator while OAuth verification does not exist
@@ -174,6 +191,7 @@ export default function PublicProfilePage() {
                               <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
                                 {platformLabel(p.platform)} · {t(`deliverable.${p.deliverable_type}`, p.deliverable_type)}
                               </div>
+                              {pkgChips(p)}
                               {p.description && (
                                 <>
                                   <p className={isExpanded ? "" : "clamp-2"} style={{ fontSize: 13.5, margin: "8px 0 0" }}>{p.description}</p>
@@ -290,9 +308,10 @@ export default function PublicProfilePage() {
                     <select className="select" style={{ marginTop: 12 }} aria-label={t("public.choosePackage")}
                       value={selectedPackage.id} onChange={(e) => setSelectedId(e.target.value)}>
                       {packages.map((p) => (
-                        <option key={p.id} value={p.id}>1 × {p.title} — {price(p)}</option>
+                        <option key={p.id} value={p.id}>{p.quantity ?? 1} × {p.title} — {price(p)}</option>
                       ))}
                     </select>
+                    {pkgChips(selectedPackage)}
                     {selectedPackage.description && <p className="pp-order-desc">{selectedPackage.description}</p>}
                     {/* Direct ordering ships separately; the card sells the flow
                         before the checkout exists. */}

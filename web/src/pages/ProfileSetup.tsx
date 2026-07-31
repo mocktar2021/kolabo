@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
@@ -16,6 +16,13 @@ type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
 type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null };
+
+/* Small neutral chips for quantity (×3) and duration (30 s) on package rows;
+   the same shape is used in onboarding step 2. */
+const pkgChipStyle: CSSProperties = {
+  fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+  background: "var(--surface-2)", color: "var(--muted)", whiteSpace: "nowrap"
+};
 
 function PortfolioSection({ userId, token }: { userId: string; token: string | null }) {
   const { t } = useTranslation();
@@ -249,7 +256,7 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
   );
 }
 
-const emptyPkg = { platform: "instagram", deliverable_type: "post", title: "", price: "", currency: "XOF", description: "" };
+const emptyPkg = { platform: "instagram", deliverable_type: "post", title: "", price: "", currency: "XOF", description: "", quantity: "1", durationValue: "", durationUnit: "" };
 
 function PackagesSection({ userId, token }: { userId: string; token: string | null }) {
   const { t } = useTranslation();
@@ -289,15 +296,21 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
 
   const floor = minPrice(form.currency);
   const belowFloor = form.price !== "" && Number(form.price) < floor;
+  const qty = Number(form.quantity);
+  const qtyInvalid = !Number.isInteger(qty) || qty < 1 || qty > 100;
+  // Mirror of the server rule: a duration value and its unit travel together
+  // or not at all. Checking here keeps the error inline instead of a 422.
+  const durationMismatch = (form.durationValue !== "") !== (form.durationUnit !== "");
 
   async function add(e: FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.price || belowFloor) return;
+    if (!form.title || !form.price || belowFloor || qtyInvalid || durationMismatch) return;
     setBusy(true);
     setError(null);
     try {
-      // The backend re-checks the price floor and answers 400 if the form
-      // check is ever bypassed; that message lands in the error banner above.
+      // The backend re-checks the price floor and the duration pairing and
+      // answers 400/422 if the form checks are ever bypassed; that message
+      // lands in the error banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST",
         token,
@@ -306,6 +319,9 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
           deliverable_type: form.deliverable_type,
           title: form.title,
           description: form.description || null,
+          quantity: qty,
+          duration_value: form.durationValue ? Number(form.durationValue) : null,
+          duration_unit: form.durationUnit || null,
           price_amount: Number(form.price),
           currency: form.currency
         }
@@ -337,6 +353,14 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
               <div>
                 <strong style={{ fontSize: 14 }}>{p.title}</strong>
                 <div className="muted" style={{ fontSize: 12 }}>{p.platform} - {t(`deliverable.${p.deliverable_type}`, p.deliverable_type)}</div>
+                {((p.quantity ?? 1) > 1 || (p.duration_value != null && p.duration_unit)) && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {(p.quantity ?? 1) > 1 && <span style={pkgChipStyle}>{t("pkg.qty", { n: p.quantity })}</span>}
+                    {p.duration_value != null && p.duration_unit && (
+                      <span style={pkgChipStyle}>{t(`pkg.duration_${p.duration_unit}`, { n: p.duration_value })}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <strong>{p.price_amount} {p.currency}</strong>
@@ -365,6 +389,8 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
           <div className="hint">{t("profile.connectSocialHint")}</div>
         )}
         <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <textarea className="input" style={{ marginTop: 8 }} rows={2} maxLength={2000} placeholder={t("profile.description")}
+          value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginTop: 8 }}>
           <input className="input" inputMode="numeric" placeholder="50000" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value.replace(/\D/g, "") })} />
           <select className="select" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
@@ -376,10 +402,99 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
             {t("profile.minPrice", { n: floor, currency: form.currency })}
           </div>
         )}
-        <button className="btn btn-ghost" type="submit" style={{ marginTop: 10 }} disabled={busy || !form.title || !form.price || belowFloor}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, marginTop: 8 }}>
+          <div>
+            <span className="label">{t("profile.packageQuantity")}</span>
+            <input className="input" type="number" min={1} max={100} aria-label={t("profile.packageQuantity")}
+              value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} />
+          </div>
+          <div>
+            <span className="label">{t("profile.packageDuration")}</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input className="input" inputMode="numeric" placeholder="30" aria-label={t("profile.packageDuration")}
+                value={form.durationValue} onChange={(e) => setForm({ ...form, durationValue: e.target.value.replace(/\D/g, "") })} />
+              <select className="select" aria-label={t("profile.packageDuration")} value={form.durationUnit}
+                onChange={(e) => setForm({ ...form, durationUnit: e.target.value })}>
+                <option value="">—</option>
+                <option value="seconds">{t("profile.durationUnitSeconds")}</option>
+                <option value="minutes">{t("profile.durationUnitMinutes")}</option>
+                <option value="hours">{t("profile.durationUnitHours")}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        {durationMismatch && (
+          <div className="hint" style={{ color: "var(--danger)" }}>{t("profile.durationTogether")}</div>
+        )}
+        <button className="btn btn-ghost" type="submit" style={{ marginTop: 10 }}
+          disabled={busy || !form.title || !form.price || belowFloor || qtyInvalid || durationMismatch}>
           + {t("profile.addPackage")}
         </button>
       </form>
+    </div>
+  );
+}
+
+/* Account deletion, deliberately at the very bottom and behind an inline
+   confirm (no window.confirm: destroying an account deserves friction).
+   Errors are mapped from the status code, never parsed from the English
+   detail string: 403 wrong password, 409 transaction history. */
+function DangerZone() {
+  const { t } = useTranslation();
+  const { token, logout } = useAuth();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onDelete() {
+    if (!password) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/auth/me", { method: "DELETE", token, body: { password } });
+      // The account is gone; drop the local session through the provider and
+      // land on the marketing homepage.
+      logout();
+      navigate("/");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) setError(t("danger.wrongPassword"));
+      else if (err instanceof ApiError && err.status === 409) setError(t("danger.hasHistory"));
+      else setError(err instanceof Error ? err.message : "Error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 24, borderColor: "var(--danger)" }}>
+      <h3 style={{ marginTop: 0, fontSize: 16, color: "var(--danger)" }}>{t("danger.title")}</h3>
+      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("danger.explain")}</p>
+      {error && <div className="alert alert-error">{error}</div>}
+      {!confirming ? (
+        <button type="button" className="btn btn-ghost" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+          onClick={() => setConfirming(true)}>
+          {t("danger.delete")}
+        </button>
+      ) : (
+        <div>
+          <div className="field">
+            <label className="label" htmlFor="del-pass">{t("danger.confirmPassword")}</label>
+            <input id="del-pass" className="input" type="password" value={password}
+              onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" className="btn btn-ghost" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+              disabled={!password || busy} onClick={onDelete}>
+              {busy ? t("auth.working") : t("danger.deleteForever")}
+            </button>
+            <button type="button" className="btn btn-ghost"
+              onClick={() => { setConfirming(false); setPassword(""); setError(null); }}>
+              {t("onb.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -715,6 +830,10 @@ export default function ProfileSetup() {
             <PackagesSection userId={userId} token={token} />
           </>
         )}
+
+        {/* Every role can close its account; the danger zone stays last so it
+            never competes with the everyday actions above. */}
+        <DangerZone />
       </div>
     </Layout>
   );

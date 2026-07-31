@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
-import { getStoredRole, useAuth } from "../lib/auth";
+import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 
 function ActionCard({ to, title, desc }: { to: string; title: string; desc: string }) {
   return (
@@ -80,7 +80,11 @@ export default function Dashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginTop: 18 }}>
           <ActionCard to="/profile" title={t("dash.profileTitle")} desc={t("dash.profileDesc")} />
           <ActionCard to="/discover" title={t("dash.discoverTitle")} desc={t("dash.discoverDesc")} />
-          <ActionCard to="/campaigns" title={t("dash.campaignTitle")} desc={t("dash.campaignDesc")} />
+          {/* "Créez et gérez vos campagnes" is an authoring promise the API
+              will not keep for a creator (403). Campaigns are a brand-side
+              artifact; a creator's equivalent is a package on their profile,
+              and the briefs aimed at them arrive under Invitations. */}
+          {isBusinessLike(role) && <ActionCard to="/campaigns" title={t("dash.campaignTitle")} desc={t("dash.campaignDesc")} />}
           <ActionCard to="/invitations" title={t("dash.invitationsTitle")} desc={t("dash.invitationsDesc")} />
           <ActionCard to="/contracts" title={t("dash.contractsTitle")} desc={t("dash.contractsDesc")} />
         </div>

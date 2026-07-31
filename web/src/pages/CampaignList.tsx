@@ -3,7 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
-import { useAuth } from "../lib/auth";
+import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import type { Campaign } from "../lib/types";
 
 function StatusPill({ status }: { status: string }) {
@@ -22,6 +22,11 @@ export default function CampaignList() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* A campaign is a brand-side artifact: only businesses and agencies can own
+     one, and the API answers 403 to a creator who posts to /campaigns/. A
+     creator's equivalent is a package on their profile, so they get no create
+     button here rather than a button that fails. */
+  const canCreate = isBusinessLike(getStoredRole());
 
   useEffect(() => {
     api<Campaign[]>("/campaigns/mine", { token })
@@ -37,7 +42,7 @@ export default function CampaignList() {
       <div className="container page">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h1 style={{ margin: 0 }}>{t("campaign.listTitle")}</h1>
-          <Link className="btn btn-primary" to="/campaigns/new">{t("campaign.new")}</Link>
+          {canCreate && <Link className="btn btn-primary" to="/campaigns/new">{t("campaign.new")}</Link>}
         </div>
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}

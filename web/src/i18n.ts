@@ -157,6 +157,7 @@ const resources = {
         deliverables: "Livrables", addDeliverable: "Ajouter un livrable", publishNow: "Publier immédiatement",
         create: "Créer la campagne", publish: "Publier", published: "Campagne publiée.",
         another: "Créer une autre campagne", noBudget: "Budget non défini",
+        noDeliverables: "Livrables non précisés",
         status_draft: "Brouillon", status_published: "Publiée",
         listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
         notFound: "Campagne introuvable.",
@@ -168,6 +169,9 @@ const resources = {
       invitation: {
         title: "Mes invitations", sub: "Les campagnes auxquelles vous êtes invité.",
         empty: "Vous n'avez pas encore d'invitation.",
+        /* The brief the creator prices against: who is asking, for what, by
+           when. brandFallback covers a business that has not named itself yet. */
+        brandFallback: "Marque", noDeadline: "Pas d'échéance", yourProposal: "Votre proposition",
         rate: "Tarif proposé", days: "Délai (jours)", send: "Envoyer", proposalSent: "Proposition envoyée."
       },
       contract: {
@@ -313,6 +317,7 @@ const resources = {
         deliverables: "Deliverables", addDeliverable: "Add a deliverable", publishNow: "Publish immediately",
         create: "Create campaign", publish: "Publish", published: "Campaign published.",
         another: "Create another campaign", noBudget: "No budget set",
+        noDeliverables: "Deliverables not specified",
         status_draft: "Draft", status_published: "Published",
         listTitle: "My campaigns", new: "New campaign", listEmpty: "You have no campaigns yet.",
         notFound: "Campaign not found.",
@@ -324,6 +329,9 @@ const resources = {
       invitation: {
         title: "My invitations", sub: "Campaigns you have been invited to.",
         empty: "You have no invitations yet.",
+        /* The brief the creator prices against: who is asking, for what, by
+           when. brandFallback covers a business that has not named itself yet. */
+        brandFallback: "Brand", noDeadline: "No deadline", yourProposal: "Your proposal",
         rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent."
       },
       contract: {

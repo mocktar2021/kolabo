@@ -9,6 +9,12 @@ import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/pla
 
 type Deliverable = { platform: string; type: string; quantity: number };
 
+/* Quantity choices for a deliverable row. A dropdown rather than a free text
+   field: a fat finger on a number input turns "10 reels" into "100 reels" and
+   the brand only finds out when the proposals come back absurd. Twenty is far
+   past any real brief, and this is the same control the package form uses. */
+const QUANTITIES = Array.from({ length: 20 }, (_, i) => i + 1);
+
 /* A fresh row starts on the first platform's first deliverable so the pair is
    valid by construction; the backend validates every pair against the same
    catalog and answers 400 for anything else. */
@@ -160,15 +166,17 @@ export default function CampaignNew() {
             <div className="field">
               <span className="label">{t("campaign.deliverables")}</span>
               {deliverables.map((d, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px auto", gap: 8, marginBottom: 8 }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 88px auto", gap: 8, marginBottom: 8 }}>
                   <select className="select" value={d.platform} onChange={(e) => changePlatform(i, e.target.value)}>
                     {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                   </select>
                   <select className="select" value={d.type} onChange={(e) => updateDeliverable(i, { type: e.target.value })}>
                     {deliverablesFor(d.platform).map((ty) => <option key={ty} value={ty}>{t(`deliverable.${ty}`, ty)}</option>)}
                   </select>
-                  <input className="input" inputMode="numeric" value={d.quantity}
-                    onChange={(e) => updateDeliverable(i, { quantity: Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1) })} />
+                  <select className="select" aria-label={t("profile.packageQuantity")} value={d.quantity}
+                    onChange={(e) => updateDeliverable(i, { quantity: Number(e.target.value) })}>
+                    {QUANTITIES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
                   <button type="button" className="btn btn-ghost" onClick={() => removeDeliverable(i)} disabled={deliverables.length === 1} aria-label="remove">x</button>
                 </div>
               ))}

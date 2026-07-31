@@ -35,7 +35,16 @@ export type CampaignDetail = Campaign & {
   proposals: Proposal[];
 };
 
-export type InvitationWithCampaign = Invitation & { campaign: Campaign };
+/* A row of GET /campaigns/invitations/mine. The brand's company name rides at
+   row level rather than inside campaign: it is who is asking, not part of the
+   brief. It can be null while a business has not filled its profile, so the
+   UI falls back to a generic "Marque" label. Everything the creator prices
+   against — title, budget, deadline, deliverables — comes nested under
+   campaign. */
+export type InvitationWithCampaign = Invitation & {
+  campaign: Campaign;
+  business_company_name: string | null;
+};
 
 export type Contract = {
   id: string;

@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
+import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
@@ -17,6 +18,7 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
   const { t } = useTranslation();
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -25,20 +27,27 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
   }
   useEffect(load, [userId]);
 
-  async function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function onFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      const media = await uploadFile<MediaOut>(`/profiles/${userId}/media`, file, token);
-      await api(`/profiles/${userId}/portfolio`, { method: "POST", token, body: { media_id: media.id } });
-      load();
+      // The backend takes one file per request, so the selection is uploaded
+      // sequentially: a failure stays attributable to a single photo, and the
+      // photos already attached before it survive.
+      for (let i = 0; i < files.length; i++) {
+        setProgress({ done: i + 1, total: files.length });
+        const media = await uploadFile<MediaOut>(`/profiles/${userId}/media`, files[i], token);
+        await api(`/profiles/${userId}/portfolio`, { method: "POST", token, body: { media_id: media.id } });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
     } finally {
       setBusy(false);
+      setProgress(null);
       if (fileRef.current) fileRef.current.value = "";
+      load();
     }
   }
 
@@ -60,9 +69,13 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
           </div>
         ))}
       </div>
-      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+      <input ref={fileRef} type="file" accept="image/*" multiple onChange={onFiles} style={{ display: "none" }} />
       <button type="button" className="btn btn-ghost" style={{ marginTop: 12 }} disabled={busy} onClick={() => fileRef.current?.click()}>
-        {busy ? t("auth.working") : t("profile.addImage")}
+        {busy
+          ? progress
+            ? t("profile.uploadingCount", { done: progress.done, total: progress.total })
+            : t("auth.working")
+          : t("profile.addImage")}
       </button>
     </div>
   );
@@ -180,13 +193,19 @@ export default function ProfileSetup() {
   // Influencer fields
   const [displayName, setDisplayName] = useState("");
   const [headline, setHeadline] = useState("");
-  const [location, setLocation] = useState("");
+  // Country + city compose into the backend's single `location` string on
+  // save; see joinLocation/splitLocation in lib/countries.
+  const [locCountry, setLocCountry] = useState("");
+  const [locCity, setLocCity] = useState("");
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [followers, setFollowers] = useState("");
   const [rate, setRate] = useState("");
   const [avatarMediaId, setAvatarMediaId] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // FAQ answers to the two fixed profile questions.
+  const [faqAudience, setFaqAudience] = useState("");
+  const [faqBrands, setFaqBrands] = useState("");
   // Business fields
   const [company, setCompany] = useState("");
   const [industry, setIndustry] = useState("");
@@ -204,13 +223,17 @@ export default function ProfileSetup() {
       .then((p) => {
         setDisplayName(p.display_name ?? "");
         setHeadline(p.headline ?? "");
-        setLocation(p.location ?? "");
+        const loc = splitLocation(p.location);
+        setLocCity(loc.city);
+        setLocCountry(loc.country);
         setBio(p.bio ?? "");
         setCategories(p.categories ?? []);
         setFollowers(p.follower_count ? String(p.follower_count) : "");
         setRate(p.rate_card && p.rate_card.post ? String(p.rate_card.post) : "");
         setAvatarMediaId(p.avatar_media_id ?? null);
         setAvatarUrl(p.avatar_url ?? null);
+        setFaqAudience(p.faq?.audience ?? "");
+        setFaqBrands(p.faq?.brands ?? "");
       })
       .catch((err) => {
         if (!(err instanceof ApiError && err.status === 404)) {
@@ -272,12 +295,18 @@ export default function ProfileSetup() {
           body: {
             display_name: displayName || null,
             headline: headline || null,
-            location: location || null,
+            location: joinLocation(locCity, locCountry),
             avatar_media_id: avatarMediaId,
             bio: bio || null,
             categories,
             rate_card: rate ? { post: Number(rate) } : {},
-            follower_count: followers ? Number(followers) : null
+            follower_count: followers ? Number(followers) : null,
+            // Only the two fixed answers travel; the questions themselves are
+            // product copy that lives in i18n, not user data.
+            faq: {
+              ...(faqAudience.trim() ? { audience: faqAudience.trim() } : {}),
+              ...(faqBrands.trim() ? { brands: faqBrands.trim() } : {})
+            }
           }
         });
       } else {
@@ -329,8 +358,14 @@ export default function ProfileSetup() {
                   <input id="hl" className="input" value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder={t("profile.headlinePlaceholder")} />
                 </div>
                 <div className="field">
-                  <label className="label" htmlFor="loc">{t("profile.location")}</label>
-                  <input id="loc" className="input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Cotonou, BJ" />
+                  <span className="label">{t("profile.location")}</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <select className="select" aria-label={t("profile.locationCountry")} value={locCountry} onChange={(e) => setLocCountry(e.target.value)}>
+                      <option value="">{t("profile.locationCountry")}</option>
+                      {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                    </select>
+                    <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                  </div>
                 </div>
                 <div className="field">
                   <label className="label" htmlFor="bio">{t("profile.bio")}</label>
@@ -380,6 +415,25 @@ export default function ProfileSetup() {
             </button>
           </form>
         </div>
+
+        {/* Two fixed product questions with free-text answers, saved with the
+            main Save button above (the textareas share state with the PUT).
+            The FAQ lives in profile setup only: onboarding deliberately stays
+            lean, so no FAQ step was added there. */}
+        {kind === "influencer" && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <h3 style={{ marginTop: 0 }}>{t("profile.faqTitle")}</h3>
+            <p className="muted" style={{ marginTop: -6, fontSize: 13 }}>{t("profile.faqHint")}</p>
+            <div className="field">
+              <label className="label" htmlFor="faq-audience">{t("profile.faqAudience")}</label>
+              <textarea id="faq-audience" className="input" rows={3} value={faqAudience} onChange={(e) => setFaqAudience(e.target.value)} />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label className="label" htmlFor="faq-brands">{t("profile.faqBrands")}</label>
+              <textarea id="faq-brands" className="input" rows={3} value={faqBrands} onChange={(e) => setFaqBrands(e.target.value)} />
+            </div>
+          </div>
+        )}
 
         {kind === "influencer" && userId && (
           <>

@@ -75,7 +75,11 @@ const resources = {
         company: "Nom de l'entreprise", industry: "Secteur", description: "Description",
         save: "Enregistrer", saved: "Profil enregistré.",
         displayName: "Nom d'affichage", headline: "Titre", headlinePlaceholder: "Ex: Créateur lifestyle", location: "Localisation",
-        uploadPhoto: "Ajouter une photo", viewPublic: "Voir ma page publique", portfolio: "Portfolio", addImage: "Ajouter une image",
+        locationCountry: "Pays", locationCity: "Ville",
+        uploadPhoto: "Ajouter une photo", viewPublic: "Voir ma page publique", portfolio: "Portfolio", addImage: "Ajouter des images",
+        uploadingCount: "Envoi {{done}} / {{total}}",
+        faqTitle: "FAQ", faqHint: "Vos réponses apparaissent sur votre page publique. Enregistrez le profil pour les sauvegarder.",
+        faqAudience: "Qui est votre audience ?", faqBrands: "Avec quelles marques avez-vous travaillé ?",
         packages: "Mes offres", packagesHint: "Proposez des prestations à prix fixe.", packageTitle: "Titre de l'offre", addPackage: "Ajouter une offre"
       },
       discover: {
@@ -172,7 +176,11 @@ const resources = {
         company: "Company name", industry: "Industry", description: "Description",
         save: "Save", saved: "Profile saved.",
         displayName: "Display name", headline: "Headline", headlinePlaceholder: "e.g. Lifestyle creator", location: "Location",
-        uploadPhoto: "Upload a photo", viewPublic: "View my public page", portfolio: "Portfolio", addImage: "Add an image",
+        locationCountry: "Country", locationCity: "City",
+        uploadPhoto: "Upload a photo", viewPublic: "View my public page", portfolio: "Portfolio", addImage: "Add images",
+        uploadingCount: "Uploading {{done}} / {{total}}",
+        faqTitle: "FAQ", faqHint: "Your answers appear on your public page. Save the profile to store them.",
+        faqAudience: "Who is your audience?", faqBrands: "What brands have you worked with?",
         packages: "My packages", packagesHint: "Offer fixed-price services.", packageTitle: "Package title", addPackage: "Add a package"
       },
       discover: {

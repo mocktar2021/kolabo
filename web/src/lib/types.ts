@@ -67,6 +67,10 @@ export type Escrow = {
   status: string;
 };
 
+/* Answers to the two fixed profile questions; the question wording is product
+   copy that lives in i18n, only the answers are stored. */
+export type ProfileFaq = { audience?: string; brands?: string };
+
 export type InfluencerProfile = {
   user_id: string;
   display_name: string | null;
@@ -78,6 +82,7 @@ export type InfluencerProfile = {
   categories: string[];
   rate_card: Record<string, number>;
   follower_count: number | null;
+  faq?: ProfileFaq | null;
   completion_percent: number;
   is_searchable: boolean;
 };

@@ -117,6 +117,15 @@ def get_influencer_profile(db: Session, user_id: str) -> dict:
     return _influencer_out(profile)
 
 
+def _business_out(profile: models.BusinessProfile) -> dict:
+    return {
+        "user_id": profile.user_id,
+        "company_name": profile.company_name,
+        "industry": profile.industry,
+        "description": profile.description,
+    }
+
+
 def upsert_business_profile(db: Session, user_id: str, payload: schemas.BusinessProfileIn) -> dict:
     _require_user(db, user_id)
     profile = db.query(models.BusinessProfile).filter(models.BusinessProfile.user_id == user_id).first()
@@ -128,12 +137,19 @@ def upsert_business_profile(db: Session, user_id: str, payload: schemas.Business
     profile.description = payload.description
     db.commit()
     db.refresh(profile)
-    return {
-        "user_id": profile.user_id,
-        "company_name": profile.company_name,
-        "industry": profile.industry,
-        "description": profile.description,
-    }
+    return _business_out(profile)
+
+
+def get_business_profile(db: Session, user_id: str) -> dict:
+    """Read back a saved business profile, mirroring get_influencer_profile.
+
+    Businesses could write their profile but never read it: the PUT had no
+    matching GET, so the settings form had nothing to prefill.
+    """
+    profile = db.query(models.BusinessProfile).filter(models.BusinessProfile.user_id == user_id).first()
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    return _business_out(profile)
 
 
 def upload_verification_document(db: Session, user_id: str, doc_type: str, filename: str, content: bytes) -> dict:

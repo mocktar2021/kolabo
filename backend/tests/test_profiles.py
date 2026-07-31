@@ -86,6 +86,25 @@ def test_business_profile_upsert(client):
     assert r.json()["company_name"] == "Acme"
 
 
+def test_business_profile_round_trip(client):
+    """PUT then GET returns the same data. The GET is new: the profile used to
+    be write-only, so the settings page always came up blank after a save."""
+    uid = _make_user(client, phone="+22990000012", role="business")
+    saved = client.put(
+        f"/profiles/business/{uid}",
+        json={"company_name": "Acme", "industry": "retail", "description": "Retail brand in Cotonou"},
+    ).json()
+    got = client.get(f"/profiles/business/{uid}")
+    assert got.status_code == 200
+    assert got.json() == saved
+    assert got.json()["description"] == "Retail brand in Cotonou"
+
+
+def test_business_profile_get_without_profile_is_404(client):
+    uid = _make_user(client, phone="+22990000013", role="business")
+    assert client.get(f"/profiles/business/{uid}").status_code == 404
+
+
 def test_verification_document_stored_encrypted_and_pending(client):
     uid = _make_user(client, phone="+22990000003", role="business")
     r = client.post(

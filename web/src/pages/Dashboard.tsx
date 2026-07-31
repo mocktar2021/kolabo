@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
+import type { ReferralInfo } from "../lib/types";
 
 function ActionCard({ to, title, desc }: { to: string; title: string; desc: string }) {
   return (
@@ -14,19 +15,19 @@ function ActionCard({ to, title, desc }: { to: string; title: string; desc: stri
   );
 }
 
-type ReferralInfo = { code: string; referred_count: number };
-
-/* Creator referral card. The code is minted lazily by the backend on first
-   read; the card mirrors ShareModal's copy pattern and pushes WhatsApp first
-   because it is the dominant sharing channel in the pilot markets. */
-function ReferralCard({ token }: { token: string | null }) {
-  const { t } = useTranslation();
+/* Creator referral panel. The code is minted lazily by the backend on first
+   read; the sharing block mirrors ShareModal's copy pattern and pushes
+   WhatsApp first because it is the dominant sharing channel in the pilot
+   markets. */
+function ReferralPanel({ token }: { token: string | null }) {
+  const { t, i18n } = useTranslation();
   const [info, setInfo] = useState<ReferralInfo | null>(null);
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     // Silent failure by design: referrals are a bonus feature, so if the
-    // endpoint errors the card simply never appears. The dashboard must not
+    // endpoint errors the panel simply never appears. The dashboard must not
     // show an error state for it.
     api<ReferralInfo>("/auth/me/referral", { token }).then(setInfo).catch(() => undefined);
   }, [token]);
@@ -48,21 +49,83 @@ function ReferralCard({ token }: { token: string | null }) {
   }
 
   return (
-    <div className="card" style={{ marginTop: 24 }}>
-      <strong style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{t("dash.referralTitle")}</strong>
-      {/* Rewards are a later business decision; this line is a teaser and
-          deliberately promises nothing specific. */}
-      <p className="muted" style={{ margin: "6px 0 14px", fontSize: 14 }}>{t("dash.referralExplain")}</p>
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 700, letterSpacing: "0.08em" }}>{info.code}</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <input className="input" readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
-        <button className="btn btn-ghost" onClick={copy}>{copied ? t("public.copied") : t("public.copy")}</button>
+    <section className="ref-panel">
+      <div className="ref-banner">
+        <div>
+          <h2>{t("dash.referralTitle")}</h2>
+          {/* The rule exactly as the backend applies it: credit is minted on
+              the referred account's first completed order, not at signup.
+              Promising it earlier would be a promise we break every time. */}
+          <p>{t("dash.referralExplain")}</p>
+        </div>
+        {/* The button reveals the sharing affordances rather than replacing
+            them: a raw URL field and a code would otherwise dominate a banner
+            whose job is to explain the offer. */}
+        <button type="button" className="btn ref-share-btn" aria-expanded={shareOpen}
+          onClick={() => setShareOpen((o) => !o)}>
+          {t("dash.referralShare")}
+        </button>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, flexWrap: "wrap" }}>
-        <a className="btn btn-teal" href={waHref} target="_blank" rel="noreferrer">{t("dash.referralWhatsapp")}</a>
-        <span className="muted" style={{ fontSize: 13.5 }}>{t("dash.referralCount", { n: info.referred_count })}</span>
+
+      {shareOpen && (
+        <div className="ref-share">
+          <div className="ref-code">{info.code}</div>
+          <div className="ref-share-row">
+            <input className="input" readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
+            <button className="btn btn-ghost" onClick={copy}>{copied ? t("public.copied") : t("public.copy")}</button>
+            <a className="btn btn-teal" href={waHref} target="_blank" rel="noreferrer">{t("dash.referralWhatsapp")}</a>
+          </div>
+        </div>
+      )}
+
+      <div className="ref-tiles">
+        <div className="ref-tile">
+          <div className="ref-tile-label">{t("dash.referralStatTotal")}</div>
+          <div className="ref-tile-value">{info.referred_count}</div>
+          <div className="ref-tile-sub">
+            {t("dash.referralBreakdown", { c: info.referred_creators, b: info.referred_businesses })}
+          </div>
+        </div>
+        <div className="ref-tile">
+          <div className="ref-tile-label">{t("dash.referralStatCredit")}</div>
+          <div className="ref-tile-value">
+            {info.credit_total} <span className="ref-cur">{info.credit_currency}</span>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {info.referrals.length === 0 ? (
+        <p className="ref-empty muted">{t("dash.referralEmpty")}</p>
+      ) : (
+        <table className="ref-table">
+          <thead>
+            <tr>
+              <th>{t("dash.referralColDate")}</th>
+              <th>{t("dash.referralColType")}</th>
+              <th>{t("dash.referralColStatus")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {info.referrals.map((r, i) => (
+              <tr key={i}>
+                {/* The active language, not the browser's: someone reading the
+                    app in French should not get an en-US date beside it. */}
+                <td>{new Date(r.joined_at).toLocaleDateString(i18n.language)}</td>
+                {/* Agencies buy the way businesses do (isBusinessLike), so both
+                    read as "Marque" rather than exposing a third label the
+                    referrer has no use for. */}
+                <td>{isBusinessLike(r.role) ? t("dash.referralTypeBrand") : t("dash.referralTypeCreator")}</td>
+                <td>
+                  <span className={`ref-chip ${r.status === "ordered" ? "ok" : ""}`}>
+                    {r.status === "ordered" ? t("dash.referralStatusOrdered") : t("dash.referralStatusSignedUp")}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 
@@ -89,8 +152,9 @@ export default function Dashboard() {
           <ActionCard to="/contracts" title={t("dash.contractsTitle")} desc={t("dash.contractsDesc")} />
         </div>
         {/* Influencers only: businesses and agencies (isBusinessLike) buy, they
-            do not recruit fellow creators. */}
-        {role === "influencer" && <ReferralCard token={token} />}
+            do not recruit fellow creators. Full width under the action cards
+            so the panel never competes with them for a grid column. */}
+        {role === "influencer" && <ReferralPanel token={token} />}
       </div>
     </Layout>
   );

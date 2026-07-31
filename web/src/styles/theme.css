@@ -509,3 +509,49 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
   .time-band h2 { font-size: 32px; }
   .close-band h2 { font-size: 27px; }
 }
+
+/* ---- Dashboard: creator referral panel ---- */
+.ref-panel {
+  margin-top: 28px; background: #fff; border: 1px solid var(--line);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  overflow: hidden; padding-bottom: 14px;
+}
+/* Brand teal → indigo. The layout is borrowed from marketplaces that run
+   this band in pink; the colours are ours, because a referral strip is the
+   loudest thing on the dashboard and it should still read as Kolabo. */
+.ref-banner {
+  background: linear-gradient(120deg, var(--teal) 0%, var(--indigo) 100%); color: #fff;
+  padding: 26px 28px; display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.ref-banner h2 { color: #fff; font-size: 22px; margin: 0 0 6px; }
+.ref-banner p { margin: 0; color: rgba(255,255,255,0.9); font-size: 14.5px; max-width: 46em; }
+.ref-share-btn { background: #fff; color: var(--indigo); }
+.ref-share-btn:hover { background: var(--surface); }
+
+.ref-share { padding: 20px 28px 0; }
+.ref-code { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: 0.08em; }
+.ref-share-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.ref-share-row .input { flex: 1; min-width: 220px; }
+
+.ref-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 22px 28px 0; }
+.ref-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 20px; }
+.ref-tile-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.ref-tile-value { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--indigo); line-height: 1.25; }
+.ref-cur { font-size: 16px; font-weight: 600; color: var(--muted); }
+.ref-tile-sub { font-size: 13px; color: var(--muted); }
+
+.ref-empty { padding: 20px 28px 6px; font-size: 14px; margin: 0; }
+.ref-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 14px; }
+.ref-table th {
+  text-align: left; font-size: 12px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 28px 8px; border-bottom: 1px solid var(--line);
+}
+.ref-table td { padding: 12px 28px; border-bottom: 1px solid var(--line); }
+.ref-table tr:last-child td { border-bottom: none; }
+.ref-chip {
+  display: inline-block; font-size: 12.5px; font-weight: 600; border-radius: 999px;
+  padding: 3px 11px; background: var(--surface-2); color: var(--muted);
+}
+/* "A commandé" is the state that pays; it gets the only colour in the table. */
+.ref-chip.ok { background: #e7f6f0; color: var(--teal-600); }

@@ -219,4 +219,3 @@ def test_prompt_forbids_numbers_and_invented_brands():
 def test_has_enough_facts_requires_more_than_a_name():
     assert bio_ai.has_enough_facts({"display_name": "Ama"}) is False
     assert bio_ai.has_enough_facts({"categories": ["food"]}) is True
-}

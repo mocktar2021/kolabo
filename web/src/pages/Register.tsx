@@ -13,6 +13,10 @@ export default function Register() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const initialRole = (params.get("role") as Role) || "influencer";
+  /* Referral attribution is best-effort: the code rides along silently and
+     the backend ignores anything it does not recognise, so a stale or
+     mistyped link never blocks a registration. */
+  const referralCode = params.get("ref");
 
   const [role, setRole] = useState<Role>(ROLES.includes(initialRole) ? initialRole : "influencer");
   const [country, setCountry] = useState("BJ");
@@ -34,7 +38,13 @@ export default function Register() {
     try {
       await api<RegisterResponse>("/auth/register", {
         method: "POST",
-        body: { phone, password, country_code: country, role }
+        body: {
+          phone,
+          password,
+          country_code: country,
+          role,
+          ...(referralCode ? { referral_code: referralCode } : {})
+        }
       });
       localStorage.setItem("kolabo_role", role);
       navigate(`/verify?phone=${encodeURIComponent(phone)}`);
@@ -52,6 +62,7 @@ export default function Register() {
           <div className="auth-head">
             <h1>{t("auth.registerTitle")}</h1>
             <p className="muted">{t("auth.registerSub")}</p>
+            {referralCode && <p className="hint">{t("auth.referredHint")}</p>}
           </div>
           <div className="card">
             {error && <div className="alert alert-error">{error}</div>}

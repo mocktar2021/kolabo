@@ -398,10 +398,25 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
   .pp-rail { position: static; }
 }
 
-/* ---- Landing: trusted-by stat grid ---- */
-.tb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 48px; max-width: 620px; margin: 0 auto; text-align: center; }
-.tb-value { font-family: var(--font-display); font-size: 34px; font-weight: 700; color: var(--indigo); line-height: 1.1; }
-.tb-label { color: var(--muted); font-size: 14px; margin-top: 4px; }
+/* ---- Landing: trusted-by stat grid ----
+   The band states four numbers and then admits they are examples, so it has
+   to carry itself: whispering placeholder figures in small grey type reads
+   as an apology. Cards, room to breathe, and numbers big enough to be the
+   point of the section. */
+.tb-band { padding: 64px 0; }
+.tb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; max-width: 860px; margin: 0 auto; text-align: center; }
+.tb-cell {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: 36px 26px;
+}
+/* clamp() rather than a font-size breakpoint: the number grows with the
+   viewport instead of jumping once, so it is never larger than the card
+   holding it. Floor 2.5rem on a narrow phone, ceiling 4rem on a wide desk. */
+.tb-value {
+  font-family: var(--font-display); font-weight: 700; color: var(--indigo);
+  font-size: clamp(2.5rem, 1.4rem + 3.2vw, 4rem); line-height: 1.05; letter-spacing: -0.02em;
+}
+.tb-label { color: var(--muted); font-size: 15.5px; margin-top: 8px; }
 
 /* ---- Landing: workflow tabs ("Tout en un seul flux") ---- */
 .wf-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
@@ -412,6 +427,21 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
 }
 .wf-tab:hover { border-color: var(--indigo-600); color: var(--ink); }
 .wf-tab.active { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+/* Progress hint under the active pill while the panel is still rotating on
+   its own. Purely decorative: the class moves to a different button on every
+   tick, and a fresh element starts a fresh animation, so React never has to
+   reset or re-key anything to make it restart. The 5s here mirrors
+   WF_ROTATE_MS in Landing.tsx. */
+.wf-tab-timing { position: relative; overflow: hidden; }
+.wf-tab-timing::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: rgba(255, 255, 255, 0.55); transform-origin: left center;
+  animation: wf-tab-progress 5s linear forwards;
+}
+@keyframes wf-tab-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
 .wf-panel { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 36px; align-items: center; border-radius: var(--radius-lg); padding: 34px 38px; }
 .wf-panel h3 { font-size: 21px; margin-bottom: 8px; }
 .wf-desc { color: var(--muted); font-size: 15px; margin: 0 0 16px; }
@@ -464,17 +494,41 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
 .tools-band { background: #eef2fd; }
 .tools-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 40px; align-items: center; }
 .tool-tiles { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; align-items: center; }
-/* Text-only tiles by design: no third-party logos (trademark caution). */
+/* Drawn glyphs, never third-party logos (trademark caution, and the tiles
+   name habits — a WhatsApp thread, cash, paper — not products).
+   The resting tilt, offset and scale live in custom properties because a
+   keyframe transform replaces the static one outright: without them the
+   float would flatten every tile back to square as soon as it started. */
 .tool-tile {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 7px; min-width: 106px;
   font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--muted);
   background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  padding: 12px 18px; box-shadow: var(--shadow-sm);
+  padding: 14px 18px; box-shadow: var(--shadow-sm);
+  --tilt: 0deg; --lift: 0px; --scale: 1;
+  transform: rotate(var(--tilt)) translateY(var(--lift)) scale(var(--scale));
+  animation: tool-float 5s ease-in-out infinite;
 }
-.tool-tile:nth-child(odd) { transform: rotate(-3deg); }
-.tool-tile:nth-child(even) { transform: rotate(2deg) translateY(6px); }
+.tool-tile svg { color: var(--indigo-600); }
+.tool-tile-label { display: block; }
+.tool-tile:nth-child(odd) { --tilt: -3deg; }
+.tool-tile:nth-child(even) { --tilt: 2deg; --lift: 6px; }
+/* Negative, staggered delays: the tiles are already spread across the cycle
+   on first paint instead of rising and falling as one block. */
+.tool-tile:nth-child(1) { animation-delay: -0.2s; }
+.tool-tile:nth-child(2) { animation-delay: -0.9s; }
+.tool-tile:nth-child(3) { animation-delay: -1.6s; }
+.tool-tile:nth-child(4) { animation-delay: -2.3s; }
+.tool-tile:nth-child(5) { animation-delay: -3s; }
+.tool-tile:nth-child(6) { animation-delay: -3.7s; }
+.tool-tile:nth-child(7) { animation-delay: -4.4s; }
 .tool-tile.tool-hub {
-  transform: rotate(-2deg) scale(1.1); background: var(--indigo); color: #fff;
+  --tilt: -2deg; --lift: 0px; --scale: 1.1;
+  background: var(--indigo); color: #fff;
   border-color: var(--indigo); box-shadow: var(--shadow-lg); font-size: 16px;
+}
+@keyframes tool-float {
+  0%, 100% { transform: rotate(var(--tilt)) translateY(var(--lift)) scale(var(--scale)); }
+  50% { transform: rotate(var(--tilt)) translateY(calc(var(--lift) - 7px)) scale(var(--scale)); }
 }
 
 /* ---- Landing: time band ---- */
@@ -503,9 +557,68 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
   background: rgba(255,255,255,0.06); border-radius: 999px; padding: 7px 14px;
 }
 
+/* Ambient motion is decoration, not information: the drifting tool tiles and
+   the tab progress bar carry nothing the page does not already say, so they
+   go away entirely for anyone who asked the system for less movement. The
+   auto-advance itself is stopped in Landing.tsx, which reads the same
+   preference — CSS alone cannot hold back a JS timer. */
+@media (prefers-reduced-motion: reduce) {
+  .tool-tile { animation: none; }
+  .wf-tab-timing::after { animation: none; display: none; }
+}
+
 @media (max-width: 860px) {
+  .tb-band { padding: 44px 0; }
+  .tb-grid { gap: 16px; }
+  .tb-cell { padding: 24px 14px; }
   .wf-panel { grid-template-columns: 1fr; padding: 24px; }
   .tools-grid { grid-template-columns: 1fr; gap: 28px; }
   .time-band h2 { font-size: 32px; }
   .close-band h2 { font-size: 27px; }
 }
+
+/* ---- Dashboard: creator referral panel ---- */
+.ref-panel {
+  margin-top: 28px; background: #fff; border: 1px solid var(--line);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  overflow: hidden; padding-bottom: 14px;
+}
+/* Brand teal → indigo. The layout is borrowed from marketplaces that run
+   this band in pink; the colours are ours, because a referral strip is the
+   loudest thing on the dashboard and it should still read as Kolabo. */
+.ref-banner {
+  background: linear-gradient(120deg, var(--teal) 0%, var(--indigo) 100%); color: #fff;
+  padding: 26px 28px; display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap;
+}
+.ref-banner h2 { color: #fff; font-size: 22px; margin: 0 0 6px; }
+.ref-banner p { margin: 0; color: rgba(255,255,255,0.9); font-size: 14.5px; max-width: 46em; }
+.ref-share-btn { background: #fff; color: var(--indigo); }
+.ref-share-btn:hover { background: var(--surface); }
+
+.ref-share { padding: 20px 28px 0; }
+.ref-code { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: 0.08em; }
+.ref-share-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.ref-share-row .input { flex: 1; min-width: 220px; }
+
+.ref-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 22px 28px 0; }
+.ref-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 20px; }
+.ref-tile-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.ref-tile-value { font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--indigo); line-height: 1.25; }
+.ref-cur { font-size: 16px; font-weight: 600; color: var(--muted); }
+.ref-tile-sub { font-size: 13px; color: var(--muted); }
+
+.ref-empty { padding: 20px 28px 6px; font-size: 14px; margin: 0; }
+.ref-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 14px; }
+.ref-table th {
+  text-align: left; font-size: 12px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.05em; padding: 0 28px 8px; border-bottom: 1px solid var(--line);
+}
+.ref-table td { padding: 12px 28px; border-bottom: 1px solid var(--line); }
+.ref-table tr:last-child td { border-bottom: none; }
+.ref-chip {
+  display: inline-block; font-size: 12.5px; font-weight: 600; border-radius: 999px;
+  padding: 3px 11px; background: var(--surface-2); color: var(--muted);
+}
+/* "A commandé" is the state that pays; it gets the only colour in the table. */
+.ref-chip.ok { background: #e7f6f0; color: var(--teal-600); }

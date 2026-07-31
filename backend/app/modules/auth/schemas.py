@@ -1,4 +1,6 @@
 """Request and response schemas for the auth module."""
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 ROLES = {"influencer", "business", "agency"}
@@ -46,9 +48,28 @@ class DeleteAccountRequest(BaseModel):
     password: str
 
 
+class ReferralEntry(BaseModel):
+    joined_at: datetime
+    role: str
+    # "signed_up" until their first order completes, "ordered" afterwards.
+    # Only the second one pays, so the screen has to distinguish them: a wall
+    # of signups that never ordered is exactly what this reward does not buy.
+    status: str
+
+
 class ReferralOut(BaseModel):
     code: str
     referred_count: int
+    # One code brings in both audiences, so the counts are split: "3 people
+    # joined" does not tell a creator whether they are recruiting peers or
+    # bringing in the businesses that will pay them.
+    referred_creators: int
+    referred_businesses: int
+    # Platform credit earned, in the owner's own market currency. The currency
+    # is None only while that market has no configured credit value.
+    credit_total: int
+    credit_currency: str | None
+    referrals: list[ReferralEntry] = Field(default_factory=list)
 
 
 class PasswordResetRequest(BaseModel):

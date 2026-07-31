@@ -15,6 +15,104 @@ import type { SearchResult } from "../lib/types";
    seeded and searchable, the section simply stays hidden. */
 const MIN_FEATURED_CREATORS = 4;
 
+/* How many workflow tabs the rotation cycles through. Kept as a constant
+   rather than read off the tab array, which is rebuilt on every render (and
+   swapped wholesale on a language change): the timer only needs to know how
+   far to count, so it should not depend on a value that changes identity. */
+const WF_TAB_COUNT = 6;
+
+/* How long each workflow tab stays up. The progress hint on the active pill
+   mirrors this duration in CSS (.wf-tab-timing::after in theme.css); if one
+   moves, the other has to move with it. */
+const WF_ROTATE_MS = 5000;
+
+/* Shared attributes for the tool glyphs below: currentColor everywhere so a
+   tile's own colour drives the drawing, and aria-hidden because the label
+   right underneath already says what the glyph means. */
+const GLYPH_PROPS = {
+  width: 30,
+  height: 30,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.6,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": "true"
+} as const;
+
+/* The six tools Kolabo replaces, each with a small hand-drawn glyph.
+   Deliberately generic shapes rather than the real logos: what is being
+   replaced here are habits — a WhatsApp thread, cash handed over, a contract
+   printed and signed — more than SaaS products, so a plain chat bubble says
+   it better than a brand mark would. Copying those marks would also carry
+   trademark exposure for nothing in return. */
+const TOOL_TILES = [
+  {
+    key: "toolsT1",
+    /* Chat bubble. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <path d="M4 6.5h16v10h-10l-4 3.5v-3.5H4Z" />
+        <path d="M8 10h8M8 13.2h5" />
+      </svg>
+    )
+  },
+  {
+    key: "toolsT2",
+    /* Spreadsheet grid. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+        <path d="M3.5 9.5h17M3.5 14.5h17M9.2 4.5v15M14.8 4.5v15" />
+      </svg>
+    )
+  },
+  {
+    key: "toolsT3",
+    /* Banknote. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <rect x="2.5" y="6.5" width="19" height="11" rx="2" />
+        <circle cx="12" cy="12" r="2.6" />
+        <path d="M6 10.2v3.6M18 10.2v3.6" />
+      </svg>
+    )
+  },
+  {
+    key: "toolsT4",
+    /* Paper document with a folded corner and written lines. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <path d="M6 3.5h7.6L18.5 8.4V20.5H6Z" />
+        <path d="M13.6 3.5v4.9h4.9" />
+        <path d="M9 9.2h2.5M9 12.5h6.5M9 15.8h6.5" />
+      </svg>
+    )
+  },
+  {
+    key: "toolsT5",
+    /* Envelope. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+        <path d="m3.4 7.2 8.6 6.1 8.6-6.1" />
+      </svg>
+    )
+  },
+  {
+    key: "toolsT6",
+    /* Notebook with a pencil beside it. */
+    glyph: (
+      <svg {...GLYPH_PROPS}>
+        <path d="M7 4h8v16H7z" />
+        <path d="M4.5 6.6h2.5M4.5 10h2.5M4.5 13.4h2.5M4.5 16.8h2.5" />
+        <path d="m16.4 18.6 3.9-4.4-1.7-1.5-3.9 4.4-.5 2z" />
+      </svg>
+    )
+  }
+];
+
 export default function Landing() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -22,6 +120,8 @@ export default function Landing() {
   const [q, setQ] = useState("");
   const [featured, setFeatured] = useState<SearchResult[]>([]);
   const [wfActive, setWfActive] = useState(0);
+  /* True until the visitor clicks a workflow tab; see selectWfTab below. */
+  const [wfAuto, setWfAuto] = useState(true);
 
   useEffect(() => {
     // Silent failure by design: if discovery is down the list stays empty and
@@ -29,6 +129,29 @@ export default function Landing() {
     // show an error state for an optional proof section.
     api<SearchResult[]>("/discovery/search?limit=8").then(setFeatured).catch(() => undefined);
   }, []);
+
+  /* The workflow section walks through its six tabs on its own, so a visitor
+     who never clicks still sees that the flow does not stop at discovery.
+     Two guards on that:
+     - prefers-reduced-motion: a panel that swaps its own contents is exactly
+       the unrequested movement that setting asks us to stop, and it can be
+       genuinely disorienting, so the timer never starts at all.
+     - wfAuto: the first click hands control over for good, so we do not
+       fight the visitor for the panel. */
+  useEffect(() => {
+    if (!wfAuto) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setWfActive((i) => (i + 1) % WF_TAB_COUNT), WF_ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [wfAuto]);
+
+  /* A click selects the tab and permanently stops the rotation: once the
+     visitor has taken control, yanking the panel away from them five seconds
+     into their reading is hostile. There is no path back to auto. */
+  function selectWfTab(i: number) {
+    setWfActive(i);
+    setWfAuto(false);
+  }
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -57,7 +180,7 @@ export default function Landing() {
 
   /* Workflow tabs: one per shipped product area, nothing aspirational. The
      copy lives in marketingStrings.ts; the tab label doubles as the panel
-     title. */
+     title. Six entries, matching WF_TAB_COUNT above. */
   const wfTabs = [
     { tab: t("landing.wf1Tab"), d: t("landing.wf1D"), chips: [t("landing.wf1C1"), t("landing.wf1C2"), t("landing.wf1C3")] },
     { tab: t("landing.wf2Tab"), d: t("landing.wf2D"), chips: [t("landing.wf2C1"), t("landing.wf2C2"), t("landing.wf2C3")] },
@@ -199,17 +322,17 @@ export default function Landing() {
       )}
 
       {/* PLACEHOLDER metrics — replace with real numbers before public launch */}
-      <section className="container section-tight">
-        <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 13.5, marginBottom: 18 }}>{t("landing.trustedBy")}</p>
+      <section className="container section-tight tb-band">
+        <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 13.5, marginBottom: 26 }}>{t("landing.trustedBy")}</p>
         <div className="tb-grid">
           {trustStats.map((s) => (
-            <div key={s.l}>
+            <div key={s.l} className="tb-cell">
               <div className="tb-value">{s.v}</div>
               <div className="tb-label">{s.l}</div>
             </div>
           ))}
         </div>
-        <p className="hint" style={{ textAlign: "center", marginTop: 14 }}>{t("landing.trustedByNote")}</p>
+        <p className="hint" style={{ textAlign: "center", marginTop: 18 }}>{t("landing.trustedByNote")}</p>
       </section>
 
       <section className="section" style={{ background: "var(--surface)" }}>
@@ -231,6 +354,10 @@ export default function Landing() {
       <section className="container section">
         <h2>{t("landing.wfTitle")}</h2>
         <p className="section-sub">{t("landing.wfSub")}</p>
+        {/* wf-tab-timing draws the progress hint on the active pill while the
+            rotation is still running. The class moving to a different button
+            on every tick is what restarts the CSS animation, so React never
+            has to reset it by hand. */}
         <div className="wf-tabs" role="tablist">
           {wfTabs.map((w, i) => (
             <button
@@ -238,8 +365,8 @@ export default function Landing() {
               type="button"
               role="tab"
               aria-selected={i === wfActive}
-              className={`wf-tab ${i === wfActive ? "active" : ""}`}
-              onClick={() => setWfActive(i)}
+              className={`wf-tab${i === wfActive ? " active" : ""}${i === wfActive && wfAuto ? " wf-tab-timing" : ""}`}
+              onClick={() => selectWfTab(i)}
             >
               {w.tab}
             </button>
@@ -259,8 +386,11 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Text-only tool tiles: naming the everyday tools Kolabo replaces is
-          fine, imitating their trademarked logos is not — so plain labels. */}
+      {/* Tool tiles: deliberately generic glyphs rather than third-party
+          logos. The tools being replaced here are habits (WhatsApp, cash,
+          paper) more than SaaS products, so a drawn chat bubble or banknote
+          carries the meaning just as well — and copying brand marks would
+          carry trademark exposure for no gain. Shapes live in TOOL_TILES. */}
       <section className="section tools-band">
         <div className="container tools-grid">
           <div>
@@ -268,8 +398,11 @@ export default function Landing() {
             <p className="section-sub" style={{ marginBottom: 0 }}>{t("landing.toolsBody")}</p>
           </div>
           <div className="tool-tiles" aria-hidden="true">
-            {["toolsT1", "toolsT2", "toolsT3", "toolsT4", "toolsT5", "toolsT6"].map((k) => (
-              <span key={k} className="tool-tile">{t(`landing.${k}`)}</span>
+            {TOOL_TILES.map((tile) => (
+              <span key={tile.key} className="tool-tile">
+                {tile.glyph}
+                <span className="tool-tile-label">{t(`landing.${tile.key}`)}</span>
+              </span>
             ))}
             <span className="tool-tile tool-hub">{t("landing.toolsHub")}</span>
           </div>

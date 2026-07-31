@@ -1,4 +1,6 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import type { ReactNode } from "react";
+import { getStoredRole, isBusinessLike } from "./lib/auth";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -16,6 +18,18 @@ import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
 
+/* Campaigns are a brand-side artifact. The API answers 403 ("Only businesses
+   and agencies can create campaigns.") to a creator, so hiding the create
+   button is not enough — a bookmark or a typed URL would still land on a form
+   whose only possible outcome is an error. A creator's equivalent of a
+   campaign is a package on their profile, so they go back to the dashboard.
+   Agencies buy like businesses do, hence isBusinessLike rather than a
+   comparison against "business". */
+function BrandOnly({ children }: { children: ReactNode }) {
+  if (!isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -29,7 +43,7 @@ export default function App() {
         <Route path="/profile" element={<ProfileSetup />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/campaigns" element={<CampaignList />} />
-        <Route path="/campaigns/new" element={<CampaignNew />} />
+        <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/invitations" element={<MyInvitations />} />
         <Route path="/contracts" element={<ContractsList />} />

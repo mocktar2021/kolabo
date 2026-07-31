@@ -5,17 +5,19 @@ import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
-import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
+import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
+import { minPrice } from "../lib/pricing";
 import type { InfluencerProfile, Package } from "../lib/types";
 
 type Social = { id: string; platform: string; handle: string; status: string; enriched?: boolean };
 type MediaOut = { id: string; url: string };
 type Status = {
   has_bio: boolean; has_categories: boolean; has_pricing: boolean;
-  has_packages: boolean; has_social: boolean; is_live: boolean;
+  has_packages: boolean; has_social: boolean; has_birth_date: boolean;
+  active_package_count: number; is_live: boolean;
 };
 
 function Steps({ step }: { step: number }) {
@@ -92,6 +94,11 @@ export default function Onboarding() {
   // save; see joinLocation/splitLocation in lib/countries.
   const [locCountry, setLocCountry] = useState("");
   const [locCity, setLocCity] = useState("");
+  const [cityOther, setCityOther] = useState(false);
+  // The go-live gate requires a birth date, so it is the one identity field
+  // asked here. Gender and languages live in profile setup: onboarding stays
+  // deliberately lean.
+  const [birthDate, setBirthDate] = useState("");
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [followers, setFollowers] = useState("");
@@ -112,6 +119,7 @@ export default function Onboarding() {
         const loc = splitLocation(p.location);
         setLocCity(loc.city);
         setLocCountry(loc.country);
+        setBirthDate(p.birth_date ?? "");
         setBio(p.bio ?? "");
         setCategories(p.categories ?? []);
         setFollowers(p.follower_count ? String(p.follower_count) : "");
@@ -131,6 +139,16 @@ export default function Onboarding() {
 
   useEffect(loadAll, [loadAll]);
 
+  // Sell only where the creator exists: the default ("instagram") may not be
+  // connected, so snap the package platform to the first allowed option.
+  useEffect(() => {
+    setPkg((f) => {
+      if (f.platform === "ugc" || socials.some((s) => s.platform === f.platform)) return f;
+      const first = SELLABLE_PLATFORMS.find((p) => p.id === "ugc" || socials.some((s) => s.platform === p.id));
+      return first ? { ...f, platform: first.id, deliverable_type: deliverablesFor(first.id)[0] || "" } : f;
+    });
+  }, [socials]);
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   async function addHandle(handle: string) {
@@ -149,6 +167,11 @@ export default function Onboarding() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function removeSocial(id: string) {
+    await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token }).catch(() => undefined);
+    loadAll();
   }
 
   async function onAvatar(e: ChangeEvent<HTMLInputElement>) {
@@ -178,6 +201,8 @@ export default function Onboarding() {
           display_name: displayName || null, headline: headline || null,
           location: joinLocation(locCity, locCountry),
           avatar_media_id: avatarMediaId,
+          // The API enforces 18+; its 400 message lands in the banner above.
+          birth_date: birthDate || null,
           bio: bio || null, categories, rate_card: {},
           follower_count: followers ? Number(followers) : null
         }
@@ -196,6 +221,8 @@ export default function Onboarding() {
     setBusy(true);
     setError(null);
     try {
+      // The backend re-checks the price floor and answers 400 if the form
+      // check is ever bypassed; that message lands in the error banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST", token,
         body: {
@@ -212,8 +239,19 @@ export default function Onboarding() {
     }
   }
 
-  const connected = new Set(socials.map((s) => s.platform));
   const publicUrl = userId ? `${window.location.origin}/u/${userId}` : "";
+
+  const cityList = CITIES[locCountry] ?? [];
+  // The droplist covers major cities only. "Other…" flips back to free text so
+  // an unusual or missing city never blocks saving, and a saved city outside
+  // the list also renders as free text instead of being silently dropped.
+  const cityIsFree = cityList.length === 0 || cityOther || (locCity !== "" && !cityList.includes(locCity));
+
+  // Sell only where the creator exists. UGC is always offered because it is
+  // delivered to the brand, never posted on the creator's own account.
+  const pkgPlatformOptions = SELLABLE_PLATFORMS.filter((p) => p.id === "ugc" || socials.some((s) => s.platform === p.id));
+  const pkgFloor = minPrice(pkg.currency);
+  const pkgBelowFloor = pkg.price !== "" && Number(pkg.price) < pkgFloor;
 
   return (
     <Layout>
@@ -230,14 +268,25 @@ export default function Onboarding() {
               <span className="label">{t("onb.addSocials")}</span>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>
                 {SOCIAL_PLATFORMS.map((p) => {
-                  const isOn = connected.has(p.id);
+                  const account = socials.find((s) => s.platform === p.id);
                   return (
-                    <button key={p.id} type="button" className="btn btn-ghost"
-                      style={{ flexDirection: "column", padding: "18px 10px", borderColor: isOn ? "var(--teal)" : undefined, background: isOn ? "#e7f7f5" : undefined }}
-                      onClick={() => !isOn && setModal({ id: p.id, label: p.label, prefix: p.prefix })}>
-                      <span style={{ fontWeight: 600 }}>{p.label}</span>
-                      {isOn && <span style={{ fontSize: 11.5, color: "var(--teal-600)" }}>{t("onb.added")}</span>}
-                    </button>
+                    <div key={p.id} style={{ position: "relative" }}>
+                      <button type="button" className="btn btn-ghost"
+                        style={{ width: "100%", flexDirection: "column", padding: "18px 10px", borderColor: account ? "var(--teal)" : undefined, background: account ? "#e7f7f5" : undefined }}
+                        onClick={() => !account && setModal({ id: p.id, label: p.label, prefix: p.prefix })}>
+                        <span style={{ fontWeight: 600 }}>{p.label}</span>
+                        {account && <span style={{ fontSize: 11.5, color: "var(--teal-600)" }}>{t("onb.added")}</span>}
+                      </button>
+                      {/* The ✕ sits outside the tile button: nesting buttons is
+                          invalid HTML and breaks keyboard focus. */}
+                      {account && (
+                        <button type="button" aria-label={t("onb.removeSocial")} title={t("onb.removeSocial")}
+                          onClick={() => removeSocial(account.id)}
+                          style={{ position: "absolute", top: -7, right: -7, width: 20, height: 20, borderRadius: 999, border: "none", background: "var(--ink)", color: "#fff", cursor: "pointer", fontSize: 11, lineHeight: 1 }}>
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -265,12 +314,30 @@ export default function Onboarding() {
               <div className="field">
                 <span className="label">{t("profile.location")}</span>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <select className="select" aria-label={t("profile.locationCountry")} value={locCountry} onChange={(e) => setLocCountry(e.target.value)}>
+                  <select className="select" aria-label={t("profile.locationCountry")} value={locCountry}
+                    onChange={(e) => { setLocCountry(e.target.value); setCityOther(false); }}>
                     <option value="">{t("profile.locationCountry")}</option>
                     {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                   </select>
-                  <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                  {cityIsFree ? (
+                    <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                  ) : (
+                    <select className="select" aria-label={t("profile.locationCity")} value={locCity}
+                      onChange={(e) => {
+                        if (e.target.value === "__other__") { setCityOther(true); setLocCity(""); }
+                        else setLocCity(e.target.value);
+                      }}>
+                      <option value="">{t("profile.locationCity")}</option>
+                      {cityList.map((c) => <option key={c} value={c}>{c}</option>)}
+                      <option value="__other__">{t("profile.cityOther")}</option>
+                    </select>
+                  )}
                 </div>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="o-bd">{t("profile.birthDate")}</label>
+                <input id="o-bd" type="date" className="input" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                <div className="hint">{t("profile.birthDateHint")}</div>
               </div>
               <div className="field">
                 <label className="label" htmlFor="o-bio">{t("profile.bio")}</label>
@@ -293,7 +360,9 @@ export default function Onboarding() {
                   ))}
                 </div>
               </div>
-              <button className="btn btn-primary btn-lg" disabled={busy || !bio || categories.length === 0} onClick={saveProfile}>
+              {/* birthDate gates Continue because the go-live check requires it;
+                  finding that out only at step 3 would send the creator back. */}
+              <button className="btn btn-primary btn-lg" disabled={busy || !bio || categories.length === 0 || !birthDate} onClick={saveProfile}>
                 {busy ? t("auth.working") : t("onb.continue")}
               </button>
             </div>
@@ -327,12 +396,15 @@ export default function Onboarding() {
                     // The old deliverable may not exist on the new platform, so reset it.
                     setPkg({ ...pkg, platform, deliverable_type: deliverablesFor(platform)[0] || "" });
                   }}>
-                  {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  {pkgPlatformOptions.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
                 <select className="select" value={pkg.deliverable_type} onChange={(e) => setPkg({ ...pkg, deliverable_type: e.target.value })}>
                   {deliverablesFor(pkg.platform).map((d) => <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>)}
                 </select>
               </div>
+              {socials.length === 0 && (
+                <div className="hint">{t("profile.connectSocialHint")}</div>
+              )}
               <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")}
                 value={pkg.title} onChange={(e) => setPkg({ ...pkg, title: e.target.value })} />
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginTop: 8 }}>
@@ -342,14 +414,24 @@ export default function Onboarding() {
                   {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              <button className="btn btn-ghost" style={{ marginTop: 10 }} disabled={busy || !pkg.title || !pkg.price} onClick={addPackage}>
+              {pkgFloor > 0 && (
+                <div className="hint" style={{ color: pkgBelowFloor ? "var(--danger)" : undefined }}>
+                  {t("profile.minPrice", { n: pkgFloor, currency: pkg.currency })}
+                </div>
+              )}
+              <button className="btn btn-ghost" style={{ marginTop: 10 }} disabled={busy || !pkg.title || !pkg.price || pkgBelowFloor} onClick={addPackage}>
                 + {t("profile.addPackage")}
               </button>
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            {/* Three active packages gate go-live. The local list length is used
+                rather than active_package_count from onboarding-status: it
+                updates instantly after each add and new packages are always
+                active; the server re-checks at go-live anyway. */}
+            <p className="muted" style={{ fontSize: 13.5, marginTop: 14 }}>{t("onb.pkgProgress", { n: packages.length })}</p>
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
               <button className="btn btn-ghost" onClick={() => setStep(1)}>{t("onb.back")}</button>
-              <button className="btn btn-primary btn-lg" disabled={packages.length === 0} onClick={() => setStep(3)}>
+              <button className="btn btn-primary btn-lg" disabled={packages.length < 3} onClick={() => setStep(3)}>
                 {t("onb.continue")}
               </button>
             </div>
@@ -365,6 +447,7 @@ export default function Onboarding() {
               {[
                 { ok: status?.has_bio, label: t("onb.checkBio") },
                 { ok: status?.has_categories, label: t("onb.checkCategories") },
+                { ok: status?.has_birth_date, label: t("onb.checkBirthDate") },
                 { ok: status?.has_pricing, label: t("onb.checkPricing") },
                 { ok: status?.has_social, label: t("onb.checkSocial") }
               ].map((row) => (

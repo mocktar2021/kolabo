@@ -526,6 +526,65 @@ def test_package_update_requires_ownership(client):
     assert r.status_code == 403
 
 
+def test_package_quantity_and_duration_round_trip(client):
+    """The Collabstr-style chips: ×10 and 30 Seconds come back exactly as
+    saved, on the create response and on the list."""
+    uid = _make_user(client, phone="+22990000050")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "10 IG Reels",
+        "price_amount": 250000, "currency": "XOF",
+        "quantity": 10, "duration_value": 30, "duration_unit": "seconds",
+    })
+    assert r.status_code == 201, r.text
+    pkg = r.json()
+    assert pkg["quantity"] == 10
+    assert pkg["duration_value"] == 30
+    assert pkg["duration_unit"] == "seconds"
+    listed = client.get(f"/profiles/{uid}/packages").json()
+    assert (listed[0]["quantity"], listed[0]["duration_value"], listed[0]["duration_unit"]) == (10, 30, "seconds")
+
+
+def test_package_duration_value_without_unit_rejected(client):
+    """The duration is a pair or nothing: "30" of nothing is not a spec."""
+    uid = _make_user(client, phone="+22990000051")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "1 IG Reel",
+        "price_amount": 50000, "currency": "XOF", "duration_value": 30,
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "duration_value and duration_unit go together."
+    # The mirror case: a unit with no value is just as meaningless.
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "1 IG Reel",
+        "price_amount": 50000, "currency": "XOF", "duration_unit": "seconds",
+    })
+    assert r.status_code == 400
+
+
+def test_package_bad_duration_unit_rejected(client):
+    """The unit is a closed set (seconds/minutes/hours) so the spec chips
+    render from data, never from free text."""
+    uid = _make_user(client, phone="+22990000052")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "reel", "title": "1 IG Reel",
+        "price_amount": 50000, "currency": "XOF",
+        "duration_value": 2, "duration_unit": "fortnights",
+    })
+    assert r.status_code == 422
+
+
+def test_package_default_quantity_is_one(client):
+    """A package that says nothing about quantity is a single deliverable,
+    which is what every package sold before the field existed was."""
+    uid = _make_user(client, phone="+22990000053")
+    pkg = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 30000, "currency": "XOF",
+    }).json()
+    assert pkg["quantity"] == 1
+    assert pkg["duration_value"] is None and pkg["duration_unit"] is None
+
+
 def test_portfolio_add_and_remove(client):
     uid = _make_user(client)
     media_id = client.post(f"/profiles/{uid}/media", files={"file": ("a.png", PNG_BYTES, "image/png")}).json()["id"]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
@@ -18,6 +18,13 @@ type Status = {
   has_bio: boolean; has_categories: boolean; has_pricing: boolean;
   has_packages: boolean; has_social: boolean; has_birth_date: boolean;
   active_package_count: number; is_live: boolean;
+};
+
+/* Small neutral chips for quantity (×3) and duration (30 s) on package rows;
+   the same shape is used in profile setup. */
+const pkgChipStyle: CSSProperties = {
+  fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+  background: "var(--surface-2)", color: "var(--muted)", whiteSpace: "nowrap"
 };
 
 function Steps({ step }: { step: number }) {
@@ -108,7 +115,7 @@ export default function Onboarding() {
 
   // Packages
   const [packages, setPackages] = useState<Package[]>([]);
-  const [pkg, setPkg] = useState({ platform: "instagram", deliverable_type: "post", title: "", price: "", currency: "XOF" });
+  const [pkg, setPkg] = useState({ platform: "instagram", deliverable_type: "post", title: "", price: "", currency: "XOF", description: "", quantity: "1", durationValue: "", durationUnit: "" });
 
   const loadProfile = useCallback(() => {
     if (!userId) return;
@@ -217,20 +224,25 @@ export default function Onboarding() {
   }
 
   async function addPackage() {
-    if (!userId || !pkg.title || !pkg.price) return;
+    if (!userId || !pkg.title || !pkg.price || pkgQtyInvalid || pkgDurationMismatch) return;
     setBusy(true);
     setError(null);
     try {
-      // The backend re-checks the price floor and answers 400 if the form
-      // check is ever bypassed; that message lands in the error banner above.
+      // The backend re-checks the price floor and the duration pairing and
+      // answers 400/422 if the form checks are ever bypassed; that message
+      // lands in the error banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST", token,
         body: {
           platform: pkg.platform, deliverable_type: pkg.deliverable_type, title: pkg.title,
+          description: pkg.description || null,
+          quantity: Number(pkg.quantity) || 1,
+          duration_value: pkg.durationValue ? Number(pkg.durationValue) : null,
+          duration_unit: pkg.durationUnit || null,
           price_amount: Number(pkg.price), currency: pkg.currency
         }
       });
-      setPkg({ ...pkg, title: "", price: "" });
+      setPkg({ ...pkg, title: "", price: "", description: "", quantity: "1", durationValue: "", durationUnit: "" });
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -252,6 +264,11 @@ export default function Onboarding() {
   const pkgPlatformOptions = SELLABLE_PLATFORMS.filter((p) => p.id === "ugc" || socials.some((s) => s.platform === p.id));
   const pkgFloor = minPrice(pkg.currency);
   const pkgBelowFloor = pkg.price !== "" && Number(pkg.price) < pkgFloor;
+  const pkgQtyNum = Number(pkg.quantity);
+  const pkgQtyInvalid = !Number.isInteger(pkgQtyNum) || pkgQtyNum < 1 || pkgQtyNum > 100;
+  // Mirror of the server rule: a duration value and its unit travel together
+  // or not at all. Checking here keeps the error inline instead of a 422.
+  const pkgDurationMismatch = (pkg.durationValue !== "") !== (pkg.durationUnit !== "");
 
   return (
     <Layout>
@@ -382,6 +399,14 @@ export default function Onboarding() {
                       <div>
                         <strong style={{ fontSize: 14 }}>{p.title}</strong>
                         <div className="muted" style={{ fontSize: 12 }}>{p.platform} - {t(`deliverable.${p.deliverable_type}`, p.deliverable_type)}</div>
+                        {((p.quantity ?? 1) > 1 || (p.duration_value != null && p.duration_unit)) && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                            {(p.quantity ?? 1) > 1 && <span style={pkgChipStyle}>{t("pkg.qty", { n: p.quantity })}</span>}
+                            {p.duration_value != null && p.duration_unit && (
+                              <span style={pkgChipStyle}>{t(`pkg.duration_${p.duration_unit}`, { n: p.duration_value })}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <strong>{p.price_amount} {p.currency}</strong>
                     </div>
@@ -407,6 +432,8 @@ export default function Onboarding() {
               )}
               <input className="input" style={{ marginTop: 8 }} placeholder={t("profile.packageTitle")}
                 value={pkg.title} onChange={(e) => setPkg({ ...pkg, title: e.target.value })} />
+              <textarea className="input" style={{ marginTop: 8 }} rows={2} maxLength={2000} placeholder={t("profile.description")}
+                value={pkg.description} onChange={(e) => setPkg({ ...pkg, description: e.target.value })} />
               <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginTop: 8 }}>
                 <input className="input" inputMode="numeric" placeholder="50000" value={pkg.price}
                   onChange={(e) => setPkg({ ...pkg, price: e.target.value.replace(/\D/g, "") })} />
@@ -419,7 +446,33 @@ export default function Onboarding() {
                   {t("profile.minPrice", { n: pkgFloor, currency: pkg.currency })}
                 </div>
               )}
-              <button className="btn btn-ghost" style={{ marginTop: 10 }} disabled={busy || !pkg.title || !pkg.price || pkgBelowFloor} onClick={addPackage}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, marginTop: 8 }}>
+                <div>
+                  <span className="label">{t("profile.packageQuantity")}</span>
+                  <input className="input" type="number" min={1} max={100} aria-label={t("profile.packageQuantity")}
+                    value={pkg.quantity} onChange={(e) => setPkg({ ...pkg, quantity: e.target.value })} />
+                </div>
+                <div>
+                  <span className="label">{t("profile.packageDuration")}</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <input className="input" inputMode="numeric" placeholder="30" aria-label={t("profile.packageDuration")}
+                      value={pkg.durationValue} onChange={(e) => setPkg({ ...pkg, durationValue: e.target.value.replace(/\D/g, "") })} />
+                    <select className="select" aria-label={t("profile.packageDuration")} value={pkg.durationUnit}
+                      onChange={(e) => setPkg({ ...pkg, durationUnit: e.target.value })}>
+                      <option value="">—</option>
+                      <option value="seconds">{t("profile.durationUnitSeconds")}</option>
+                      <option value="minutes">{t("profile.durationUnitMinutes")}</option>
+                      <option value="hours">{t("profile.durationUnitHours")}</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              {pkgDurationMismatch && (
+                <div className="hint" style={{ color: "var(--danger)" }}>{t("profile.durationTogether")}</div>
+              )}
+              <button className="btn btn-ghost" style={{ marginTop: 10 }}
+                disabled={busy || !pkg.title || !pkg.price || pkgBelowFloor || pkgQtyInvalid || pkgDurationMismatch}
+                onClick={addPackage}>
                 + {t("profile.addPackage")}
               </button>
             </div>

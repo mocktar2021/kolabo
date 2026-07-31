@@ -99,6 +99,12 @@ export type Package = {
   deliverable_type: string;
   title: string;
   description: string | null;
+  /* How many units the buyer gets (e.g. 3 stories). Defaults to 1. */
+  quantity: number;
+  /* Optional content length. Value and unit travel together or are both
+     null; the server enforces the pairing. */
+  duration_value: number | null;
+  duration_unit: "seconds" | "minutes" | "hours" | null;
   price_amount: number;
   currency: string;
   is_active: boolean;

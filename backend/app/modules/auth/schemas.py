@@ -29,6 +29,18 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    # The stored role rides along with every token grant. The frontend picks
+    # the home experience (creator vs business vs agency) from this value;
+    # while it was absent, a re-login had nothing to restore the role from —
+    # which is how an agency account came back as a creator.
+    role: str
+
+
+class DeleteAccountRequest(BaseModel):
+    # Deleting an account must cost more than a stolen session token: the
+    # bearer token says who is asking, but only the current password proves
+    # it is really them.
+    password: str
 
 
 class PasswordResetRequest(BaseModel):

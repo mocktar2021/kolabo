@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.auth import schemas, service
+from app.modules.auth.deps import get_current_user_id
 
 router = APIRouter()
 
@@ -28,6 +29,22 @@ def verify_otp(payload: schemas.VerifyOtpRequest, db: Session = Depends(get_db))
 def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     """Log in a verified account."""
     return service.login(db, payload)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    payload: schemas.DeleteAccountRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Delete the caller's own account.
+
+    The bearer token identifies the account, but the current password is
+    required in the body: destroying an account must cost more than a stolen
+    session token. Hard delete happens only while the account has no contract
+    or escrow history; otherwise 409 and support closes it instead.
+    """
+    service.delete_account(db, user_id, payload)
 
 
 @router.post(

@@ -11,6 +11,7 @@ import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
+type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
 
 function PortfolioSection({ userId, token }: { userId: string; token: string | null }) {
   const { t } = useTranslation();
@@ -169,7 +170,12 @@ export default function ProfileSetup() {
   const { t } = useTranslation();
   const { userId, token, isAuthenticated } = useAuth();
   const stored = (localStorage.getItem("kolabo_role") as Kind) || "influencer";
-  const [kind, setKind] = useState<Kind>(stored === "business" ? "business" : "influencer");
+  /* The account role decides which profile exists on the backend, so the
+     stored role is read once and only that form renders. The old
+     influencer/business toggle let a creator flip to the business form (and
+     vice versa), which could only produce a profile the rest of the app
+     ignores. The state variable stays so the rest of the file is untouched. */
+  const [kind] = useState<Kind>(stored === "business" ? "business" : "influencer");
 
   // Influencer fields
   const [displayName, setDisplayName] = useState("");
@@ -212,6 +218,25 @@ export default function ProfileSetup() {
         }
       });
   }, [userId]);
+
+  // Load the existing business profile to prefill the form. The GET endpoint
+  // arrived with this branch; before it, saving worked but every visit came up
+  // blank. A 404 just means "no profile yet" and is ignored, mirroring the
+  // influencer prefill above.
+  useEffect(() => {
+    if (!userId || kind !== "business") return;
+    api<BusinessProfileOut>(`/profiles/business/${userId}`)
+      .then((p) => {
+        setCompany(p.company_name ?? "");
+        setIndustry(p.industry ?? "");
+        setDescription(p.description ?? "");
+      })
+      .catch((err) => {
+        if (!(err instanceof ApiError && err.status === 404)) {
+          setError(err instanceof Error ? err.message : "Error");
+        }
+      });
+  }, [userId, kind]);
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
@@ -279,15 +304,6 @@ export default function ProfileSetup() {
           )}
         </div>
         <p className="muted">{t("profile.sub")}</p>
-
-        <div className="segment" style={{ margin: "8px 0 22px" }}>
-          {(["influencer", "business"] as Kind[]).map((k) => (
-            <div key={k} className={`segment-option ${kind === k ? "selected" : ""}`} onClick={() => setKind(k)}
-              role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setKind(k); }}>
-              <div className="t">{k === "influencer" ? t("profile.asCreator") : t("profile.asBusiness")}</div>
-            </div>
-          ))}
-        </div>
 
         <div className="card">
           {error && <div className="alert alert-error">{error}</div>}

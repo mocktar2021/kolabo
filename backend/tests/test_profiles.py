@@ -53,6 +53,19 @@ def _make_user(client, phone="+22990000001", role="influencer"):
         db.close()
 
 
+def _add_packages(client, uid, n=3):
+    """Enough active packages to satisfy the storefront requirement, at
+    floor-respecting prices."""
+    types = ["post", "reel", "story"]
+    for i in range(n):
+        r = client.post(f"/profiles/{uid}/packages", json={
+            "platform": "instagram", "deliverable_type": types[i % len(types)],
+            "title": f"IG {types[i % len(types)]} #{i + 1}",
+            "price_amount": 30000, "currency": "XOF",
+        })
+        assert r.status_code == 201, r.text
+
+
 ADMIN = {"X-Admin-Id": "admin-1"}
 
 
@@ -64,14 +77,20 @@ def test_influencer_profile_completion_and_searchable(client):
     body = r.json()
     assert body["completion_percent"] == 33
     assert body["is_searchable"] is False
-    # Complete profile is searchable at 100 percent.
+    # Bio and categories are 2 of 3. The legacy rate card no longer counts as
+    # pricing (nothing on it can be ordered), so the profile stays unsearchable.
     r = client.put(
         f"/profiles/influencer/{uid}",
         json={"bio": "Creator", "categories": ["fashion"], "rate_card": {"post": 100}},
     )
     body = r.json()
-    assert body["completion_percent"] == 100
-    assert body["is_searchable"] is True
+    assert body["completion_percent"] == 67
+    assert body["is_searchable"] is False
+    # Three active packages complete the storefront.
+    _add_packages(client, uid)
+    got = client.get(f"/profiles/influencer/{uid}").json()
+    assert got["completion_percent"] == 100
+    assert got["is_searchable"] is True
 
 
 def test_influencer_profile_requires_existing_user(client):
@@ -139,6 +158,87 @@ def test_manual_social_requires_proof(client):
     uid = _make_user(client, phone="+22990000005")
     r = client.post(f"/profiles/{uid}/social-accounts", json={"platform": "tiktok", "handle": "me", "method": "manual"})
     assert r.status_code == 400
+
+
+def test_social_account_edit_round_trips_and_resets_verification(client):
+    """Editing the handle of a verified account must send it back to pending:
+    the badge was earned by the old handle, not whatever it now points at."""
+    uid = _make_user(client, phone="+22990000030")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "instagram", "handle": "old_handle", "method": "oauth",
+    }).json()
+    assert acc["status"] == "verified"
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"handle": "new_handle"})
+    assert r.status_code == 200
+    assert r.json()["handle"] == "new_handle"
+    assert r.json()["status"] == "pending"
+    listed = client.get(f"/profiles/{uid}/social-accounts").json()
+    assert listed[0]["handle"] == "new_handle"
+    assert listed[0]["status"] == "pending"
+
+
+def test_social_account_edit_without_handle_change_keeps_verification(client):
+    """Updating the follower count is not pointing at a different account, so
+    the verified badge survives."""
+    uid = _make_user(client, phone="+22990000031")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "instagram", "handle": "ama", "method": "oauth",
+    }).json()
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"follower_count": 9000})
+    assert r.status_code == 200
+    assert r.json()["status"] == "verified"
+    assert r.json()["follower_count"] == 9000
+
+
+def test_social_account_edit_discards_unverifiable_follower_count(client):
+    """Same rule as connect: WhatsApp exposes no public metric, so an edited
+    count is dropped rather than displayed."""
+    uid = _make_user(client, phone="+22990000036")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "whatsapp", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"follower_count": 5000})
+    assert r.status_code == 200
+    assert r.json()["follower_count"] is None
+
+
+def test_social_account_edit_requires_ownership(client):
+    a = _make_user(client, phone="+22990000032")
+    b = _make_user(client, phone="+22990000033")
+    acc = client.post(f"/profiles/{a}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    assert client.put(f"/profiles/{b}/social-accounts/{acc['id']}", json={"handle": "stolen"}).status_code == 403
+    assert client.delete(f"/profiles/{b}/social-accounts/{acc['id']}").status_code == 403
+    assert client.put(f"/profiles/{a}/social-accounts/missing", json={"handle": "x"}).status_code == 404
+
+
+def test_social_account_delete_removes_it_from_the_list(client):
+    uid = _make_user(client, phone="+22990000034")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual", "proof_url": "https://p",
+    }).json()
+    assert client.delete(f"/profiles/{uid}/social-accounts/{acc['id']}").status_code == 204
+    assert client.get(f"/profiles/{uid}/social-accounts").json() == []
+
+
+def test_public_profile_shows_pending_accounts_with_status(client):
+    """During the pilot every manual connection is pending (OAuth verification
+    has not shipped), so a verified-only filter emptied the audience section
+    for everyone. The page now shows every connected account with its status
+    and the frontend badges the verified ones."""
+    uid = _make_user(client, phone="+22990000035")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
+    })
+    client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual",
+        "proof_url": "https://p", "follower_count": 4200,
+    })
+    pub = client.get(f"/profiles/influencer/{uid}/public").json()
+    assert len(pub["social_accounts"]) == 1
+    assert pub["social_accounts"][0]["status"] == "pending"
+    assert pub["social_accounts"][0]["follower_count"] == 4200
 
 
 def test_admin_queue_requires_admin_header(client):
@@ -371,6 +471,45 @@ def test_package_crud(client):
     # Delete
     assert client.delete(f"/profiles/{uid}/packages/{pkg['id']}").status_code == 204
     assert client.get(f"/profiles/{uid}/packages").json() == []
+
+
+def test_package_below_the_currency_floor_is_rejected(client):
+    """Floors are a spam defence: a 1000 XOF "listing" is noise, not an offer.
+    The check runs on the normalized currency, so lowercase xof hits it too."""
+    uid = _make_user(client, phone="+22990000040")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "Too cheap",
+        "price_amount": 1000, "currency": "xof",
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Minimum price for XOF is 5000."
+
+
+def test_package_update_cannot_dip_below_the_floor(client):
+    uid = _make_user(client, phone="+22990000041")
+    pkg = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 30000, "currency": "XOF",
+    }).json()
+    r = client.put(f"/profiles/{uid}/packages/{pkg['id']}", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 4999, "currency": "XOF",
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Minimum price for XOF is 5000."
+    # The stored price is untouched by the rejected update.
+    assert client.get(f"/profiles/{uid}/packages").json()[0]["price_amount"] == 30000
+
+
+def test_unknown_currency_has_no_floor(client):
+    """Floors fight spam listings; they do not validate currencies. An unknown
+    currency passes, so a new market can be piloted without a deploy."""
+    uid = _make_user(client, phone="+22990000042")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "USD listing",
+        "price_amount": 5, "currency": "USD",
+    })
+    assert r.status_code == 201
 
 
 def test_package_update_requires_ownership(client):

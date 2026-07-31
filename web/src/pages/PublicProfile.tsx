@@ -62,6 +62,15 @@ export default function PublicProfilePage() {
   const price = (p: Package) => `${p.price_amount.toLocaleString(locale)} ${p.currency}`;
   const platformLabel = (id: string) => PLATFORM_LABELS[id] ?? id;
 
+  /* Verified accounts get a quiet checkmark; pending ones simply show none:
+     the absence of the checkmark is the signal. A loud "unverified" label
+     would punish every pilot creator while OAuth verification does not exist
+     yet. */
+  const verifiedMark = (status: string) =>
+    status === "verified" ? (
+      <span title={t("public.verifiedAccount")} style={{ color: "var(--success)", marginRight: 4 }}>✓</span>
+    ) : null;
+
   const toggleDesc = (id: string) =>
     setExpandedDesc((prev) => {
       const next = new Set(prev);
@@ -125,6 +134,7 @@ export default function PublicProfilePage() {
                 <div className="pp-chips">
                   {profile.social_accounts.map((a) => (
                     <span key={a.id} className="pp-chip">
+                      {verifiedMark(a.status)}
                       {platformLabel(a.platform)}
                       {a.follower_count !== null && ` · ${compact.format(a.follower_count)}`}
                     </span>
@@ -187,7 +197,8 @@ export default function PublicProfilePage() {
 
               {/* Real, connected data only: no self-reported demographics. A
                   buyer must never see a figure the platform cannot back, per
-                  product decision. */}
+                  product decision. Pending accounts appear too, without the
+                  checkmark. */}
               {audienceAccounts.length > 0 && (
                 <section className="pp-section" id="analytics">
                   <h2>{t("public.audienceTitle")}</h2>
@@ -195,6 +206,7 @@ export default function PublicProfilePage() {
                     {audienceAccounts.map((a) => (
                       <button key={a.id} type="button" className={`pp-tab${audienceAccount?.id === a.id ? " active" : ""}`}
                         aria-pressed={audienceAccount?.id === a.id} onClick={() => setAudienceTab(a.id)}>
+                        {a.status === "verified" && <span title={t("public.verifiedAccount")} style={{ marginRight: 4 }}>✓</span>}
                         {platformLabel(a.platform)}
                       </button>
                     ))}

@@ -16,17 +16,23 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.platforms import SOCIAL_PLATFORMS
+from app.core.pricing import MIN_LIVE_PACKAGES
 from app.modules.auth.models import User
 from app.modules.discovery.models import Favorite
 from app.modules.profiles import models as profiles
 from app.modules.trust_safety import models as trust_safety
 
 
-def _is_searchable(p: profiles.InfluencerProfile, has_package: bool) -> bool:
+def _is_searchable(p: profiles.InfluencerProfile, active_package_count: int) -> bool:
     """A profile is discoverable once it says who it is, what it covers, and
-    what it costs. A published package counts as pricing, so a creator using
-    packages does not also have to fill the legacy rate card."""
-    return bool(p.bio) and bool(p.categories) and (bool(p.rate_card) or has_package)
+    has a real storefront: at least MIN_LIVE_PACKAGES active packages, the
+    same bar profiles.onboarding_status sets for going live. Searchable and
+    live must not diverge, or a profile the wizard calls live could be
+    invisible in search. (Going live additionally requires a birth date; that
+    only tightens "live", so every live profile is still searchable.) A bio in
+    either language counts, exactly as it does for onboarding."""
+    has_bio = bool(p.bio_fr or p.bio_en or p.bio)
+    return has_bio and bool(p.categories) and active_package_count >= MIN_LIVE_PACKAGES
 
 
 def _starting_prices(db: Session) -> dict:
@@ -42,6 +48,18 @@ def _starting_prices(db: Session) -> dict:
         if user_id not in out:
             out[user_id] = (amount, currency)
     return out
+
+
+def _active_package_counts(db: Session) -> dict:
+    """Active packages per creator, as {user_id: count}. Feeds the searchable
+    check, which needs the count and not just the cheapest price."""
+    rows = (
+        db.query(profiles.Package.user_id, func.count(profiles.Package.id))
+        .filter(profiles.Package.is_active.is_(True))
+        .group_by(profiles.Package.user_id)
+        .all()
+    )
+    return {user_id: int(count) for user_id, count in rows}
 
 
 def _rating_summary(db: Session) -> dict:
@@ -125,6 +143,7 @@ def search_influencers(
         .all()
     )
     prices = _starting_prices(db)
+    package_counts = _active_package_counts(db)
     ratings = _rating_summary(db)
     socials = _socials_by_user(db)
     covers = _cover_by_user(db)
@@ -132,7 +151,7 @@ def search_influencers(
 
     matched = []
     for prof, user in rows:
-        if not _is_searchable(prof, prof.user_id in prices):
+        if not _is_searchable(prof, package_counts.get(prof.user_id, 0)):
             continue
         if country and user.country_code != country:
             continue

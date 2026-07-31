@@ -554,11 +554,16 @@ export default function ProfileSetup() {
   return (
     <Layout>
       <div className="container page" style={{ maxWidth: 640 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ margin: 0 }}>{t("profile.title")}</h1>
-          {kind === "influencer" && userId && (
-            <Link className="btn btn-ghost" to={`/u/${userId}`}>{t("profile.viewPublic")}</Link>
-          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            {/* Profile setup is a leaf page: both roles get an explicit way
+                back into the app next to the public-page link. */}
+            <Link className="btn btn-ghost" to="/dashboard">{t("nav.dashboard")}</Link>
+            {kind === "influencer" && userId && (
+              <Link className="btn btn-ghost" to={`/u/${userId}`}>{t("profile.viewPublic")}</Link>
+            )}
+          </div>
         </div>
         <p className="muted">{t("profile.sub")}</p>
 

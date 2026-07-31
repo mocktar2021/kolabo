@@ -53,6 +53,19 @@ def _make_user(client, phone="+22990000001", role="influencer"):
         db.close()
 
 
+def _add_packages(client, uid, n=3):
+    """Enough active packages to satisfy the storefront requirement, at
+    floor-respecting prices."""
+    types = ["post", "reel", "story"]
+    for i in range(n):
+        r = client.post(f"/profiles/{uid}/packages", json={
+            "platform": "instagram", "deliverable_type": types[i % len(types)],
+            "title": f"IG {types[i % len(types)]} #{i + 1}",
+            "price_amount": 30000, "currency": "XOF",
+        })
+        assert r.status_code == 201, r.text
+
+
 ADMIN = {"X-Admin-Id": "admin-1"}
 
 
@@ -64,14 +77,20 @@ def test_influencer_profile_completion_and_searchable(client):
     body = r.json()
     assert body["completion_percent"] == 33
     assert body["is_searchable"] is False
-    # Complete profile is searchable at 100 percent.
+    # Bio and categories are 2 of 3. The legacy rate card no longer counts as
+    # pricing (nothing on it can be ordered), so the profile stays unsearchable.
     r = client.put(
         f"/profiles/influencer/{uid}",
         json={"bio": "Creator", "categories": ["fashion"], "rate_card": {"post": 100}},
     )
     body = r.json()
-    assert body["completion_percent"] == 100
-    assert body["is_searchable"] is True
+    assert body["completion_percent"] == 67
+    assert body["is_searchable"] is False
+    # Three active packages complete the storefront.
+    _add_packages(client, uid)
+    got = client.get(f"/profiles/influencer/{uid}").json()
+    assert got["completion_percent"] == 100
+    assert got["is_searchable"] is True
 
 
 def test_influencer_profile_requires_existing_user(client):
@@ -452,6 +471,45 @@ def test_package_crud(client):
     # Delete
     assert client.delete(f"/profiles/{uid}/packages/{pkg['id']}").status_code == 204
     assert client.get(f"/profiles/{uid}/packages").json() == []
+
+
+def test_package_below_the_currency_floor_is_rejected(client):
+    """Floors are a spam defence: a 1000 XOF "listing" is noise, not an offer.
+    The check runs on the normalized currency, so lowercase xof hits it too."""
+    uid = _make_user(client, phone="+22990000040")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "Too cheap",
+        "price_amount": 1000, "currency": "xof",
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Minimum price for XOF is 5000."
+
+
+def test_package_update_cannot_dip_below_the_floor(client):
+    uid = _make_user(client, phone="+22990000041")
+    pkg = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 30000, "currency": "XOF",
+    }).json()
+    r = client.put(f"/profiles/{uid}/packages/{pkg['id']}", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
+        "price_amount": 4999, "currency": "XOF",
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Minimum price for XOF is 5000."
+    # The stored price is untouched by the rejected update.
+    assert client.get(f"/profiles/{uid}/packages").json()[0]["price_amount"] == 30000
+
+
+def test_unknown_currency_has_no_floor(client):
+    """Floors fight spam listings; they do not validate currencies. An unknown
+    currency passes, so a new market can be piloted without a deploy."""
+    uid = _make_user(client, phone="+22990000042")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "instagram", "deliverable_type": "post", "title": "USD listing",
+        "price_amount": 5, "currency": "USD",
+    })
+    assert r.status_code == 201
 
 
 def test_package_update_requires_ownership(client):

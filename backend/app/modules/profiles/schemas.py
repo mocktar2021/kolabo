@@ -117,6 +117,8 @@ class OnboardingStatusOut(BaseModel):
     has_social: bool
     # The 18+ gate: a profile without a date of birth cannot go live.
     has_birth_date: bool
+    # Progress toward MIN_LIVE_PACKAGES, so the wizard can say "1 of 3".
+    active_package_count: int
     is_live: bool
 
 

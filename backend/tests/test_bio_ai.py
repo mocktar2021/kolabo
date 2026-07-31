@@ -84,6 +84,18 @@ def _profile(client, uid, categories=("food",), **extra):
     assert r.status_code == 200, r.text
 
 
+def _add_packages(client, uid, n=3):
+    """Enough active packages for searchability, at floor-respecting prices."""
+    types = ["post", "reel", "story"]
+    for i in range(n):
+        r = client.post(f"/profiles/{uid}/packages", json={
+            "platform": "instagram", "deliverable_type": types[i % len(types)],
+            "title": f"IG {types[i % len(types)]} #{i + 1}",
+            "price_amount": 30000, "currency": "XOF",
+        })
+        assert r.status_code == 201, r.text
+
+
 def test_generated_bio_is_a_draft_and_is_not_saved(client):
     service.bio_generator = StubGenerator()
     uid = _user(client)
@@ -187,7 +199,10 @@ def test_public_profile_falls_back_to_the_other_language(client):
 
 def test_either_language_completes_the_profile(client):
     uid = _user(client, "+22990000910")
-    _profile(client, uid, rate_card={"post": 1}, bio_en="Hello")
+    _profile(client, uid, bio_en="Hello")
+    # Searchable now also takes the package storefront; the bio in a single
+    # language must still count as "has a bio".
+    _add_packages(client, uid)
 
     assert client.get(f"/profiles/influencer/{uid}").json()["is_searchable"] is True
 
@@ -204,3 +219,4 @@ def test_prompt_forbids_numbers_and_invented_brands():
 def test_has_enough_facts_requires_more_than_a_name():
     assert bio_ai.has_enough_facts({"display_name": "Ama"}) is False
     assert bio_ai.has_enough_facts({"categories": ["food"]}) is True
+}

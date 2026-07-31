@@ -17,10 +17,15 @@ from app.core.config import settings
 from app.core.country_config import COUNTRY_CONFIG, default_language
 from app.core.crypto import encrypt_bytes
 from app.core.platforms import PLATFORM_DELIVERABLES, PLATFORMS_WITH_AUDIENCE, is_valid_pair
+from app.core.pricing import MIN_LIVE_PACKAGES, min_price
 from app.modules.auth.models import User
 from app.modules.profiles import bio_ai, enrichment, models, schemas
 
-INFLUENCER_REQUIRED = ("bio", "categories", "rate_card")
+# What a complete profile needs: a bio, categories, and a storefront of
+# packages (MIN_LIVE_PACKAGES active ones). The legacy rate card no longer
+# counts as pricing — product decision: a free-text rate card cannot be
+# ordered, so it kept profiles "complete" with nothing a buyer could buy.
+INFLUENCER_REQUIRED = ("bio", "categories", "packages")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -81,13 +86,23 @@ def _media_url(media_id: str | None) -> str | None:
     return f"/profiles/media/{media_id}" if media_id else None
 
 
-def _influencer_completion(profile: models.InfluencerProfile) -> tuple[int, bool]:
+def _active_package_count(db: Session, user_id: str) -> int:
+    return (
+        db.query(models.Package)
+        .filter(models.Package.user_id == user_id, models.Package.is_active.is_(True))
+        .count()
+    )
+
+
+def _influencer_completion(profile: models.InfluencerProfile, active_package_count: int) -> tuple[int, bool]:
     present = 0
     if _any_bio(profile):
         present += 1
     if profile.categories:
         present += 1
-    if profile.rate_card:
+    # Pricing means a storefront: MIN_LIVE_PACKAGES active packages. The
+    # legacy rate card no longer counts — see INFLUENCER_REQUIRED.
+    if active_package_count >= MIN_LIVE_PACKAGES:
         present += 1
     total = len(INFLUENCER_REQUIRED)
     percent = round(present / total * 100)
@@ -95,8 +110,8 @@ def _influencer_completion(profile: models.InfluencerProfile) -> tuple[int, bool
     return percent, is_searchable
 
 
-def _influencer_out(profile: models.InfluencerProfile) -> dict:
-    percent, is_searchable = _influencer_completion(profile)
+def _influencer_out(db: Session, profile: models.InfluencerProfile) -> dict:
+    percent, is_searchable = _influencer_completion(profile, _active_package_count(db, profile.user_id))
     return {
         "user_id": profile.user_id,
         "display_name": profile.display_name,
@@ -147,14 +162,14 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
         setattr(profile, field, value)
     db.commit()
     db.refresh(profile)
-    return _influencer_out(profile)
+    return _influencer_out(db, profile)
 
 
 def get_influencer_profile(db: Session, user_id: str) -> dict:
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-    return _influencer_out(profile)
+    return _influencer_out(db, profile)
 
 
 def _business_out(profile: models.BusinessProfile) -> dict:
@@ -419,15 +434,15 @@ def delete_social_account(db: Session, user_id: str, account_id: str) -> None:
 def onboarding_status(db: Session, user_id: str) -> dict:
     """What the creator still needs before the profile can go live."""
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
-    has_packages = (
-        db.query(models.Package)
-        .filter(models.Package.user_id == user_id, models.Package.is_active.is_(True))
-        .count()
-        > 0
-    )
+    active_packages = _active_package_count(db, user_id)
     has_bio = bool(profile and _any_bio(profile))
     has_categories = bool(profile and profile.categories)
-    has_pricing = bool(profile and profile.rate_card) or has_packages
+    # Pricing now means a storefront: at least MIN_LIVE_PACKAGES active
+    # packages. Product decision — the legacy rate card no longer suffices,
+    # because a free-text rate card cannot be ordered; it kept profiles "live"
+    # with nothing a buyer could actually buy. No grandfathering: a profile
+    # that was live on rate card alone drops back until it adds packages.
+    has_pricing = active_packages >= MIN_LIVE_PACKAGES
     # Going live requires the 18+ gate to have been passed: the birth date is
     # private data, but its presence is a hard prerequisite.
     has_birth_date = bool(profile and profile.birth_date)
@@ -435,9 +450,10 @@ def onboarding_status(db: Session, user_id: str) -> dict:
         "has_bio": has_bio,
         "has_categories": has_categories,
         "has_pricing": has_pricing,
-        "has_packages": has_packages,
+        "has_packages": active_packages > 0,
         "has_social": len(list_social_accounts(db, user_id)) > 0,
         "has_birth_date": has_birth_date,
+        "active_package_count": active_packages,
         "is_live": has_bio and has_categories and has_pricing and has_birth_date,
     }
 
@@ -496,9 +512,25 @@ def _validate_pair(platform: str, deliverable_type: str) -> None:
         )
 
 
+def _validate_price_floor(price_amount: int, currency: str) -> None:
+    """Reject prices below the per-currency floor (spam defence).
+
+    `currency` must already be uppercased; unknown currencies have no floor
+    and pass — see app.core.pricing.min_price.
+    """
+    floor = min_price(currency)
+    if floor is not None and price_amount < floor:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Minimum price for {currency} is {floor}.",
+        )
+
+
 def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dict:
     _require_user(db, user_id)
     _validate_pair(payload.platform, payload.deliverable_type)
+    currency = payload.currency.upper()
+    _validate_price_floor(payload.price_amount, currency)
     pkg = models.Package(
         user_id=user_id,
         platform=payload.platform,
@@ -506,7 +538,7 @@ def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dic
         title=payload.title,
         description=payload.description,
         price_amount=payload.price_amount,
-        currency=payload.currency.upper(),
+        currency=currency,
         is_active=payload.is_active,
     )
     db.add(pkg)
@@ -522,12 +554,14 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
     if pkg.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
     _validate_pair(payload.platform, payload.deliverable_type)
+    currency = payload.currency.upper()
+    _validate_price_floor(payload.price_amount, currency)
     pkg.platform = payload.platform
     pkg.deliverable_type = payload.deliverable_type
     pkg.title = payload.title
     pkg.description = payload.description
     pkg.price_amount = payload.price_amount
-    pkg.currency = payload.currency.upper()
+    pkg.currency = currency
     pkg.is_active = payload.is_active
     db.commit()
     db.refresh(pkg)
@@ -647,7 +681,7 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         "categories": profile.categories,
         "languages": profile.languages or [],
         "follower_count": profile.follower_count,
-        "is_searchable": _influencer_completion(profile)[1],
+        "is_searchable": _influencer_completion(profile, _active_package_count(db, user_id))[1],
         # Only the answers the creator wrote: an empty answer is an unanswered
         # question, and the page simply does not show it.
         "faq": {key: answer for key, answer in (profile.faq or {}).items() if answer},

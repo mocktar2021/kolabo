@@ -81,18 +81,27 @@ def test_onboarding_status_tracks_readiness(client):
     s0 = client.get(f"/profiles/{uid}/onboarding-status").json()
     assert s0["is_live"] is False and s0["has_social"] is False
     assert s0["has_birth_date"] is False
+    assert s0["active_package_count"] == 0
 
     client.put(f"/profiles/influencer/{uid}", json={
-        "bio": "Hi", "categories": ["fashion"], "rate_card": {},
+        "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
         "birth_date": "1995-05-14",
     })
     s1 = client.get(f"/profiles/{uid}/onboarding-status").json()
     assert s1["has_bio"] and s1["has_categories"] and s1["has_birth_date"]
+    # A filled rate card is no longer pricing: nothing on it can be ordered.
     assert s1["has_pricing"] is False and s1["is_live"] is False
 
-    client.post(f"/profiles/{uid}/packages", json={
-        "platform": "instagram", "deliverable_type": "post", "title": "1 IG Post",
-        "price_amount": 30000, "currency": "XOF",
-    })
+    # Going live takes three active packages; the count ticks up package by
+    # package so the wizard can show "1 of 3".
+    for i, deliverable in enumerate(("post", "reel", "story")):
+        client.post(f"/profiles/{uid}/packages", json={
+            "platform": "instagram", "deliverable_type": deliverable,
+            "title": f"1 IG {deliverable}", "price_amount": 30000, "currency": "XOF",
+        })
+        s = client.get(f"/profiles/{uid}/onboarding-status").json()
+        assert s["active_package_count"] == i + 1
+        assert s["has_pricing"] is (i + 1 >= 3)
+
     s2 = client.get(f"/profiles/{uid}/onboarding-status").json()
     assert s2["has_packages"] and s2["has_pricing"] and s2["is_live"] is True

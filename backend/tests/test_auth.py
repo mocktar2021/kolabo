@@ -23,6 +23,10 @@ def client():
         future=True,
     )
     testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    # Account deletion touches models from most modules (contracts, escrows,
+    # profiles, ...), so every table has to exist, not just auth's.
+    from app.core.db import import_all_models
+    import_all_models()
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():
@@ -58,6 +62,27 @@ def _latest_code(client, phone=PHONE):
             .first()
         )
         return challenge.code
+    finally:
+        db.close()
+
+
+def _verified_token(client, phone=PHONE, role="influencer"):
+    """Register, verify, and log in; returns a real bearer token."""
+    _register(client, phone=phone, role=role)
+    code = _latest_code(client, phone=phone)
+    client.post("/auth/verify-otp", json={"phone": phone, "code": code})
+    resp = client.post("/auth/login", json={"phone": phone, "password": PASSWORD})
+    return resp.json()["access_token"]
+
+
+def _auth_headers(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _user_id(client, phone=PHONE):
+    db = client.session_factory()
+    try:
+        return db.query(models.User).filter(models.User.phone == phone).first().id
     finally:
         db.close()
 
@@ -106,6 +131,22 @@ def test_verify_then_login_returns_token(client):
     assert resp.json()["access_token"]
 
 
+def test_login_returns_stored_role_for_agency(client):
+    """Regression for the Agence bug: an agency signed up, logged out, logged
+    back in, and the app treated the account as a creator. The backend
+    accepted and stored the "agency" role all along, but the token response
+    never said which role the account had, so a fresh login had nothing to
+    restore it from. Both token grants must echo the stored role."""
+    _register(client, role="agency")
+    code = _latest_code(client)
+    verify = client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
+    assert verify.status_code == 200
+    assert verify.json()["role"] == "agency"
+    login = client.post("/auth/login", json={"phone": PHONE, "password": PASSWORD})
+    assert login.status_code == 200
+    assert login.json()["role"] == "agency"
+
+
 def test_wrong_otp_rejected(client):
     _register(client)
     resp = client.post("/auth/verify-otp", json={"phone": PHONE, "code": "000000"})
@@ -117,6 +158,68 @@ def test_duplicate_verified_phone_blocked(client):
     code = _latest_code(client)
     client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
     assert _register(client).status_code == 409
+
+
+def test_delete_account_with_wrong_password_403(client):
+    """A bearer token is not enough to destroy an account: a stolen session
+    must not be able to erase someone's livelihood."""
+    token = _verified_token(client)
+    r = client.request("DELETE", "/auth/me", json={"password": "not-the-password"}, headers=_auth_headers(token))
+    assert r.status_code == 403
+    db = client.session_factory()
+    try:
+        assert db.query(models.User).filter(models.User.phone == PHONE).first() is not None
+    finally:
+        db.close()
+
+
+def test_delete_account_removes_user_and_dependents(client):
+    token = _verified_token(client)
+    user_id = _user_id(client)
+    from app.modules.profiles.models import Package, SocialAccount
+    db = client.session_factory()
+    try:
+        db.add(SocialAccount(user_id=user_id, platform="instagram", handle="ama", method="oauth"))
+        db.add(Package(user_id=user_id, platform="instagram", deliverable_type="post",
+                       title="1 IG Post", price_amount=30000, currency="XOF"))
+        db.commit()
+    finally:
+        db.close()
+    r = client.request("DELETE", "/auth/me", json={"password": PASSWORD}, headers=_auth_headers(token))
+    assert r.status_code == 204
+    db = client.session_factory()
+    try:
+        assert db.query(models.User).filter(models.User.id == user_id).first() is None
+        # Spot-check the children: the account leaves nothing behind.
+        assert db.query(SocialAccount).filter(SocialAccount.user_id == user_id).first() is None
+        assert db.query(Package).filter(Package.user_id == user_id).first() is None
+    finally:
+        db.close()
+
+
+def test_delete_account_with_contract_history_409(client):
+    """Once a contract exists the account cannot self-delete: counterparties
+    keep their contract and review history, and money trails are never
+    erased. Support closes such accounts instead."""
+    token = _verified_token(client)
+    user_id = _user_id(client)
+    from app.modules.contracts.models import Contract
+    db = client.session_factory()
+    try:
+        db.add(Contract(campaign_id="c-1", proposal_id="p-1", business_user_id="someone-else",
+                        influencer_user_id=user_id, language="fr", body="terms",
+                        rate_amount=50000, rate_currency="XOF", timeline_days=7))
+        db.commit()
+    finally:
+        db.close()
+    r = client.request("DELETE", "/auth/me", json={"password": PASSWORD}, headers=_auth_headers(token))
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Account has transaction history; contact support to close it."
+    db = client.session_factory()
+    try:
+        assert db.query(models.User).filter(models.User.id == user_id).first() is not None
+    finally:
+        db.close()
 
 
 def test_password_reset_rate_limited_to_three_per_hour(client):

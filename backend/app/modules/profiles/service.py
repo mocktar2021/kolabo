@@ -492,6 +492,9 @@ def _package_out(p: models.Package) -> dict:
         "description": p.description,
         "price_amount": p.price_amount,
         "currency": p.currency,
+        "quantity": p.quantity,
+        "duration_value": p.duration_value,
+        "duration_unit": p.duration_unit,
         "is_active": p.is_active,
     }
 
@@ -526,10 +529,25 @@ def _validate_price_floor(price_amount: int, currency: str) -> None:
         )
 
 
+def _validate_duration(duration_value: int | None, duration_unit: str | None) -> None:
+    """The duration is a pair or nothing. "30" of nothing and "seconds" of
+    nothing are both meaningless chips, so one without the other is rejected
+    outright rather than silently dropped."""
+    if (duration_value is None) != (duration_unit is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="duration_value and duration_unit go together.",
+        )
+
+
 def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dict:
     _require_user(db, user_id)
     _validate_pair(payload.platform, payload.deliverable_type)
+    _validate_duration(payload.duration_value, payload.duration_unit)
     currency = payload.currency.upper()
+    # The floor applies to the package price as a whole, regardless of
+    # quantity: a ×10 bundle cannot undercut it by spreading the price across
+    # ten deliverables — being impossible to undercut is the point of a floor.
     _validate_price_floor(payload.price_amount, currency)
     pkg = models.Package(
         user_id=user_id,
@@ -539,6 +557,9 @@ def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dic
         description=payload.description,
         price_amount=payload.price_amount,
         currency=currency,
+        quantity=payload.quantity,
+        duration_value=payload.duration_value,
+        duration_unit=payload.duration_unit,
         is_active=payload.is_active,
     )
     db.add(pkg)
@@ -554,7 +575,9 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
     if pkg.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
     _validate_pair(payload.platform, payload.deliverable_type)
+    _validate_duration(payload.duration_value, payload.duration_unit)
     currency = payload.currency.upper()
+    # Same rule as create: the floor is per package, whatever the quantity.
     _validate_price_floor(payload.price_amount, currency)
     pkg.platform = payload.platform
     pkg.deliverable_type = payload.deliverable_type
@@ -562,6 +585,9 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
     pkg.description = payload.description
     pkg.price_amount = payload.price_amount
     pkg.currency = currency
+    pkg.quantity = payload.quantity
+    pkg.duration_value = payload.duration_value
+    pkg.duration_unit = payload.duration_unit
     pkg.is_active = payload.is_active
     db.commit()
     db.refresh(pkg)

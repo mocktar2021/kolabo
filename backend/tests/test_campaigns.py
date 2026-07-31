@@ -187,3 +187,79 @@ def test_list_my_invitations_for_influencer(client):
 
 def test_mine_requires_auth(client):
     assert client.get("/campaigns/mine").status_code == 401
+
+
+def test_create_with_invalid_pair_rejected(client):
+    """A "short" exists on YouTube, not Instagram: the catalog rejects the
+    pair and the error says what Instagram actually offers."""
+    _, headers = _user(client, "+22990000201", "business")
+    r = client.post("/campaigns/", json={
+        "title": "Bad brief",
+        "deliverables": [{"platform": "instagram", "type": "short", "quantity": 1}],
+    }, headers=headers)
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "short" in detail and "instagram" in detail
+    # The error teaches: it lists what IS allowed on the platform.
+    assert "reel" in detail
+
+
+def test_create_with_unknown_platform_rejected(client):
+    _, headers = _user(client, "+22990000202", "business")
+    r = client.post("/campaigns/", json={
+        "title": "Typo brief",
+        "deliverables": [{"platform": "instagramm", "type": "post", "quantity": 1}],
+    }, headers=headers)
+    assert r.status_code == 400
+    assert "instagramm" in r.json()["detail"]
+
+
+def test_ugc_deliverables_accepted(client):
+    """UGC is a first-class part of the catalog: briefs can ask for ad
+    creative that never gets posted on the creator's own account."""
+    _, headers = _user(client, "+22990000203", "business")
+    r = client.post("/campaigns/", json={
+        "title": "Ad creative batch",
+        "budget_amount": 80000,
+        "budget_currency": "XOF",
+        "deliverables": [{"platform": "ugc", "type": "ugc_video", "quantity": 3}],
+        "deadline": "2026-09-01",
+        "publish": True,
+    }, headers=headers)
+    assert r.status_code == 201
+    assert r.json()["status"] == "published"
+
+
+def test_publish_still_requires_nonempty_deliverables(client):
+    """Catalog validation passes an empty list through, but publishing still
+    demands at least one deliverable — that gate is _publish_ready's."""
+    _, headers = _user(client, "+22990000204", "business")
+    r = client.post("/campaigns/", json={
+        "title": "No deliverables",
+        "budget_amount": 10000,
+        "budget_currency": "XOF",
+        "deadline": "2026-09-01",
+    }, headers=headers)
+    assert r.status_code == 201
+    cid = r.json()["id"]
+    assert client.post(f"/campaigns/{cid}/publish", headers=headers).status_code == 400
+
+
+def test_deliverable_quantity_zero_rejected(client):
+    # The schema floor (ge=1) catches zero before the service range check.
+    _, headers = _user(client, "+22990000205", "business")
+    r = client.post("/campaigns/", json={
+        "title": "Zero of something",
+        "deliverables": [{"platform": "instagram", "type": "post", "quantity": 0}],
+    }, headers=headers)
+    assert r.status_code == 422
+
+
+def test_deliverable_quantity_over_cap_rejected(client):
+    # Past the cap the number is a typo, not a brief; the service says so.
+    _, headers = _user(client, "+22990000206", "business")
+    r = client.post("/campaigns/", json={
+        "title": "Impossible volume",
+        "deliverables": [{"platform": "instagram", "type": "post", "quantity": 101}],
+    }, headers=headers)
+    assert r.status_code == 400

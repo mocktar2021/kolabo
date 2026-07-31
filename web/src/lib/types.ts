@@ -82,6 +82,11 @@ export type InfluencerProfile = {
   categories: string[];
   rate_card: Record<string, number>;
   follower_count: number | null;
+  /* Identity fields. birth_date (YYYY-MM-DD, 18+ enforced server-side) and
+     gender stay private; languages (codes like "fr") shows publicly. */
+  birth_date: string | null;
+  gender: "female" | "male" | "other" | "prefer_not_to_say" | null;
+  languages: string[];
   faq?: ProfileFaq | null;
   completion_percent: number;
   is_searchable: boolean;

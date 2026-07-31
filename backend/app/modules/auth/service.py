@@ -10,7 +10,11 @@ Design notes tied to the Jira acceptance criteria:
   the value drives all later country specific behavior.
 - KOL-14: reset tokens expire after 30 minutes and each phone is limited to 3
   reset requests per hour.
+
+Referral MVP scope: codes and attribution only — reward mechanics are a later
+business decision, so nothing here touches money.
 """
+import secrets
 from datetime import timedelta
 
 from fastapi import HTTPException, status
@@ -43,6 +47,13 @@ OTP_TTL_MINUTES = 10
 RESET_TTL_MINUTES = 30
 RESET_MAX_PER_HOUR = 3
 
+# Referral codes: uppercase A-Z minus the lookalikes I and O, plus digits 2-9
+# (0 and 1 are out for the same reason). Codes get read aloud and retyped from
+# a friend's phone screen, so no character may be mistakable for another.
+REFERRAL_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+REFERRAL_CODE_LENGTH = 8
+REFERRAL_MAX_ATTEMPTS = 3
+
 _sender = otp.default_sender
 
 
@@ -56,6 +67,57 @@ def _issue_otp(db: Session, user: User) -> None:
     db.add(challenge)
     db.commit()
     _sender.send(user.phone, f"Your Kolabo verification code is {code}")
+
+
+def _generate_referral_code() -> str:
+    return "".join(secrets.choice(REFERRAL_ALPHABET) for _ in range(REFERRAL_CODE_LENGTH))
+
+
+def _attribute_referral(db: Session, user: User, raw_code: str) -> None:
+    """Link a signup to the creator whose code it carried.
+
+    Best-effort by design: a mistyped code must NEVER block a signup. When the
+    code resolves to nobody it is ignored silently — no error, no warning —
+    because the account matters more than the attribution.
+    """
+    # Codes are stored uppercase; people retype them from a phone screen, so
+    # lowercase and stray whitespace are forgiven rather than punished.
+    code = raw_code.strip().upper()
+    if not code:
+        return
+    referrer = db.query(User).filter(User.referral_code == code).first()
+    if referrer is not None:
+        user.referred_by_user_id = referrer.id
+        db.commit()
+
+
+def get_my_referral(db: Session, user_id: str) -> dict:
+    """The caller's referral code and how many signups carried it.
+
+    The code is minted lazily on the first request rather than at
+    registration: most accounts never open the referral screen, and a code
+    nobody was ever shown is a unique-column row for nothing.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.referral_code is None:
+        # A 32^8 code space makes a collision practically impossible; the
+        # retry loop is cheap insurance against the astronomically unlikely.
+        for _ in range(REFERRAL_MAX_ATTEMPTS):
+            candidate = _generate_referral_code()
+            taken = db.query(User).filter(User.referral_code == candidate).first()
+            if taken is None:
+                user.referral_code = candidate
+                db.commit()
+                break
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not generate a referral code, try again",
+            )
+    referred_count = db.query(User).filter(User.referred_by_user_id == user_id).count()
+    return {"code": user.referral_code, "referred_count": referred_count}
 
 
 def register(db: Session, payload: RegisterRequest) -> dict:
@@ -95,6 +157,9 @@ def register(db: Session, payload: RegisterRequest) -> dict:
         db.add(user)
         db.commit()
         db.refresh(user)
+
+    if payload.referral_code:
+        _attribute_referral(db, user, payload.referral_code)
 
     _issue_otp(db, user)
     return {"user_id": user.id, "message": "Verification code sent"}
@@ -249,6 +314,12 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     db.query(Report).filter(Report.reporter_user_id == user_id).delete(synchronize_session=False)
     db.query(OtpChallenge).filter(OtpChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user_id).delete(synchronize_session=False)
+    # Accounts referred by this user keep existing; their attribution pointer
+    # is cleared rather than cascaded — deleting a referrer must never touch
+    # the people they brought in.
+    db.query(User).filter(User.referred_by_user_id == user_id).update(
+        {User.referred_by_user_id: None}, synchronize_session=False
+    )
     db.delete(user)
     db.commit()
 

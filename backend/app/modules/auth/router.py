@@ -31,6 +31,19 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     return service.login(db, payload)
 
 
+@router.get("/me/referral", response_model=schemas.ReferralOut)
+def my_referral(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """The caller's referral code and how many signups carried it.
+
+    The code is minted on the first call and stable afterwards. MVP scope:
+    codes and attribution only — no reward mechanics yet.
+    """
+    return service.get_my_referral(db, user_id)
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(
     payload: schemas.DeleteAccountRequest,

@@ -44,10 +44,10 @@ def client():
     return test_client
 
 
-def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD):
+def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD, **extra):
     return client.post(
         "/auth/register",
-        json={"phone": phone, "password": password, "country_code": country, "role": role},
+        json={"phone": phone, "password": password, "country_code": country, "role": role, **extra},
     )
 
 
@@ -251,3 +251,55 @@ def test_password_reset_confirm_updates_password(client):
 def test_reset_request_for_unknown_phone_is_generic(client):
     resp = client.post("/auth/password-reset/request", json={"phone": "+22999999999"})
     assert resp.status_code == 202
+
+
+def test_referral_code_stable_and_well_formed(client):
+    token = _verified_token(client)
+    r1 = client.get("/auth/me/referral", headers=_auth_headers(token))
+    assert r1.status_code == 200
+    code = r1.json()["code"]
+    assert r1.json()["referred_count"] == 0
+    # Minted lazily on the first call, then stable: opening the referral
+    # screen twice must never hand out two different codes.
+    r2 = client.get("/auth/me/referral", headers=_auth_headers(token))
+    assert r2.json()["code"] == code
+    # 8 chars from the ambiguity-free alphabet: no I, no O, no 0, no 1 —
+    # these codes get read aloud and retyped from phone screens.
+    assert len(code) == 8
+    assert set(code) <= set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+
+
+def test_referral_endpoint_requires_auth(client):
+    assert client.get("/auth/me/referral").status_code == 401
+
+
+def test_register_with_valid_referral_code_links_attribution(client):
+    token = _verified_token(client)
+    referrer_id = _user_id(client)
+    code = client.get("/auth/me/referral", headers=_auth_headers(token)).json()["code"]
+
+    resp = _register(client, phone="+22990000055", referral_code=code)
+    assert resp.status_code == 201
+    db = client.session_factory()
+    try:
+        newcomer = db.query(models.User).filter(models.User.phone == "+22990000055").first()
+        assert newcomer.referred_by_user_id == referrer_id
+    finally:
+        db.close()
+    # The referrer sees the signup in their count.
+    r = client.get("/auth/me/referral", headers=_auth_headers(token))
+    assert r.json()["referred_count"] == 1
+
+
+def test_register_with_garbage_referral_code_still_succeeds(client):
+    """A mistyped code must never block a signup: attribution is best-effort
+    and the account matters more. Well-formed but unknown codes are dropped
+    silently — no error, no attribution."""
+    resp = _register(client, phone="+22990000056", referral_code="ZZZZ9999")
+    assert resp.status_code == 201
+    db = client.session_factory()
+    try:
+        newcomer = db.query(models.User).filter(models.User.phone == "+22990000056").first()
+        assert newcomer.referred_by_user_id is None
+    finally:
+        db.close()

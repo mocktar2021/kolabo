@@ -16,12 +16,13 @@ def search_influencers(
     max_followers: int | None = None,
     country: str | None = None,
     q: str | None = None,
+    platform: str | None = None,
     limit: int = 20,
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    """Search influencers by category and follower range. Verified rank first. KOL-19."""
-    return service.search_influencers(db, category, min_followers, max_followers, country, q, limit, offset)
+    """Search influencers by category, follower range, and platform. Verified rank first. KOL-19."""
+    return service.search_influencers(db, category, min_followers, max_followers, country, q, platform, limit, offset)
 
 
 @router.post("/favorites/{influencer_id}", response_model=schemas.FavoriteOut, status_code=status.HTTP_201_CREATED)

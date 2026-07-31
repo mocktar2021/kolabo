@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
+import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
@@ -87,7 +88,10 @@ export default function Onboarding() {
   // Profile fields (prefilled from any existing profile or enrichment).
   const [displayName, setDisplayName] = useState("");
   const [headline, setHeadline] = useState("");
-  const [location, setLocation] = useState("");
+  // Country + city compose into the backend's single `location` string on
+  // save; see joinLocation/splitLocation in lib/countries.
+  const [locCountry, setLocCountry] = useState("");
+  const [locCity, setLocCity] = useState("");
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [followers, setFollowers] = useState("");
@@ -105,7 +109,9 @@ export default function Onboarding() {
       .then((p) => {
         setDisplayName(p.display_name ?? "");
         setHeadline(p.headline ?? "");
-        setLocation(p.location ?? "");
+        const loc = splitLocation(p.location);
+        setLocCity(loc.city);
+        setLocCountry(loc.country);
         setBio(p.bio ?? "");
         setCategories(p.categories ?? []);
         setFollowers(p.follower_count ? String(p.follower_count) : "");
@@ -169,7 +175,8 @@ export default function Onboarding() {
       await api(`/profiles/influencer/${userId}`, {
         method: "PUT",
         body: {
-          display_name: displayName || null, headline: headline || null, location: location || null,
+          display_name: displayName || null, headline: headline || null,
+          location: joinLocation(locCity, locCountry),
           avatar_media_id: avatarMediaId,
           bio: bio || null, categories, rate_card: {},
           follower_count: followers ? Number(followers) : null
@@ -256,8 +263,14 @@ export default function Onboarding() {
                 <input id="o-hl" className="input" value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder={t("profile.headlinePlaceholder")} />
               </div>
               <div className="field">
-                <label className="label" htmlFor="o-loc">{t("profile.location")}</label>
-                <input id="o-loc" className="input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Cotonou, BJ" />
+                <span className="label">{t("profile.location")}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <select className="select" aria-label={t("profile.locationCountry")} value={locCountry} onChange={(e) => setLocCountry(e.target.value)}>
+                    <option value="">{t("profile.locationCountry")}</option>
+                    {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                  </select>
+                  <input className="input" aria-label={t("profile.locationCity")} value={locCity} onChange={(e) => setLocCity(e.target.value)} placeholder="Cotonou" />
+                </div>
               </div>
               <div className="field">
                 <label className="label" htmlFor="o-bio">{t("profile.bio")}</label>

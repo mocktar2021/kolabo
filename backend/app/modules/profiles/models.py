@@ -50,6 +50,11 @@ class InfluencerProfile(Base):
     bio_generations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     rate_card: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Answers to the two standard profile questions, keyed by stable question
+    # id ("audience", "brands"). The question wording lives in frontend i18n
+    # so it renders in the viewer's language; only the creator's free-text
+    # answers are stored, and two fixed questions do not justify a table.
+    faq: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     # Self reported for now; to be replaced by verified analytics from
     # connected social accounts in a later epic.
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -105,6 +105,47 @@ def test_follower_range_filter(client):
     assert results[0]["follower_count"] == 50000
 
 
+def test_platform_filter_matches_social_accounts(client):
+    """The landing page platform selector filters on real presence: a creator
+    with a TikTok account shows under tiktok and not under snapchat."""
+    uid = _make_influencer(client, "+22990000210", True, ["fashion"], 8000)
+    db = client.session_factory()
+    db.add(pmodels.SocialAccount(
+        user_id=uid, platform="tiktok", handle="ama", method="oauth", status="verified",
+    ))
+    db.commit(); db.close()
+
+    results = client.get("/discovery/search", params={"platform": "tiktok"}).json()
+    assert len(results) == 1
+    assert results[0]["user_id"] == uid
+    assert client.get("/discovery/search", params={"platform": "snapchat"}).json() == []
+
+
+def test_platform_filter_matches_active_packages(client):
+    """A UGC creator has no social account to connect: the package itself is
+    what they sell on that platform, so it must count as presence."""
+    uid = _profile_without_rate(client, "+22990000211", ["fashion"], 5000)
+    db = client.session_factory()
+    db.add(pmodels.Package(
+        user_id=uid, platform="ugc", deliverable_type="ugc_video", title="1 UGC video",
+        price_amount=25000, currency="XOF", is_active=True,
+    ))
+    db.commit(); db.close()
+
+    results = client.get("/discovery/search", params={"platform": "ugc"}).json()
+    assert len(results) == 1
+    assert results[0]["user_id"] == uid
+
+
+def test_unknown_platform_matches_nothing(client):
+    """An unknown platform behaves like an unknown category: quietly empty,
+    never a 500 or a full unfiltered list."""
+    _make_influencer(client, "+22990000212", True, ["fashion"], 8000)
+    r = client.get("/discovery/search", params={"platform": "myspace"})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_favorites_require_auth(client):
     inf = _make_influencer(client, "+22990000008", True, ["fashion"], 3000)
     assert client.post(f"/discovery/favorites/{inf}").status_code == 401

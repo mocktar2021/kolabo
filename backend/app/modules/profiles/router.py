@@ -44,6 +44,16 @@ def upsert_business_profile(
     return service.upsert_business_profile(db, user_id, payload)
 
 
+@router.get("/business/{user_id}", response_model=schemas.BusinessProfileOut)
+def get_business_profile(user_id: str, db: Session = Depends(get_db)):
+    """Load a business profile for editing.
+
+    The profile was write-only until now: the PUT existed without a GET, so
+    the settings page had nothing to prefill and came up blank on every visit.
+    """
+    return service.get_business_profile(db, user_id)
+
+
 @router.get("/media/{media_id}")
 def serve_media(media_id: str, db: Session = Depends(get_db)):
     """Serve a stored profile image."""

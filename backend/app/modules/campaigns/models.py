@@ -22,6 +22,10 @@ def utcnow() -> datetime:
 
 DRAFT = "draft"
 PUBLISHED = "published"
+# Closed with no deal. Today this only ever happens to a direct order the
+# creator turned down or let lapse. The row is kept rather than deleted:
+# both sides should still be able to see what was offered and how it ended.
+CANCELLED = "cancelled"
 
 INVITED = "invited"
 ACCEPTED = "accepted"
@@ -31,6 +35,12 @@ SUBMITTED = "submitted"
 SUPERSEDED = "superseded"
 PROPOSAL_ACCEPTED = "accepted"
 PROPOSAL_REJECTED = "rejected"
+# The creator saying no to a direct order, or the window closing on one.
+# Deliberately not folded into PROPOSAL_REJECTED even though both mean "no
+# deal": who said no is the useful part. Rejected is the buyer walking away
+# from a bid it invited; declined is the seller turning down a purchase. The
+# buyer needs to tell those apart to know whether re-offering makes any sense.
+PROPOSAL_DECLINED = "declined"
 
 # Which side of the table a proposal version came from. A negotiation is two
 # parties alternating, and without this a chain of five versions looks like one

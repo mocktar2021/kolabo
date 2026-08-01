@@ -3,8 +3,9 @@ from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.campaigns import schemas, service
+from app.modules.campaigns import orders, schemas, service
 
 router = APIRouter()
 
@@ -61,6 +62,44 @@ def create_direct_order(
     only after they do.
     """
     return service.create_direct_order(db, business_user_id, payload.package_id, payload.note)
+
+
+@router.post("/orders/expire")
+def expire_stale_orders(
+    db: Session = Depends(get_db),
+    admin_id: str = Depends(get_current_admin),
+):
+    """Close direct orders whose 48 hour window has passed unanswered.
+
+    Admin-triggered and on demand, mirroring /payments/escrow/auto-release:
+    there is no scheduler yet, and both of these become jobs on it the day
+    there is one.
+    """
+    return {"expired": orders.expire_stale_orders(db)}
+
+
+@router.post("/orders/{proposal_id}/accept", status_code=status.HTTP_201_CREATED)
+def accept_direct_order(
+    proposal_id: str,
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """The invited creator accepts an order, which generates the contract.
+
+    Returns the contract, not the proposal: signing it is the next thing both
+    parties have to do, and the response is what the client routes to.
+    """
+    return orders.accept_direct_order(db, influencer_user_id, proposal_id)
+
+
+@router.post("/orders/{proposal_id}/decline", response_model=schemas.ProposalOut)
+def decline_direct_order(
+    proposal_id: str,
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """The invited creator turns an order down, closing it. Nobody is charged."""
+    return orders.decline_direct_order(db, influencer_user_id, proposal_id)
 
 
 @router.post("/{campaign_id}/publish", response_model=schemas.CampaignOut)

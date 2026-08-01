@@ -1,20 +1,30 @@
 """disputes, their thread and their evidence
 
-Three tables. `disputes` is one disagreement over one escrow — escrow_id is
-UNIQUE, so "one dispute per escrow" is a database fact rather than a race the
-service hopes to win. `dispute_messages` is the thread the two parties settle
-it in during the response window. `dispute_attachments` is the evidence, and
-it points at media_assets rather than carrying bytes: the image upload,
-the owner column and the serving route already exist, and a second image store
-would be a second thing to move to object storage later for the same JPEGs.
+Three tables. `disputes` is one disagreement over one escrow.
+`dispute_messages` is the thread the two parties settle it in during the
+response window. `dispute_attachments` is the evidence, and it points at
+media_assets rather than carrying bytes: the image upload, the owner column
+and the serving route already exist, and a second image store would be a
+second thing to move to object storage later for the same JPEGs.
 
-EVERY CONSTRAINT IS NAMED, foreign keys included. SQLite cannot alter
-constraints in place, so any later batch_alter_table on these tables copies
-them, rebuilds them from the reflected schema and swaps them in; that rebuild
-re-declares every constraint and alembic cannot reconstruct one it cannot name
-("Constraint must have a name"). c3f7a1d9e08b wrote this rule down after CI
-failed on an anonymous one, and f1a7c9d2e4b8 restated it. A table created with
-anonymous constraints only fails later, when someone else is adding a column.
+ESCROW_ID IS INDEXED, NOT UNIQUE. It was unique in the first draft of this
+migration, which made "one dispute per escrow" a database fact — and made it
+the wrong fact. Unique means one dispute EVER, so two parties who settled a
+first disagreement themselves, by withdrawing it, had spent the escrow's only
+dispute: a creator who then failed to deliver on the same contract left the
+brand with nothing to raise. The rule is one OPEN dispute at a time, which is
+a question about status and not something a column can ask, so it is enforced
+in disputes.raise_dispute against the open set. The index stays, because every
+read of this table starts from an escrow.
+
+EVERY CONSTRAINT IS NAMED, foreign keys and indexes included. SQLite cannot
+alter constraints in place, so any later batch_alter_table on these tables
+copies them, rebuilds them from the reflected schema and swaps them in; that
+rebuild re-declares every constraint and alembic cannot reconstruct one it
+cannot name ("Constraint must have a name"). c3f7a1d9e08b wrote this rule down
+after CI failed on an anonymous one, and f1a7c9d2e4b8 restated it. A table
+created with anonymous constraints only fails later, when someone else is
+adding a column.
 
 dispute_attachments.message_id is nullable on purpose: NULL means the image
 came with the opening statement, a value means it came with a later message.
@@ -37,9 +47,11 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 PK_DISPUTES = 'pk_disputes'
-UQ_DISPUTES_ESCROW = 'uq_disputes_escrow_id'
 FK_DISPUTES_ESCROW = 'fk_disputes_escrow_id'
 FK_DISPUTES_OPENED_BY = 'fk_disputes_opened_by_user_id'
+# Matches the name SQLAlchemy derives from Dispute.escrow_id's index=True, so
+# the migrated schema and a create_all schema agree on it.
+IX_DISPUTES_ESCROW = 'ix_disputes_escrow_id'
 
 PK_MESSAGES = 'pk_dispute_messages'
 FK_MESSAGES_DISPUTE = 'fk_dispute_messages_dispute_id'
@@ -70,10 +82,10 @@ def upgrade() -> None:
         sa.Column('resolved_by', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id', name=PK_DISPUTES),
-        sa.UniqueConstraint('escrow_id', name=UQ_DISPUTES_ESCROW),
         sa.ForeignKeyConstraint(['escrow_id'], ['escrows.id'], name=FK_DISPUTES_ESCROW),
         sa.ForeignKeyConstraint(['opened_by_user_id'], ['users.id'], name=FK_DISPUTES_OPENED_BY),
     )
+    op.create_index(IX_DISPUTES_ESCROW, 'disputes', ['escrow_id'], unique=False)
 
     op.create_table(
         'dispute_messages',
@@ -109,4 +121,5 @@ def downgrade() -> None:
     op.drop_table('dispute_attachments')
     op.drop_index(IX_MESSAGES_DISPUTE, table_name='dispute_messages')
     op.drop_table('dispute_messages')
+    op.drop_index(IX_DISPUTES_ESCROW, table_name='disputes')
     op.drop_table('disputes')

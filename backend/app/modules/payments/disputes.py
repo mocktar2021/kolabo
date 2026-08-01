@@ -41,7 +41,9 @@ MAX_STATEMENT_CHARS = 4000
 MAX_EVIDENCE_IMAGES = 10
 
 # The two states in which a dispute is still a live conversation. Resolved and
-# withdrawn cases are closed records: they are read, not written to.
+# withdrawn cases are closed records: they are read, not written to — and they
+# do not stand in the way of a new dispute on the same escrow, which is why
+# this tuple, not a UNIQUE column, is what "one dispute per escrow" means.
 OPEN_STATUSES = (models.AWAITING_RESPONSE, models.AWAITING_ADMIN)
 
 
@@ -66,6 +68,25 @@ def load_dispute(db: Session, dispute_id: str) -> tuple[models.Dispute, models.E
     if dispute is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispute not found")
     return dispute, load_escrow(db, dispute.escrow_id)
+
+
+def open_dispute_for_escrow(db: Session, escrow_id: str) -> models.Dispute | None:
+    """The live dispute on an escrow, if it has one.
+
+    An escrow can carry several dispute rows over its life — withdrawn ones,
+    resolved ones — but at most one open at a time. Anything that acts on "the
+    dispute" of an escrow means this one, and asking by escrow_id alone would
+    hand back whichever row the database happened to return first.
+    """
+    return (
+        db.query(models.Dispute)
+        .filter(
+            models.Dispute.escrow_id == escrow_id,
+            models.Dispute.status.in_(OPEN_STATUSES),
+        )
+        .order_by(models.Dispute.created_at.desc())
+        .first()
+    )
 
 
 def parties(escrow: models.Escrow) -> tuple[str, str]:
@@ -224,6 +245,7 @@ def dispute_out(
         "released_amount": dispute.released_amount,
         "refunded_amount": dispute.refunded_amount,
         "resolved_by": dispute.resolved_by,
+        "created_at": dispute.created_at.isoformat(),
         "attachments": _attachments(db, dispute.id, opening=True)[None],
     }
     if escrow is not None:
@@ -252,16 +274,17 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only a held escrow can be disputed",
         )
-    # One dispute per escrow, matched by the UNIQUE column behind it. A second
-    # one would fork the thread and give an admin two half-cases over the same
-    # money; a party who has more to say adds a message to the open one.
-    existing = (
-        db.query(models.Dispute).filter(models.Dispute.escrow_id == escrow.id).first()
-    )
+    # One OPEN dispute per escrow — not one ever. A second live case would
+    # fork the thread and give an admin two half-cases over the same money, so
+    # a party with more to say adds a message to the open one. But a withdrawn
+    # or resolved case blocks nothing: the same contract can go wrong twice,
+    # and two people settling a first misunderstanding themselves must not
+    # cost them the only claim their escrow was ever allowed.
+    existing = open_dispute_for_escrow(db, escrow.id)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This escrow already has a dispute",
+            detail="This escrow already has an open dispute",
         )
 
     reason = _checked_reason(payload.reason)
@@ -411,6 +434,15 @@ def withdraw_dispute(db: Session, actor_user_id: str, dispute_id: str) -> dict:
     act as the claimant dropping the claim, and letting them close it would
     let the accused dismiss the accusation. 403, not 400: they are a party,
     they simply have no standing to do this.
+
+    THE ESCROW CAN BE DISPUTED AGAIN AFTERWARDS. Withdrawing closes this case,
+    not the escrow's right to ever have one. escrow_id used to be UNIQUE,
+    which made a withdrawal permanent in the worst direction: a brand and a
+    creator who talked a first misunderstanding out had, by doing the right
+    thing, spent the only dispute their contract was allowed — and if the work
+    then genuinely failed, the brand's money was frozen behind nothing it
+    could raise. The 409 in raise_dispute is scoped to the OPEN set instead,
+    so settling amicably costs the parties nothing.
 
     THE AUTO-RELEASE CLOCK. due_release_at is set at funding to held_at + N
     days and run_due_auto_releases only ever looks at HELD escrows, so a

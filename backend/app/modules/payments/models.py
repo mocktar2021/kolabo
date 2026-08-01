@@ -90,13 +90,20 @@ class EscrowEvent(Base):
 
 
 class Dispute(Base):
-    """One disagreement over one escrow.
+    """One disagreement over one escrow. An escrow may have several, in turn.
 
-    escrow_id is UNIQUE: an escrow carries at most one dispute row, ever. That
-    makes the 409 on a second dispute a database fact rather than a race the
-    service hopes to win, and it is why re-raising after a withdrawal is not
-    possible today — see disputes.withdraw_dispute, which spells out what
-    lifting that would cost.
+    escrow_id is INDEXED, NOT UNIQUE, and that is the whole rule: one OPEN
+    dispute at a time, not one dispute forever. Unique looked like the same
+    thing and was not — it meant an escrow that had ever been disputed could
+    never be disputed again, so two parties who settled a first disagreement
+    themselves by withdrawing it had spent the escrow's only dispute. A
+    creator who then failed to deliver on that same contract left the brand
+    with no claim to make on money the brand had already paid in.
+
+    So the conflict is enforced in disputes.raise_dispute against
+    disputes.OPEN_STATUSES instead. "Is there a live one" is a question about
+    status, and a column cannot ask it. Everything that reads a dispute from
+    an escrow — the raise path, resolution — has to say which one it means.
 
     released_amount / refunded_amount are the admin's split, recorded on the
     dispute rather than only on the escrow: the escrow says where the money
@@ -106,7 +113,7 @@ class Dispute(Base):
     __tablename__ = "disputes"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
-    escrow_id: Mapped[str] = mapped_column(ForeignKey("escrows.id"), unique=True, nullable=False)
+    escrow_id: Mapped[str] = mapped_column(ForeignKey("escrows.id"), nullable=False, index=True)
     opened_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     reason: Mapped[str] = mapped_column(String, nullable=False)
     statement: Mapped[str] = mapped_column(Text, nullable=False)

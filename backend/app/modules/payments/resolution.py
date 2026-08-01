@@ -59,21 +59,22 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Escrow is not under dispute"
         )
-    dispute = (
-        db.query(models.Dispute).filter(models.Dispute.escrow_id == escrow.id).first()
-    )
+    # The OPEN one, specifically. An escrow can carry several dispute rows
+    # over its life now that escrow_id is indexed rather than unique — one
+    # withdrawn, then a second raised when the work later failed — and asking
+    # by escrow_id alone would hand back whichever row came first and write
+    # this split onto a case that closed weeks ago.
+    dispute = disputes.open_dispute_for_escrow(db, escrow.id)
     if dispute is None:
-        # Every frozen escrow has carried a dispute row since e2f9c4a71d38, so
-        # this is corrupt state rather than an old record. Settling it anyway
-        # would write two amounts against a claim nobody can read — the audit
-        # trail would say money moved and never say why.
+        # A frozen escrow always has an open dispute: the freeze and the row
+        # are written in the same transaction, and every path that closes one
+        # unfreezes the other. So this is corrupt state rather than an old
+        # record. Settling it anyway would write two amounts against a claim
+        # nobody can read — the audit trail would say money moved and never
+        # say why.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This escrow is frozen with no dispute attached. Report it before settling.",
-        )
-    if dispute.status not in disputes.OPEN_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This dispute is closed"
+            detail="This escrow is frozen with no open dispute attached. Report it before settling.",
         )
 
     released = payload.released_amount

@@ -224,7 +224,9 @@ def test_a_released_escrow_has_nothing_left_to_freeze(client):
     assert r.status_code == 400
 
 
-def test_a_second_dispute_on_the_same_escrow_is_a_conflict(client):
+def test_a_second_open_dispute_on_the_same_escrow_is_a_conflict(client):
+    """Two live cases over the same money would fork the thread and give an
+    admin two half-cases. A party with more to say posts a message."""
     biz, inf, _, escrow = _funded(client)
     assert client.post(
         f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(inf)
@@ -331,6 +333,72 @@ def test_only_the_party_who_raised_it_may_withdraw(client):
     assert client.post(
         f"/payments/disputes/{dispute['id']}/withdraw", headers=_headers(biz)
     ).status_code == 403
+
+
+def test_withdrawing_lets_the_escrow_be_disputed_again(client):
+    """Settling a first misunderstanding amicably must not spend the escrow's
+    only claim. escrow_id was UNIQUE once, which meant a withdrawal left the
+    brand with no recourse when the creator later failed to deliver — the two
+    parties were punished for doing the right thing the first time."""
+    biz, inf, _, escrow, first = _disputed(client)
+    assert client.post(
+        f"/payments/disputes/{first['id']}/withdraw", headers=_headers(inf)
+    ).status_code == 200
+
+    # The other side of the contract now raises a real one, on the same money.
+    r = client.post(
+        f"/payments/escrow/{escrow['id']}/dispute",
+        json=_body(reason="not_delivered"),
+        headers=_headers(biz),
+    )
+    assert r.status_code == 201
+    second = r.json()
+    assert second["id"] != first["id"]
+    assert second["status"] == "awaiting_response"
+    assert second["opened_by_user_id"] == biz
+    # The escrow is frozen again, and both rows survive: the withdrawn case is
+    # a closed record, not something the new one overwrote.
+    assert second["escrow"]["status"] == "disputed"
+    mine = client.get("/payments/disputes/mine", headers=_headers(biz)).json()
+    assert {d["id"] for d in mine} == {first["id"], second["id"]}
+    assert {d["status"] for d in mine} == {"withdrawn", "awaiting_response"}
+
+
+def test_the_open_dispute_still_blocks_a_second_one_after_a_withdrawal(client):
+    """Reopening is allowed; running two live cases over the same money is
+    not, and the second raise has to hit the same 409 as ever."""
+    biz, inf, _, escrow, first = _disputed(client)
+    client.post(f"/payments/disputes/{first['id']}/withdraw", headers=_headers(inf))
+    assert client.post(
+        f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(biz)
+    ).status_code == 201
+    r = client.post(
+        f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(inf)
+    )
+    assert r.status_code == 409
+
+
+def test_an_admin_settles_the_open_case_not_the_withdrawn_one(client):
+    """With several rows per escrow, resolution has to name which dispute it
+    is closing or it writes the split onto a case that ended weeks ago."""
+    biz, inf, _, escrow, first = _disputed(client)
+    client.post(f"/payments/disputes/{first['id']}/withdraw", headers=_headers(inf))
+    second = client.post(
+        f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(biz)
+    ).json()
+
+    r = client.post(
+        f"/payments/escrow/{escrow['id']}/resolve",
+        json={"released_amount": 4000, "refunded_amount": 6000, "note": "Half delivered."},
+        headers=ADMIN,
+    )
+    assert r.status_code == 200
+    assert r.json()["id"] == second["id"]
+    assert r.json()["released_amount"] == 4000
+    # The withdrawn case is untouched: no split was written onto it.
+    closed = client.get(f"/payments/disputes/{first['id']}", headers=ADMIN).json()
+    assert closed["status"] == "withdrawn"
+    assert closed["released_amount"] is None
 
 
 def test_a_withdrawal_gives_back_review_time_the_freeze_ate(client):

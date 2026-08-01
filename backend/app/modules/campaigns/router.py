@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.campaigns import editing, orders, schemas, service
+from app.modules.campaigns import cart, editing, orders, schemas, service
 
 router = APIRouter()
 
@@ -100,6 +100,31 @@ def create_order(
     do. Negotiating the terms changes none of that.
     """
     return service.create_order(db, business_user_id, payload)
+
+
+@router.post(
+    "/orders/checkout",
+    response_model=schemas.CartCheckoutOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def checkout_cart(
+    payload: schemas.CartCheckoutIn,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Check out a basket of 1-20 items as one direct order per creator.
+
+    Each item is a package_id or a full custom offer, exactly as /orders takes
+    them. Items are grouped by creator, so buying three packages from one
+    person is ONE order with three deliverables and their summed budget, while
+    two people are two independent orders — each answered, contracted and paid
+    on its own.
+
+    There is no cart on the server: send the whole basket. Every item is
+    validated first and the whole checkout is one transaction, so a bad item
+    creates nothing and answers 400 naming its position.
+    """
+    return cart.checkout(db, business_user_id, payload)
 
 
 @router.post("/orders/expire")

@@ -187,6 +187,49 @@ class OrderIn(BaseModel):
     timeline_days: int | None = None
 
 
+class CartItemIn(OrderIn):
+    """One line of a basket.
+
+    Literally an order body, inherited rather than re-declared: a line in a
+    cart is a thing a brand could have ordered on its own, in either of the
+    same two forms, under the same rules. Copying the fields would let the two
+    drift, and the first place they drifted would be which terms a checkout
+    accepts that a single order does not.
+    """
+
+
+class CartCheckoutIn(BaseModel):
+    """A whole basket, posted in one go.
+
+    There is no cart on the server: the client holds it and sends all of it at
+    checkout. campaigns.cart says why — briefly, a stored basket buys a table,
+    an expiry policy and a stale-price problem for nothing.
+
+    The 1..20 bound is enforced in the service, not here, so an oversized cart
+    hears a sentence about the limit instead of a field error about "items".
+    """
+
+    items: list[CartItemIn] = Field(default_factory=list)
+
+
+class CartOrderOut(BaseModel):
+    """One creator's order out of a checkout.
+
+    Carries creator_user_id where a single order's receipt does not: the buyer
+    sent a flat list of items and got back a shorter list of orders, and
+    without the creator on each row it cannot tell which order is whose.
+    """
+
+    creator_user_id: str
+    campaign_id: str
+    proposal_id: str
+    expires_at: datetime | None
+
+
+class CartCheckoutOut(BaseModel):
+    orders: list[CartOrderOut] = Field(default_factory=list)
+
+
 class OrderOut(BaseModel):
     """What the buyer needs after placing an order.
 

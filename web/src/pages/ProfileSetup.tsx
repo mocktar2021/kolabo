@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
@@ -435,70 +435,6 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
   );
 }
 
-/* Account deletion, deliberately at the very bottom and behind an inline
-   confirm (no window.confirm: destroying an account deserves friction).
-   Errors are mapped from the status code, never parsed from the English
-   detail string: 403 wrong password, 409 transaction history. */
-function DangerZone() {
-  const { t } = useTranslation();
-  const { token, logout } = useAuth();
-  const navigate = useNavigate();
-  const [confirming, setConfirming] = useState(false);
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function onDelete() {
-    if (!password) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api("/auth/me", { method: "DELETE", token, body: { password } });
-      // The account is gone; drop the local session through the provider and
-      // land on the marketing homepage.
-      logout();
-      navigate("/");
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setError(t("danger.wrongPassword"));
-      else if (err instanceof ApiError && err.status === 409) setError(t("danger.hasHistory"));
-      else setError(err instanceof Error ? err.message : "Error");
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="card" style={{ marginTop: 24, borderColor: "var(--danger)" }}>
-      <h3 style={{ marginTop: 0, fontSize: 16, color: "var(--danger)" }}>{t("danger.title")}</h3>
-      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("danger.explain")}</p>
-      {error && <div className="alert alert-error">{error}</div>}
-      {!confirming ? (
-        <button type="button" className="btn btn-ghost" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
-          onClick={() => setConfirming(true)}>
-          {t("danger.delete")}
-        </button>
-      ) : (
-        <div>
-          <div className="field">
-            <label className="label" htmlFor="del-pass">{t("danger.confirmPassword")}</label>
-            <input id="del-pass" className="input" type="password" value={password}
-              onChange={(e) => setPassword(e.target.value)} />
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" className="btn btn-ghost" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
-              disabled={!password || busy} onClick={onDelete}>
-              {busy ? t("auth.working") : t("danger.deleteForever")}
-            </button>
-            <button type="button" className="btn btn-ghost"
-              onClick={() => { setConfirming(false); setPassword(""); setError(null); }}>
-              {t("onb.cancel")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ProfileSetup() {
   const { t } = useTranslation();
   const { userId, token, isAuthenticated } = useAuth();
@@ -674,6 +610,12 @@ export default function ProfileSetup() {
             {/* Profile setup is a leaf page: both roles get an explicit way
                 back into the app next to the public-page link. */}
             <Link className="btn btn-ghost" to="/dashboard">{t("nav.dashboard")}</Link>
+            {/* Where the settings that are not about the marketplace now live.
+                This page is how the market sees you; /account is how you sign
+                in — and it is where the delete-account block moved to, so
+                anybody who remembers it at the bottom of this form has a way
+                to find it. */}
+            <Link className="btn btn-ghost" to="/account">{t("nav.account")}</Link>
             {kind === "influencer" && userId && (
               <Link className="btn btn-ghost" to={`/u/${userId}`}>{t("profile.viewPublic")}</Link>
             )}
@@ -830,10 +772,6 @@ export default function ProfileSetup() {
             <PackagesSection userId={userId} token={token} />
           </>
         )}
-
-        {/* Every role can close its account; the danger zone stays last so it
-            never competes with the everyday actions above. */}
-        <DangerZone />
       </div>
     </Layout>
   );

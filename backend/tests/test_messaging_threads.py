@@ -183,7 +183,6 @@ def test_messages_across_two_contracts_read_as_one_conversation(client, world):
     """A question asked during the second job and answered during the third is
     a conversation, and used to read as two disconnected threads."""
     first = _job(client, world, "Launch push", "a")
-    _send(client, world, world["biz"], world["inf"], "one") if False else None
 
     # Sent on the first job, through the per-campaign endpoint that still works.
     client.post(

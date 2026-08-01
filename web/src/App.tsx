@@ -8,6 +8,7 @@ import Register from "./pages/Register";
 import VerifyOtp from "./pages/VerifyOtp";
 import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
+import AccountPage from "./pages/Account";
 import Discover from "./pages/Discover";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
@@ -69,6 +70,11 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/profile" element={<ProfileSetup />} />
+          {/* Neither wrapper, and deliberately. Every account signs in with a
+              phone number, has a password, is notified about things and may
+              want to leave; the two sides of the market differ in what they
+              DO on Kolabo, not in what an account is. */}
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/campaigns" element={<CampaignList />} />
           <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />

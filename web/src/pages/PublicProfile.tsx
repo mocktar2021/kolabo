@@ -5,13 +5,22 @@ import { Layout } from "../components/Layout";
 import { ShareModal } from "../components/ShareModal";
 import { api, mediaSrc } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
-import { PLATFORM_LABELS } from "../lib/platforms";
+import { CURRENCIES } from "../lib/campaignOptions";
+import { deliverablesFor, PLATFORM_LABELS } from "../lib/platforms";
+import { minPrice } from "../lib/pricing";
 import type { DirectOrder, Package, PublicProfile } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py, so the
    limit is hit as a full textarea rather than as a 422 after the buyer has
    finished typing. */
 const NOTE_MAX_LENGTH = 2000;
+
+/* Quantities a negotiated offer can be built from. The API allows up to 100
+   (campaigns.negotiated.MAX_OFFER_QUANTITY) and this stops at 20 on purpose:
+   a select with a hundred rows is not a control anybody uses, and past twenty
+   deliverables the buyer is writing a campaign brief — which is the other
+   product, still one click away and better suited to it. */
+const QUANTITY_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1);
 
 /* Collabstr-style marketplace page: proof on the left (gallery, packages,
    audience, reviews, FAQ), a sticky order card on the right so the price and
@@ -44,6 +53,22 @@ export default function PublicProfilePage() {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderedCampaignId, setOrderedCampaignId] = useState<string | null>(null);
 
+  /* Negotiating. A second panel in the same card, mutually exclusive with the
+     confirm panel, which is why note, busy and error are shared rather than
+     duplicated: only one of the two can be open, and a buyer who typed a note
+     into one and switched should not have to type it again.
+
+     Only the terms live in their own state, because only the terms are new —
+     everything downstream (the 48 h window, the accept path, the contract,
+     escrow) is the same object a package order produces. */
+  const [negotiateOpen, setNegotiateOpen] = useState(false);
+  const [negPlatform, setNegPlatform] = useState("");
+  const [negDeliverable, setNegDeliverable] = useState("");
+  const [negQuantity, setNegQuantity] = useState(1);
+  const [negRate, setNegRate] = useState("");
+  const [negCurrency, setNegCurrency] = useState(CURRENCIES[0]);
+  const [negDays, setNegDays] = useState("");
+
   const lang = i18n.language.startsWith("en") ? "en" : "fr";
   const locale = lang === "fr" ? "fr-FR" : "en-US";
 
@@ -65,6 +90,16 @@ export default function PublicProfilePage() {
   const packagePlatforms = [...new Set(packages.map((p) => p.platform))];
   const visiblePackages = platformFilter ? packages.filter((p) => p.platform === platformFilter) : packages;
   const selectedPackage = packages.find((p) => p.id === selectedId) ?? packages[0] ?? null;
+
+  /* What this creator can actually be asked for. Their published packages
+     first, then every connected account: somebody with a TikTok account and
+     no TikTok package still sells TikTok, they simply never listed a bundle
+     for it, and refusing to offer it would send that deal off-platform for
+     no reason. Filtered against the shared catalog so the two selects can
+     never build a pair the API answers 400 to. */
+  const sellablePlatforms = [
+    ...new Set([...packagePlatforms, ...(profile?.social_accounts ?? []).map((a) => a.platform)])
+  ].filter((id) => deliverablesFor(id).length > 0);
 
   /* Only the buying side of the market may order, the same rule the API
      applies (POST /campaigns/orders answers 403 to an influencer). Agencies
@@ -114,6 +149,72 @@ export default function PublicProfilePage() {
       // 400 (own package, package deactivated) and 403 (creator ordering) all
       // carry a server message that names the real problem. Shown as-is,
       // inline, rather than replaced by a generic failure line.
+      setOrderError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setOrderBusy(false);
+    }
+  }
+
+  /* Opening the negotiation panel seeded from the package on screen rather
+     than blank: the buyer got here by looking at that offer, and the thing
+     they want to change is usually one field of it. */
+  function openNegotiate() {
+    const platform = selectedPackage?.platform ?? sellablePlatforms[0] ?? "";
+    setNegPlatform(platform);
+    setNegDeliverable(
+      selectedPackage && selectedPackage.platform === platform
+        ? selectedPackage.deliverable_type
+        : deliverablesFor(platform)[0] ?? ""
+    );
+    setNegQuantity(1);
+    setNegRate("");
+    setNegCurrency(selectedPackage?.currency ?? CURRENCIES[0]);
+    setNegDays("");
+    setOrderError(null);
+    setNegotiateOpen(true);
+  }
+
+  /* The deliverable list is per-platform, so a platform change has to reset
+     it. Left alone, "Reel" would survive a switch to LinkedIn and the offer
+     would be rejected for a pair the form itself built. */
+  function changeNegPlatform(platform: string) {
+    setNegPlatform(platform);
+    setNegDeliverable(deliverablesFor(platform)[0] ?? "");
+  }
+
+  /* The buyer's own terms, sent as the custom form of the same endpoint. What
+     comes back is the same order a package produces — same 48 h clock, same
+     accept path, same contract — so the success state below is shared rather
+     than written twice. */
+  async function placeNegotiatedOrder() {
+    if (!profile) return;
+    setOrderBusy(true);
+    setOrderError(null);
+    try {
+      const trimmed = orderNote.trim();
+      const res = await api<DirectOrder>("/campaigns/orders", {
+        method: "POST",
+        token,
+        body: {
+          creator_user_id: profile.user_id,
+          platform: negPlatform,
+          deliverable_type: negDeliverable,
+          quantity: negQuantity,
+          rate_amount: Number(negRate),
+          currency: negCurrency,
+          timeline_days: Number(negDays),
+          ...(trimmed ? { note: trimmed } : {})
+        }
+      });
+      setOrderedCampaignId(res.campaign_id);
+      setNegotiateOpen(false);
+    } catch (e) {
+      /* Rendered verbatim. campaigns/negotiated.py already names what is
+         wrong and what is allowed — the deliverable that does not exist on
+         that platform, the floor for this currency, the range a quantity or
+         a timeline has to sit in — in the same words the packages module
+         uses. Restating any of it here would be a second copy of those
+         rules, and the copy is the one that drifts. */
       setOrderError(e instanceof Error ? e.message : "Error");
     } finally {
       setOrderBusy(false);
@@ -378,7 +479,9 @@ export default function PublicProfilePage() {
                          the context of what they ordered. The link goes to the
                          order's campaign, which is where a direct order lives
                          until the creator answers — there is no contract to
-                         link to yet, and the contracts list would be empty. */
+                         link to yet, and the contracts list would be empty.
+                         Shared by both forms of order, because from here on
+                         there is only one kind of thing. */
                       <div className="alert alert-success" style={{ marginTop: 14, marginBottom: 0 }}>
                         <div>{t("public.orderSent")}</div>
                         <Link to={`/campaigns/${orderedCampaignId}`} style={{ fontWeight: 600 }}>{t("public.orderView")}</Link>
@@ -431,10 +534,92 @@ export default function PublicProfilePage() {
                           {t("public.orderCancel")}
                         </button>
                       </div>
+                    ) : negotiateOpen ? (
+                      /* The second panel in the same card. Everything a
+                         package would have decided, decided by the buyer —
+                         and nothing more: the 48 h rule, the note and the
+                         success state are the package order's, because the
+                         thing this produces IS a package order's twin. */
+                      <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+                        <span className="label">{t("public.negotiateTitle")}</span>
+
+                        <label className="label" style={{ marginTop: 10 }} htmlFor="neg-platform">{t("public.negotiatePlatform")}</label>
+                        <select id="neg-platform" className="select" value={negPlatform}
+                          onChange={(e) => changeNegPlatform(e.target.value)}>
+                          {sellablePlatforms.map((p) => <option key={p} value={p}>{platformLabel(p)}</option>)}
+                        </select>
+
+                        <label className="label" style={{ marginTop: 10 }} htmlFor="neg-deliverable">{t("public.negotiateDeliverable")}</label>
+                        <select id="neg-deliverable" className="select" value={negDeliverable}
+                          onChange={(e) => setNegDeliverable(e.target.value)}>
+                          {deliverablesFor(negPlatform).map((d) => (
+                            <option key={d} value={d}>{t(`deliverable.${d}`, d)}</option>
+                          ))}
+                        </select>
+
+                        <label className="label" style={{ marginTop: 10 }} htmlFor="neg-quantity">{t("public.negotiateQuantity")}</label>
+                        <select id="neg-quantity" className="select" value={negQuantity}
+                          onChange={(e) => setNegQuantity(Number(e.target.value))}>
+                          {QUANTITY_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+
+                        <label className="label" style={{ marginTop: 10 }} htmlFor="neg-rate">{t("public.negotiatePrice")}</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input id="neg-rate" className="input" inputMode="numeric" value={negRate}
+                            onChange={(e) => setNegRate(e.target.value.replace(/\D/g, ""))} placeholder="40000" />
+                          <select className="select" style={{ width: 110 }} aria-label={t("campaign.currency")}
+                            value={negCurrency} onChange={(e) => setNegCurrency(e.target.value)}>
+                            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        {/* The same floor the package form states, from the
+                            same table (lib/pricing.ts mirrors
+                            backend/app/core/pricing.py). A negotiated price
+                            cannot undercut it either — that is the point of
+                            having one. */}
+                        <p className="hint">{t("profile.minPrice", { n: minPrice(negCurrency), currency: negCurrency })}</p>
+
+                        <label className="label" style={{ marginTop: 10 }} htmlFor="neg-days">{t("public.negotiateDays")}</label>
+                        <input id="neg-days" className="input" inputMode="numeric" value={negDays}
+                          onChange={(e) => setNegDays(e.target.value.replace(/\D/g, ""))} placeholder="7" />
+
+                        <label className="label" style={{ marginTop: 12 }} htmlFor="neg-note">{t("public.orderNote")}</label>
+                        <textarea id="neg-note" className="input" rows={3} maxLength={NOTE_MAX_LENGTH}
+                          style={{ resize: "vertical" }} value={orderNote} onChange={(e) => setOrderNote(e.target.value)} />
+
+                        <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("public.orderRule")}</p>
+
+                        {orderError && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{orderError}</div>}
+
+                        <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
+                          disabled={orderBusy || !negPlatform || !negDeliverable || !negRate || !negDays}
+                          onClick={placeNegotiatedOrder}>
+                          {t("public.negotiateSend")}
+                        </button>
+                        <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={orderBusy}
+                          onClick={() => { setNegotiateOpen(false); setOrderError(null); }}>
+                          {t("public.orderCancel")}
+                        </button>
+                      </div>
                     ) : (
-                      <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
-                        {t("public.order")}
-                      </button>
+                      <>
+                        <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
+                          {t("public.order")}
+                        </button>
+                        {/* Secondary on purpose: the published price is still
+                            the fast path, and this is the way out for the
+                            deals that do not fit it — the ones that were
+                            being agreed on WhatsApp instead. */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 0" }}>
+                          <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                          <span className="muted" style={{ fontSize: 12.5 }}>{t("public.negotiateOr")}</span>
+                          <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                        </div>
+                        <button type="button" className="pp-see-more" style={{ display: "block", margin: "10px auto 0", fontSize: 14 }}
+                          onClick={openNegotiate}>
+                          {t("public.negotiate")}
+                        </button>
+                      </>
                     )}
 
                     {/* The escrow explainer sits at the decision point on

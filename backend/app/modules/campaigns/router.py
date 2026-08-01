@@ -49,19 +49,25 @@ def create_campaign(
 
 
 @router.post("/orders", response_model=schemas.OrderOut, status_code=status.HTTP_201_CREATED)
-def create_direct_order(
+def create_order(
     payload: schemas.OrderIn,
     db: Session = Depends(get_db),
     business_user_id: str = Depends(get_current_user_id),
 ):
-    """Order a creator's package directly, at the price they published.
+    """Order from a creator: their package as listed, or terms you negotiated.
 
-    Lives under /campaigns because an order IS a campaign — a hidden one, with
-    a single creator invited and the buyer's offer already on the table. No
-    money moves here: the creator has 48 hours to accept, and escrow is funded
-    only after they do.
+    Send package_id for the published price, or the full custom offer
+    (creator_user_id, platform, deliverable_type, quantity, rate_amount,
+    currency, timeline_days) to propose your own terms. Exactly one of the
+    two; both or neither is a 400 that names the problem.
+
+    One endpoint because there is one kind of order. Lives under /campaigns
+    because an order IS a campaign — a hidden one, with a single creator
+    invited and the buyer's offer already on the table. No money moves here:
+    the creator has 48 hours to accept, and escrow is funded only after they
+    do. Negotiating the terms changes none of that.
     """
-    return service.create_direct_order(db, business_user_id, payload.package_id, payload.note)
+    return service.create_order(db, business_user_id, payload)
 
 
 @router.post("/orders/expire")
@@ -130,7 +136,12 @@ def submit_proposal(
     db: Session = Depends(get_db),
     influencer_user_id: str = Depends(get_current_user_id),
 ):
-    """Submit a proposal, with an optional note. Resubmitting creates a new version. KOL-23."""
+    """Submit a proposal, with an optional note. Resubmitting creates a new version.
+
+    This is also how a creator COUNTERS a direct order: there is no separate
+    counter endpoint on the creator side, the next version in the chain is the
+    counter. It stays on the order's clock. KOL-23.
+    """
     return service.submit_proposal(db, campaign_id, influencer_user_id, payload)
 
 

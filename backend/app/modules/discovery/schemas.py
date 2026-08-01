@@ -29,13 +29,24 @@ class InfluencerSearchResult(BaseModel):
 
 class FavoriteOut(BaseModel):
     influencer_user_id: str
-    # A shortlist is rendered as cards, and a card needs a person on it. Every
-    # one of these is optional because a creator can be favourited before they
-    # have filled in anything: an empty card is still usable, a 500 is not.
+    # The shared creator identity (app.core.identity.creator_identities): the
+    # same four fields the campaign page's invitations and proposals carry, so
+    # a business shortlisting somebody and a business reviewing their offer
+    # are reading the same card. Every one is optional because a creator can
+    # be favourited before they have filled in anything.
     display_name: str | None = None
     avatar_url: str | None = None
-    headline: str | None = None
-    # From the users table, which is the only place a country lives. It is
-    # also the only field taken from there: the sole other identifier a user
-    # row holds is a phone number, and that never reaches a payload.
+    # The single biggest connected platform, never a total across platforms:
+    # somebody following on two networks would otherwise be counted twice.
+    top_platform: str | None = None
+    top_follower_count: int | None = None
+    # headline deliberately no longer travels on a favourite row. It was here
+    # only to be a subtitle under the name, and creators write their name into
+    # it — so the card said the same thing twice. The audience number is what
+    # a business actually shortlists on. headline is untouched on the profile
+    # and on the search result card, where it earns its space.
+    #
+    # country_code comes from the users table, and stays the only field taken
+    # from there: the sole other identifier a user row holds is a phone
+    # number, and a phone number never reaches a payload.
     country_code: str | None = None

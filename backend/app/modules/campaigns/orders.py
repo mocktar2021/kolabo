@@ -19,6 +19,7 @@ window is safe to enforce for exactly the same reason.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.identity import creator_identities
 from app.modules.campaigns import models
 from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import service as contracts_service
@@ -49,6 +50,26 @@ def _load_order(db: Session, proposal_id: str, influencer_user_id: str):
     if proposal.influencer_user_id != influencer_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This order is not yours")
     return proposal, campaign
+
+
+def _require_business_offer(proposal) -> None:
+    """Only the buyer's offer can be accepted here.
+
+    Acceptance on a direct order is the creator supplying the consent the buyer
+    already gave by making the offer. Once the creator counters, the live
+    version is the creator's own — accepting it would write a priced contract
+    carrying one signature, at a number the business has never agreed to. When
+    the creator holds the live version it is the buyer's turn, and the buyer
+    accepts through the contracts path exactly as they do on a brief.
+
+    400 rather than 403: the caller does own this order. The offer on the table
+    is simply not theirs to accept.
+    """
+    if proposal.author_role != models.AUTHOR_BUSINESS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This is your own counter-offer. The brand has to accept it.",
+        )
 
 
 def _set_invitation(db: Session, campaign_id: str, influencer_user_id: str, new_status: str) -> None:
@@ -82,12 +103,14 @@ def accept_direct_order(db: Session, influencer_user_id: str, proposal_id: str) 
     That path takes the buyer as the actor, and the buyer is the right actor:
     on a direct order the business authored the offer, so its consent to these
     exact terms is already on record as the proposal itself. What was missing
-    was the creator's, which is this call.
+    was the creator's, which is this call. That reasoning only holds while the
+    live offer is the buyer's, which is what _require_business_offer enforces.
 
     Escrow is still unfunded when this returns. Funding is the buyer's next
     step and it needs both signatures first — unchanged, and untouched here.
     """
     proposal, campaign = _load_order(db, proposal_id, influencer_user_id)
+    _require_business_offer(proposal)
     if proposal.status != models.SUBMITTED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -122,6 +145,11 @@ def decline_direct_order(db: Session, influencer_user_id: str, proposal_id: str)
     call to reverse, no reconciliation. That is precisely why the flow was
     shaped as accept-then-fund rather than fund-then-accept.
 
+    Declining their own counter is allowed on purpose: withdrawing an offer you
+    made is a different act from signing one, and a creator who changes their
+    mind should be able to close the order rather than leave the buyer waiting
+    on a number nobody intends to honour.
+
     The campaign is cancelled with the proposal. A direct order is a campaign
     with one creator in it, so their no is the end of it; leaving it published
     would leave an order in the buyer's list looking live.
@@ -144,7 +172,7 @@ def decline_direct_order(db: Session, influencer_user_id: str, proposal_id: str)
     )
     db.commit()
     db.refresh(proposal)
-    identity = campaigns_service._proposer_identity(db, [influencer_user_id]).get(influencer_user_id)
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
     return campaigns_service._proposal_out(proposal, identity)
 
 

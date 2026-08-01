@@ -13,6 +13,7 @@ import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
 import CampaignDetailPage from "./pages/CampaignDetail";
 import CartPage from "./pages/CartPage";
+import MessagesPage from "./pages/Messages";
 import MyInvitations from "./pages/MyInvitations";
 import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
@@ -70,6 +71,11 @@ export default function App() {
           <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
           <Route path="/cart" element={<BrandOnly><CartPage /></BrandOnly>} />
+          {/* Neither wrapper: a contract has two parties and the thread
+              belongs to both of them, so there is no role for this route to
+              ask about. The gate is the contract itself, and it is the
+              server's — /messaging answers 403 to anybody without one. */}
+          <Route path="/messages" element={<MessagesPage />} />
           <Route path="/invitations" element={<CreatorOnly><MyInvitations /></CreatorOnly>} />
           <Route path="/contracts" element={<ContractsList />} />
           <Route path="/contracts/:id" element={<ContractPage />} />

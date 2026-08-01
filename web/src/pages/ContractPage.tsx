@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { Layout } from "../components/Layout";
@@ -67,6 +67,13 @@ export default function ContractPage() {
 
   const isBusiness = !!contract && userId === contract.business_user_id;
   const alreadySigned = !!contract && (isBusiness ? contract.business_signed : contract.influencer_signed);
+  /* The other party on this contract, which is also the only person this
+     reader is allowed to message about this campaign. A contract names
+     exactly two people, so the counterparty is whichever of them is not the
+     reader — no lookup required. */
+  const counterpartyId = contract
+    ? (isBusiness ? contract.influencer_user_id : contract.business_user_id)
+    : null;
 
   return (
     <Layout>
@@ -90,6 +97,18 @@ export default function ContractPage() {
               <Row label={t("contract.timeline")} value={`${contract.timeline_days}d`} />
               <Row label={t("contract.businessSigned")} value={contract.business_signed ? t("contract.yes") : t("contract.no")} ok={contract.business_signed} />
               <Row label={t("contract.creatorSigned")} value={contract.influencer_signed ? t("contract.yes") : t("contract.no")} ok={contract.influencer_signed} />
+              {/* This contract IS the permission to talk, so the way into the
+                  conversation belongs on it. A pending signature is enough:
+                  both parties are looking at terms they are about to sign,
+                  and making them wait for the second signature to ask a
+                  question about it would push that question to WhatsApp. */}
+              {counterpartyId && (
+                <div style={{ marginTop: 10 }}>
+                  <Link className="btn btn-ghost" to={`/messages?campaign=${contract.campaign_id}&with=${counterpartyId}`}>
+                    {t("msg.openConversation")}
+                  </Link>
+                </div>
+              )}
             </div>
 
             <div className="card" style={{ marginTop: 16 }}>

@@ -178,6 +178,49 @@ export type Contract = {
 
 export type ContractDetail = Contract & { body: string };
 
+/* One conversation on the inbox screen (GET /messaging/threads).
+
+   A row per CONTRACT, named by the OTHER person: a creator's inbox says
+   "Maison Kola", a brand's says "Ama K.". Naming rows by campaign title alone
+   would give a brand working with six creators on one brief six identical
+   ones, and collapsing them would lose the only thing that tells them apart.
+
+   counterparty_name is null when the other side has written no profile — the
+   same rule identity follows everywhere else, and for the same reason: the
+   users table holds only a phone number, and a phone number is never handed
+   to the other side of a deal. counterparty_avatar_url is only ever set for a
+   creator; a business has a company name and no avatar in this system.
+
+   last_message_at arrives naive UTC like every other datetime here, so it
+   goes through parseApiDate before it is turned into "il y a 2 h". */
+export type MessageThread = {
+  campaign_id: string;
+  campaign_title: string | null;
+  /* The contract that opened this thread — and the answer to "why am I
+     allowed in here". */
+  contract_id: string;
+  counterparty_user_id: string;
+  counterparty_name: string | null;
+  counterparty_avatar_url: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
+  unread_count: number;
+};
+
+/* One message in a thread. read_at is a timestamp rather than a flag because
+   in a dispute the useful fact is when a specific message was seen, not how
+   many are outstanding — and it is null until the recipient opens the thread,
+   which is the only thing that stamps it. */
+export type Message = {
+  id: string;
+  campaign_id: string;
+  sender_user_id: string;
+  recipient_user_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+};
+
 export type Escrow = {
   id: string;
   contract_id: string;

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "./Logo";
+import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { useCart } from "../lib/cart";
+import type { MessageThread } from "../lib/types";
 
 function LanguageSwitch() {
   const { i18n } = useTranslation();
@@ -17,9 +19,9 @@ function LanguageSwitch() {
 
 /* Click-toggled dropdown listing what the product does today. Every entry
    links to a live route: payments point at the pricing page where the escrow
-   model is explained, and messaging points at campaigns because conversations
-   live inside each campaign. Nothing here advertises a feature that does not
-   exist yet. */
+   model is explained, and messaging now points at the inbox rather than at
+   campaigns, because conversations finally have a screen of their own.
+   Nothing here advertises a feature that does not exist yet. */
 function FeaturesMenu() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -41,7 +43,7 @@ function FeaturesMenu() {
     { to: "/campaigns", title: t("featuresMenu.campaignsT"), desc: t("featuresMenu.campaignsD") },
     { to: "/contracts", title: t("featuresMenu.contractsT"), desc: t("featuresMenu.contractsD") },
     { to: "/pricing", title: t("featuresMenu.paymentsT"), desc: t("featuresMenu.paymentsD") },
-    { to: "/campaigns", title: t("featuresMenu.messagingT"), desc: t("featuresMenu.messagingD") },
+    { to: "/messages", title: t("featuresMenu.messagingT"), desc: t("featuresMenu.messagingD") },
     { to: "/discover", title: t("featuresMenu.reviewsT"), desc: t("featuresMenu.reviewsD") }
   ];
 
@@ -106,6 +108,45 @@ function CartIndicator() {
   );
 }
 
+/* The inbox, with what is waiting in it. Both roles get this one: a contract
+   has exactly two parties and either of them may be the one who has not
+   replied yet.
+
+   Fetched once when the nav mounts, which is once per navigation, and
+   deliberately not polled. There is no websocket here, and a timer in the nav
+   would hit /messaging/threads on every screen of the app for as long as the
+   tab is open — to shave a few minutes off a badge that the messages page
+   itself refreshes the moment somebody opens it. */
+function MessagesIndicator() {
+  const { t } = useTranslation();
+  const { token } = useAuth();
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    api<MessageThread[]>("/messaging/threads", { token })
+      .then((rows) => {
+        if (live) setUnread(rows.reduce((total, row) => total + row.unread_count, 0));
+      })
+      // A nav badge is not worth an error state. Silence leaves the rest of
+      // the navigation working.
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [token]);
+
+  return (
+    <Link className="btn btn-ghost" to="/messages" aria-label={t("msg.navAria", { n: unread })}>
+      {t("msg.nav")}
+      {unread > 0 && (
+        <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", borderRadius: 999, padding: "1px 7px" }}>
+          {unread}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 function AppNav() {
   const { t } = useTranslation();
   const { logout } = useAuth();
@@ -120,7 +161,11 @@ function AppNav() {
      checkout endpoint answers them 403, so the indicator is hidden rather
      than linking to a page that could only refuse them — which is exactly
      what BrandOnly does for the route itself. Agencies buy the way
-     businesses do, hence isBusinessLike. */
+     businesses do, hence isBusinessLike.
+
+     Messages are the exception that proves it: a contract has two parties and
+     the thread belongs to both, so that entry is not asked the question at
+     all. */
   const isBrand = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
@@ -129,6 +174,7 @@ function AppNav() {
       {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
+      <MessagesIndicator />
       {isBrand && <CartIndicator />}
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
       <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>

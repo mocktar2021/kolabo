@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "./Logo";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
+import { useCart } from "../lib/cart";
 
 function LanguageSwitch() {
   const { i18n } = useTranslation();
@@ -85,6 +86,26 @@ function MarketingNav() {
   );
 }
 
+/* The basket, with how much is in it. The count is the only thing worth
+   putting in the nav: it is what tells a brand that the four packages they
+   collected on four different profiles are still waiting to be ordered, which
+   is precisely the thing a cart exists to remember. Zero renders no badge — a
+   grey "0" is noise on every page of the app. */
+function CartIndicator() {
+  const { t } = useTranslation();
+  const { count } = useCart();
+  return (
+    <Link className="btn btn-ghost" to="/cart" aria-label={t("cart.navAria", { n: count })}>
+      {t("cart.nav")}
+      {count > 0 && (
+        <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", borderRadius: 999, padding: "1px 7px" }}>
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 function AppNav() {
   const { t } = useTranslation();
   const { logout } = useAuth();
@@ -94,8 +115,12 @@ function AppNav() {
      one, so for a creator /campaigns is a page that can never hold anything.
      Invitations run the other way — a business sends them and never receives
      one, so its invitations page would be empty by construction; the answers
-     to what it sent arrive as proposals on its own campaign. Agencies buy the
-     way businesses do, hence isBusinessLike. */
+     to what it sent arrive as proposals on its own campaign. The cart is the
+     same question a third time: a creator has nothing to put in one and the
+     checkout endpoint answers them 403, so the indicator is hidden rather
+     than linking to a page that could only refuse them — which is exactly
+     what BrandOnly does for the route itself. Agencies buy the way
+     businesses do, hence isBusinessLike. */
   const isBrand = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
@@ -104,6 +129,7 @@ function AppNav() {
       {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
+      {isBrand && <CartIndicator />}
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
       <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>
     </div>

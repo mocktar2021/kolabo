@@ -6,9 +6,10 @@ import { ShareModal } from "../components/ShareModal";
 import { api, mediaSrc } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
+import { useCart } from "../lib/cart";
 import { deliverablesFor, PLATFORM_LABELS } from "../lib/platforms";
 import { minPrice } from "../lib/pricing";
-import type { DirectOrder, Package, PublicProfile } from "../lib/types";
+import type { CreatorIdentity, DirectOrder, Package, PublicProfile } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py, so the
    limit is hit as a full textarea rather than as a 422 after the buyer has
@@ -52,6 +53,17 @@ export default function PublicProfilePage() {
   const [orderBusy, setOrderBusy] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderedCampaignId, setOrderedCampaignId] = useState<string | null>(null);
+
+  /* The basket, and the one line of feedback that adding to it produces.
+
+     The immediate-order path below is left exactly as it was, on purpose: a
+     brand buying one package from one creator should not have to visit a cart
+     to do it. Making them would put a screen in the middle of the shortest
+     journey on the site, to solve a problem that journey does not have. The
+     cart is for the other case — four packages from three people, decided
+     across four profiles and paid for once. */
+  const { add: addToCart, count: cartCount } = useCart();
+  const [cartMessage, setCartMessage] = useState<string | null>(null);
 
   /* Negotiating. A second panel in the same card, mutually exclusive with the
      confirm panel, which is why note, busy and error are shared rather than
@@ -155,6 +167,85 @@ export default function PublicProfilePage() {
     }
   }
 
+  /* How this creator has to be named on a basket line.
+
+     The cart groups by creator and renders each pile with CreatorChip, the
+     same component every other list a brand reads uses. The cart page has no
+     way to look anybody up — there is no "who is this user id" endpoint and
+     there should not be one — so the four identity fields are captured here,
+     on the one screen that already has them on display.
+
+     top_platform is the single biggest connected account and never a sum
+     across them: somebody following on two networks would otherwise be
+     counted twice. Same rule app/core/identity.py applies server-side, so a
+     creator reads the same size in the basket as on their proposal. */
+  function cartIdentity(p: PublicProfile): CreatorIdentity {
+    const top = p.social_accounts
+      .filter((a) => a.follower_count !== null)
+      .sort((a, b) => (b.follower_count ?? 0) - (a.follower_count ?? 0))[0];
+    return {
+      display_name: p.display_name,
+      avatar_url: p.avatar_url,
+      top_platform: top ? top.platform : null,
+      top_follower_count: top ? top.follower_count : null
+    };
+  }
+
+  /* The package as listed, put aside instead of ordered now. Nothing is sent:
+     the basket is the client's until checkout, and the price stored on the
+     line is only what to show — the order is priced from the live package row
+     when the cart is checked out. */
+  function addPackageToCart() {
+    if (!profile || !selectedPackage) return;
+    const trimmed = orderNote.trim();
+    const added = addToCart({
+      creator_user_id: profile.user_id,
+      creator: cartIdentity(profile),
+      note: trimmed || null,
+      label: selectedPackage.title,
+      package_id: selectedPackage.id,
+      platform: selectedPackage.platform,
+      deliverable_type: selectedPackage.deliverable_type,
+      quantity: selectedPackage.quantity ?? 1,
+      // A package carries the creator's own timeline; the buyer never names
+      // one, so there is nothing to put here.
+      timeline_days: null,
+      amount: selectedPackage.price_amount,
+      currency: selectedPackage.currency
+    });
+    setCartMessage(added ? t("cart.added") : t("cart.full"));
+  }
+
+  /* The buyer's own terms, added to the basket rather than ordered
+     immediately. The terms are NOT validated here beyond "all four boxes are
+     filled": the floor price, the quantity range, the timeline range and the
+     platform/deliverable pair are all checked at checkout, and the answer
+     comes back naming the line and the rule in campaigns/negotiated.py's own
+     words. Re-stating any of it here would be a second copy of those rules,
+     and the copy is the one that drifts. */
+  function addNegotiatedToCart() {
+    if (!profile) return;
+    const trimmed = orderNote.trim();
+    const added = addToCart({
+      creator_user_id: profile.user_id,
+      creator: cartIdentity(profile),
+      note: trimmed || null,
+      label: t(`deliverable.${negDeliverable}`, negDeliverable),
+      package_id: null,
+      platform: negPlatform,
+      deliverable_type: negDeliverable,
+      quantity: negQuantity,
+      timeline_days: Number(negDays),
+      amount: Number(negRate),
+      currency: negCurrency
+    });
+    if (added) {
+      setNegotiateOpen(false);
+      setOrderNote("");
+    }
+    setCartMessage(added ? t("cart.added") : t("cart.full"));
+  }
+
   /* Opening the negotiation panel seeded from the package on screen rather
      than blank: the buyer got here by looking at that offer, and the thing
      they want to change is usually one field of it. */
@@ -171,6 +262,7 @@ export default function PublicProfilePage() {
     setNegCurrency(selectedPackage?.currency ?? CURRENCIES[0]);
     setNegDays("");
     setOrderError(null);
+    setCartMessage(null);
     setNegotiateOpen(true);
   }
 
@@ -498,7 +590,8 @@ export default function PublicProfilePage() {
                       /* A creator looking at another creator. Disabled with the
                          reason spelled out, because a button that silently
                          does nothing reads as a bug — and the API would answer
-                         403 anyway. */
+                         403 anyway. The cart is not offered here either: it is
+                         the same rule one step earlier. */
                       <>
                         <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} disabled>
                           {t("public.order")}
@@ -596,6 +689,16 @@ export default function PublicProfilePage() {
                           onClick={placeNegotiatedOrder}>
                           {t("public.negotiateSend")}
                         </button>
+                        {/* The negotiated offer put aside instead of sent. A
+                            brand assembling one basket across several
+                            profiles needs this as much as it needs it for a
+                            listed package — and a bespoke offer is exactly
+                            the line most likely to be one of four. */}
+                        <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 8 }}
+                          disabled={orderBusy || !negPlatform || !negDeliverable || !negRate || !negDays}
+                          onClick={addNegotiatedToCart}>
+                          {t("cart.add")}
+                        </button>
                         <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={orderBusy}
                           onClick={() => { setNegotiateOpen(false); setOrderError(null); }}>
                           {t("public.orderCancel")}
@@ -605,6 +708,13 @@ export default function PublicProfilePage() {
                       <>
                         <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
                           {t("public.order")}
+                        </button>
+                        {/* Beside the order button, not instead of it. One
+                            package from one creator stays a single click;
+                            this is the path for the brand who is still
+                            shopping and will pay for everything at once. */}
+                        <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 8 }} onClick={addPackageToCart}>
+                          {t("cart.add")}
                         </button>
                         {/* Secondary on purpose: the published price is still
                             the fast path, and this is the way out for the
@@ -620,6 +730,17 @@ export default function PublicProfilePage() {
                           {t("public.negotiate")}
                         </button>
                       </>
+                    )}
+
+                    {/* Shared by both add-to-cart buttons: one line saying it
+                        worked, and the way to the basket. Nothing was sent to
+                        the server, so this is not a receipt and does not read
+                        like one. */}
+                    {cartMessage && (
+                      <div className="alert alert-success" style={{ marginTop: 12, marginBottom: 0 }}>
+                        <div>{cartMessage}</div>
+                        <Link to="/cart" style={{ fontWeight: 600 }}>{t("cart.view", { n: cartCount })}</Link>
+                      </div>
                     )}
 
                     {/* The escrow explainer sits at the decision point on

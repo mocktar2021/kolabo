@@ -22,6 +22,10 @@ because the campaigns module owns the campaign. They are built by one function
 contract path and one escrow path, and nothing after creation can tell the two
 kinds of order apart.
 
+Editing, deleting and cancelling a campaign live next door in
+campaigns.editing, which is where the rules about what a buyer may still
+change once other people are looking are written down.
+
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
 favourite all name a creator the same way.
@@ -152,6 +156,7 @@ def _to_out(campaign: models.Campaign) -> dict:
         "id": campaign.id,
         "business_user_id": campaign.business_user_id,
         "title": campaign.title,
+        "description": campaign.description,
         "budget_amount": campaign.budget_amount,
         "budget_currency": campaign.budget_currency,
         "deliverables": campaign.deliverables,
@@ -175,6 +180,7 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     campaign = models.Campaign(
         business_user_id=business_user_id,
         title=payload.title,
+        description=payload.description,
         budget_amount=payload.budget_amount,
         budget_currency=payload.budget_currency,
         deliverables=deliverables,

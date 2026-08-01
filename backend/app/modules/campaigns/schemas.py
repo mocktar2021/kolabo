@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 # can carry their own reasoning, not so the negotiation can become a thread.
 MAX_NOTE_LENGTH = 2000
 
+# A brief in prose. Longer than a note because this one IS the document: the
+# brand explaining context, tone and what it is trying to say. The cap is here
+# so a paste of an entire deck cannot become a campaign row.
+MAX_DESCRIPTION_LENGTH = 5000
+
 # The fields that together make up a negotiated offer. Named as a group
 # because the rule about them is a group rule: all of them or none of them,
 # and never alongside a package_id.
@@ -31,6 +36,7 @@ class Deliverable(BaseModel):
 
 class CampaignCreate(BaseModel):
     title: str = Field(min_length=1)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     budget_amount: int | None = Field(default=None, ge=1)
     budget_currency: str | None = None
     deliverables: list[Deliverable] = Field(default_factory=list)
@@ -38,10 +44,41 @@ class CampaignCreate(BaseModel):
     publish: bool = False
 
 
+class CampaignPatch(BaseModel):
+    """A partial correction to a campaign.
+
+    Every field is optional, and the rule is exclude_unset — the same contract
+    the profile upsert runs on. A field the client did not send is left alone;
+    a nullable field the client explicitly sent as null IS cleared, because
+    that is how a form clears a value. A client that does not know about a
+    column must not be able to wipe it just by not knowing.
+
+    Which of these may actually change is NOT decided here, and cannot be: the
+    answer depends on whether the campaign is published and whether anybody
+    has priced against it. That lives in campaigns.editing, which answers with
+    a 400 naming the field — a 422 field-error would tell a brand its budget
+    is invalid without ever explaining that a creator has already bid on it.
+
+    publish is absent on purpose. Going live is a state change with its own
+    readiness gate (POST /campaigns/{id}/publish), not a field to set.
+    """
+
+    # min_length rather than nullable: the column is NOT NULL, so an explicit
+    # null is refused in the service with a sentence rather than crashing on
+    # the insert.
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    budget_amount: int | None = Field(default=None, ge=1)
+    budget_currency: str | None = None
+    deliverables: list[Deliverable] | None = None
+    deadline: date | None = None
+
+
 class CampaignOut(BaseModel):
     id: str
     business_user_id: str
     title: str
+    description: str | None = None
     budget_amount: int | None
     budget_currency: str | None
     deliverables: list[Deliverable]
@@ -186,6 +223,18 @@ class ProposalOut(CreatorIdentity):
 class CampaignDetailOut(CampaignOut):
     invitations: list[InvitationOut] = Field(default_factory=list)
     proposals: list[ProposalOut] = Field(default_factory=list)
+
+
+class CampaignDeletedOut(BaseModel):
+    """The receipt for a hard delete.
+
+    The id is echoed back because the row it names no longer exists to be
+    fetched, and a client that removed the wrong card from its list has no way
+    to find out otherwise.
+    """
+
+    id: str
+    deleted: bool = True
 
 
 class InvitationWithCampaign(BaseModel):

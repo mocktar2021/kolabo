@@ -4,8 +4,14 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ShareModal } from "../components/ShareModal";
 import { api, mediaSrc } from "../lib/api";
+import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { PLATFORM_LABELS } from "../lib/platforms";
-import type { Package, PublicProfile } from "../lib/types";
+import type { DirectOrder, Package, PublicProfile } from "../lib/types";
+
+/* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py, so the
+   limit is hit as a full textarea rather than as a 422 after the buyer has
+   finished typing. */
+const NOTE_MAX_LENGTH = 2000;
 
 /* Collabstr-style marketplace page: proof on the left (gallery, packages,
    audience, reviews, FAQ), a sticky order card on the right so the price and
@@ -13,6 +19,7 @@ import type { Package, PublicProfile } from "../lib/types";
 export default function PublicProfilePage() {
   const { t, i18n } = useTranslation();
   const { userId } = useParams();
+  const { token, isAuthenticated } = useAuth();
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +32,17 @@ export default function PublicProfilePage() {
   const [openFaq, setOpenFaq] = useState<Set<string>>(new Set());
   const [howOpen, setHowOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+
+  /* Ordering. The confirm panel lives inside the card rather than in a modal:
+     the card is already the decision point — price, package picker and the
+     escrow explainer are all here — and covering it with a dialog would hide
+     the very things the buyer is confirming. orderedCampaignId doubles as the
+     success flag and as the destination. */
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [orderNote, setOrderNote] = useState("");
+  const [orderBusy, setOrderBusy] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderedCampaignId, setOrderedCampaignId] = useState<string | null>(null);
 
   const lang = i18n.language.startsWith("en") ? "en" : "fr";
   const locale = lang === "fr" ? "fr-FR" : "en-US";
@@ -48,6 +66,13 @@ export default function PublicProfilePage() {
   const visiblePackages = platformFilter ? packages.filter((p) => p.platform === platformFilter) : packages;
   const selectedPackage = packages.find((p) => p.id === selectedId) ?? packages[0] ?? null;
 
+  /* Only the buying side of the market may order, the same rule the API
+     applies (POST /campaigns/orders answers 403 to an influencer). Agencies
+     buy on behalf of brands, hence isBusinessLike rather than a comparison
+     against "business". A signed-out visitor is not refused — they are simply
+     not a buyer yet, so they get the way to become one. */
+  const canOrder = isAuthenticated && isBusinessLike(getStoredRole());
+
   const audienceAccounts = profile?.social_accounts.filter((a) => a.follower_count !== null) ?? [];
   const audienceAccount = audienceAccounts.find((a) => a.id === audienceTab) ?? audienceAccounts[0] ?? null;
 
@@ -61,6 +86,39 @@ export default function PublicProfilePage() {
   const compact = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
   const price = (p: Package) => `${p.price_amount.toLocaleString(locale)} ${p.currency}`;
   const platformLabel = (id: string) => PLATFORM_LABELS[id] ?? id;
+
+  /* Placing the order. Nothing is charged here and the copy above the button
+     says so: the creator has 48 h to accept, and escrow is funded only after
+     they do — which is exactly why a decline costs the buyer nothing.
+
+     A direct order is also a private transaction, not a public brief: it goes
+     to this one creator, nobody else can see it and nobody else can bid on
+     it. The success state therefore points at the order itself rather than at
+     any listing. */
+  async function placeOrder() {
+    if (!selectedPackage) return;
+    setOrderBusy(true);
+    setOrderError(null);
+    try {
+      // Omitted entirely when empty, like every other optional note in the
+      // app: a buyer who wants to send the bare package still can.
+      const trimmed = orderNote.trim();
+      const res = await api<DirectOrder>("/campaigns/orders", {
+        method: "POST",
+        token,
+        body: { package_id: selectedPackage.id, ...(trimmed ? { note: trimmed } : {}) }
+      });
+      setOrderedCampaignId(res.campaign_id);
+      setOrderOpen(false);
+    } catch (e) {
+      // 400 (own package, package deactivated) and 403 (creator ordering) all
+      // carry a server message that names the real problem. Shown as-is,
+      // inline, rather than replaced by a generic failure line.
+      setOrderError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setOrderBusy(false);
+    }
+  }
 
   /* The ×N and duration chips shown on package rows and the order card. Both
      fields are optional server-side: quantity 1 stays silent, and duration
@@ -313,11 +371,72 @@ export default function PublicProfilePage() {
                     </select>
                     {pkgChips(selectedPackage)}
                     {selectedPackage.description && <p className="pp-order-desc">{selectedPackage.description}</p>}
-                    {/* Direct ordering ships separately; the card sells the flow
-                        before the checkout exists. */}
-                    <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} disabled title={t("public.orderSoon")}>
-                      {t("public.order")}
-                    </button>
+
+                    {orderedCampaignId ? (
+                      /* Inline success rather than a redirect: the buyer just
+                         acted on this card and losing the page would cost them
+                         the context of what they ordered. The link goes to the
+                         order's campaign, which is where a direct order lives
+                         until the creator answers — there is no contract to
+                         link to yet, and the contracts list would be empty. */
+                      <div className="alert alert-success" style={{ marginTop: 14, marginBottom: 0 }}>
+                        <div>{t("public.orderSent")}</div>
+                        <Link to={`/campaigns/${orderedCampaignId}`} style={{ fontWeight: 600 }}>{t("public.orderView")}</Link>
+                      </div>
+                    ) : !isAuthenticated ? (
+                      /* A visitor is not refused, they are routed: the button
+                         becomes the way to become a buyer, pre-selecting the
+                         brand role so they do not land as a creator and find
+                         the same button disabled a minute later. */
+                      <Link className="btn btn-primary btn-block" style={{ marginTop: 14 }} to="/register?role=business">
+                        {t("public.orderSignedOut")}
+                      </Link>
+                    ) : !canOrder ? (
+                      /* A creator looking at another creator. Disabled with the
+                         reason spelled out, because a button that silently
+                         does nothing reads as a bug — and the API would answer
+                         403 anyway. */
+                      <>
+                        <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} disabled>
+                          {t("public.order")}
+                        </button>
+                        <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>{t("public.orderBrandsOnly")}</p>
+                      </>
+                    ) : orderOpen ? (
+                      <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+                        <span className="label">{t("public.orderConfirm")}</span>
+                        <strong style={{ fontFamily: "var(--font-display)", fontSize: 15.5, display: "block" }}>
+                          {selectedPackage.title}
+                        </strong>
+                        {pkgChips(selectedPackage)}
+                        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginTop: 8 }}>
+                          {price(selectedPackage)}
+                        </div>
+
+                        <label className="label" style={{ marginTop: 12 }} htmlFor="order-note">{t("public.orderNote")}</label>
+                        <textarea id="order-note" className="input" rows={3} maxLength={NOTE_MAX_LENGTH}
+                          style={{ resize: "vertical" }} value={orderNote} onChange={(e) => setOrderNote(e.target.value)} />
+
+                        {/* The one rule that decides whether this is safe to
+                            click, said before the button and not after it. */}
+                        <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("public.orderRule")}</p>
+
+                        {orderError && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{orderError}</div>}
+
+                        <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} disabled={orderBusy} onClick={placeOrder}>
+                          {t("public.orderSend")}
+                        </button>
+                        <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={orderBusy}
+                          onClick={() => { setOrderOpen(false); setOrderError(null); }}>
+                          {t("public.orderCancel")}
+                        </button>
+                      </div>
+                    ) : (
+                      <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
+                        {t("public.order")}
+                      </button>
+                    )}
+
                     {/* The escrow explainer sits at the decision point on
                         purpose: this is the trust pitch, right next to the
                         price. */}

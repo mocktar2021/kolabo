@@ -21,7 +21,8 @@ export type Invitation = {
 
 /* Which side wrote a proposal version. The creator opens a chain and the
    business answers inside it, so a version carries an author even though the
-   whole chain is filed under the creator it belongs to. */
+   whole chain is filed under the creator it belongs to. A direct order is the
+   case where "business" comes first: the buyer made the offer. */
 export type ProposalAuthorRole = "influencer" | "business";
 
 /* One version of one negotiation — a complete offer, never a diff: a business
@@ -32,7 +33,13 @@ export type ProposalAuthorRole = "influencer" | "business";
    five days"), capped at 2000 characters server-side. display_name and
    avatar_url identify the creator behind the chain and are null until they
    have a profile — the users table holds only a phone number besides, and a
-   phone number is never handed to the other side of a deal. */
+   phone number is never handed to the other side of a deal.
+
+   expires_at is set only on a direct order, and it is the field that tells
+   the two kinds of row apart: a brief's proposals stay open indefinitely
+   because leaving one open promised nothing, while an order has a buyer
+   waiting on a price they already named. The datetime arrives naive UTC (no
+   suffix), so anything reading it has to say so before parsing. */
 export type Proposal = {
   id: string;
   campaign_id: string;
@@ -44,8 +51,21 @@ export type Proposal = {
   status: string;
   note: string | null;
   author_role: ProposalAuthorRole;
+  expires_at: string | null;
   display_name: string | null;
   avatar_url: string | null;
+};
+
+/* What POST /campaigns/orders answers with. Deliberately not the whole
+   campaign: what the buyer needs back is where the order lives, which offer
+   the creator is answering, and the deadline they are answering by.
+
+   No contract id, because there is no contract yet — one is written only if
+   the creator accepts, which is also why no money has moved at this point. */
+export type DirectOrder = {
+  campaign_id: string;
+  proposal_id: string;
+  expires_at: string | null;
 };
 
 /* proposals is a flat list, not a list of chains: every version of every
@@ -77,10 +97,15 @@ export type Favorite = {
    brief. It can be null while a business has not filled its profile, so the
    UI falls back to a generic "Marque" label. Everything the creator prices
    against — title, budget, deadline, deliverables — comes nested under
-   campaign. */
+   campaign.
+
+   proposal is the live version of the negotiation, null when nothing has been
+   offered yet. On a brief it is context; on a direct order it IS the order —
+   the buyer's offer, and the id the creator accepts or declines with. */
 export type InvitationWithCampaign = Invitation & {
   campaign: Campaign;
   business_company_name: string | null;
+  proposal: Proposal | null;
 };
 
 export type Contract = {

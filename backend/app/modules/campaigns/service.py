@@ -13,7 +13,14 @@ a note of its own and an optional counter — which is another version in the
 same chain, not a message. Terms that get argued over somewhere else end up
 agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
 contract, escrow, or protect either side of.
+
+Direct orders: a brand can also skip the brief entirely and buy a creator's
+package at the published price. That order is created here, as a hidden
+single-creator campaign, because the campaigns module owns the campaign — see
+create_direct_order for why it is shaped that way.
 """
+from datetime import timedelta
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -21,7 +28,7 @@ from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas
 from app.modules.notifications.service import notify
-from app.modules.profiles.models import BusinessProfile, InfluencerProfile
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile, Package
 
 # Nobody briefs a hundred-plus of anything in one campaign; past that the
 # number is a typo (an amount pasted into the quantity box), so reject it
@@ -38,6 +45,25 @@ AUTHOR_EXCLUDED_ROLE = "influencer"
 # and an unbounded chain would let one stubborn thread decide how long the
 # whole page takes to load.
 MAX_PROPOSAL_VERSIONS = 20
+
+# How long a creator has to accept or decline a direct order.
+#
+# The window exists because the buyer is waiting on an answer they have
+# already priced, and an offer nobody ever answers is worse for the brand than
+# a no. Two days is long enough for a creator who is filming or travelling and
+# short enough that a brand can plan around it. Letting it lapse costs nobody
+# anything: escrow is funded only after acceptance, so there is never money
+# sitting in the system waiting on this clock.
+ORDER_ACCEPT_WINDOW_HOURS = 48
+
+# The delivery timeline a direct order promises when the package does not say.
+#
+# A package's duration describes the deliverable ("30 seconds"), not how long
+# the creator needs to produce it, and the catalog of duration units is
+# seconds/minutes/hours — so in practice every order lands on this default.
+# One week is the figure creators quote most often on briefs, and both sides
+# can renegotiate it: an order is a proposal like any other.
+DEFAULT_ORDER_TIMELINE_DAYS = 7
 
 
 def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str) -> models.Campaign:
@@ -122,6 +148,7 @@ def _to_out(campaign: models.Campaign) -> dict:
         "deliverables": campaign.deliverables,
         "deadline": campaign.deadline,
         "status": campaign.status,
+        "is_direct": campaign.is_direct,
     }
 
 
@@ -199,6 +226,124 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
         "campaign_id": invitation.campaign_id,
         "influencer_user_id": invitation.influencer_user_id,
         "status": invitation.status,
+    }
+
+
+def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
+    """A brand buys a creator's package at the published price.
+
+    Shape of the thing, and why. An order is a HIDDEN, single-creator campaign
+    carrying exactly one invitation and one proposal — not a table of its own.
+    Contracts, escrow, reviews and disputes all already hang off a campaign
+    and a proposal, and giving orders their own model would mean a second
+    parallel path into the money code: two ways to reach a payout, two places
+    to get a refund wrong, every future change to escrow needing to be made
+    twice. One payment path is worth the small strangeness of a campaign
+    nobody can browse.
+
+    Who is proposing, and why it is the business. The buyer picked a price the
+    creator had already published and offered it back, so author_role is
+    business — that is literally what happened, and it is what makes the
+    creator's accept-or-decline an answer rather than a second offer.
+
+    What does NOT happen here: no money moves. The creator has
+    ORDER_ACCEPT_WINDOW_HOURS to accept, and escrow is funded only after they
+    do. That ordering is the whole reason the flow is shaped this way — until
+    both sides have agreed there is nothing in the system to refund, so a
+    decline or a lapse is simply a closed order and never a payments problem.
+
+    All of it in one transaction: a campaign with no invitation, or an
+    invitation with no offer attached, is an order the creator can see and
+    cannot answer.
+    """
+    package = db.query(Package).filter(Package.id == package_id).first()
+    if package is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package not found")
+    if not package.is_active:
+        # A creator deactivates a package when they have stopped selling it —
+        # out of season, fully booked, price out of date. Honouring the old
+        # price would be selling something nobody is offering.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This package is not available at the moment.",
+        )
+    # Checked before the role guard so the message is the true one. A creator
+    # buying their own package would also fail the role check, but "only
+    # businesses can order" is not what went wrong.
+    if package.user_id == business_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot order your own package.",
+        )
+    # Same guard, same rule, same wording as authoring a brief: an order IS a
+    # campaign, and the buying side of the market is the side that may create
+    # one. Reused rather than re-stated so the two can never drift apart.
+    _require_campaign_author(db, business_user_id)
+
+    campaign = models.Campaign(
+        business_user_id=business_user_id,
+        title=package.title,
+        budget_amount=package.price_amount,
+        budget_currency=package.currency,
+        deliverables=[
+            {"platform": package.platform, "type": package.deliverable_type, "quantity": package.quantity}
+        ],
+        # No deadline. A brief needs one because creators bid against it and
+        # have to know what they are bidding on; an order has no bidding, and
+        # the proposal's timeline_days is the commitment instead.
+        deadline=None,
+        # Published on creation, bypassing _publish_ready on purpose: that
+        # gate exists so a half-written brief cannot go live in front of
+        # creators. An order is complete the moment it is placed — the terms
+        # are the package's — and it goes in front of exactly one person.
+        status=models.PUBLISHED,
+        is_direct=True,
+    )
+    db.add(campaign)
+    # Flushed, not committed: the invitation and the proposal need the
+    # campaign id, and all three land or none of them do.
+    db.flush()
+
+    invitation = models.CampaignInvitation(
+        campaign_id=campaign.id, influencer_user_id=package.user_id, status=models.INVITED
+    )
+    db.add(invitation)
+
+    timeline_days = DEFAULT_ORDER_TIMELINE_DAYS
+    if package.duration_unit == "days" and package.duration_value:
+        timeline_days = package.duration_value
+
+    proposal = models.Proposal(
+        campaign_id=campaign.id,
+        influencer_user_id=package.user_id,
+        version=1,
+        rate_amount=package.price_amount,
+        rate_currency=package.currency,
+        timeline_days=timeline_days,
+        note=note,
+        author_role=models.AUTHOR_BUSINESS,
+        status=models.SUBMITTED,
+        # Only direct orders carry an expiry. A brief's proposals stay open
+        # indefinitely because nobody promised anything by leaving one open;
+        # here a buyer is waiting on an answer to a price they already named.
+        expires_at=models.utcnow() + timedelta(hours=ORDER_ACCEPT_WINDOW_HOURS),
+    )
+    db.add(proposal)
+
+    notify(
+        db,
+        package.user_id,
+        "direct_order",
+        f"A brand ordered your package {package.title}. You have "
+        f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline.",
+    )
+    db.commit()
+    db.refresh(campaign)
+    db.refresh(proposal)
+    return {
+        "campaign_id": campaign.id,
+        "proposal_id": proposal.id,
+        "expires_at": proposal.expires_at,
     }
 
 
@@ -314,6 +459,10 @@ def reply_to_proposal(
         note=payload.note,
         author_role=models.AUTHOR_BUSINESS,
         status=models.SUBMITTED,
+        # Carried forward, not restarted. A direct order that is being
+        # negotiated is still the same order on the same clock; resetting the
+        # window on every counter would let a chain run forever.
+        expires_at=latest.expires_at,
     )
     latest.status = models.SUPERSEDED
     db.add(reply)
@@ -390,12 +539,20 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
         "status": p.status,
         "note": p.note,
         "author_role": p.author_role,
+        "expires_at": p.expires_at,
         "display_name": identity.get("display_name"),
         "avatar_url": identity.get("avatar_url"),
     }
 
 
 def list_my_campaigns(db: Session, business_user_id: str) -> list[dict]:
+    """The buyer's own campaigns, briefs and direct orders alike.
+
+    Deliberately NOT filtered on is_direct. Hiding direct orders is about
+    keeping a private transaction off a public board; this list is scoped to
+    the one person who placed them, and an order they cannot find is an order
+    they cannot chase.
+    """
     rows = (
         db.query(models.Campaign)
         .filter(models.Campaign.business_user_id == business_user_id)
@@ -459,6 +616,17 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
     stored (platform, type, quantity), the budget, the deadline, the title —
     and who is asking, because the same deliverables are worth different money
     to different buyers.
+
+    Direct orders appear here too, and must: the creator is the invited party,
+    and this is the surface where they find out somebody bought their package.
+    is_direct on the nested campaign is what lets the client render it as an
+    order with a clock rather than as a brief to price.
+
+    Each row also carries the live version of its negotiation. For a brief
+    that is context; for an order it is the thing itself — accept and decline
+    are addressed by proposal id, and this is the only creator-facing list an
+    order appears in (campaign detail is owner-only). Without it the creator
+    would see an order they had no way to answer.
     """
     invitations = (
         db.query(models.CampaignInvitation)
@@ -479,5 +647,11 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
         if campaign.business_user_id not in company_names:
             company_names[campaign.business_user_id] = _company_name(db, campaign.business_user_id)
         item["business_company_name"] = company_names[campaign.business_user_id]
+        # Identity is deliberately left null here. display_name and avatar_url
+        # exist so a BUSINESS can tell one proposer from another; every row in
+        # this list belongs to the creator reading it, so the lookup would buy
+        # nothing and cost a query per row.
+        latest = latest_in_chain(db, campaign.id, influencer_user_id)
+        item["proposal"] = _proposal_out(latest) if latest is not None else None
         result.append(item)
     return result

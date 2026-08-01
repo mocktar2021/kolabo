@@ -2,42 +2,22 @@ import { useState, type FormEvent } from "react";
 import { Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { DeliverableRows, emptyDeliverable } from "../components/DeliverableRows";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { CURRENCIES } from "../lib/campaignOptions";
-import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
-
-type Deliverable = { platform: string; type: string; quantity: number };
-
-/* Quantity choices for a deliverable row. A dropdown rather than a free text
-   field: a fat finger on a number input turns "10 reels" into "100 reels" and
-   the brand only finds out when the proposals come back absurd. Twenty is far
-   past any real brief, and this is the same control the package form uses. */
-const QUANTITIES = Array.from({ length: 20 }, (_, i) => i + 1);
-
-/* A fresh row starts on the first platform's first deliverable so the pair is
-   valid by construction; the backend validates every pair against the same
-   catalog and answers 400 for anything else. */
-function emptyDeliverable(): Deliverable {
-  const platform = SELLABLE_PLATFORMS[0].id;
-  return { platform, type: deliverablesFor(platform)[0], quantity: 1 };
-}
-
-type Campaign = {
-  id: string;
-  title: string;
-  budget_amount: number | null;
-  budget_currency: string | null;
-  deliverables: Deliverable[];
-  deadline: string | null;
-  status: string;
-};
+import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
+import { PLATFORM_LABELS } from "../lib/platforms";
+import type { Campaign, Deliverable } from "../lib/types";
 
 export default function CampaignNew() {
   const { t } = useTranslation();
   const { token, isAuthenticated } = useAuth();
 
   const [title, setTitle] = useState("");
+  /* The brief in prose, set at creation rather than only afterwards. A brand
+     that has to publish first and explain second publishes a title and a
+     budget, which is exactly the brief creators cannot price. */
+  const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
   const [currency, setCurrency] = useState("XOF");
   const [deadline, setDeadline] = useState("");
@@ -50,22 +30,6 @@ export default function CampaignNew() {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  function updateDeliverable(i: number, patch: Partial<Deliverable>) {
-    setDeliverables((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
-  }
-  /* Switching platform resets the type to that platform's first deliverable:
-     keeping the old type would silently build an invalid pair (e.g. a TikTok
-     "reel") that only surfaces as a 400 on submit. */
-  function changePlatform(i: number, platform: string) {
-    updateDeliverable(i, { platform, type: deliverablesFor(platform)[0] });
-  }
-  function addDeliverable() {
-    setDeliverables((prev) => [...prev, emptyDeliverable()]);
-  }
-  function removeDeliverable(i: number) {
-    setDeliverables((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -76,6 +40,9 @@ export default function CampaignNew() {
         token,
         body: {
           title,
+          // Null rather than an empty string: the column is nullable and "no
+          // description" is an absence, not a description made of nothing.
+          description: description.trim() || null,
           budget_amount: budget ? Number(budget) : null,
           budget_currency: budget ? currency : null,
           deliverables,
@@ -125,6 +92,9 @@ export default function CampaignNew() {
               {created.budget_amount ? `${created.budget_amount} ${created.budget_currency}` : t("campaign.noBudget")}
               {created.deadline ? ` - ${created.deadline}` : ""}
             </p>
+            {created.description && (
+              <p style={{ fontSize: 14, whiteSpace: "pre-wrap", margin: "0 0 10px" }}>{created.description}</p>
+            )}
             <ul style={{ margin: "0 0 14px", paddingLeft: 18, fontSize: 14 }}>
               {created.deliverables.map((d, i) => (
                 <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
@@ -144,6 +114,13 @@ export default function CampaignNew() {
             <div className="field">
               <label className="label" htmlFor="c-title">{t("campaign.name")}</label>
               <input id="c-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="c-description">{t("campaign.description")}</label>
+              <textarea id="c-description" className="input" rows={4} maxLength={MAX_DESCRIPTION_LENGTH}
+                style={{ resize: "vertical" }} value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t("campaign.descriptionPlaceholder")} />
             </div>
             <div className="field" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
               <div>
@@ -165,22 +142,7 @@ export default function CampaignNew() {
 
             <div className="field">
               <span className="label">{t("campaign.deliverables")}</span>
-              {deliverables.map((d, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 88px auto", gap: 8, marginBottom: 8 }}>
-                  <select className="select" value={d.platform} onChange={(e) => changePlatform(i, e.target.value)}>
-                    {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  </select>
-                  <select className="select" value={d.type} onChange={(e) => updateDeliverable(i, { type: e.target.value })}>
-                    {deliverablesFor(d.platform).map((ty) => <option key={ty} value={ty}>{t(`deliverable.${ty}`, ty)}</option>)}
-                  </select>
-                  <select className="select" aria-label={t("profile.packageQuantity")} value={d.quantity}
-                    onChange={(e) => updateDeliverable(i, { quantity: Number(e.target.value) })}>
-                    {QUANTITIES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                  <button type="button" className="btn btn-ghost" onClick={() => removeDeliverable(i)} disabled={deliverables.length === 1} aria-label="remove">x</button>
-                </div>
-              ))}
-              <button type="button" className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 13 }} onClick={addDeliverable}>+ {t("campaign.addDeliverable")}</button>
+              <DeliverableRows value={deliverables} onChange={setDeliverables} />
             </div>
 
             <div className="field">

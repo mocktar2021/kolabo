@@ -5,11 +5,26 @@ export type Campaign = {
   id: string;
   business_user_id: string;
   title: string;
+  /* The brief in prose: context, tone, what the brand is trying to say.
+     Capped at 5000 characters server-side, and null on every campaign written
+     before the column existed as well as on direct orders — an order carries
+     terms, not a brief — so every reader has to handle its absence.
+
+     It is description and not terms, which is why it stays editable for the
+     whole life of a campaign while the budget does not: rewriting it does not
+     change what a creator priced against. */
+  description: string | null;
   budget_amount: number | null;
   budget_currency: string | null;
   deliverables: Deliverable[];
   deadline: string | null;
   status: string;
+  /* True when the campaign is really a direct order: one creator, the buyer's
+     offer already on the table, nobody else bidding. The client needs it to
+     label the card as an order rather than a brief — and to know not to offer
+     the edit form, because PATCH answers 400 on one. An order's terms are a
+     negotiation, and the way to change them is to counter. */
+  is_direct: boolean;
 };
 
 /* How a creator appears on any row a business reads: favourites, campaign
@@ -95,6 +110,14 @@ export type DirectOrder = {
   expires_at: string | null;
 };
 
+/* The receipt for a hard delete (DELETE /campaigns/{id}). The id is echoed
+   back because the row it names no longer exists to be fetched, and a client
+   that removed the wrong card from its list has no way to find out otherwise. */
+export type CampaignDeleted = {
+  id: string;
+  deleted: boolean;
+};
+
 /* proposals is a flat list, not a list of chains: every version of every
    negotiation on the campaign, oldest first, capped at the twenty most recent
    (the cap is taken from the recent end, because the last version is the live
@@ -154,6 +177,49 @@ export type Contract = {
 };
 
 export type ContractDetail = Contract & { body: string };
+
+/* One conversation on the inbox screen (GET /messaging/threads).
+
+   A row per CONTRACT, named by the OTHER person: a creator's inbox says
+   "Maison Kola", a brand's says "Ama K.". Naming rows by campaign title alone
+   would give a brand working with six creators on one brief six identical
+   ones, and collapsing them would lose the only thing that tells them apart.
+
+   counterparty_name is null when the other side has written no profile — the
+   same rule identity follows everywhere else, and for the same reason: the
+   users table holds only a phone number, and a phone number is never handed
+   to the other side of a deal. counterparty_avatar_url is only ever set for a
+   creator; a business has a company name and no avatar in this system.
+
+   last_message_at arrives naive UTC like every other datetime here, so it
+   goes through parseApiDate before it is turned into "il y a 2 h". */
+export type MessageThread = {
+  campaign_id: string;
+  campaign_title: string | null;
+  /* The contract that opened this thread — and the answer to "why am I
+     allowed in here". */
+  contract_id: string;
+  counterparty_user_id: string;
+  counterparty_name: string | null;
+  counterparty_avatar_url: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
+  unread_count: number;
+};
+
+/* One message in a thread. read_at is a timestamp rather than a flag because
+   in a dispute the useful fact is when a specific message was seen, not how
+   many are outstanding — and it is null until the recipient opens the thread,
+   which is the only thing that stamps it. */
+export type Message = {
+  id: string;
+  campaign_id: string;
+  sender_user_id: string;
+  recipient_user_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+};
 
 export type Escrow = {
   id: string;

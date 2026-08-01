@@ -1,5 +1,5 @@
 """Schemas for the campaigns module."""
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,10 @@ class CampaignOut(BaseModel):
     deliverables: list[Deliverable]
     deadline: date | None
     status: str
+    # True when this campaign is really a direct order. The client needs it to
+    # label the card as an order rather than a brief, and to know there is
+    # nobody else bidding.
+    is_direct: bool = False
 
 
 class InvitationOut(BaseModel):
@@ -70,6 +74,32 @@ class ProposalReplyIn(BaseModel):
     timeline_days: int | None = Field(default=None, ge=1)
 
 
+class OrderIn(BaseModel):
+    """A brand buying a creator's package outright.
+
+    Only the package id and an optional word to the creator. Everything a
+    campaign normally asks for — title, budget, deliverables, currency — is
+    read off the package, because the whole promise of a package is that the
+    creator already decided all of it and published a price.
+    """
+
+    package_id: str
+    note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
+
+
+class OrderOut(BaseModel):
+    """What the buyer needs after placing an order.
+
+    Deliberately not the whole campaign: the interesting facts are where the
+    order lives, which offer the creator is answering, and the deadline they
+    are answering by. The campaign detail endpoint serves the rest.
+    """
+
+    campaign_id: str
+    proposal_id: str
+    expires_at: datetime | None
+
+
 class ProposalOut(BaseModel):
     id: str
     campaign_id: str
@@ -83,6 +113,9 @@ class ProposalOut(BaseModel):
     # Which side wrote this version. Defaults to the creator: every proposal
     # that predates the business reply came from one.
     author_role: str = "influencer"
+    # When a direct order stops being answerable. Null on everything else —
+    # only direct orders run on a clock.
+    expires_at: datetime | None = None
     # Who the offer is from, in a form the business can act on. A proposals
     # list of bare user ids is unusable: nobody picks "Créateur 424275c0".
     # Null until the creator has a profile, and it stays null — the users
@@ -110,3 +143,14 @@ class InvitationWithCampaign(BaseModel):
     # Who is asking. Null while the business has not filled in a profile — the
     # users table has only a phone number to offer, and that is never exposed.
     business_company_name: str | None = None
+    # The live version of the negotiation, or None when nothing has been
+    # offered yet. A brief's invitation normally arrives before any proposal
+    # exists; a direct order always carries one, because the buyer's offer IS
+    # the order.
+    #
+    # It is here because this is the ONLY creator-facing list an order appears
+    # in, and accepting or declining one is addressed by proposal id. Campaign
+    # detail is owner-only, so without this the creator could see an order and
+    # have nothing to answer it with. expires_at on it is also what tells the
+    # two kinds of row apart client-side: only a direct order runs on a clock.
+    proposal: ProposalOut | None = None

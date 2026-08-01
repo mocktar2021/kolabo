@@ -297,8 +297,13 @@ def test_favorite_row_carries_name_and_avatar(client):
     row = client.get("/discovery/favorites", headers=headers).json()[0]
     assert row["display_name"] == "Ama K."
     assert row["avatar_url"] == f"/profiles/media/{media_id}"
-    assert row["headline"] == "Lifestyle creator"
     assert row["country_code"] == "BJ"
+    # headline no longer travels on a favourite row: it was a subtitle that
+    # repeated the name. The audience number took its place, and this creator
+    # has no connected account, so it is null rather than absent.
+    assert "headline" not in row
+    assert row["top_platform"] is None
+    assert row["top_follower_count"] is None
 
 
 def test_favorite_without_a_profile_returns_nulls_not_an_error(client):
@@ -320,6 +325,6 @@ def test_favorite_without_a_profile_returns_nulls_not_an_error(client):
     assert row["influencer_user_id"] == uid
     assert row["display_name"] is None
     assert row["avatar_url"] is None
-    assert row["headline"] is None
+    assert row["top_follower_count"] is None
     assert row["country_code"] == "TG"
     assert "+22990000303" not in str(row)

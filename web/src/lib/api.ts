@@ -17,7 +17,22 @@ export class ApiError extends Error {
   }
 }
 
-type Options = { method?: string; body?: unknown; token?: string | null };
+/* token is a normal user's bearer JWT.
+
+   adminId is NOT authentication. Admin login and RBAC are not built yet, so
+   the backend takes admin identity from an X-Admin-Id header — a deliberate
+   placeholder documented in backend/app/modules/admin/router.py, enough to
+   attribute and log decisions during the manual pilot. It lives here rather
+   than in the one page that needs it because the dispute queue reads from
+   both /admin and /payments, and a second fetch helper for the same API is
+   how two of them end up disagreeing about error parsing. When real admin
+   auth arrives this option is what gets deleted. */
+type Options = {
+  method?: string;
+  body?: unknown;
+  token?: string | null;
+  adminId?: string | null;
+};
 
 function parseError(status: number, data: unknown, fallback: string): ApiError {
   const detail = (data && typeof data === "object" && ((data as Record<string, unknown>).detail || (data as Record<string, unknown>).message)) || fallback;
@@ -27,6 +42,7 @@ function parseError(status: number, data: unknown, fallback: string): ApiError {
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  if (opts.adminId) headers["X-Admin-Id"] = opts.adminId;
 
   const res = await fetch(`${BASE}${path}`, {
     method: opts.method || "GET",

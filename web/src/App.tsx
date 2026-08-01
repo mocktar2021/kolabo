@@ -19,6 +19,7 @@ import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
 import DisputesPage from "./pages/Disputes";
 import DisputeDetailPage from "./pages/DisputeDetail";
+import AdminDisputesPage from "./pages/AdminDisputes";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
@@ -87,6 +88,14 @@ export default function App() {
               /payments answers 403 to anybody else. */}
           <Route path="/disputes" element={<DisputesPage />} />
           <Route path="/disputes/:id" element={<DisputeDetailPage />} />
+          {/* Unguarded on purpose, and it is not an oversight. Admin is not a
+              role in this app — there is no admin login and getStoredRole
+              cannot answer for one — so there is nothing here to ask. The
+              gate is the X-Admin-Id header the page sends, which the API
+              checks; without it every request on this screen answers 401 and
+              the page shows nothing. Replace both when real admin auth
+              lands. */}
+          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
           <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
           <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />

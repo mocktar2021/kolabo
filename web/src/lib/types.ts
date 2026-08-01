@@ -48,6 +48,18 @@ export type Proposal = {
   avatar_url: string | null;
 };
 
+/* What POST /campaigns/orders answers with. Deliberately not the whole
+   campaign: what the buyer needs back is where the order lives, which offer
+   the creator is answering, and the deadline they are answering by.
+
+   No contract id, because there is no contract yet — one is written only if
+   the creator accepts, which is also why no money has moved at this point. */
+export type DirectOrder = {
+  campaign_id: string;
+  proposal_id: string;
+  expires_at: string | null;
+};
+
 /* proposals is a flat list, not a list of chains: every version of every
    negotiation on the campaign, oldest first, capped at the twenty most recent
    (the cap is taken from the recent end, because the last version is the live

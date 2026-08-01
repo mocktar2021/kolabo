@@ -47,6 +47,22 @@ def create_campaign(
     return service.create_campaign(db, business_user_id, payload)
 
 
+@router.post("/orders", response_model=schemas.OrderOut, status_code=status.HTTP_201_CREATED)
+def create_direct_order(
+    payload: schemas.OrderIn,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Order a creator's package directly, at the price they published.
+
+    Lives under /campaigns because an order IS a campaign — a hidden one, with
+    a single creator invited and the buyer's offer already on the table. No
+    money moves here: the creator has 48 hours to accept, and escrow is funded
+    only after they do.
+    """
+    return service.create_direct_order(db, business_user_id, payload.package_id, payload.note)
+
+
 @router.post("/{campaign_id}/publish", response_model=schemas.CampaignOut)
 def publish_campaign(
     campaign_id: str,

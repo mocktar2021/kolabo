@@ -6,7 +6,7 @@ never as a float, per the multi currency principle in the architecture notes.
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -50,6 +50,17 @@ class Campaign(Base):
     deliverables: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String, default=DRAFT, nullable=False)
+    # A direct order: one brand buying one creator's package, wearing a
+    # campaign's clothes. It is a campaign because contracts, escrow, reviews
+    # and disputes all already hang off a campaign and a proposal, and a
+    # second parallel path through the money code would double the surface
+    # where a payout can go wrong.
+    #
+    # It is HIDDEN because it is a private transaction between two parties,
+    # not a brief anyone may bid on. Any listing that shows campaigns to
+    # somebody who is not a participant must filter these out; a participant's
+    # own views (my campaigns, my invitations, contracts) must still show them.
+    is_direct: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -84,5 +95,14 @@ class Proposal(Base):
     # Defaults to the creator because every proposal that existed before this
     # column came from one.
     author_role: Mapped[str] = mapped_column(String, default=AUTHOR_INFLUENCER, nullable=False)
+    # When this offer stops being answerable. NULL for everything born of a
+    # brief, and that is deliberate: a brief's proposals do not expire,
+    # because there is no promise attached to leaving one open — the business
+    # simply has not chosen yet. A direct order is the opposite. The buyer has
+    # named a price and is waiting, so the creator gets a bounded window
+    # (ORDER_ACCEPT_WINDOW_HOURS) to answer, after which the offer lapses.
+    # Nothing is refunded when it does, because escrow is only funded after
+    # acceptance and there is no money in the system yet.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String, default=SUBMITTED, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

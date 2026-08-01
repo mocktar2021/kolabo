@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.modules.admin import service
+from app.modules.admin import disputes, service
 from app.modules.config import service as config_service
 from app.modules.config.schemas import CountryConfigIn, CountryConfigOut, EnabledIn
 
@@ -26,6 +26,18 @@ def get_current_admin(x_admin_id: str | None = Header(default=None)) -> str:
 def dashboard_summary(db: Session = Depends(get_db), admin_id: str = Depends(get_current_admin)):
     """Queue counts across verification, disputes, payouts, and reports. KOL-33."""
     return service.dashboard_summary(db)
+
+
+@router.get("/disputes")
+def dispute_queue(db: Session = Depends(get_db), admin_id: str = Depends(get_current_admin)):
+    """The dispute queue: cases whose response window closed come first.
+
+    Oldest first within each group, with the amount at stake, the reason, both
+    parties and how much has been said. The full case, including the thread
+    and its evidence, is GET /payments/disputes/{id}, which an admin may read.
+    KOL-37.
+    """
+    return disputes.list_dispute_queue(db)
 
 
 @router.get("/countries", response_model=list[CountryConfigOut])

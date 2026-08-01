@@ -7,7 +7,16 @@ class FundIn(BaseModel):
 
 
 class ResolveIn(BaseModel):
-    decision: str  # release or refund
+    """An admin's decision, as two figures that have to add up.
+
+    Either may be zero, which reproduces the old full-release and full-refund
+    outcomes. The sum is checked against the escrow in the service, where the
+    refusal can name both figures and the total.
+    """
+
+    released_amount: int
+    refunded_amount: int
+    note: str | None = None
 
 
 class DisputeIn(BaseModel):

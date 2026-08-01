@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.payments import disputes, schemas, service
+from app.modules.payments import disputes, resolution, schemas, service
 
 router = APIRouter()
 
@@ -145,15 +145,20 @@ def get_escrow(
     return service.get_escrow(db, user_id, escrow_id)
 
 
-@router.post("/escrow/{escrow_id}/resolve", response_model=schemas.EscrowOut)
+@router.post("/escrow/{escrow_id}/resolve", response_model=schemas.DisputeOut)
 def resolve_dispute(
     escrow_id: str,
     payload: schemas.ResolveIn,
     db: Session = Depends(get_db),
     admin_id: str = Depends(get_current_admin),
 ):
-    """Admin resolves a dispute by releasing or refunding, logged. KOL-37."""
-    return service.resolve_dispute(db, admin_id, escrow_id, payload.decision)
+    """Admin settles a disputed escrow by splitting it, logged. KOL-37.
+
+    released_amount and refunded_amount must add up to the escrow exactly.
+    Either may be zero. Commission is charged on the released part only.
+    Returns the closed dispute with the settled escrow on it.
+    """
+    return resolution.resolve_dispute(db, admin_id, escrow_id, payload)
 
 
 @router.post("/escrow/auto-release")

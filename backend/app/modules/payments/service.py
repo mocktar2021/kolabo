@@ -6,10 +6,10 @@ abstraction, and never handles raw PINs.
 KOL-36: release the escrow to the influencer once the business confirms
 delivery, deducting commission at release, or auto release after a timeout if
 the business does not respond.
-KOL-37: a dispute freezes the escrow; an admin resolves it (release or refund),
-the decision is logged, and both parties are notified. Everything about the
-dispute itself — raising it, the response window, the thread, resolution —
-lives in payments/disputes.py; what stays here is the money.
+KOL-37: a dispute freezes the escrow and an admin settles it. Raising one and
+the response window live in payments/disputes.py; the admin's split decision
+lives in payments/resolution.py. What stays here is the ordinary money path
+and the two things both of those reuse: commission_for and _release.
 
 No real money moves: all provider calls go through the mock provider until a real
 Mobile Money provider is contracted.
@@ -21,7 +21,6 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.modules.admin.models import AdminActionLog
 from app.modules.auth.models import User
 from app.modules.auth.referrals import award_for_completed_order
 from app.modules.contracts import models as contracts
@@ -31,6 +30,17 @@ from app.modules.payments import models, provider
 logger = logging.getLogger(__name__)
 
 payment_provider: provider.MobileMoneyProvider = provider.default_provider
+
+
+def commission_for(amount: int) -> int:
+    """The platform's cut of money that actually reached a creator.
+
+    One definition, used by the ordinary release and by a disputed split, so
+    the two can never end up disagreeing about what the fee on a payment is.
+    Integer division in minor units: the rounding remainder stays with the
+    creator, which is the side it should stay with.
+    """
+    return amount * settings.commission_bps // 10000
 
 
 def _out(escrow: models.Escrow) -> dict:
@@ -116,7 +126,7 @@ def _award_referral_credits(db: Session, escrow: models.Escrow) -> None:
 
 def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     influencer = db.query(User).filter(User.id == escrow.influencer_user_id).first()
-    commission = escrow.amount * settings.commission_bps // 10000
+    commission = commission_for(escrow.amount)
     payout_amount = escrow.amount - commission
     payout_ref = payment_provider.payout(influencer.phone, payout_amount, escrow.currency)
     escrow.commission_amount = commission
@@ -127,9 +137,11 @@ def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     notify(db, escrow.influencer_user_id, "payment", "Escrow released, your payout is on the way")
     notify(db, escrow.business_user_id, "payment", "Escrow released to the influencer")
     # Last, and only once the release itself is settled in the session: this is
-    # the single point every release passes through — business confirmation,
-    # auto release after timeout, and an admin resolving a dispute — so the
-    # reward hangs off order completion rather than off one button.
+    # the single point every UNDISPUTED release passes through — business
+    # confirmation and auto release after timeout — so the reward hangs off
+    # order completion rather than off one button. A disputed escrow is
+    # settled by resolution.resolve_dispute, which makes the same call for the
+    # same reason when any money reached the creator.
     _award_referral_credits(db, escrow)
 
 
@@ -158,33 +170,6 @@ def run_due_auto_releases(db: Session, now=None) -> int:
         _release(db, escrow, "system_auto_release")
     db.commit()
     return len(due)
-
-
-def resolve_dispute(db: Session, admin_id: str, escrow_id: str, decision: str) -> dict:
-    if decision not in ("release", "refund"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="decision must be release or refund")
-    escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
-    if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
-    if escrow.status != models.DISPUTED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escrow is not under dispute")
-
-    if decision == "release":
-        _release(db, escrow, admin_id)
-    else:
-        business = db.query(User).filter(User.id == escrow.business_user_id).first()
-        refund_ref = payment_provider.payout(business.phone, escrow.amount, escrow.currency)
-        escrow.provider_payout_ref = refund_ref
-        escrow.status = models.REFUNDED
-        escrow.resolved_at = models.utcnow()
-        _event(db, escrow, admin_id, "refunded")
-        notify(db, escrow.business_user_id, "payment", "Your escrow was refunded")
-        notify(db, escrow.influencer_user_id, "payment", "The disputed escrow was refunded to the business")
-
-    db.add(AdminActionLog(admin_id=admin_id, action=f"dispute_{decision}", target_type="escrow", target_id=escrow.id, reason=None))
-    db.commit()
-    db.refresh(escrow)
-    return _out(escrow)
 
 
 def get_escrow(db: Session, user_id: str, escrow_id: str) -> dict:

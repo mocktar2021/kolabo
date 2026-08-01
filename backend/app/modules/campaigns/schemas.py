@@ -3,6 +3,12 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+# A note is a sentence or two explaining an offer, not a chat window. Past a
+# couple of thousand characters somebody is holding a conversation in a text
+# box, and conversations belong in messaging — the note exists so the terms
+# can carry their own reasoning, not so the negotiation can become a thread.
+MAX_NOTE_LENGTH = 2000
+
 
 class Deliverable(BaseModel):
     platform: str
@@ -41,6 +47,27 @@ class ProposalIn(BaseModel):
     rate_amount: int = Field(ge=1)
     rate_currency: str = Field(min_length=3, max_length=3)
     timeline_days: int = Field(ge=1)
+    # Optional: a creator who wants to send bare numbers still can. It is only
+    # there for the ones who have something to say about them.
+    note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
+
+
+class ProposalReplyIn(BaseModel):
+    """The business answering an offer.
+
+    The note is required and the terms are optional, which is the entire point
+    of the endpoint. A reply always says something — "the budget stops at
+    40k", "can you do it in five days" — and it counters only when the business
+    actually wants different numbers. A note with no terms is a message, and
+    messages leaving for WhatsApp is what this whole feature is here to stop.
+
+    Currency is not on this schema: a chain is priced in one currency or it is
+    two negotiations pretending to be one.
+    """
+
+    note: str = Field(min_length=1, max_length=MAX_NOTE_LENGTH)
+    rate_amount: int | None = Field(default=None, ge=1)
+    timeline_days: int | None = Field(default=None, ge=1)
 
 
 class ProposalOut(BaseModel):
@@ -52,6 +79,10 @@ class ProposalOut(BaseModel):
     rate_currency: str
     timeline_days: int
     status: str
+    note: str | None = None
+    # Which side wrote this version. Defaults to the creator: every proposal
+    # that predates the business reply came from one.
+    author_role: str = "influencer"
     # Who the offer is from, in a form the business can act on. A proposals
     # list of bare user ids is unusable: nobody picks "Créateur 424275c0".
     # Null until the creator has a profile, and it stays null — the users

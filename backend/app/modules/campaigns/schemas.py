@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 # can carry their own reasoning, not so the negotiation can become a thread.
 MAX_NOTE_LENGTH = 2000
 
+# A brief in prose. Longer than a note because this one IS the document: the
+# brand explaining context, tone and what it is trying to say. The cap is here
+# so a paste of an entire deck cannot become a campaign row.
+MAX_DESCRIPTION_LENGTH = 5000
+
 # The fields that together make up a negotiated offer. Named as a group
 # because the rule about them is a group rule: all of them or none of them,
 # and never alongside a package_id.
@@ -31,6 +36,7 @@ class Deliverable(BaseModel):
 
 class CampaignCreate(BaseModel):
     title: str = Field(min_length=1)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     budget_amount: int | None = Field(default=None, ge=1)
     budget_currency: str | None = None
     deliverables: list[Deliverable] = Field(default_factory=list)
@@ -38,10 +44,41 @@ class CampaignCreate(BaseModel):
     publish: bool = False
 
 
+class CampaignPatch(BaseModel):
+    """A partial correction to a campaign.
+
+    Every field is optional, and the rule is exclude_unset — the same contract
+    the profile upsert runs on. A field the client did not send is left alone;
+    a nullable field the client explicitly sent as null IS cleared, because
+    that is how a form clears a value. A client that does not know about a
+    column must not be able to wipe it just by not knowing.
+
+    Which of these may actually change is NOT decided here, and cannot be: the
+    answer depends on whether the campaign is published and whether anybody
+    has priced against it. That lives in campaigns.editing, which answers with
+    a 400 naming the field — a 422 field-error would tell a brand its budget
+    is invalid without ever explaining that a creator has already bid on it.
+
+    publish is absent on purpose. Going live is a state change with its own
+    readiness gate (POST /campaigns/{id}/publish), not a field to set.
+    """
+
+    # min_length rather than nullable: the column is NOT NULL, so an explicit
+    # null is refused in the service with a sentence rather than crashing on
+    # the insert.
+    title: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    budget_amount: int | None = Field(default=None, ge=1)
+    budget_currency: str | None = None
+    deliverables: list[Deliverable] | None = None
+    deadline: date | None = None
+
+
 class CampaignOut(BaseModel):
     id: str
     business_user_id: str
     title: str
+    description: str | None = None
     budget_amount: int | None
     budget_currency: str | None
     deliverables: list[Deliverable]
@@ -150,6 +187,49 @@ class OrderIn(BaseModel):
     timeline_days: int | None = None
 
 
+class CartItemIn(OrderIn):
+    """One line of a basket.
+
+    Literally an order body, inherited rather than re-declared: a line in a
+    cart is a thing a brand could have ordered on its own, in either of the
+    same two forms, under the same rules. Copying the fields would let the two
+    drift, and the first place they drifted would be which terms a checkout
+    accepts that a single order does not.
+    """
+
+
+class CartCheckoutIn(BaseModel):
+    """A whole basket, posted in one go.
+
+    There is no cart on the server: the client holds it and sends all of it at
+    checkout. campaigns.cart says why — briefly, a stored basket buys a table,
+    an expiry policy and a stale-price problem for nothing.
+
+    The 1..20 bound is enforced in the service, not here, so an oversized cart
+    hears a sentence about the limit instead of a field error about "items".
+    """
+
+    items: list[CartItemIn] = Field(default_factory=list)
+
+
+class CartOrderOut(BaseModel):
+    """One creator's order out of a checkout.
+
+    Carries creator_user_id where a single order's receipt does not: the buyer
+    sent a flat list of items and got back a shorter list of orders, and
+    without the creator on each row it cannot tell which order is whose.
+    """
+
+    creator_user_id: str
+    campaign_id: str
+    proposal_id: str
+    expires_at: datetime | None
+
+
+class CartCheckoutOut(BaseModel):
+    orders: list[CartOrderOut] = Field(default_factory=list)
+
+
 class OrderOut(BaseModel):
     """What the buyer needs after placing an order.
 
@@ -186,6 +266,18 @@ class ProposalOut(CreatorIdentity):
 class CampaignDetailOut(CampaignOut):
     invitations: list[InvitationOut] = Field(default_factory=list)
     proposals: list[ProposalOut] = Field(default_factory=list)
+
+
+class CampaignDeletedOut(BaseModel):
+    """The receipt for a hard delete.
+
+    The id is echoed back because the row it names no longer exists to be
+    fetched, and a client that removed the wrong card from its list has no way
+    to find out otherwise.
+    """
+
+    id: str
+    deleted: bool = True
 
 
 class InvitationWithCampaign(BaseModel):

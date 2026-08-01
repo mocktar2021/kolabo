@@ -25,3 +25,14 @@ class Message(Base):
     recipient_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False, index=True)
+    # When the recipient opened the thread carrying this message. NULL means
+    # unread, and that is the whole unread count.
+    #
+    # A timestamp rather than the boolean notifications use (is_read). A
+    # notification is a nudge and only has to know whether it still needs
+    # showing; a message lives in a work channel hanging off a contract, and
+    # in a dispute "when did you see this" is a real question — the brand says
+    # it asked for the revision on the 3rd, the creator says they only saw it
+    # on the 9th. A boolean cannot answer that. Naive UTC like every other
+    # datetime here.
+    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

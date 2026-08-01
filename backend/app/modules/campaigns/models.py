@@ -22,9 +22,11 @@ def utcnow() -> datetime:
 
 DRAFT = "draft"
 PUBLISHED = "published"
-# Closed with no deal. Today this only ever happens to a direct order the
-# creator turned down or let lapse. The row is kept rather than deleted:
-# both sides should still be able to see what was offered and how it ended.
+# Closed with no deal. Reached two ways: a direct order the creator turned
+# down or let lapse, and a brief the buyer called off (campaigns.editing).
+# The row is kept rather than deleted in both cases: proposals, contracts and
+# the audit trail hang off it, and the buyer changing its mind is not a reason
+# to erase the other side's half of the record.
 CANCELLED = "cancelled"
 
 INVITED = "invited"
@@ -55,6 +57,15 @@ class Campaign(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     business_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    # The brief in prose: context, tone, what the brand is trying to say.
+    # Nullable because a title alone is a legitimate draft — somebody writing
+    # down an idea before they know what it is — and because every campaign
+    # written before this column existed has nothing to put here.
+    #
+    # It is description and not terms, which is the whole reason it sits
+    # beside title in campaigns.editing.LOCKED_FIELDS' opposite: rewriting it
+    # after a creator has bid does not change what they bid FOR.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     budget_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     budget_currency: Mapped[str | None] = mapped_column(String, nullable=True)
     deliverables: Mapped[list] = mapped_column(JSON, default=list, nullable=False)

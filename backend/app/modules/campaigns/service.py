@@ -22,6 +22,17 @@ because the campaigns module owns the campaign. They are built by one function
 contract path and one escrow path, and nothing after creation can tell the two
 kinds of order apart.
 
+An order is built in two halves, and the split is what lets a cart exist.
+resolve_package_terms and resolve_negotiated_terms answer "what are the terms,
+and may this buyer have them" without writing anything; _place_order turns
+terms into rows. campaigns.cart calls the resolvers for every item in a basket
+before it writes a single row, which is how a checkout can be all-or-nothing
+without a second copy of the package and offer checks living inside it.
+
+Editing, deleting and cancelling a campaign live next door in
+campaigns.editing, which is where the rules about what a buyer may still
+change once other people are looking are written down.
+
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
 favourite all name a creator the same way.
@@ -152,6 +163,7 @@ def _to_out(campaign: models.Campaign) -> dict:
         "id": campaign.id,
         "business_user_id": campaign.business_user_id,
         "title": campaign.title,
+        "description": campaign.description,
         "budget_amount": campaign.budget_amount,
         "budget_currency": campaign.budget_currency,
         "deliverables": campaign.deliverables,
@@ -175,6 +187,7 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     campaign = models.Campaign(
         business_user_id=business_user_id,
         title=payload.title,
+        description=payload.description,
         budget_amount=payload.budget_amount,
         budget_currency=payload.budget_currency,
         deliverables=deliverables,
@@ -241,12 +254,13 @@ def _place_order(
     business_user_id: str,
     creator_user_id: str,
     title: str,
-    deliverable: dict,
+    deliverables: list[dict],
     rate_amount: int,
     currency: str,
     timeline_days: int,
     note: str | None,
     notice: str,
+    commit: bool = True,
 ) -> dict:
     """Build the order itself: a hidden campaign, one invitation, one offer.
 
@@ -259,18 +273,33 @@ def _place_order(
     twice. One payment path is worth the small strangeness of a campaign
     nobody can browse.
 
-    Both forms of order come through here, and that is deliberate rather than
-    convenient. A package order and a negotiated order are the SAME object
-    downstream — one accept path, one contract path, one escrow path — and the
-    only way that stays true is for one function to build both. Two builders
-    would drift, and where they drifted is the code that decides what a
-    contract says.
+    Every form of order comes through here, and that is deliberate rather than
+    convenient. A package order, a negotiated order and one creator's share of
+    a cart checkout are the SAME object downstream — one accept path, one
+    contract path, one escrow path — and the only way that stays true is for
+    one function to build all of them. Two builders would drift, and where
+    they drifted is the code that decides what a contract says.
+
+    Why deliverables is a LIST. A single order has exactly one, and for most
+    of this file's life the parameter was one dict. A cart checkout is where
+    that stops holding: three packages bought from the same creator are one
+    order — one invitation, one answer, one contract, one escrow — carrying
+    three deliverables, and the campaign model already stored a list because a
+    brief always could. Widening the parameter was cheaper and safer than a
+    second builder for multi-deliverable orders. rate_amount is the whole
+    order's price, so for a cart it is the sum the caller worked out.
 
     Who is proposing, and why it is the business. Either the buyer picked a
     price the creator had already published and offered it back, or it named
     terms of its own; both are the brand making an offer, so author_role is
     business. That is what makes the creator's accept-or-decline an answer
     rather than a second offer.
+
+    commit=False is for callers placing several orders that must land
+    together. It flushes instead, so the ids in the returned dict are real,
+    and leaves the transaction open for the caller to close once. Nothing else
+    about the order changes: a cart's orders are ordinary orders that happened
+    to be written in the same breath.
 
     What does NOT happen here: no money moves. The creator has
     ORDER_ACCEPT_WINDOW_HOURS to accept, and escrow is funded only after they
@@ -287,7 +316,7 @@ def _place_order(
         title=title,
         budget_amount=rate_amount,
         budget_currency=currency,
-        deliverables=[deliverable],
+        deliverables=list(deliverables),
         # No deadline. A brief needs one because creators bid against it and
         # have to know what they are bidding on; an order has no bidding, and
         # the proposal's timeline_days is the commitment instead.
@@ -328,9 +357,14 @@ def _place_order(
     db.add(proposal)
 
     notify(db, creator_user_id, "direct_order", notice)
-    db.commit()
-    db.refresh(campaign)
-    db.refresh(proposal)
+    if commit:
+        db.commit()
+        db.refresh(campaign)
+        db.refresh(proposal)
+    else:
+        # The caller is placing more than one and will commit them together.
+        # Flushing is enough to hand back real ids.
+        db.flush()
     return {
         "campaign_id": campaign.id,
         "proposal_id": proposal.id,
@@ -352,6 +386,20 @@ def create_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -
     default for a rate or a deliverable: an order with a blank in it is an
     order the creator cannot answer.
     """
+    check_order_form(payload)
+    if payload.package_id is not None:
+        return create_direct_order(db, business_user_id, payload.package_id, payload.note)
+    return create_negotiated_order(db, business_user_id, payload)
+
+
+def check_order_form(payload) -> None:
+    """Exactly one of the two shapes, completely filled in.
+
+    Split out of create_order so a cart can hold each of its items to the same
+    rule before anything is written. The rule is about the SHAPE of a request
+    and nothing else — no database, no side effects — which is what makes it
+    safe to run over twenty items in a loop.
+    """
     supplied = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is not None]
 
     if payload.package_id is not None and supplied:
@@ -363,7 +411,7 @@ def create_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -
             ),
         )
     if payload.package_id is not None:
-        return create_direct_order(db, business_user_id, payload.package_id, payload.note)
+        return
     if not supplied:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -379,35 +427,30 @@ def create_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A custom offer is incomplete. Missing: {', '.join(missing)}",
         )
-    return create_negotiated_order(db, business_user_id, payload)
 
 
-def create_negotiated_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -> dict:
-    """A brand offers its own terms instead of taking a package as listed.
+def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
+    """Check terms a brand typed, and hand back what an order would be made of.
 
-    Plenty of work does not fit a listed bundle — a different quantity, a
-    tighter timeline, a rate the two sides talked about — and those were
-    exactly the deals that left the platform to be agreed somewhere we cannot
-    contract or escrow them. So the terms are negotiable and nothing else is:
-    the same 48 hour window, the same hidden campaign, the same accept and
-    decline endpoints.
+    Everything here is a question, never a write. That is the point of the
+    split: a cart has to be able to ask "is every one of these twenty items
+    orderable" before it creates the first row, and the only way to do that
+    without a second copy of these rules is for the rules to live somewhere
+    that does not build anything.
 
-    What is different is only that nobody validated these terms before. A
-    package was checked when it was published; typed-in terms are checked here
-    (campaigns.negotiated), price floor included.
+    The order of the checks is load-bearing and unchanged. Ordering yourself
+    is answered before the target's role, because a creator offering to
+    themselves would fail both and "you cannot send an offer to yourself" is
+    the true reason.
     """
-    negotiated.validate_offer(payload)
+    negotiated.validate_offer(offer)
 
-    # Checked before the role guard so the message is the true one, exactly as
-    # ordering your own package is. A creator offering to themselves would
-    # also fail the author check, but "only businesses can order" is not what
-    # went wrong.
-    if payload.creator_user_id == business_user_id:
+    if offer.creator_user_id == business_user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot send an offer to yourself.",
         )
-    creator = db.query(User).filter(User.id == payload.creator_user_id).first()
+    creator = db.query(User).filter(User.id == offer.creator_user_id).first()
     if creator is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
     if creator.role != AUTHOR_EXCLUDED_ROLE:
@@ -419,40 +462,35 @@ def create_negotiated_order(db: Session, business_user_id: str, payload: schemas
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You can only send an offer to a creator.",
         )
-    # Same guard, same rule, same wording as authoring a brief and as ordering
-    # a package: an order IS a campaign, and the buying side of the market is
-    # the side that may create one.
-    _require_campaign_author(db, business_user_id)
 
-    title = negotiated.order_title(payload.platform, payload.deliverable_type, payload.quantity)
-    return _place_order(
-        db,
-        business_user_id=business_user_id,
-        creator_user_id=payload.creator_user_id,
-        title=title,
-        deliverable={
-            "platform": payload.platform,
-            "type": payload.deliverable_type,
-            "quantity": payload.quantity,
+    return {
+        "creator_user_id": offer.creator_user_id,
+        "title": negotiated.order_title(offer.platform, offer.deliverable_type, offer.quantity),
+        "deliverable": {
+            "platform": offer.platform,
+            "type": offer.deliverable_type,
+            "quantity": offer.quantity,
         },
-        rate_amount=payload.rate_amount,
-        currency=payload.currency.upper(),
-        timeline_days=payload.timeline_days,
-        note=payload.note,
-        notice=(
-            f"A brand sent you a custom offer: {title}. You have "
-            f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
-        ),
-    )
+        "rate_amount": offer.rate_amount,
+        "currency": offer.currency.upper(),
+        "timeline_days": offer.timeline_days,
+        "note": offer.note,
+    }
 
 
-def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
-    """A brand buys a creator's package at the published price.
+def resolve_package_terms(
+    db: Session, business_user_id: str, package_id: str, note: str | None = None
+) -> dict:
+    """Read a package's terms off the live row, and check it can be bought.
 
-    The terms are the package's, none of them re-entered: that is the whole
-    promise of a package, that the creator already decided all of it. The
-    order this produces is built by _place_order like every other, which is
-    where the shape of an order and the reasons for it are written down.
+    None of the terms are re-entered by the buyer: that is the whole promise
+    of a package, that the creator already decided all of it and published a
+    price. Read at order time rather than trusted from the client, which is
+    also why a cart needs no stored prices — whatever the package says at
+    checkout is what the order says.
+
+    Like resolve_negotiated_terms this only asks questions, so a cart can
+    validate every item before writing anything.
     """
     package = db.query(Package).filter(Package.id == package_id).first()
     if package is None:
@@ -473,31 +511,90 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot order your own package.",
         )
-    # Same guard, same rule, same wording as authoring a brief: an order IS a
-    # campaign, and the buying side of the market is the side that may create
-    # one. Reused rather than re-stated so the two can never drift apart.
-    _require_campaign_author(db, business_user_id)
 
     timeline_days = DEFAULT_ORDER_TIMELINE_DAYS
     if package.duration_unit == "days" and package.duration_value:
         timeline_days = package.duration_value
 
-    return _place_order(
-        db,
-        business_user_id=business_user_id,
-        creator_user_id=package.user_id,
-        title=package.title,
-        deliverable={
+    return {
+        "creator_user_id": package.user_id,
+        "title": package.title,
+        "deliverable": {
             "platform": package.platform,
             "type": package.deliverable_type,
             "quantity": package.quantity,
         },
-        rate_amount=package.price_amount,
-        currency=package.currency,
-        timeline_days=timeline_days,
-        note=note,
+        "rate_amount": package.price_amount,
+        "currency": package.currency,
+        "timeline_days": timeline_days,
+        "note": note,
+    }
+
+
+def create_negotiated_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -> dict:
+    """A brand offers its own terms instead of taking a package as listed.
+
+    Plenty of work does not fit a listed bundle — a different quantity, a
+    tighter timeline, a rate the two sides talked about — and those were
+    exactly the deals that left the platform to be agreed somewhere we cannot
+    contract or escrow them. So the terms are negotiable and nothing else is:
+    the same 48 hour window, the same hidden campaign, the same accept and
+    decline endpoints.
+
+    What is different is only that nobody validated these terms before. A
+    package was checked when it was published; typed-in terms are checked in
+    resolve_negotiated_terms (campaigns.negotiated), price floor included.
+    """
+    terms = resolve_negotiated_terms(db, business_user_id, payload)
+    # Same guard, same rule, same wording as authoring a brief and as ordering
+    # a package: an order IS a campaign, and the buying side of the market is
+    # the side that may create one. After the terms, so a creator offering to
+    # themselves still hears the true reason first.
+    _require_campaign_author(db, business_user_id)
+
+    return _place_order(
+        db,
+        business_user_id=business_user_id,
+        creator_user_id=terms["creator_user_id"],
+        title=terms["title"],
+        deliverables=[terms["deliverable"]],
+        rate_amount=terms["rate_amount"],
+        currency=terms["currency"],
+        timeline_days=terms["timeline_days"],
+        note=terms["note"],
         notice=(
-            f"A brand ordered your package {package.title}. You have "
+            f"A brand sent you a custom offer: {terms['title']}. You have "
+            f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
+        ),
+    )
+
+
+def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
+    """A brand buys a creator's package at the published price.
+
+    The terms are the package's, none of them re-entered, and they are read by
+    resolve_package_terms. The order this produces is built by _place_order
+    like every other, which is where the shape of an order and the reasons for
+    it are written down.
+    """
+    terms = resolve_package_terms(db, business_user_id, package_id, note)
+    # Same guard, same rule, same wording as authoring a brief: an order IS a
+    # campaign, and the buying side of the market is the side that may create
+    # one. Reused rather than re-stated so the two can never drift apart.
+    _require_campaign_author(db, business_user_id)
+
+    return _place_order(
+        db,
+        business_user_id=business_user_id,
+        creator_user_id=terms["creator_user_id"],
+        title=terms["title"],
+        deliverables=[terms["deliverable"]],
+        rate_amount=terms["rate_amount"],
+        currency=terms["currency"],
+        timeline_days=terms["timeline_days"],
+        note=terms["note"],
+        notice=(
+            f"A brand ordered your package {terms['title']}. You have "
             f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
         ),
     )

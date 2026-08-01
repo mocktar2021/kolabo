@@ -3,9 +3,11 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
-import { api } from "../lib/api";
+import { DeliverableRows } from "../components/DeliverableRows";
+import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import type { CampaignDetail, Contract, Favorite, Proposal } from "../lib/types";
+import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
+import type { CampaignDetail, Contract, Deliverable, Favorite, Proposal } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. */
 const NOTE_MAX_LENGTH = 2000;
@@ -47,6 +49,147 @@ function buildChains(proposals: Proposal[]): ProposalChain[] {
     const versions = [...rows].sort((a, b) => a.version - b.version);
     return { versions, latest: versions[versions.length - 1] };
   });
+}
+
+/* Correcting a brief in place, within what the people looking at it allow.
+
+   THE RULE, and it is the backend's (backend/app/modules/campaigns/editing.py
+   holds the authority; this form only mirrors it so the buyer meets it as a
+   greyed-out field rather than as a 400). Title and description are
+   description, not terms: rewrite them and a bid already on the table still
+   means what it meant, so they never lock. Budget, currency, deliverables and
+   deadline are what a creator PRICES AGAINST, and they lock the moment a
+   proposal exists on a published campaign — somebody who bid 40k to make
+   three posts against a 500k budget did not bid to make six against 200k, and
+   silently rewriting that turns a submitted bid into a bid for different work
+   which the contract would then be written from.
+
+   A draft locks nothing, and neither does a published campaign nobody has bid
+   on: no creator has spent an evening pricing it, so fixing a budget with a
+   missing zero costs nobody anything. The lock protects work already done,
+   not the publish button.
+
+   Locked fields are rendered read-only rather than dropped from the form. A
+   budget that disappears reads as a bug; a budget shown greyed out with the
+   reason under it reads as a rule. */
+function CampaignEditor({ campaign, locked, onSaved, onClose }: {
+  campaign: CampaignDetail;
+  locked: boolean;
+  onSaved: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const { token } = useAuth();
+  const [title, setTitle] = useState(campaign.title);
+  const [description, setDescription] = useState(campaign.description ?? "");
+  const [budget, setBudget] = useState(campaign.budget_amount ? String(campaign.budget_amount) : "");
+  const [currency, setCurrency] = useState(campaign.budget_currency ?? CURRENCIES[0]);
+  const [deadline, setDeadline] = useState(campaign.deadline ?? "");
+  const [deliverables, setDeliverables] = useState<Deliverable[]>(campaign.deliverables);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    /* Only what actually changed goes in the body. PATCH is exclude_unset
+       server-side, so a field the client does not send is left alone — and
+       posting the whole form back would hand the lock check a budget to
+       compare when the buyer only fixed a typo in the title. */
+    const patch: Record<string, unknown> = {};
+    if (title !== campaign.title) patch.title = title;
+    if (description !== (campaign.description ?? "")) {
+      // Explicit null clears the column, which is how a form empties a value.
+      patch.description = description.trim() || null;
+    }
+    if (!locked) {
+      const amount = budget ? Number(budget) : null;
+      if (amount !== campaign.budget_amount) patch.budget_amount = amount;
+      // A currency without an amount is not a budget. The two travel together
+      // or both go null, exactly as the create form posts them.
+      const cur = amount === null ? null : currency;
+      if (cur !== campaign.budget_currency) patch.budget_currency = cur;
+      const due = deadline || null;
+      if (due !== campaign.deadline) patch.deadline = due;
+      if (JSON.stringify(deliverables) !== JSON.stringify(campaign.deliverables)) {
+        patch.deliverables = deliverables;
+      }
+    }
+    if (Object.keys(patch).length === 0) {
+      // Nothing to say. Closing beats posting an empty PATCH just to hear the
+      // campaign read back unchanged.
+      onClose();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/campaigns/${campaign.id}`, { method: "PATCH", token, body: patch });
+      onSaved();
+    } catch (e) {
+      /* Rendered verbatim. editing.py answers 400 NAMING the field that is
+         locked and telling the buyer what to do instead (cancel and publish
+         the new terms as a new brief). Restating any of that here would be a
+         second copy of a rule that lives there, and the copy is the one that
+         drifts. */
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{t("campaign.editTitle")}</h3>
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <div className="field">
+        <label className="label" htmlFor="e-title">{t("campaign.name")}</label>
+        <input id="e-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <label className="label" htmlFor="e-description">{t("campaign.description")}</label>
+        <textarea id="e-description" className="input" rows={4} maxLength={MAX_DESCRIPTION_LENGTH}
+          style={{ resize: "vertical" }} value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t("campaign.descriptionPlaceholder")} />
+      </div>
+
+      {/* The locked half of the form. Same controls, disabled, with one muted
+          line saying why — see the rule above the component. */}
+      {locked && <p className="muted" style={{ fontSize: 13, margin: "0 0 10px" }}>{t("campaign.editLocked")}</p>}
+
+      <div className="field" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+        <div>
+          <label className="label" htmlFor="e-budget">{t("campaign.budget")}</label>
+          <input id="e-budget" className="input" inputMode="numeric" value={budget} disabled={locked} readOnly={locked}
+            onChange={(e) => setBudget(e.target.value.replace(/\D/g, ""))} placeholder="500000" />
+        </div>
+        <div>
+          <label className="label" htmlFor="e-currency">{t("campaign.currency")}</label>
+          <select id="e-currency" className="select" value={currency} disabled={locked}
+            onChange={(e) => setCurrency(e.target.value)}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="field">
+        <label className="label" htmlFor="e-deadline">{t("campaign.deadline")}</label>
+        <input id="e-deadline" className="input" type="date" value={deadline} disabled={locked} readOnly={locked}
+          onChange={(e) => setDeadline(e.target.value)} />
+      </div>
+
+      <div className="field">
+        <span className="label">{t("campaign.deliverables")}</span>
+        <DeliverableRows value={deliverables} onChange={setDeliverables} disabled={locked} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="btn btn-primary" disabled={busy || !title.trim()} onClick={save}>{t("campaign.saveEdit")}</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={onClose}>{t("campaign.cancelEdit")}</button>
+      </div>
+    </div>
+  );
 }
 
 /* The business answering an offer. The note is required — a reply always says
@@ -239,6 +382,14 @@ export default function CampaignDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [saved, setSaved] = useState(false);
+  /* Inline confirmation, never window.confirm: a native dialog cannot be
+     translated, cannot say what cancelling actually does to the invited
+     creators, and reads as a browser event rather than as part of the page
+     the buyer is deciding on. */
+  const [confirming, setConfirming] = useState<"cancel" | "delete" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -287,6 +438,59 @@ export default function CampaignDetailPage() {
     }
   }
 
+  /* Calling the brief off. Nothing is removed: the status changes and every
+     creator who was invited is told, because somebody holding a brief they
+     are pricing deserves to hear it is dead rather than work it out from
+     silence. */
+  async function cancelCampaign() {
+    if (!campaign) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api(`/campaigns/${campaign.id}/cancel`, { method: "POST", token });
+      setConfirming(null);
+      await load();
+    } catch (e) {
+      /* Mapped by STATUS CODE, never by reading the detail. The server
+         sentence is written in English for the API and can be reworded at any
+         time; a French UI that matched on its text would go silent the day it
+         is. On cancel a 409 means exactly one thing and can only mean one
+         thing: a contract exists on this campaign, and unwinding a signed
+         agreement is the dispute and refund path. */
+      setActionError(
+        e instanceof ApiError && e.status === 409
+          ? t("campaign.cancelHasContract")
+          : e instanceof Error ? e.message : "Error"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* Erasing a draft nobody has seen. The row is gone afterwards, so there is
+     nothing left to render — the page leaves for the list rather than sitting
+     on a campaign that no longer exists. */
+  async function deleteCampaign() {
+    if (!campaign) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api(`/campaigns/${campaign.id}`, { method: "DELETE", token });
+      navigate("/campaigns");
+    } catch (e) {
+      /* Same rule as cancel: the 409 is read off the status code. Here it
+         means the campaign has activity — a proposal, an invitation or a
+         contract — and the buyer is told to cancel instead, because deleting
+         would take the other side's half of the record with it. */
+      setActionError(
+        e instanceof ApiError && e.status === 409
+          ? t("campaign.deleteHasActivity")
+          : e instanceof Error ? e.message : "Error"
+      );
+      setBusy(false);
+    }
+  }
+
   async function acceptProposal(proposalId: string) {
     setBusy(true);
     setError(null);
@@ -319,6 +523,24 @@ export default function CampaignDetailPage() {
   const invitableFavorites = favorites.filter((f) => !invitedIds.has(f.influencer_user_id));
   const chains = buildChains(campaign?.proposals ?? []);
 
+  /* The three questions the owner actions are made of, asked once.
+
+     editable: a cancelled campaign is closed, and a direct order is a
+     negotiation rather than a document — editing.py answers 400 to both, so
+     neither gets a form that could only fail.
+
+     locked: the terms are frozen once a published campaign has been priced
+     against. Exactly the backend's condition.
+
+     deletable: a draft with nothing attached. The server also refuses when a
+     contract exists, which cannot happen on a draft, and answers 409 either
+     way — so this is the offer, not the authority. */
+  const editable = !!campaign && !campaign.is_direct && campaign.status !== "cancelled";
+  const locked = !!campaign && campaign.status === "published" && campaign.proposals.length > 0;
+  const deletable =
+    !!campaign && campaign.status === "draft" &&
+    campaign.proposals.length === 0 && campaign.invitations.length === 0;
+
   return (
     <Layout>
       <div className="container page" style={{ maxWidth: 760 }}>
@@ -339,13 +561,75 @@ export default function CampaignDetailPage() {
               {campaign.budget_amount ? `${campaign.budget_amount} ${campaign.budget_currency}` : t("campaign.noBudget")}
               {campaign.deadline ? ` - ${campaign.deadline}` : ""}
             </p>
+            {campaign.description && (
+              <p style={{ fontSize: 14.5, whiteSpace: "pre-wrap" }}>{campaign.description}</p>
+            )}
             <ul style={{ paddingLeft: 18, fontSize: 14 }}>
               {campaign.deliverables.map((d, i) => (
                 <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {d.platform}</li>
               ))}
             </ul>
-            {campaign.status !== "published" && (
+            {campaign.status !== "published" && campaign.status !== "cancelled" && (
               <button className="btn btn-teal" disabled={busy} onClick={publish}>{t("campaign.publish")}</button>
+            )}
+
+            {/* Owner-only by construction: GET /campaigns/{id} is owner-only
+                and answers 403 to anybody else, so a campaign that loaded at
+                all belongs to whoever is reading this. */}
+            <div className="card" style={{ marginTop: 16 }}>
+              {saved && <div className="alert alert-success">{t("campaign.editSaved")}</div>}
+              {actionError && <div className="alert alert-error">{actionError}</div>}
+
+              {campaign.is_direct ? (
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.directNotEditable")}</p>
+              ) : campaign.status === "cancelled" ? (
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.cancelled")}</p>
+              ) : confirming === "cancel" ? (
+                <>
+                  <p style={{ margin: "0 0 10px", fontSize: 14 }}>{t("campaign.cancelConfirm")}</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary" disabled={busy} onClick={cancelCampaign}>{t("campaign.cancelYes")}</button>
+                    <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming(null); setActionError(null); }}>{t("campaign.cancelNo")}</button>
+                  </div>
+                </>
+              ) : confirming === "delete" ? (
+                <>
+                  <p style={{ margin: "0 0 10px", fontSize: 14 }}>{t("campaign.deleteConfirm")}</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn btn-primary" disabled={busy} onClick={deleteCampaign}>{t("campaign.deleteYes")}</button>
+                    <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming(null); setActionError(null); }}>{t("campaign.deleteNo")}</button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <button className="btn btn-ghost" disabled={busy}
+                    onClick={() => { setEditOpen((o) => !o); setSaved(false); }}>
+                    {t("campaign.edit")}
+                  </button>
+                  <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming("cancel"); setActionError(null); }}>
+                    {t("campaign.cancelCampaign")}
+                  </button>
+                  {/* Offered only for a draft with nothing attached. Anywhere
+                      else the button would exist purely to answer 409: a
+                      campaign somebody has bid on is the other party's record
+                      too, and cancel is the exit that keeps it. */}
+                  {deletable && (
+                    <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming("delete"); setActionError(null); }}>
+                      {t("campaign.delete")}
+                    </button>
+                  )}
+                  {!deletable && <span className="muted" style={{ fontSize: 13 }}>{t("campaign.deleteHint")}</span>}
+                </div>
+              )}
+            </div>
+
+            {editOpen && editable && (
+              <CampaignEditor
+                campaign={campaign}
+                locked={locked}
+                onSaved={async () => { setEditOpen(false); setSaved(true); await load(); }}
+                onClose={() => setEditOpen(false)}
+              />
             )}
 
             {campaign.status === "published" && (

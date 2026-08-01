@@ -233,6 +233,63 @@ export type Escrow = {
   status: string;
 };
 
+/* One line of a creator's statement (GET /payments/earnings). Mirror of
+   EarningPaymentOut in backend/app/modules/payments/schemas.py.
+
+   gross, commission and net all three, side by side. Net is the number that
+   matters — it is what reaches the wallet — but showing it alone would make
+   the platform's cut invisible, and a fee somebody cannot see is a fee they
+   assume was a mistake. The three columns are how a creator checks our
+   arithmetic against their own.
+
+   counterparty_name is the buyer's company name, null while they have written
+   no profile: the users row holds nothing else but a phone number, and a
+   phone number is never handed to the other side of a deal.
+
+   date is when the payment settled if it settled and when it was funded if it
+   has not — one column, because a statement line has one date on it. Naive
+   UTC like every other datetime from this API, so it goes through
+   parseApiDate. Null only on rows predating the columns it is read from. */
+export type EarningPayment = {
+  escrow_id: string;
+  contract_id: string;
+  campaign_title: string | null;
+  counterparty_name: string | null;
+  gross: number;
+  commission: number;
+  net: number;
+  currency: string;
+  status: string;
+  date: string | null;
+};
+
+/* The creator's money in three states (GET /payments/earnings).
+
+   EACH TOTAL IS A MAP OF CURRENCY TO AMOUNT AND NEVER A SINGLE NUMBER, which
+   is the type doing the work the product rule needs: there is no field here a
+   client could render as "total earnings" across two markets, because XOF and
+   GHS are not addends and a figure spanning both would be meaningless on the
+   screen a creator trusts most.
+
+   disputed is its own field and NOT part of pending. Pending is money already
+   paid into escrow that releases on delivery — a promise with a date on it.
+   Disputed money has no date and may go back to the buyer when an admin
+   decides. Merging them would mean "expect this" where the truth is "argue
+   for this".
+
+   Every figure is net of commission: the platform's cut comes off at release,
+   so a gross total is one that never reaches a wallet.
+
+   A business calling this endpoint gets empty maps and an empty list, on
+   purpose — buyer-side SPEND is a different question with the opposite sign
+   and wants its own endpoint. */
+export type Earnings = {
+  earned: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+  payments: EarningPayment[];
+};
+
 /* What POST /profiles/{userId}/media answers with (MediaOut). The id is what
    gets attached to things — a portfolio row, an avatar, a piece of dispute
    evidence — and the url is the path to serve it back from, which still needs

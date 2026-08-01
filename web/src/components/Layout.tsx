@@ -201,7 +201,10 @@ function AppNav() {
      same question a third time: a creator has nothing to put in one and the
      checkout endpoint answers them 403, so the indicator is hidden rather
      than linking to a page that could only refuse them — which is exactly
-     what BrandOnly does for the route itself. Agencies buy the way
+     what BrandOnly does for the route itself. Earnings are the same question
+     a fourth time: /payments/earnings answers a business empty totals on
+     purpose, because what a buyer wants there is spend, which is a different
+     question and a view that does not exist yet. Agencies buy the way
      businesses do, hence isBusinessLike.
 
      Messages are the exception that proves it: a contract has two parties and
@@ -217,6 +220,7 @@ function AppNav() {
       {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
+      {!isBrand && <Link className="btn btn-ghost" to="/earnings">{t("nav.earnings")}</Link>}
       <MessagesIndicator />
       <DisputesIndicator />
       {isBrand && <CartIndicator />}

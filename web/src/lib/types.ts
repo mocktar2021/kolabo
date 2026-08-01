@@ -12,12 +12,41 @@ export type Campaign = {
   status: string;
 };
 
+/* How a creator appears on any row a business reads: favourites, campaign
+   invitations, proposals. Mirror of CreatorIdentity in
+   backend/app/modules/campaigns/schemas.py, filled by app.core.identity.
+
+   One shape rather than three, because a business comparing an invitation
+   against a proposal is looking at the same person and used to be shown a raw
+   user id on one and a name on the other. CreatorChip renders it.
+
+   Every field is null until the creator has something to put in it — somebody
+   can be invited the day they sign up. Nothing here is ever filled in from the
+   users table: the only identifier it holds is a phone number, and a phone
+   number is never handed to the other side of a deal. top_follower_count is
+   the audience of the single biggest platform and never a total across them,
+   so the same follower is not counted twice. */
+export type CreatorIdentity = {
+  display_name: string | null;
+  avatar_url: string | null;
+  top_platform: string | null;
+  top_follower_count: number | null;
+};
+
+/* An invitation as the invited creator reads it. No identity on this one, and
+   deliberately: every row in the creator's own list is them, so naming them
+   would cost a query to tell somebody their own name. */
 export type Invitation = {
   id: string;
   campaign_id: string;
   influencer_user_id: string;
   status: string;
 };
+
+/* The same row on the business's campaign page, where naming the creator is
+   the entire point — this list used to render a bare user id beside a
+   proposals list that rendered names. */
+export type CampaignInvitation = Invitation & CreatorIdentity;
 
 /* Which side wrote a proposal version. The creator opens a chain and the
    business answers inside it, so a version carries an author even though the
@@ -30,17 +59,17 @@ export type ProposalAuthorRole = "influencer" | "business";
    row has to be read against the one above it to know what is on the table.
 
    note is what the numbers mean ("the budget stops at 40k", "can you do it in
-   five days"), capped at 2000 characters server-side. display_name and
-   avatar_url identify the creator behind the chain and are null until they
-   have a profile — the users table holds only a phone number besides, and a
-   phone number is never handed to the other side of a deal.
+   five days"), capped at 2000 characters server-side. The CreatorIdentity
+   fields name the creator behind the chain and are null until they have a
+   profile — the users table holds only a phone number besides, and a phone
+   number is never handed to the other side of a deal.
 
    expires_at is set only on a direct order, and it is the field that tells
    the two kinds of row apart: a brief's proposals stay open indefinitely
    because leaving one open promised nothing, while an order has a buyer
    waiting on a price they already named. The datetime arrives naive UTC (no
    suffix), so anything reading it has to say so before parsing. */
-export type Proposal = {
+export type Proposal = CreatorIdentity & {
   id: string;
   campaign_id: string;
   influencer_user_id: string;
@@ -52,8 +81,6 @@ export type Proposal = {
   note: string | null;
   author_role: ProposalAuthorRole;
   expires_at: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
 };
 
 /* What POST /campaigns/orders answers with. Deliberately not the whole
@@ -74,7 +101,7 @@ export type DirectOrder = {
    offer and the only one that can be accepted). Chains are the rows sharing an
    influencer_user_id, ordered by version — CampaignDetail.tsx groups them. */
 export type CampaignDetail = Campaign & {
-  invitations: Invitation[];
+  invitations: CampaignInvitation[];
   proposals: Proposal[];
 };
 
@@ -83,12 +110,14 @@ export type CampaignDetail = Campaign & {
    anything, and an incomplete card is still usable while a failed request is
    not. country_code is the one field taken from the users table — the only
    other identifier a user row holds is a phone number, which never reaches a
-   payload. */
-export type Favorite = {
+   payload.
+
+   headline is gone: the API stopped sending it. It was only ever a subtitle
+   under the name, and creators write their name into it, so the card said the
+   same thing twice. The audience number is what a business shortlists on, and
+   it arrives with the rest of the shared identity. */
+export type Favorite = CreatorIdentity & {
   influencer_user_id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  headline: string | null;
   country_code: string | null;
 };
 

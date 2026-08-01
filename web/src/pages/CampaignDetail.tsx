@@ -2,48 +2,24 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { api, mediaSrc } from "../lib/api";
+import { CreatorChip } from "../components/CreatorChip";
+import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { CampaignDetail, Contract, Favorite, Proposal } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. */
 const NOTE_MAX_LENGTH = 2000;
 
-function shortId(id: string): string {
-  return id.slice(0, 8);
-}
-
-/* Round creator photo with the brand gradient standing in when there is none,
-   the same fallback the discovery cards use. A creator without a photo still
-   renders as somebody rather than as a broken image. */
-function Avatar({ url, size }: { url: string | null; size: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
-        background: url ? "var(--surface-2)" : "var(--gradient-brand)", display: "inline-block"
-      }}
-    >
-      {url && <img src={mediaSrc(url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />}
-    </span>
-  );
-}
-
 /* One favourited creator, offered as a person rather than as an id. "Créateur
    05317bc0" is not somebody a brand can decide to invite: the choice is made
-   on a face, a name and what they say they do. */
+   on a face, a name and the size of the audience behind them — which is what
+   CreatorChip renders, identically here, in the invitations list below and on
+   every proposal. */
 function FavoriteRow({ fav, disabled, onInvite }: { fav: Favorite; disabled: boolean; onInvite: () => void }) {
   const { t } = useTranslation();
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <Avatar url={fav.avatar_url} size={36} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{fav.display_name || t("campaign.unnamedCreator")}</div>
-          {fav.headline && <div className="muted" style={{ fontSize: 12.5 }}>{fav.headline}</div>}
-        </div>
-      </div>
+      <CreatorChip creator={fav} />
       <button className="btn btn-ghost" disabled={disabled} onClick={onInvite}>{t("campaign.invite")}</button>
     </div>
   );
@@ -172,9 +148,8 @@ function ProposalThread({
 
   return (
     <div style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Avatar url={latest.avatar_url} size={32} />
-        <strong style={{ fontSize: 14 }}>{latest.display_name || t("campaign.unnamedCreator")}</strong>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <CreatorChip creator={latest} />
         <span className="muted" style={{ fontSize: 13 }}>{latest.status}</span>
       </div>
 
@@ -378,12 +353,14 @@ export default function CampaignDetailPage() {
               {campaign.invitations.length === 0 ? (
                 <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.noInvitations")}</p>
               ) : (
-                campaign.invitations.map((inv) => (
-                  <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 14, padding: "4px 0" }}>
-                    <span>{t("discover.creator")} {shortId(inv.influencer_user_id)}</span>
-                    <span className="muted">{inv.status}</span>
-                  </div>
-                ))
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {campaign.invitations.map((inv) => (
+                    <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                      <CreatorChip creator={inv} />
+                      <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 

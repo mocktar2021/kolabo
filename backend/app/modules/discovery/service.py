@@ -15,6 +15,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.identity import creator_identities
 from app.core.platforms import SOCIAL_PLATFORMS
 from app.core.pricing import MIN_LIVE_PACKAGES
 from app.modules.auth.models import User
@@ -214,48 +215,26 @@ def search_influencers(
     return results
 
 
-def _creator_identity(db: Session, user_ids: list[str]) -> dict:
-    """Name, photo, headline and country for a set of creators.
+def _countries(db: Session, user_ids: list[str]) -> dict:
+    """Country per user, in one query.
 
-    A favourites list is rendered as cards, and "Créateur 05317bc0" is not a
-    person: a business cannot pick a creator it does not recognise. The lookup
-    is deliberately bulk — two queries for the whole shortlist rather than two
-    per row, which is what turns a twenty-creator list into forty round trips.
-
-    Every field is optional. A creator can be favourited the moment they sign
-    up, long before they write a profile, and that must come back as an empty
-    card rather than fail the whole list. The absence is never papered over
-    with something from the users table either: the only identifier there is a
-    phone number, and a phone number does not go into a payload.
+    The only thing a favourite row takes from the users table, and it stays
+    the only thing: the sole other identifier a user row holds is a phone
+    number, and a phone number is never part of a payload handed to the other
+    side of a deal. Who the creator IS — name, photo, audience — comes from
+    app.core.identity, which every creator-facing list now shares.
     """
     if not user_ids:
         return {}
-    unique_ids = set(user_ids)
-    by_user = {
-        p.user_id: p
-        for p in db.query(profiles.InfluencerProfile)
-        .filter(profiles.InfluencerProfile.user_id.in_(unique_ids))
-        .all()
+    return dict(db.query(User.id, User.country_code).filter(User.id.in_(set(user_ids))).all())
+
+
+def _favorite_out(influencer_user_id: str, identity: dict, country_code: str | None) -> dict:
+    return {
+        "influencer_user_id": influencer_user_id,
+        "country_code": country_code,
+        **identity,
     }
-    countries = dict(
-        db.query(User.id, User.country_code).filter(User.id.in_(unique_ids)).all()
-    )
-    identities = {}
-    for user_id in unique_ids:
-        prof = by_user.get(user_id)
-        identities[user_id] = {
-            "display_name": prof.display_name if prof else None,
-            # Same URL shape the profiles module builds its media links from
-            # (profiles.service._media_url), so one media route serves both.
-            "avatar_url": (
-                f"/profiles/media/{prof.avatar_media_id}"
-                if prof is not None and prof.avatar_media_id
-                else None
-            ),
-            "headline": prof.headline if prof else None,
-            "country_code": countries.get(user_id),
-        }
-    return identities
 
 
 def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> dict:
@@ -272,8 +251,9 @@ def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) ->
     # The same card shape the list returns: the row the client just added
     # renders as a person immediately, instead of as an id until the next
     # refresh.
-    identity = _creator_identity(db, [influencer_user_id])[influencer_user_id]
-    return {"influencer_user_id": influencer_user_id, **identity}
+    identity = creator_identities(db, [influencer_user_id])[influencer_user_id]
+    country = _countries(db, [influencer_user_id]).get(influencer_user_id)
+    return _favorite_out(influencer_user_id, identity, country)
 
 
 def remove_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> None:
@@ -291,7 +271,14 @@ def list_favorites(db: Session, business_user_id: str) -> list[dict]:
     """The business shortlist, as cards rather than as ids.
 
     Inviting someone to a campaign starts here, so the row has to say who the
-    person is: a name, a face, what they do, and where they are.
+    person is: a name, a face, and the audience they can reach. That identity
+    is the shared one (app.core.identity), which is the same shape the
+    campaign page's invitations and proposals now carry — a business should
+    not have to recognise the same creator from two different card layouts.
+
+    Three queries for the whole shortlist regardless of its length, not three
+    per row: a twenty-creator list used to be what turned into forty round
+    trips.
     """
     favs = (
         db.query(Favorite)
@@ -299,8 +286,14 @@ def list_favorites(db: Session, business_user_id: str) -> list[dict]:
         .order_by(Favorite.created_at.asc())
         .all()
     )
-    identities = _creator_identity(db, [f.influencer_user_id for f in favs])
+    user_ids = [f.influencer_user_id for f in favs]
+    identities = creator_identities(db, user_ids)
+    countries = _countries(db, user_ids)
     return [
-        {"influencer_user_id": f.influencer_user_id, **identities[f.influencer_user_id]}
+        _favorite_out(
+            f.influencer_user_id,
+            identities[f.influencer_user_id],
+            countries.get(f.influencer_user_id),
+        )
         for f in favs
     ]

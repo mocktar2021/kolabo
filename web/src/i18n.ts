@@ -75,6 +75,15 @@ const resources = {
         campaignTitle: "Mes campagnes", campaignDesc: "Créez et gérez vos campagnes et leurs propositions.",
         invitationsTitle: "Mes invitations", invitationsDesc: "Répondez aux invitations avec une proposition.",
         contractsTitle: "Mes contrats", contractsDesc: "Signez vos contrats et gérez les paiements.",
+        /* Buyer-side wording for the same page. A brand that ordered a package
+           looks for its commande, and the order only becomes a contract once
+           the creator accepts — so "Mes contrats" is where the search stops
+           too early. */
+        ordersTitle: "Mes commandes et contrats",
+        ordersDesc: "Suivez les commandes que vous avez passées et signez vos contrats.",
+        /* Creator-side nudge, shown only when the count is not zero. */
+        pendingOrders: "{{n}} commande(s) en attente de réponse",
+        pendingOrdersDesc: "Répondez avant la fin du délai de 48 h.",
         /* Referral panel. The explainer states the rule the backend actually
            applies: credit is minted on the referred account's first completed
            order, not at signup. Anything vaguer reads as a promise we would
@@ -140,7 +149,20 @@ const resources = {
       },
       public: {
         notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.",
-        order: "Commander (bientôt)", orderSoon: "La commande directe arrive bientôt.",
+        /* Direct ordering. The card is the decision point, so everything that
+           decides the click lives next to the price: who may order, what the
+           creator has to do next, and the one fact that makes it safe — no
+           money moves until they accept. */
+        order: "Commander",
+        orderSignedOut: "Créer un compte pour commander",
+        orderBrandsOnly: "Seules les marques peuvent commander.",
+        orderConfirm: "Confirmer votre commande",
+        orderNote: "Note pour le créateur (optionnel)",
+        orderRule: "Le créateur a 48 h pour accepter. Aucun paiement n'est prélevé avant son acceptation.",
+        orderSend: "Envoyer la commande",
+        orderCancel: "Annuler",
+        orderSent: "Commande envoyée. Le créateur a 48 h pour répondre.",
+        orderView: "Voir ma commande",
         allPhotos: "Toutes les photos",
         reviewsTitle: "Avis", reviewCount_one: "{{count}} avis", reviewCount_other: "{{count}} avis",
         verifiedClient: "Client vérifié",
@@ -202,7 +224,20 @@ const resources = {
         /* Optional: the note carries the reasoning behind the numbers, in the
            same record as the numbers. */
         note: "Note (optionnel)",
-        notePlaceholder: "Précisez ce qui est inclus, vos délais, vos conditions."
+        notePlaceholder: "Précisez ce qui est inclus, vos délais, vos conditions.",
+        /* Direct orders share this list with brief invitations and must not
+           read like them: the terms are already set, the money is already
+           named, and the only thing missing is a yes or a no. */
+        orderBadge: "Commande directe",
+        orderPrice: "Prix", orderDelay: "Délai", orderNote: "Note de la marque",
+        orderExpiresHours: "Expire dans {{n}} h",
+        orderExpiresMinutes: "Expire dans {{n}} min",
+        orderExpired: "Expirée",
+        orderAccept: "Accepter", orderDecline: "Refuser",
+        /* Said before the refusal rather than after it: nothing has been
+           charged, so a no costs the brand nothing but the wait. */
+        orderDeclineConfirm: "Aucun paiement n'a été prélevé ; la marque sera prévenue.",
+        orderDeclineYes: "Confirmer le refus", orderDeclineNo: "Annuler"
       },
       contract: {
         listTitle: "Mes contrats", listSub: "Signez vos contrats et suivez les paiements.",
@@ -265,6 +300,15 @@ const resources = {
         campaignTitle: "My campaigns", campaignDesc: "Create and manage your campaigns and their proposals.",
         invitationsTitle: "My invitations", invitationsDesc: "Respond to invitations with a proposal.",
         contractsTitle: "My contracts", contractsDesc: "Sign your contracts and manage payments.",
+        /* Buyer-side wording for the same page. A brand that ordered a package
+           looks for its order, and the order only becomes a contract once the
+           creator accepts — so "My contracts" is where the search stops too
+           early. */
+        ordersTitle: "My orders and contracts",
+        ordersDesc: "Track the orders you placed and sign your contracts.",
+        /* Creator-side nudge, shown only when the count is not zero. */
+        pendingOrders: "{{n}} order(s) awaiting your answer",
+        pendingOrdersDesc: "Answer before the 48 h window closes.",
         /* Referral panel. The explainer states the rule the backend actually
            applies: credit is minted on the referred account's first completed
            order, not at signup. Anything vaguer reads as a promise we would
@@ -330,7 +374,20 @@ const resources = {
       },
       public: {
         notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.",
-        order: "Order (soon)", orderSoon: "Direct ordering is coming soon.",
+        /* Direct ordering. The card is the decision point, so everything that
+           decides the click lives next to the price: who may order, what the
+           creator has to do next, and the one fact that makes it safe — no
+           money moves until they accept. */
+        order: "Order",
+        orderSignedOut: "Create an account to order",
+        orderBrandsOnly: "Only brands can order.",
+        orderConfirm: "Confirm your order",
+        orderNote: "Note for the creator (optional)",
+        orderRule: "The creator has 48 h to accept. No payment is taken before they accept.",
+        orderSend: "Send the order",
+        orderCancel: "Cancel",
+        orderSent: "Order sent. The creator has 48 h to answer.",
+        orderView: "View my order",
         allPhotos: "All photos",
         reviewsTitle: "Reviews", reviewCount_one: "{{count}} review", reviewCount_other: "{{count}} reviews",
         verifiedClient: "Verified client",
@@ -392,7 +449,20 @@ const resources = {
         /* Optional: the note carries the reasoning behind the numbers, in the
            same record as the numbers. */
         note: "Note (optional)",
-        notePlaceholder: "Spell out what is included, your timing, your conditions."
+        notePlaceholder: "Spell out what is included, your timing, your conditions.",
+        /* Direct orders share this list with brief invitations and must not
+           read like them: the terms are already set, the money is already
+           named, and the only thing missing is a yes or a no. */
+        orderBadge: "Direct order",
+        orderPrice: "Price", orderDelay: "Timeline", orderNote: "Note from the brand",
+        orderExpiresHours: "Expires in {{n}} h",
+        orderExpiresMinutes: "Expires in {{n}} min",
+        orderExpired: "Expired",
+        orderAccept: "Accept", orderDecline: "Decline",
+        /* Said before the refusal rather than after it: nothing has been
+           charged, so a no costs the brand nothing but the wait. */
+        orderDeclineConfirm: "No payment has been taken; the brand will be notified.",
+        orderDeclineYes: "Confirm decline", orderDeclineNo: "Cancel"
       },
       contract: {
         listTitle: "My contracts", listSub: "Sign your contracts and track payments.",

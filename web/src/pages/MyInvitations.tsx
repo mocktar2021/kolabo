@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
+import { directOrderOf, orderTimeLeft } from "../lib/orders";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
 
@@ -12,29 +13,6 @@ import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
    here too so the limit is hit as a full textarea rather than as a 422 after
    the creator has finished typing. */
 const NOTE_MAX_LENGTH = 2000;
-
-/* The API serialises naive UTC datetimes ("2026-07-31T09:12:00", no suffix),
-   which JavaScript reads as LOCAL time. Left alone that silently invents or
-   destroys an hour of the window depending on where the creator is sitting,
-   which on a 48 h clock is the difference between answering and lapsing. */
-function parseUtc(iso: string): number {
-  const time = iso.slice(10);
-  const hasZone = time.endsWith("Z") || /[+-]\d\d:?\d\d$/.test(time);
-  return Date.parse(hasZone ? iso : `${iso}Z`);
-}
-
-/* How long is left on an order, or null once it has lapsed. Computed at render
-   rather than on a ticking timer: the server is the authority on expiry and
-   answers "This order has expired." to a late click, which the card shows
-   inline — so a stale minute on screen costs nothing but a second attempt.
-   Never reports "0 min" while the offer is still live. */
-function timeLeft(expiresAt: string): { unit: "hours" | "minutes"; n: number } | null {
-  const ms = parseUtc(expiresAt) - Date.now();
-  if (ms <= 0) return null;
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return { unit: "minutes", n: Math.max(minutes, 1) };
-  return { unit: "hours", n: Math.floor(minutes / 60) };
-}
 
 function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () => void }) {
   const { t } = useTranslation();
@@ -122,8 +100,8 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
    numbers are printed, not typed, and the only decision left is yes or no.
 
    A direct order is a private transaction, not a public brief: it came to
-   this creator alone and nobody else can see or bid on it. */
-function OrderTerms({ inv, proposal, onDone }: { inv: InvitationWithCampaign; proposal: Proposal; onDone: () => void }) {
+   this creator alone and nobody else can see it or bid against it. */
+function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => void }) {
   const { t } = useTranslation();
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -131,7 +109,7 @@ function OrderTerms({ inv, proposal, onDone }: { inv: InvitationWithCampaign; pr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const left = proposal.expires_at ? timeLeft(proposal.expires_at) : null;
+  const left = proposal.expires_at ? orderTimeLeft(proposal.expires_at) : null;
   const expired = left === null;
   // Superseded, accepted or declined: already answered, so there is nothing
   // left to act on and the row is history.
@@ -233,11 +211,11 @@ function OrderTerms({ inv, proposal, onDone }: { inv: InvitationWithCampaign; pr
    Two kinds of row share this card. A live proposal carrying expires_at means
    a brand bought a package outright and the terms are already set; anything
    else is a brief to price. Only direct orders run on a clock, which is what
-   makes that field the test. */
+   makes that field the test — see lib/orders.ts. */
 function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: () => void }) {
   const { t } = useTranslation();
   const c = inv.campaign;
-  const order = inv.proposal && inv.proposal.expires_at ? inv.proposal : null;
+  const order = directOrderOf(inv);
 
   return (
     <div className="card">
@@ -293,7 +271,7 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
       </div>
 
       {order ? (
-        <OrderTerms inv={inv} proposal={order} onDone={onDone} />
+        <OrderTerms proposal={order} onDone={onDone} />
       ) : (
         /* The rule above the line is the brand's; everything below it is the
            creator's answer, so the two are separated visually. */

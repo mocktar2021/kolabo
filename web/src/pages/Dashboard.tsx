@@ -4,13 +4,45 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
-import type { ReferralInfo } from "../lib/types";
+import { isOrderAwaitingAnswer } from "../lib/orders";
+import type { InvitationWithCampaign, ReferralInfo } from "../lib/types";
 
 function ActionCard({ to, title, desc }: { to: string; title: string; desc: string }) {
   return (
     <Link to={to} className="card" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <strong style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{title}</strong>
       <p className="muted" style={{ margin: "6px 0 0", fontSize: 14 }}>{desc}</p>
+    </Link>
+  );
+}
+
+/* How many direct orders are sitting on the creator's clock.
+
+   Counted off /campaigns/invitations/mine, the list the invitations page
+   already serves from, rather than a count endpoint: it is one row per
+   invitation and the dashboard needs a single number out of it. Awaiting an
+   answer means the live version of the chain runs on a clock (only orders
+   do), is still open, and has not lapsed — see lib/orders.ts.
+
+   Silent failure and no card at zero, like the referral panel: this is a
+   nudge, and a dashboard must not show an error state for one. */
+function PendingOrders({ token }: { token: string | null }) {
+  const { t } = useTranslation();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    api<InvitationWithCampaign[]>("/campaigns/invitations/mine", { token })
+      .then((rows) => setCount(rows.filter(isOrderAwaitingAnswer).length))
+      .catch(() => undefined);
+  }, [token]);
+
+  if (count === 0) return null;
+
+  return (
+    <Link to="/invitations" className="card"
+      style={{ textDecoration: "none", color: "inherit", display: "block", borderColor: "var(--indigo)", boxShadow: "0 0 0 1px var(--indigo) inset" }}>
+      <strong style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>{t("dash.pendingOrders", { n: count })}</strong>
+      <p className="muted" style={{ margin: "6px 0 0", fontSize: 14 }}>{t("dash.pendingOrdersDesc")}</p>
     </Link>
   );
 }
@@ -153,7 +185,15 @@ export default function Dashboard() {
               avec une proposition" is an offer it can never take up. Its
               equivalent view is the proposals on its own campaign. */}
           {!isBusinessLike(role) && <ActionCard to="/invitations" title={t("dash.invitationsTitle")} desc={t("dash.invitationsDesc")} />}
-          <ActionCard to="/contracts" title={t("dash.contractsTitle")} desc={t("dash.contractsDesc")} />
+          {!isBusinessLike(role) && <PendingOrders token={token} />}
+          {/* One destination, two promises. A buyer who placed a direct order
+              comes back looking for the order, not for a contract — and the
+              order becomes a contract only once the creator accepts, so a
+              card labelled "Mes contrats" is where they would give up. A
+              creator places no orders, so theirs stays as it was. */}
+          <ActionCard to="/contracts"
+            title={isBusinessLike(role) ? t("dash.ordersTitle") : t("dash.contractsTitle")}
+            desc={isBusinessLike(role) ? t("dash.ordersDesc") : t("dash.contractsDesc")} />
         </div>
         {/* Influencers only: businesses and agencies (isBusinessLike) buy, they
             do not recruit fellow creators. Full width under the action cards

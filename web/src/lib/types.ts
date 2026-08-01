@@ -5,11 +5,26 @@ export type Campaign = {
   id: string;
   business_user_id: string;
   title: string;
+  /* The brief in prose: context, tone, what the brand is trying to say.
+     Capped at 5000 characters server-side, and null on every campaign written
+     before the column existed as well as on direct orders — an order carries
+     terms, not a brief — so every reader has to handle its absence.
+
+     It is description and not terms, which is why it stays editable for the
+     whole life of a campaign while the budget does not: rewriting it does not
+     change what a creator priced against. */
+  description: string | null;
   budget_amount: number | null;
   budget_currency: string | null;
   deliverables: Deliverable[];
   deadline: string | null;
   status: string;
+  /* True when the campaign is really a direct order: one creator, the buyer's
+     offer already on the table, nobody else bidding. The client needs it to
+     label the card as an order rather than a brief — and to know not to offer
+     the edit form, because PATCH answers 400 on one. An order's terms are a
+     negotiation, and the way to change them is to counter. */
+  is_direct: boolean;
 };
 
 /* How a creator appears on any row a business reads: favourites, campaign
@@ -93,6 +108,14 @@ export type DirectOrder = {
   campaign_id: string;
   proposal_id: string;
   expires_at: string | null;
+};
+
+/* The receipt for a hard delete (DELETE /campaigns/{id}). The id is echoed
+   back because the row it names no longer exists to be fetched, and a client
+   that removed the wrong card from its list has no way to find out otherwise. */
+export type CampaignDeleted = {
+  id: string;
+  deleted: boolean;
 };
 
 /* proposals is a flat list, not a list of chains: every version of every

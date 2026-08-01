@@ -204,9 +204,37 @@ const resources = {
         create: "Créer la campagne", publish: "Publier", published: "Campagne publiée.",
         another: "Créer une autre campagne", noBudget: "Budget non défini",
         noDeliverables: "Livrables non précisés",
-        status_draft: "Brouillon", status_published: "Publiée",
+        /* The brief in prose, set at creation and correctable afterwards. It
+           is description and not terms, which is why it never locks. */
+        description: "Description",
+        descriptionPlaceholder: "Le contexte, le ton, ce que vous voulez dire et à qui.",
+        status_draft: "Brouillon", status_published: "Publiée", status_cancelled: "Annulée",
         listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
         notFound: "Campagne introuvable.",
+        /* Correcting, calling off, erasing. The scope of an edit narrows as
+           the campaign acquires an audience — editLocked is that rule said to
+           the buyer, next to the fields it applies to. The two conflict lines
+           are chosen by HTTP status, never by reading the server's English
+           sentence, which is written for the API and can be reworded. */
+        edit: "Modifier",
+        editTitle: "Modifier la campagne",
+        saveEdit: "Enregistrer les modifications",
+        cancelEdit: "Annuler",
+        editSaved: "Modifications enregistrées.",
+        editLocked: "Verrouillé : des créateurs ont déjà proposé sur ces conditions.",
+        directNotEditable: "Une commande directe ne se modifie pas : répondez par une contre-proposition.",
+        cancelCampaign: "Annuler la campagne",
+        cancelConfirm: "Annuler cette campagne ? Elle reste consultable et les créateurs invités seront prévenus.",
+        cancelYes: "Confirmer l'annulation",
+        cancelNo: "Retour",
+        cancelled: "Cette campagne est annulée.",
+        cancelHasContract: "Un contrat existe déjà. Passez par le litige pour l'annuler.",
+        delete: "Supprimer",
+        deleteHint: "Seul un brouillon sans proposition ni invitation peut être supprimé.",
+        deleteConfirm: "Supprimer définitivement ce brouillon ? Rien n'en sera conservé.",
+        deleteYes: "Confirmer la suppression",
+        deleteNo: "Retour",
+        deleteHasActivity: "Cette campagne a de l'activité ; annulez-la plutôt.",
         inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun créateur favori à inviter.",
         /* Shown wherever a creator is named before they have a profile. "Nom
            d'affichage manquant" is the brand's problem to notice, not a raw
@@ -462,9 +490,37 @@ const resources = {
         create: "Create campaign", publish: "Publish", published: "Campaign published.",
         another: "Create another campaign", noBudget: "No budget set",
         noDeliverables: "Deliverables not specified",
-        status_draft: "Draft", status_published: "Published",
+        /* The brief in prose, set at creation and correctable afterwards. It
+           is description and not terms, which is why it never locks. */
+        description: "Description",
+        descriptionPlaceholder: "The context, the tone, what you want to say and to whom.",
+        status_draft: "Draft", status_published: "Published", status_cancelled: "Cancelled",
         listTitle: "My campaigns", new: "New campaign", listEmpty: "You have no campaigns yet.",
         notFound: "Campaign not found.",
+        /* Correcting, calling off, erasing. The scope of an edit narrows as
+           the campaign acquires an audience — editLocked is that rule said to
+           the buyer, next to the fields it applies to. The two conflict lines
+           are chosen by HTTP status, never by reading the server's English
+           sentence, which is written for the API and can be reworded. */
+        edit: "Edit",
+        editTitle: "Edit campaign",
+        saveEdit: "Save changes",
+        cancelEdit: "Cancel",
+        editSaved: "Changes saved.",
+        editLocked: "Locked: creators have already made offers against these terms.",
+        directNotEditable: "A direct order cannot be edited: answer it with a counter-offer.",
+        cancelCampaign: "Cancel the campaign",
+        cancelConfirm: "Cancel this campaign? It stays readable and the invited creators will be told.",
+        cancelYes: "Confirm cancellation",
+        cancelNo: "Back",
+        cancelled: "This campaign is cancelled.",
+        cancelHasContract: "A contract already exists. Use the dispute path to unwind it.",
+        delete: "Delete",
+        deleteHint: "Only a draft with no proposals and no invitations can be deleted.",
+        deleteConfirm: "Permanently delete this draft? Nothing will be kept.",
+        deleteYes: "Confirm deletion",
+        deleteNo: "Back",
+        deleteHasActivity: "This campaign has activity; cancel it instead.",
         inviteFromFavorites: "Invite from my favorites", noFavorites: "No favorited creators to invite.",
         /* Shown wherever a creator is named before they have a profile. A
            missing display name is something the brand should notice, not a

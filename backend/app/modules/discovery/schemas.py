@@ -29,3 +29,13 @@ class InfluencerSearchResult(BaseModel):
 
 class FavoriteOut(BaseModel):
     influencer_user_id: str
+    # A shortlist is rendered as cards, and a card needs a person on it. Every
+    # one of these is optional because a creator can be favourited before they
+    # have filled in anything: an empty card is still usable, a 500 is not.
+    display_name: str | None = None
+    avatar_url: str | None = None
+    headline: str | None = None
+    # From the users table, which is the only place a country lives. It is
+    # also the only field taken from there: the sole other identifier a user
+    # row holds is a phone number, and that never reaches a payload.
+    country_code: str | None = None

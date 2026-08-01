@@ -52,6 +52,13 @@ class ProposalOut(BaseModel):
     rate_currency: str
     timeline_days: int
     status: str
+    # Who the offer is from, in a form the business can act on. A proposals
+    # list of bare user ids is unusable: nobody picks "Créateur 424275c0".
+    # Null until the creator has a profile, and it stays null — the users
+    # table has only a phone number to offer, and a phone number is never
+    # handed to the other side of a deal.
+    display_name: str | None = None
+    avatar_url: str | None = None
 
 
 class CampaignDetailOut(CampaignOut):

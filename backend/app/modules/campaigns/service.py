@@ -16,7 +16,7 @@ from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas
 from app.modules.notifications.service import notify
-from app.modules.profiles.models import BusinessProfile
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 
 # Nobody briefs a hundred-plus of anything in one campaign; past that the
 # number is a typo (an amount pasted into the quantity box), so reject it
@@ -226,16 +226,8 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
     notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
     db.commit()
     db.refresh(proposal)
-    return {
-        "id": proposal.id,
-        "campaign_id": proposal.campaign_id,
-        "influencer_user_id": proposal.influencer_user_id,
-        "version": proposal.version,
-        "rate_amount": proposal.rate_amount,
-        "rate_currency": proposal.rate_currency,
-        "timeline_days": proposal.timeline_days,
-        "status": proposal.status,
-    }
+    identity = _proposer_identity(db, [influencer_user_id]).get(influencer_user_id)
+    return _proposal_out(proposal, identity)
 
 
 def _invitation_out(inv: models.CampaignInvitation) -> dict:
@@ -247,7 +239,43 @@ def _invitation_out(inv: models.CampaignInvitation) -> dict:
     }
 
 
-def _proposal_out(p: models.Proposal) -> dict:
+def _proposer_identity(db: Session, influencer_user_ids: list[str]) -> dict:
+    """Display name and photo for the creators behind a set of proposals.
+
+    A business reviewing proposals is choosing between people, and a list of
+    ids gives it nothing to choose with: "Créateur 424275c0" is not somebody
+    you can hire. One query for the whole list, not one per row — a campaign
+    with thirty proposals should not cost thirty extra round trips.
+
+    Null when the creator has no profile yet, and null is where it stops. The
+    users table could supply a phone number and nothing else, and a phone
+    number is never part of a payload handed to the other side of a deal:
+    that is the difference between a marketplace and an introduction service.
+    """
+    if not influencer_user_ids:
+        return {}
+    rows = (
+        db.query(
+            InfluencerProfile.user_id,
+            InfluencerProfile.display_name,
+            InfluencerProfile.avatar_media_id,
+        )
+        .filter(InfluencerProfile.user_id.in_(set(influencer_user_ids)))
+        .all()
+    )
+    return {
+        user_id: {
+            "display_name": display_name,
+            # Same URL shape the profiles module builds its media links from,
+            # so one media route serves the proposal list too.
+            "avatar_url": f"/profiles/media/{avatar_media_id}" if avatar_media_id else None,
+        }
+        for user_id, display_name, avatar_media_id in rows
+    }
+
+
+def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
+    identity = identity or {}
     return {
         "id": p.id,
         "campaign_id": p.campaign_id,
@@ -257,6 +285,8 @@ def _proposal_out(p: models.Proposal) -> dict:
         "rate_currency": p.rate_currency,
         "timeline_days": p.timeline_days,
         "status": p.status,
+        "display_name": identity.get("display_name"),
+        "avatar_url": identity.get("avatar_url"),
     }
 
 
@@ -284,9 +314,11 @@ def get_campaign_detail(db: Session, campaign_id: str, business_user_id: str) ->
         .order_by(models.Proposal.version.desc())
         .all()
     )
+    # Looked up once for the whole page rather than per proposal row.
+    identities = _proposer_identity(db, [p.influencer_user_id for p in proposals])
     out = _to_out(campaign)
     out["invitations"] = [_invitation_out(i) for i in invitations]
-    out["proposals"] = [_proposal_out(p) for p in proposals]
+    out["proposals"] = [_proposal_out(p, identities.get(p.influencer_user_id)) for p in proposals]
     return out
 
 

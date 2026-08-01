@@ -214,6 +214,50 @@ def search_influencers(
     return results
 
 
+def _creator_identity(db: Session, user_ids: list[str]) -> dict:
+    """Name, photo, headline and country for a set of creators.
+
+    A favourites list is rendered as cards, and "Créateur 05317bc0" is not a
+    person: a business cannot pick a creator it does not recognise. The lookup
+    is deliberately bulk — two queries for the whole shortlist rather than two
+    per row, which is what turns a twenty-creator list into forty round trips.
+
+    Every field is optional. A creator can be favourited the moment they sign
+    up, long before they write a profile, and that must come back as an empty
+    card rather than fail the whole list. The absence is never papered over
+    with something from the users table either: the only identifier there is a
+    phone number, and a phone number does not go into a payload.
+    """
+    if not user_ids:
+        return {}
+    unique_ids = set(user_ids)
+    by_user = {
+        p.user_id: p
+        for p in db.query(profiles.InfluencerProfile)
+        .filter(profiles.InfluencerProfile.user_id.in_(unique_ids))
+        .all()
+    }
+    countries = dict(
+        db.query(User.id, User.country_code).filter(User.id.in_(unique_ids)).all()
+    )
+    identities = {}
+    for user_id in unique_ids:
+        prof = by_user.get(user_id)
+        identities[user_id] = {
+            "display_name": prof.display_name if prof else None,
+            # Same URL shape the profiles module builds its media links from
+            # (profiles.service._media_url), so one media route serves both.
+            "avatar_url": (
+                f"/profiles/media/{prof.avatar_media_id}"
+                if prof is not None and prof.avatar_media_id
+                else None
+            ),
+            "headline": prof.headline if prof else None,
+            "country_code": countries.get(user_id),
+        }
+    return identities
+
+
 def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> dict:
     if db.query(User).filter(User.id == influencer_user_id).first() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
@@ -225,7 +269,11 @@ def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) ->
     if existing is None:
         db.add(Favorite(business_user_id=business_user_id, influencer_user_id=influencer_user_id))
         db.commit()
-    return {"influencer_user_id": influencer_user_id}
+    # The same card shape the list returns: the row the client just added
+    # renders as a person immediately, instead of as an id until the next
+    # refresh.
+    identity = _creator_identity(db, [influencer_user_id])[influencer_user_id]
+    return {"influencer_user_id": influencer_user_id, **identity}
 
 
 def remove_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> None:
@@ -240,10 +288,19 @@ def remove_favorite(db: Session, business_user_id: str, influencer_user_id: str)
 
 
 def list_favorites(db: Session, business_user_id: str) -> list[dict]:
+    """The business shortlist, as cards rather than as ids.
+
+    Inviting someone to a campaign starts here, so the row has to say who the
+    person is: a name, a face, what they do, and where they are.
+    """
     favs = (
         db.query(Favorite)
         .filter(Favorite.business_user_id == business_user_id)
         .order_by(Favorite.created_at.asc())
         .all()
     )
-    return [{"influencer_user_id": f.influencer_user_id} for f in favs]
+    identities = _creator_identity(db, [f.influencer_user_id for f in favs])
+    return [
+        {"influencer_user_id": f.influencer_user_id, **identities[f.influencer_user_id]}
+        for f in favs
+    ]

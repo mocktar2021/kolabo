@@ -7,7 +7,9 @@ KOL-36: release the escrow to the influencer once the business confirms
 delivery, deducting commission at release, or auto release after a timeout if
 the business does not respond.
 KOL-37: a dispute freezes the escrow; an admin resolves it (release or refund),
-the decision is logged, and both parties are notified.
+the decision is logged, and both parties are notified. Everything about the
+dispute itself — raising it, the response window, the thread, resolution —
+lives in payments/disputes.py; what stays here is the money.
 
 No real money moves: all provider calls go through the mock provider until a real
 Mobile Money provider is contracted.
@@ -156,23 +158,6 @@ def run_due_auto_releases(db: Session, now=None) -> int:
         _release(db, escrow, "system_auto_release")
     db.commit()
     return len(due)
-
-
-def dispute_escrow(db: Session, actor_user_id: str, escrow_id: str) -> dict:
-    escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
-    if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
-    if actor_user_id not in (escrow.business_user_id, escrow.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow")
-    if escrow.status != models.HELD:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only a held escrow can be disputed")
-    escrow.status = models.DISPUTED
-    _event(db, escrow, actor_user_id, "disputed")
-    notify(db, escrow.business_user_id, "dispute", "A dispute was opened on your escrow")
-    notify(db, escrow.influencer_user_id, "dispute", "A dispute was opened on your escrow")
-    db.commit()
-    db.refresh(escrow)
-    return _out(escrow)
 
 
 def resolve_dispute(db: Session, admin_id: str, escrow_id: str, decision: str) -> dict:

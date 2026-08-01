@@ -47,6 +47,20 @@ def _headers(uid):
 
 ADMIN = {"X-Admin-Id": "admin-1"}
 
+# Raising a dispute now costs a reason and a statement. The cases below only
+# need A dispute, not a particular one, so they all send the same minimum;
+# what the payload is FOR is tested in test_disputes.py.
+DISPUTE_BODY = {
+    "reason": "not_delivered",
+    "statement": "The deliverable never arrived and the agreed date has passed.",
+}
+
+
+def _dispute(client, escrow_id, user_id):
+    return client.post(
+        f"/payments/escrow/{escrow_id}/dispute", json=DISPUTE_BODY, headers=_headers(user_id)
+    )
+
 
 def _signed_contract(client, signed=True, amount=10000):
     db = client.session_factory()
@@ -163,8 +177,12 @@ def test_dispute_freezes_then_admin_refunds(client):
     biz, inf, cid = _signed_contract(client, amount=20000)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
     eid = escrow["id"]
-    r = client.post(f"/payments/escrow/{eid}/dispute", headers=_headers(inf))
-    assert r.json()["status"] == "disputed"
+    r = _dispute(client, eid, inf)
+    # The response is now the DISPUTE, which starts in its response window;
+    # the frozen escrow rides along on it.
+    assert r.status_code == 201
+    assert r.json()["status"] == "awaiting_response"
+    assert r.json()["escrow"]["status"] == "disputed"
     # A disputed escrow cannot be released by the business directly.
     assert client.post(f"/payments/escrow/{eid}/release", headers=_headers(biz)).status_code == 400
     r = client.post(f"/payments/escrow/{eid}/resolve", json={"decision": "refund"}, headers=ADMIN)
@@ -182,7 +200,7 @@ def test_admin_can_resolve_dispute_by_releasing(client):
     biz, inf, cid = _signed_contract(client, amount=10000)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
     eid = escrow["id"]
-    client.post(f"/payments/escrow/{eid}/dispute", headers=_headers(biz))
+    _dispute(client, eid, biz)
     r = client.post(f"/payments/escrow/{eid}/resolve", json={"decision": "release"}, headers=ADMIN)
     assert r.json()["status"] == "released"
     assert r.json()["commission_amount"] == 1500
@@ -191,7 +209,7 @@ def test_admin_can_resolve_dispute_by_releasing(client):
 def test_resolve_requires_admin_header(client):
     biz, inf, cid = _signed_contract(client)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
-    client.post(f"/payments/escrow/{escrow['id']}/dispute", headers=_headers(biz))
+    _dispute(client, escrow["id"], biz)
     assert client.post(f"/payments/escrow/{escrow['id']}/resolve", json={"decision": "release"}).status_code == 401
 
 

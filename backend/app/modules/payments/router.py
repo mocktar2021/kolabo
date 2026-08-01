@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.payments import schemas, service
+from app.modules.payments import disputes, schemas, service
 
 router = APIRouter()
 
@@ -30,14 +30,25 @@ def release_escrow(
     return service.release_escrow(db, business_user_id, escrow_id)
 
 
-@router.post("/escrow/{escrow_id}/dispute", response_model=schemas.EscrowOut)
+@router.post(
+    "/escrow/{escrow_id}/dispute",
+    response_model=schemas.DisputeOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def dispute_escrow(
     escrow_id: str,
+    payload: schemas.DisputeIn,
     db: Session = Depends(get_db),
     actor_user_id: str = Depends(get_current_user_id),
 ):
-    """Open a dispute, which freezes the escrow. KOL-37."""
-    return service.dispute_escrow(db, actor_user_id, escrow_id)
+    """Open a dispute, which freezes the escrow and starts the response window.
+
+    Requires a reason from the closed set, a written statement, and optionally
+    the ids of images you uploaded as evidence. The other party is notified
+    and gets the first word; only if they do not use it does an admin see the
+    case. KOL-37.
+    """
+    return disputes.raise_dispute(db, actor_user_id, escrow_id, payload)
 
 
 @router.get("/escrow/by-contract/{contract_id}", response_model=schemas.EscrowOut)

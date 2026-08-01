@@ -19,6 +19,10 @@ export type Invitation = {
   status: string;
 };
 
+/* A proposal version. display_name and avatar_url identify the creator behind
+   it and are null until they have a profile — the users table holds only a
+   phone number besides, and a phone number is never handed to the other side
+   of a deal. */
 export type Proposal = {
   id: string;
   campaign_id: string;
@@ -28,11 +32,27 @@ export type Proposal = {
   rate_currency: string;
   timeline_days: number;
   status: string;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
 export type CampaignDetail = Campaign & {
   invitations: Invitation[];
   proposals: Proposal[];
+};
+
+/* A row of GET /discovery/favorites. Everything past the id is optional and
+   stays optional: a creator can be favourited before they have filled in
+   anything, and an incomplete card is still usable while a failed request is
+   not. country_code is the one field taken from the users table — the only
+   other identifier a user row holds is a phone number, which never reaches a
+   payload. */
+export type Favorite = {
+  influencer_user_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  headline: string | null;
+  country_code: string | null;
 };
 
 /* A row of GET /campaigns/invitations/mine. The brand's company name rides at

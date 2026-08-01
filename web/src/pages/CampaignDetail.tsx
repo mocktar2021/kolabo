@@ -2,12 +2,44 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { api } from "../lib/api";
+import { api, mediaSrc } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import type { CampaignDetail, Contract } from "../lib/types";
+import type { CampaignDetail, Contract, Favorite } from "../lib/types";
 
 function shortId(id: string): string {
   return id.slice(0, 8);
+}
+
+/* One favourited creator, offered as a person rather than as an id. "Créateur
+   05317bc0" is not somebody a brand can decide to invite: the choice is made
+   on a face, a name and what they say they do. Same fallbacks as the creator
+   cards in discovery — the brand gradient fills the tile when there is no
+   photo, so a profile-less creator still renders as a row and not as a broken
+   image. */
+function FavoriteRow({ fav, disabled, onInvite }: { fav: Favorite; disabled: boolean; onInvite: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 36, height: 36, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+            background: fav.avatar_url ? "var(--surface-2)" : "var(--gradient-brand)"
+          }}
+        >
+          {fav.avatar_url && (
+            <img src={mediaSrc(fav.avatar_url)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          )}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{fav.display_name || t("campaign.unnamedCreator")}</div>
+          {fav.headline && <div className="muted" style={{ fontSize: 12.5 }}>{fav.headline}</div>}
+        </div>
+      </div>
+      <button className="btn btn-ghost" disabled={disabled} onClick={onInvite}>{t("campaign.invite")}</button>
+    </div>
+  );
 }
 
 export default function CampaignDetailPage() {
@@ -16,7 +48,7 @@ export default function CampaignDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -35,8 +67,8 @@ export default function CampaignDetailPage() {
 
   useEffect(() => {
     load();
-    api<{ influencer_user_id: string }[]>("/discovery/favorites", { token })
-      .then((f) => setFavorites(f.map((x) => x.influencer_user_id)))
+    api<Favorite[]>("/discovery/favorites", { token })
+      .then(setFavorites)
       .catch(() => undefined);
   }, [load, token]);
 
@@ -97,7 +129,7 @@ export default function CampaignDetailPage() {
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const invitedIds = new Set((campaign?.invitations ?? []).map((i) => i.influencer_user_id));
-  const invitableFavorites = favorites.filter((f) => !invitedIds.has(f));
+  const invitableFavorites = favorites.filter((f) => !invitedIds.has(f.influencer_user_id));
 
   return (
     <Layout>
@@ -134,12 +166,14 @@ export default function CampaignDetailPage() {
                 {invitableFavorites.length === 0 ? (
                   <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.noFavorites")}</p>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     {invitableFavorites.map((f) => (
-                      <div key={f} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 14 }}>{t("discover.creator")} {shortId(f)}</span>
-                        <button className="btn btn-ghost" disabled={busy} onClick={() => invite(f)}>{t("campaign.invite")}</button>
-                      </div>
+                      <FavoriteRow
+                        key={f.influencer_user_id}
+                        fav={f}
+                        disabled={busy}
+                        onInvite={() => invite(f.influencer_user_id)}
+                      />
                     ))}
                   </div>
                 )}
@@ -168,7 +202,7 @@ export default function CampaignDetailPage() {
                 campaign.proposals.map((p) => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                     <div>
-                      <div>{t("discover.creator")} {shortId(p.influencer_user_id)} - v{p.version}</div>
+                      <div>{p.display_name || t("campaign.unnamedCreator")} - v{p.version}</div>
                       <div className="muted">{p.rate_amount} {p.rate_currency} - {p.timeline_days}d ({p.status})</div>
                     </div>
                     {p.status === "submitted" && (

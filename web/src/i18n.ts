@@ -171,6 +171,10 @@ const resources = {
         listTitle: "Mes campagnes", new: "Nouvelle campagne", listEmpty: "Vous n'avez pas encore de campagne.",
         notFound: "Campagne introuvable.",
         inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun créateur favori à inviter.",
+        /* Shown wherever a creator is named before they have a profile. "Nom
+           d'affichage manquant" is the brand's problem to notice, not a raw
+           id to decipher. */
+        unnamedCreator: "Créateur sans nom",
         invite: "Inviter", invitations: "Invitations", noInvitations: "Aucune invitation pour le moment.",
         proposals: "Propositions", noProposals: "Aucune proposition pour le moment.",
         accept: "Accepter et créer le contrat", viewContract: "Voir le contrat"
@@ -340,6 +344,10 @@ const resources = {
         listTitle: "My campaigns", new: "New campaign", listEmpty: "You have no campaigns yet.",
         notFound: "Campaign not found.",
         inviteFromFavorites: "Invite from my favorites", noFavorites: "No favorited creators to invite.",
+        /* Shown wherever a creator is named before they have a profile. A
+           missing display name is something the brand should notice, not a
+           raw id to decipher. */
+        unnamedCreator: "Unnamed creator",
         invite: "Invite", invitations: "Invitations", noInvitations: "No invitations yet.",
         proposals: "Proposals", noProposals: "No proposals yet.",
         accept: "Accept and create contract", viewContract: "View contract"

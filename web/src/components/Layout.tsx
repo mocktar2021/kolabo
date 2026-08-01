@@ -89,17 +89,20 @@ function AppNav() {
   const { t } = useTranslation();
   const { logout } = useAuth();
   const navigate = useNavigate();
-  /* Campaigns are a brand-side artifact: only businesses and agencies can own
+  /* The two sides of the market get two different menus, from one question.
+     Campaigns are a brand-side artifact: only businesses and agencies can own
      one, so for a creator /campaigns is a page that can never hold anything.
-     Their equivalent surface is packages on the profile, and the briefs they
-     are actually offered arrive under Invitations. */
-  const canOwnCampaigns = isBusinessLike(getStoredRole());
+     Invitations run the other way — a business sends them and never receives
+     one, so its invitations page would be empty by construction; the answers
+     to what it sent arrive as proposals on its own campaign. Agencies buy the
+     way businesses do, hence isBusinessLike. */
+  const isBrand = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
       <LanguageSwitch />
       <Link className="btn btn-ghost" to="/discover">{t("nav.discover")}</Link>
-      {canOwnCampaigns && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
-      <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>
+      {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
+      {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
       <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>

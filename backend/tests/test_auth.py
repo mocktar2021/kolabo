@@ -1,4 +1,9 @@
-"""Tests for Epic A (KOL-1): auth registration, verification, login, reset."""
+"""Tests for Epic A (KOL-1): auth registration, verification, login, reset.
+
+Account settings and the reset flow's own rules live in test_account.py. What
+stays here is the pair of reset tests that were always here — the rate limit
+and the happy path — kept so a regression shows up in both files.
+"""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -262,18 +267,25 @@ def test_password_reset_rate_limited_to_three_per_hour(client):
 
 
 def test_password_reset_confirm_updates_password(client):
+    """Confirm now takes {phone, code, new_password} rather than a bare token.
+
+    The reset code is a six digit OTP delivered by SMS, exactly like the
+    registration code, so it is only ever resolved together with the number it
+    was sent to — six digits standing alone would be a lottery anyone could
+    enter. It is still read off the same password_reset_tokens row.
+    """
     _register(client)
     code = _latest_code(client)
     client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
     client.post("/auth/password-reset/request", json={"phone": PHONE})
 
     db = client.session_factory()
-    token = db.query(models.PasswordResetToken).first().token
+    reset_code = db.query(models.PasswordResetToken).first().token
     db.close()
 
     resp = client.post(
         "/auth/password-reset/confirm",
-        json={"token": token, "new_password": "newstrongpass2"},
+        json={"phone": PHONE, "code": reset_code, "new_password": "newstrongpass2"},
     )
     assert resp.status_code == 200
     resp = client.post("/auth/login", json={"phone": PHONE, "password": "newstrongpass2"})

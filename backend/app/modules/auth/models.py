@@ -89,11 +89,29 @@ class OtpChallenge(Base):
 
 
 class PasswordResetToken(Base):
+    """One reset code, for one account, good once.
+
+    The token column now holds a SIX DIGIT CODE, the same shape the
+    registration OTP uses, because it is delivered the same way: an SMS to the
+    phone that is the login identity. Nobody retypes a 43 character urlsafe
+    string off a lock screen.
+
+    Which is exactly why the column is INDEXED BUT NOT UNIQUE. Six digits is a
+    million values, so across enough resets two accounts WILL be handed the
+    same code eventually, and a unique constraint would turn that collision
+    into a 500 for whichever user asked second — a locked-out user refused
+    entry because somebody unrelated is also resetting. Uniqueness was never
+    the property that mattered: a code is looked up together with the phone it
+    was sent to (see auth.account.confirm_password_reset), so the pair is what
+    identifies it, and a bare code on its own is not meant to be an
+    identifier at all.
+    """
+
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    token: Mapped[str] = mapped_column(String, index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     consumed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

@@ -12,7 +12,8 @@
    an OPEN one blocks a new claim or has anything left to say, so every screen
    that asks "is this escrow disputed" has to ask about status and not just
    count rows. */
-import type { Dispute, DisputeReason, DisputeStatus } from "./types";
+import { api } from "./api";
+import type { Dispute, DisputeReason, DisputeStatus, MessageThread } from "./types";
 import { parseApiDate } from "./orders";
 
 /* Mirror of DISPUTE_REASONS in backend/app/modules/payments/models.py, in the
@@ -49,6 +50,19 @@ export function openDisputeFor(disputes: Dispute[], escrowId: string): Dispute |
   return disputes.find((d) => d.escrow_id === escrowId && isDisputeOpen(d)) ?? null;
 }
 
+/* Disputes waiting on the CALLER to answer.
+
+   Not "my open disputes". The 72 h window is the only thing on this screen
+   that expires, and it expires against the party who did NOT open the case;
+   a badge that also counted the ones they raised themselves would sit there
+   unclearable for as long as they waited for a reply. */
+export function awaitingMyAnswer(disputes: Dispute[], userId: string | null): Dispute[] {
+  if (!userId) return [];
+  return disputes.filter(
+    (d) => d.status === "awaiting_response" && d.opened_by_user_id !== userId
+  );
+}
+
 /* How much of the response window is left, or null once it has closed.
 
    Computed on demand rather than on a ticking timer, exactly like the order
@@ -63,4 +77,29 @@ export function respondTimeLeft(
   const minutes = Math.floor(ms / 60000);
   if (minutes < 60) return { unit: "minutes", n: Math.max(minutes, 1) };
   return { unit: "hours", n: Math.floor(minutes / 60) };
+}
+
+/* What to call the other side of a case, keyed by CONTRACT id.
+
+   The dispute payload carries user ids and nothing else — which is right for
+   what it is, a record of a claim — so the name has to come from somewhere.
+   It comes from the inbox: /messaging/threads is built from contracts rather
+   than from messages, so it answers one row per contract the caller is party
+   to whether or not anybody has written in it, and it already resolves
+   creators through the shared identity helper and businesses through their
+   company name. Every escrow has a contract behind it, so every dispute is in
+   that map.
+
+   One request for the whole list, and the same name the person is called
+   everywhere else in the app. A name can still be missing — a brand that
+   never filled its profile — so callers fall back to a generic label. */
+export async function counterpartyNamesByContract(
+  token: string | null
+): Promise<Record<string, string>> {
+  const threads = await api<MessageThread[]>("/messaging/threads", { token });
+  const names: Record<string, string> = {};
+  for (const thread of threads) {
+    if (thread.counterparty_name) names[thread.contract_id] = thread.counterparty_name;
+  }
+  return names;
 }

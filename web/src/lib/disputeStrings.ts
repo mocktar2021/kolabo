@@ -42,7 +42,43 @@ const fr = {
   status_awaiting_response: "En attente de réponse",
   status_awaiting_admin: "En examen",
   status_resolved: "Résolu",
-  status_withdrawn: "Retiré"
+  status_withdrawn: "Retiré",
+
+  /* The list and the case. */
+  nav: "Litiges",
+  navAria: "Litiges, {{n}} en attente de votre réponse",
+  listTitle: "Mes litiges",
+  listSub: "Les litiges sur vos séquestres, du plus récent au plus ancien.",
+  listEmpty: "Vous n'avez aucun litige.",
+  counterparty: "Partie adverse",
+  unknownParty: "Autre partie",
+  amount: "Montant",
+  openedOn: "Ouvert le {{date}}",
+  /* The countdown belongs to the party who has to answer, so it is only
+     shown while the window is still open. Past it the case is queued and the
+     clock has stopped meaning anything. */
+  respondInHours: "Réponse attendue sous {{n}} h",
+  respondInMinutes: "Réponse attendue sous {{n}} min",
+  respondOverdue: "Délai de réponse dépassé",
+  notFound: "Litige introuvable.",
+  back: "Retour aux litiges",
+  opening: "Déclaration initiale",
+  thread: "Échanges",
+  noMessages: "Aucun message pour l'instant.",
+  you: "Vous",
+  composerPlaceholder: "Écrivez votre réponse",
+  send: "Envoyer",
+  withdraw: "Retirer le litige",
+  /* Where the money goes, said before the click. Withdrawing is not
+     abandoning the escrow: it goes back to held and back on its normal
+     release schedule, which is the fact that makes settling amicably safe. */
+  withdrawExplain: "Les fonds repartent en séquestre normal.",
+  withdrawYes: "Confirmer le retrait",
+  withdrawNo: "Annuler",
+  outcome: "Décision",
+  outcomeReleased: "Libéré au créateur",
+  outcomeRefunded: "Remboursé à la marque",
+  outcomeNote: "Note de l'équipe Kolabo"
 };
 
 const en = {
@@ -77,7 +113,37 @@ const en = {
   status_awaiting_response: "Awaiting a response",
   status_awaiting_admin: "Under review",
   status_resolved: "Resolved",
-  status_withdrawn: "Withdrawn"
+  status_withdrawn: "Withdrawn",
+
+  /* The list and the case. */
+  nav: "Disputes",
+  navAria: "Disputes, {{n}} awaiting your answer",
+  listTitle: "My disputes",
+  listSub: "Disputes on your escrows, newest first.",
+  listEmpty: "You have no disputes.",
+  counterparty: "Counterparty",
+  unknownParty: "Other party",
+  amount: "Amount",
+  openedOn: "Opened on {{date}}",
+  respondInHours: "An answer is due within {{n}} h",
+  respondInMinutes: "An answer is due within {{n}} min",
+  respondOverdue: "The response window has closed",
+  notFound: "Dispute not found.",
+  back: "Back to disputes",
+  opening: "Opening statement",
+  thread: "Messages",
+  noMessages: "No messages yet.",
+  you: "You",
+  composerPlaceholder: "Write your reply",
+  send: "Send",
+  withdraw: "Withdraw the dispute",
+  withdrawExplain: "The funds go back into normal escrow.",
+  withdrawYes: "Confirm the withdrawal",
+  withdrawNo: "Cancel",
+  outcome: "Decision",
+  outcomeReleased: "Released to the creator",
+  outcomeRefunded: "Refunded to the brand",
+  outcomeNote: "Note from the Kolabo team"
 };
 
 i18n.addResourceBundle("fr", "translation", { dispute: fr }, true, true);

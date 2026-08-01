@@ -296,6 +296,24 @@ export type Dispute = {
   escrow: Escrow | null;
 };
 
+/* One turn in the thread the two parties settle it in.
+
+   No recipient: a dispute has exactly two parties and an audience of admins,
+   so who a message is FOR is never in question — only who wrote it, which is
+   what turns the thread into "Vous" and the other side's name. */
+export type DisputeThreadMessage = {
+  id: string;
+  author_user_id: string;
+  body: string;
+  created_at: string;
+  attachments: string[];
+};
+
+/* GET /payments/disputes/{id}: the same case with its thread attached. The
+   list endpoint deliberately does not carry messages — a list of ten cases
+   would pull every word ever written in any of them. */
+export type DisputeCase = Dispute & { messages: DisputeThreadMessage[] };
+
 /* Referrals (GET /auth/me/referral).
 
    status is the only part of this that carries money: "signed_up" means the

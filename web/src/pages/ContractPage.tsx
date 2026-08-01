@@ -341,8 +341,6 @@ export default function ContractPage() {
                     {escrow.status === "refunded" && <div className="alert alert-info" style={{ marginTop: 12, marginBottom: 0 }}>{t("contract.refunded")}</div>}
                   </>
                 )}
-                  </>
-                )}
               </div>
             )}
           </>

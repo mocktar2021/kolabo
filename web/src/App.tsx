@@ -17,6 +17,8 @@ import MessagesPage from "./pages/Messages";
 import MyInvitations from "./pages/MyInvitations";
 import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
+import DisputesPage from "./pages/Disputes";
+import DisputeDetailPage from "./pages/DisputeDetail";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
@@ -79,6 +81,12 @@ export default function App() {
           <Route path="/invitations" element={<CreatorOnly><MyInvitations /></CreatorOnly>} />
           <Route path="/contracts" element={<ContractsList />} />
           <Route path="/contracts/:id" element={<ContractPage />} />
+          {/* Neither wrapper, for the same reason as messages: a dispute is a
+              claim on money held between two people and either of them may be
+              the one making it. The gate is being a party to the escrow, and
+              /payments answers 403 to anybody else. */}
+          <Route path="/disputes" element={<DisputesPage />} />
+          <Route path="/disputes/:id" element={<DisputeDetailPage />} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
           <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
           <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />

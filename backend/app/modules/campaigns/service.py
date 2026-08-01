@@ -18,17 +18,22 @@ Direct orders: a brand can also skip the brief entirely and buy a creator's
 package at the published price. That order is created here, as a hidden
 single-creator campaign, because the campaigns module owns the campaign — see
 create_direct_order for why it is shaped that way.
+
+Who the people on these rows are is not decided here: identity comes from
+app.core.identity, shared with discovery, so an invitation, a proposal and a
+favourite all name a creator the same way.
 """
 from datetime import timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas
 from app.modules.notifications.service import notify
-from app.modules.profiles.models import BusinessProfile, InfluencerProfile, Package
+from app.modules.profiles.models import BusinessProfile, Package
 
 # Nobody briefs a hundred-plus of anything in one campaign; past that the
 # number is a typo (an amount pasted into the quantity box), so reject it
@@ -221,12 +226,10 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
     notify(db, influencer_user_id, "campaign_invitation", f"You were invited to the campaign {campaign.title}")
     db.commit()
     db.refresh(invitation)
-    return {
-        "id": invitation.id,
-        "campaign_id": invitation.campaign_id,
-        "influencer_user_id": invitation.influencer_user_id,
-        "status": invitation.status,
-    }
+    # The row the client just created renders as a person straight away,
+    # rather than as a user id until the campaign page is reloaded.
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
+    return _invitation_out(invitation, identity)
 
 
 def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
@@ -399,7 +402,7 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
     notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
     db.commit()
     db.refresh(proposal)
-    identity = _proposer_identity(db, [influencer_user_id]).get(influencer_user_id)
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
     return _proposal_out(proposal, identity)
 
 
@@ -474,60 +477,38 @@ def reply_to_proposal(
     )
     db.commit()
     db.refresh(reply)
-    identity = _proposer_identity(db, [reply.influencer_user_id]).get(reply.influencer_user_id)
+    identity = creator_identities(db, [reply.influencer_user_id]).get(reply.influencer_user_id)
     return _proposal_out(reply, identity)
 
 
-def _invitation_out(inv: models.CampaignInvitation) -> dict:
+def _invitation_out(inv: models.CampaignInvitation, identity: dict | None = None) -> dict:
+    """An invitation row, saying who was invited.
+
+    The identity is optional because the creator's own invitations list has no
+    use for it — every row there is them, and looking it up would cost a query
+    to tell somebody their own name. On the business's campaign page it is the
+    entire point: this list used to render a bare user id beside a proposals
+    list that rendered names, so one screen showed the same person two
+    different ways.
+    """
     return {
         "id": inv.id,
         "campaign_id": inv.campaign_id,
         "influencer_user_id": inv.influencer_user_id,
         "status": inv.status,
-    }
-
-
-def _proposer_identity(db: Session, influencer_user_ids: list[str]) -> dict:
-    """Display name and photo for the creators behind a set of proposals.
-
-    A business reviewing proposals is choosing between people, and a list of
-    ids gives it nothing to choose with: "Créateur 424275c0" is not somebody
-    you can hire. One query for the whole list, not one per row — a campaign
-    with thirty proposals should not cost thirty extra round trips.
-
-    Null when the creator has no profile yet, and null is where it stops. The
-    users table could supply a phone number and nothing else, and a phone
-    number is never part of a payload handed to the other side of a deal:
-    that is the difference between a marketplace and an introduction service.
-
-    A chain names the creator on every row, business replies included: the
-    thread belongs to that creator, and author_role is what says who wrote
-    which version.
-    """
-    if not influencer_user_ids:
-        return {}
-    rows = (
-        db.query(
-            InfluencerProfile.user_id,
-            InfluencerProfile.display_name,
-            InfluencerProfile.avatar_media_id,
-        )
-        .filter(InfluencerProfile.user_id.in_(set(influencer_user_ids)))
-        .all()
-    )
-    return {
-        user_id: {
-            "display_name": display_name,
-            # Same URL shape the profiles module builds its media links from,
-            # so one media route serves the proposal list too.
-            "avatar_url": f"/profiles/media/{avatar_media_id}" if avatar_media_id else None,
-        }
-        for user_id, display_name, avatar_media_id in rows
+        **(identity or blank_identity()),
     }
 
 
 def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
-    identity = identity or {}
+    """A proposal row, with the creator behind it named the shared way.
+
+    A business choosing between proposals is choosing between people, and a
+    list of ids gives it nothing to choose with. The audience number arrives
+    with the name because that is the other half of the decision — and it is
+    the biggest single platform, never a sum, for the reason spelled out in
+    app.core.identity.
+    """
     return {
         "id": p.id,
         "campaign_id": p.campaign_id,
@@ -540,8 +521,7 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
         "note": p.note,
         "author_role": p.author_role,
         "expires_at": p.expires_at,
-        "display_name": identity.get("display_name"),
-        "avatar_url": identity.get("avatar_url"),
+        **(identity or blank_identity()),
     }
 
 
@@ -584,10 +564,17 @@ def get_campaign_detail(db: Session, campaign_id: str, business_user_id: str) ->
         .all()
     )
     proposals.reverse()
-    # Looked up once for the whole page rather than per proposal row.
-    identities = _proposer_identity(db, [p.influencer_user_id for p in proposals])
+    # One lookup for the whole page, covering both lists. They name the same
+    # handful of creators — usually literally the same people, since an
+    # invitation is what produces a proposal — and they now render them
+    # identically, which is the point: a business should not have to work out
+    # that the id in one list is the name in the other.
+    identities = creator_identities(
+        db,
+        [i.influencer_user_id for i in invitations] + [p.influencer_user_id for p in proposals],
+    )
     out = _to_out(campaign)
-    out["invitations"] = [_invitation_out(i) for i in invitations]
+    out["invitations"] = [_invitation_out(i, identities.get(i.influencer_user_id)) for i in invitations]
     out["proposals"] = [_proposal_out(p, identities.get(p.influencer_user_id)) for p in proposals]
     return out
 
@@ -647,10 +634,9 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
         if campaign.business_user_id not in company_names:
             company_names[campaign.business_user_id] = _company_name(db, campaign.business_user_id)
         item["business_company_name"] = company_names[campaign.business_user_id]
-        # Identity is deliberately left null here. display_name and avatar_url
-        # exist so a BUSINESS can tell one proposer from another; every row in
-        # this list belongs to the creator reading it, so the lookup would buy
-        # nothing and cost a query per row.
+        # Identity is deliberately left blank here. It exists so a BUSINESS
+        # can tell one creator from another; every row in this list belongs to
+        # the creator reading it, so the lookup would buy nothing.
         latest = latest_in_chain(db, campaign.id, influencer_user_id)
         item["proposal"] = _proposal_out(latest) if latest is not None else None
         result.append(item)

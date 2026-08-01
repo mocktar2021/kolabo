@@ -19,6 +19,7 @@ window is safe to enforce for exactly the same reason.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.identity import creator_identities
 from app.modules.campaigns import models
 from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import service as contracts_service
@@ -144,7 +145,7 @@ def decline_direct_order(db: Session, influencer_user_id: str, proposal_id: str)
     )
     db.commit()
     db.refresh(proposal)
-    identity = campaigns_service._proposer_identity(db, [influencer_user_id]).get(influencer_user_id)
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
     return campaigns_service._proposal_out(proposal, identity)
 
 

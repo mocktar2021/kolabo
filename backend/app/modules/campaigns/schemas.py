@@ -40,7 +40,29 @@ class CampaignOut(BaseModel):
     is_direct: bool = False
 
 
-class InvitationOut(BaseModel):
+class CreatorIdentity(BaseModel):
+    """How a creator appears on any row a business reads.
+
+    One shape everywhere, filled by app.core.identity.creator_identities:
+    favourites, campaign invitations, proposals. A business comparing an
+    invitation against a proposal is looking at the same person, and used to
+    be shown a raw user id on one and a name on the other.
+
+    Every field is optional — somebody can be invited the day they sign up,
+    before they have written a profile. Nothing here is ever filled in from
+    the users table: the only identifier it holds is a phone number, and a
+    phone number is never handed to the other side of a deal.
+    """
+
+    display_name: str | None = None
+    avatar_url: str | None = None
+    # The single biggest connected platform, never a sum across platforms:
+    # somebody following on two networks would otherwise be counted twice.
+    top_platform: str | None = None
+    top_follower_count: int | None = None
+
+
+class InvitationOut(CreatorIdentity):
     id: str
     campaign_id: str
     influencer_user_id: str
@@ -100,7 +122,7 @@ class OrderOut(BaseModel):
     expires_at: datetime | None
 
 
-class ProposalOut(BaseModel):
+class ProposalOut(CreatorIdentity):
     id: str
     campaign_id: str
     influencer_user_id: str
@@ -116,13 +138,6 @@ class ProposalOut(BaseModel):
     # When a direct order stops being answerable. Null on everything else —
     # only direct orders run on a clock.
     expires_at: datetime | None = None
-    # Who the offer is from, in a form the business can act on. A proposals
-    # list of bare user ids is unusable: nobody picks "Créateur 424275c0".
-    # Null until the creator has a profile, and it stays null — the users
-    # table has only a phone number to offer, and a phone number is never
-    # handed to the other side of a deal.
-    display_name: str | None = None
-    avatar_url: str | None = None
 
 
 class CampaignDetailOut(CampaignOut):

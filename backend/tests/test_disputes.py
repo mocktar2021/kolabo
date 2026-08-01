@@ -1,4 +1,4 @@
-"""Disputes (KOL-37): raising one, what it freezes, and who may."""
+"""Disputes (KOL-37): raising one, answering it, and how it reaches an admin."""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -64,15 +64,15 @@ def _user(db, phone, role):
     return u
 
 
-def _funded(client, amount=10000):
+def _funded(client, amount=10000, suffix="1"):
     """A held escrow between a business and a creator, plus a bystander."""
     db = client.session_factory()
     try:
-        biz = _user(db, "+22990001001", "business")
-        inf = _user(db, "+22990001002", "influencer")
-        stranger = _user(db, "+22990001003", "influencer")
+        biz = _user(db, f"+2299000{suffix}001", "business")
+        inf = _user(db, f"+2299000{suffix}002", "influencer")
+        stranger = _user(db, f"+2299000{suffix}003", "influencer")
         c = contracts.Contract(
-            campaign_id="camp-1", proposal_id="prop-1", business_user_id=biz.id,
+            campaign_id=f"camp-{suffix}", proposal_id=f"prop-{suffix}", business_user_id=biz.id,
             influencer_user_id=inf.id, language="fr", body="body", rate_amount=amount,
             rate_currency="XOF", timeline_days=7, status=contracts.SIGNED,
         )
@@ -87,6 +87,15 @@ def _funded(client, amount=10000):
         "/payments/escrow/fund", json={"contract_id": contract_id}, headers=_headers(biz_id)
     ).json()
     return biz_id, inf_id, stranger_id, escrow
+
+
+def _disputed(client, amount=10000, suffix="1"):
+    """A funded escrow with an open dispute raised by the creator."""
+    biz, inf, stranger, escrow = _funded(client, amount=amount, suffix=suffix)
+    dispute = client.post(
+        f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(inf)
+    ).json()
+    return biz, inf, stranger, escrow, dispute
 
 
 def _media(client, owner_id):
@@ -112,6 +121,28 @@ def _notices(client, user_id, type="dispute"):
         ]
     finally:
         db.close()
+
+
+def _age_window(client, dispute_id):
+    """Force a dispute's response window into the past."""
+    db = client.session_factory()
+    try:
+        d = db.query(pay_models.Dispute).filter(pay_models.Dispute.id == dispute_id).first()
+        d.respond_by = pay_models.utcnow().replace(year=2020)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _escrow_row(client, escrow_id):
+    db = client.session_factory()
+    try:
+        return db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow_id).first()
+    finally:
+        db.close()
+
+
+# --- Raising one --------------------------------------------------------
 
 
 def test_raising_a_dispute_freezes_the_escrow_and_starts_the_window(client):
@@ -213,3 +244,171 @@ def test_the_other_party_is_notified_and_told_about_the_window(client):
     assert "72 hours" in told[0]
     # The opener is told too, so both sides know the money is frozen.
     assert len(_notices(client, inf)) == 1
+
+
+# --- The thread ---------------------------------------------------------
+
+
+def test_both_parties_can_post_to_the_thread(client):
+    biz, inf, _, escrow, dispute = _disputed(client)
+    image = _media(client, biz)
+    r = client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "I never received the draft. Here is the empty folder.", "media_ids": [image]},
+        headers=_headers(biz),
+    )
+    assert r.status_code == 201
+    assert r.json()["attachments"] == [f"/profiles/media/{image}"]
+    r2 = client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "It was sent on the 4th, resending now."},
+        headers=_headers(inf),
+    )
+    assert r2.status_code == 201
+
+
+def test_a_third_party_cannot_post_to_the_thread(client):
+    _, _, stranger, escrow, dispute = _disputed(client)
+    r = client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "Let me weigh in on this contract I am not party to."},
+        headers=_headers(stranger),
+    )
+    assert r.status_code == 403
+
+
+def test_both_parties_having_spoken_escalates_immediately(client):
+    """The window exists to let them settle it. Once both have spoken and the
+    money is still frozen, waiting out the clock only delays the queue."""
+    biz, inf, _, escrow, dispute = _disputed(client)
+    # The other party's first reply does NOT escalate: that reply is usually
+    # the thing that ends the dispute.
+    client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "I posted it, check the tagged tab."},
+        headers=_headers(biz),
+    )
+    detail = client.get(f"/payments/disputes/{dispute['id']}", headers=_headers(biz)).json()
+    assert detail["status"] == "awaiting_response"
+    # The opener answering back is both sides having spoken.
+    r = client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "That is a different brand's post."},
+        headers=_headers(inf),
+    )
+    assert r.json()["dispute_status"] == "awaiting_admin"
+
+
+def test_the_thread_stays_open_once_it_reaches_the_admin_queue(client):
+    """An admin reading the case benefits from both sides still explaining."""
+    biz, inf, _, escrow, dispute = _disputed(client)
+    _age_window(client, dispute["id"])
+    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
+    r = client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "Adding the delivery receipt for the reviewer."},
+        headers=_headers(biz),
+    )
+    assert r.status_code == 201
+    assert r.json()["dispute_status"] == "awaiting_admin"
+
+
+# --- Withdrawal ---------------------------------------------------------
+
+
+def test_withdrawing_puts_the_escrow_back_to_held(client):
+    biz, inf, _, escrow, dispute = _disputed(client)
+    r = client.post(f"/payments/disputes/{dispute['id']}/withdraw", headers=_headers(inf))
+    assert r.status_code == 200
+    assert r.json()["status"] == "withdrawn"
+    assert r.json()["escrow"]["status"] == "held"
+    assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "held"
+
+
+def test_only_the_party_who_raised_it_may_withdraw(client):
+    """The accused dismissing the accusation is not the claimant dropping it."""
+    biz, inf, _, escrow, dispute = _disputed(client)
+    assert client.post(
+        f"/payments/disputes/{dispute['id']}/withdraw", headers=_headers(biz)
+    ).status_code == 403
+
+
+def test_a_withdrawal_gives_back_review_time_the_freeze_ate(client):
+    """A party should not lose their review window to a dispute that was
+    withdrawn: a deadline that passed while frozen is pushed out by exactly
+    how long the money was held."""
+    biz, inf, _, escrow, dispute = _disputed(client)
+    before = pay_models.utcnow().replace(year=2020)
+    db = client.session_factory()
+    e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow["id"]).first()
+    e.due_release_at = before
+    db.commit()
+    db.close()
+
+    client.post(f"/payments/disputes/{dispute['id']}/withdraw", headers=_headers(inf))
+    assert _escrow_row(client, escrow["id"]).due_release_at > before
+
+
+def test_a_deadline_still_in_the_future_is_left_alone(client):
+    """Nothing was taken from anybody, and moving it would quietly extend the
+    creator's wait for their payout."""
+    biz, inf, _, escrow, dispute = _disputed(client)
+    before = _escrow_row(client, escrow["id"]).due_release_at
+    client.post(f"/payments/disputes/{dispute['id']}/withdraw", headers=_headers(inf))
+    assert _escrow_row(client, escrow["id"]).due_release_at == before
+
+
+# --- The sweep ----------------------------------------------------------
+
+
+def test_the_sweep_escalates_a_stale_dispute_and_leaves_a_fresh_one(client):
+    biz, inf, _, escrow, stale = _disputed(client, suffix="1")
+    _, _, _, _, fresh = _disputed(client, suffix="2")
+    _age_window(client, stale["id"])
+
+    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
+    assert client.get(f"/payments/disputes/{stale['id']}", headers=ADMIN).json()["status"] == "awaiting_admin"
+    assert client.get(f"/payments/disputes/{fresh['id']}", headers=ADMIN).json()["status"] == "awaiting_response"
+    # Both parties are told the window closed.
+    assert any("window" in m for m in _notices(client, biz))
+
+
+def test_the_sweep_needs_an_admin(client):
+    assert client.post("/payments/disputes/escalate").status_code == 401
+
+
+def test_escalating_twice_moves_nothing_the_second_time(client):
+    _, _, _, _, dispute = _disputed(client)
+    _age_window(client, dispute["id"])
+    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
+    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 0
+
+
+# --- Reading the case ---------------------------------------------------
+
+
+def test_the_detail_is_readable_by_both_parties_and_refused_to_a_stranger(client):
+    """A dispute is two people's account of a private commercial agreement."""
+    biz, inf, stranger, escrow, dispute = _disputed(client)
+    client.post(
+        f"/payments/disputes/{dispute['id']}/messages",
+        json={"body": "Sending the receipt."},
+        headers=_headers(biz),
+    )
+    for party in (biz, inf):
+        r = client.get(f"/payments/disputes/{dispute['id']}", headers=_headers(party))
+        assert r.status_code == 200
+        assert len(r.json()["messages"]) == 1
+        assert r.json()["escrow"]["amount"] == 10000
+    assert client.get(
+        f"/payments/disputes/{dispute['id']}", headers=_headers(stranger)
+    ).status_code == 403
+
+
+def test_mine_lists_only_the_callers_disputes(client):
+    biz, inf, stranger, escrow, dispute = _disputed(client)
+    mine = client.get("/payments/disputes/mine", headers=_headers(inf)).json()
+    assert [d["id"] for d in mine] == [dispute["id"]]
+    # The buyer is a party to the same one.
+    assert [d["id"] for d in client.get("/payments/disputes/mine", headers=_headers(biz)).json()] == [dispute["id"]]
+    assert client.get("/payments/disputes/mine", headers=_headers(stranger)).json() == []

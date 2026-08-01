@@ -1,4 +1,4 @@
-"""Raising a dispute: what it freezes, and who is allowed to answer first.
+"""Raising a dispute, answering it, and the two ways it reaches an admin.
 
 THE PARTIES GET THE FIRST 72 HOURS. Raising a dispute freezes the escrow and
 opens a RESPONSE WINDOW rather than filing a ticket. The other party is
@@ -20,6 +20,7 @@ cycle.
 from datetime import timedelta
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -39,6 +40,10 @@ MAX_STATEMENT_CHARS = 4000
 # needed and it keeps one request from pulling a hundred blobs into a payload.
 MAX_EVIDENCE_IMAGES = 10
 
+# The two states in which a dispute is still a live conversation. Resolved and
+# withdrawn cases are closed records: they are read, not written to.
+OPEN_STATUSES = (models.AWAITING_RESPONSE, models.AWAITING_ADMIN)
+
 
 def _media_url(media_id: str) -> str:
     """The same URL shape profiles.service._media_url builds.
@@ -54,6 +59,13 @@ def load_escrow(db: Session, escrow_id: str) -> models.Escrow:
     if escrow is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
     return escrow
+
+
+def load_dispute(db: Session, dispute_id: str) -> tuple[models.Dispute, models.Escrow]:
+    dispute = db.query(models.Dispute).filter(models.Dispute.id == dispute_id).first()
+    if dispute is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispute not found")
+    return dispute, load_escrow(db, dispute.escrow_id)
 
 
 def parties(escrow: models.Escrow) -> tuple[str, str]:
@@ -99,6 +111,24 @@ def _checked_statement(statement: str | None) -> str:
     return text
 
 
+def _checked_body(body: str | None) -> str:
+    """A message has no floor beyond being something. "Sorry, reposted it" is
+    a perfectly good end to a dispute and would not clear the statement's ten
+    characters; only the ceiling is shared.
+    """
+    text = (body or "").strip()
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="A message needs a body."
+        )
+    if len(text) > MAX_STATEMENT_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A message is at most {MAX_STATEMENT_CHARS} characters.",
+        )
+    return text
+
+
 def checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     """Evidence images that exist and that the person attaching them owns.
 
@@ -137,16 +167,50 @@ def checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     return ids
 
 
-def dispute_out(db: Session, dispute: models.Dispute, escrow: models.Escrow | None = None) -> dict:
+def _attachments(db: Session, dispute_id: str, opening: bool) -> dict:
+    """Evidence urls, keyed by message id — or the opening statement's list."""
+    query = db.query(models.DisputeAttachment).filter(
+        models.DisputeAttachment.dispute_id == dispute_id
+    )
+    if opening:
+        query = query.filter(models.DisputeAttachment.message_id.is_(None))
+    else:
+        query = query.filter(models.DisputeAttachment.message_id.isnot(None))
+    rows = query.order_by(models.DisputeAttachment.created_at.asc()).all()
+    if opening:
+        return {None: [_media_url(row.media_id) for row in rows]}
+    grouped: dict = {}
+    for row in rows:
+        grouped.setdefault(row.message_id, []).append(_media_url(row.media_id))
+    return grouped
+
+
+def _messages_out(db: Session, dispute_id: str) -> list[dict]:
+    by_message = _attachments(db, dispute_id, opening=False)
     rows = (
-        db.query(models.DisputeAttachment)
-        .filter(
-            models.DisputeAttachment.dispute_id == dispute.id,
-            models.DisputeAttachment.message_id.is_(None),
-        )
-        .order_by(models.DisputeAttachment.created_at.asc())
+        db.query(models.DisputeMessage)
+        .filter(models.DisputeMessage.dispute_id == dispute_id)
+        .order_by(models.DisputeMessage.created_at.asc())
         .all()
     )
+    return [
+        {
+            "id": row.id,
+            "author_user_id": row.author_user_id,
+            "body": row.body,
+            "created_at": row.created_at.isoformat(),
+            "attachments": by_message.get(row.id, []),
+        }
+        for row in rows
+    ]
+
+
+def dispute_out(
+    db: Session,
+    dispute: models.Dispute,
+    escrow: models.Escrow | None = None,
+    messages: bool = False,
+) -> dict:
     out = {
         "id": dispute.id,
         "escrow_id": dispute.escrow_id,
@@ -160,10 +224,12 @@ def dispute_out(db: Session, dispute: models.Dispute, escrow: models.Escrow | No
         "released_amount": dispute.released_amount,
         "refunded_amount": dispute.refunded_amount,
         "resolved_by": dispute.resolved_by,
-        "attachments": [_media_url(row.media_id) for row in rows],
+        "attachments": _attachments(db, dispute.id, opening=True)[None],
     }
     if escrow is not None:
         out["escrow"] = payments_service._out(escrow)
+    if messages:
+        out["messages"] = _messages_out(db, dispute.id)
     return out
 
 
@@ -241,3 +307,229 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
     db.refresh(dispute)
     db.refresh(escrow)
     return dispute_out(db, dispute, escrow)
+
+
+def _escalate(db: Session, dispute: models.Dispute, escrow: models.Escrow, why: str) -> None:
+    dispute.status = models.AWAITING_ADMIN
+    for user_id in parties(escrow):
+        notify(db, user_id, "dispute", why)
+
+
+def _maybe_escalate_after_message(
+    db: Session, dispute: models.Dispute, escrow: models.Escrow
+) -> None:
+    """Both sides have now posted, so stop waiting out the clock.
+
+    The window exists for one reason: to give the two of them room to settle
+    it without a stranger reading their contract. Once BOTH have spoken in the
+    thread and the money is still frozen, that room has been used and did not
+    work — sitting on the case for the rest of the 72 hours only delays the
+    queue for money somebody is not being paid.
+
+    The opening statement deliberately does not count as the opener "speaking"
+    here. Every dispute has one, so counting it would escalate on the other
+    party's very first reply — which is exactly the reply that most often ends
+    the whole thing.
+    """
+    if dispute.status != models.AWAITING_RESPONSE:
+        return
+    authors = {
+        row[0]
+        for row in db.query(models.DisputeMessage.author_user_id)
+        .filter(models.DisputeMessage.dispute_id == dispute.id)
+        .distinct()
+        .all()
+    }
+    if set(parties(escrow)) <= authors:
+        _escalate(
+            db,
+            dispute,
+            escrow,
+            "Both parties have answered the dispute, so it has gone to the "
+            "Kolabo team for a decision.",
+        )
+
+
+def post_message(db: Session, actor_user_id: str, dispute_id: str, payload) -> dict:
+    """Either party adds to the thread, with optional evidence.
+
+    Allowed while awaiting_admin as well as during the window. An admin
+    reading the case benefits from both sides continuing to explain: half the
+    facts in a dispute arrive after somebody has been asked a question, and
+    freezing the thread the moment it queues would push that conversation to
+    email, where the decision cannot be audited from.
+    """
+    dispute, escrow = load_dispute(db, dispute_id)
+    require_party(escrow, actor_user_id)
+    if dispute.status not in OPEN_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This dispute is closed",
+        )
+
+    body = _checked_body(payload.body)
+    media_ids = checked_media(db, actor_user_id, payload.media_ids)
+
+    message = models.DisputeMessage(
+        dispute_id=dispute.id, author_user_id=actor_user_id, body=body
+    )
+    db.add(message)
+    db.flush()
+    for media_id in media_ids:
+        db.add(
+            models.DisputeAttachment(
+                dispute_id=dispute.id, message_id=message.id, media_id=media_id
+            )
+        )
+    db.flush()
+
+    notify(
+        db,
+        other_party(escrow, actor_user_id),
+        "dispute",
+        "The other party replied on your disputed escrow.",
+    )
+    _maybe_escalate_after_message(db, dispute, escrow)
+    db.commit()
+    db.refresh(message)
+    db.refresh(dispute)
+    return {
+        "id": message.id,
+        "dispute_id": dispute.id,
+        "author_user_id": message.author_user_id,
+        "body": message.body,
+        "created_at": message.created_at.isoformat(),
+        "attachments": [_media_url(mid) for mid in media_ids],
+        "dispute_status": dispute.status,
+    }
+
+
+def withdraw_dispute(db: Session, actor_user_id: str, dispute_id: str) -> dict:
+    """The party who raised it takes it back, and the escrow goes back to held.
+
+    ONLY THE OPENER. The other party answering "you are wrong" is not the same
+    act as the claimant dropping the claim, and letting them close it would
+    let the accused dismiss the accusation. 403, not 400: they are a party,
+    they simply have no standing to do this.
+
+    THE AUTO-RELEASE CLOCK. due_release_at is set at funding to held_at + N
+    days and run_due_auto_releases only ever looks at HELD escrows, so a
+    freeze does not stop the deadline — it just hides it. If the deadline slid
+    past while the money was frozen, handing the escrow back untouched would
+    auto-release it on the very next sweep, and the business would lose the
+    review time it still had left to a dispute that was WITHDRAWN. So a
+    deadline that has already passed is pushed out by exactly how long the
+    dispute held the money. A deadline still in the future is left alone:
+    nothing was taken from anybody, and moving it would quietly extend the
+    creator's wait for their payout.
+    """
+    dispute, escrow = load_dispute(db, dispute_id)
+    if dispute.opened_by_user_id != actor_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the party who raised the dispute can withdraw it",
+        )
+    if dispute.status not in OPEN_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="This dispute is closed"
+        )
+
+    now = models.utcnow()
+    frozen_for = now - dispute.created_at
+    if escrow.due_release_at <= now:
+        escrow.due_release_at = escrow.due_release_at + frozen_for
+
+    dispute.status = models.DISPUTE_WITHDRAWN
+    dispute.resolved_at = now
+    dispute.resolution = "Withdrawn by the party who raised it."
+    escrow.status = models.HELD
+    payments_service._event(db, escrow, actor_user_id, "dispute_withdrawn")
+    for user_id in parties(escrow):
+        notify(
+            db,
+            user_id,
+            "dispute",
+            "The dispute was withdrawn. The escrow is held again and back on its "
+            "normal release schedule.",
+        )
+    db.commit()
+    db.refresh(dispute)
+    db.refresh(escrow)
+    return dispute_out(db, dispute, escrow)
+
+
+def escalate_stale_disputes(db: Session, now=None) -> int:
+    """Move disputes nobody answered in time into the admin queue.
+
+    Admin-triggered and on demand, exactly like run_due_auto_releases and
+    campaigns.orders.expire_stale_orders. THIS IS NOW THE THIRD JOB WAITING
+    FOR A SCHEDULER — the point at which "we will add one later" stops being
+    free, because this one is the only thing standing between a party who
+    stayed silent and money that stays frozen forever. Whoever adds the
+    scheduler gets all three unchanged; until then it needs a human to press
+    it, which is worth writing down rather than discovering.
+
+    Only awaiting_response rows are touched. A case already in the queue does
+    not move, and a resolved or withdrawn one is a closed record.
+    """
+    now = now or models.utcnow()
+    stale = (
+        db.query(models.Dispute)
+        .filter(
+            models.Dispute.status == models.AWAITING_RESPONSE,
+            models.Dispute.respond_by <= now,
+        )
+        .all()
+    )
+    for dispute in stale:
+        escrow = (
+            db.query(models.Escrow)
+            .filter(models.Escrow.id == dispute.escrow_id)
+            .first()
+        )
+        if escrow is None:
+            continue
+        _escalate(
+            db,
+            dispute,
+            escrow,
+            "The response window on your disputed escrow has closed. The Kolabo "
+            "team will now review it and decide.",
+        )
+    db.commit()
+    return len(stale)
+
+
+def get_dispute(db: Session, viewer_id: str, is_admin: bool, dispute_id: str) -> dict:
+    """The whole case: the claim, the thread with its evidence, the escrow.
+
+    Either party or an admin. Nobody else, ever — a dispute contains both
+    sides' account of a private commercial agreement, and the statement is
+    written by somebody who expects two readers and a referee.
+    """
+    dispute, escrow = load_dispute(db, dispute_id)
+    if not is_admin:
+        require_party(escrow, viewer_id)
+    return dispute_out(db, dispute, escrow, messages=True)
+
+
+def list_my_disputes(db: Session, user_id: str) -> list[dict]:
+    """Every dispute the caller is a party to, newest first.
+
+    One join rather than a lookup per row: the parties live on the escrow, not
+    on the dispute, and a per-row version of this is how a list of ten cases
+    becomes twenty round trips.
+    """
+    rows = (
+        db.query(models.Dispute, models.Escrow)
+        .join(models.Escrow, models.Escrow.id == models.Dispute.escrow_id)
+        .filter(
+            or_(
+                models.Escrow.business_user_id == user_id,
+                models.Escrow.influencer_user_id == user_id,
+            )
+        )
+        .order_by(models.Dispute.created_at.desc())
+        .all()
+    )
+    return [dispute_out(db, dispute, escrow) for dispute, escrow in rows]

@@ -23,6 +23,11 @@ class DisputeIn(BaseModel):
     media_ids: list[str] = []
 
 
+class DisputeMessageIn(BaseModel):
+    body: str
+    media_ids: list[str] = []
+
+
 class EscrowOut(BaseModel):
     id: str
     contract_id: str

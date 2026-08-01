@@ -1,11 +1,11 @@
 """Epic G (KOL-7): Payments and Escrow."""
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.payments import disputes, resolution, schemas, service
+from app.modules.payments import disputes, earnings, resolution, schemas, service
 
 router = APIRouter()
 
@@ -34,6 +34,26 @@ def fund_escrow(
 ):
     """Fund an escrow via Mobile Money for a fully signed contract. KOL-28."""
     return service.fund_escrow(db, business_user_id, payload.contract_id)
+
+
+@router.get("/earnings", response_model=schemas.EarningsOut)
+def my_earnings(
+    year: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """What the caller has earned, is waiting on, and has frozen in a dispute.
+
+    Three totals, each grouped by currency and each NET of commission — the
+    gross is a number that never reaches a wallet, and quoting it would
+    overstate every line. Disputed is kept separate from pending because
+    frozen money is not money on its way.
+
+    Creator side only. A business gets empty totals: what a buyer would want
+    here is spend, which is a different question with the opposite sign, and
+    answering both from one endpoint would make every field mean two things.
+    """
+    return earnings.my_earnings(db, user_id, year)
 
 
 @router.post("/escrow/{escrow_id}/release", response_model=schemas.EscrowOut)

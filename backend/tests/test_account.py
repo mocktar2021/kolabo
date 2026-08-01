@@ -6,6 +6,8 @@ bearer token only proves a session exists. Getting back in from outside must
 cost possession of the phone, and must never disclose whether a number is
 registered to somebody who is merely asking.
 """
+from datetime import timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -89,7 +91,7 @@ def _headers(token):
 
 
 def _reset_code(client, phone=PHONE):
-    """The newest live reset code for a phone, read straight from the table.
+    """The newest reset code for a phone, read straight from the table.
 
     The sender is a logging stub, so the database is where the code is legible
     to a test. It is stored on the token column, which now holds a six digit
@@ -269,15 +271,11 @@ def test_an_expired_code_is_400(client):
     client.post("/auth/password-reset/request", json={"phone": PHONE})
     code = _reset_code(client)
 
-    # Age it past the configured lifetime rather than sleeping through it.
+    # Aged past its lifetime rather than slept through: what is under test is
+    # the expiry check, not the clock.
     db = client.session_factory()
     try:
         row = db.query(models.PasswordResetToken).first()
-        row.expires_at = models.utcnow() - models.timedelta(minutes=1) if hasattr(
-            models, "timedelta"
-        ) else row.expires_at
-        from datetime import timedelta
-
         row.expires_at = models.utcnow() - timedelta(minutes=1)
         db.commit()
     finally:
@@ -344,13 +342,20 @@ def test_confirming_retires_the_other_outstanding_codes(client):
     first = _reset_code(client)
     client.post("/auth/password-reset/request", json={"phone": PHONE})
     second = _reset_code(client)
-    assert first != second or True  # equal codes are possible and harmless
 
     assert client.post(
         "/auth/password-reset/confirm",
         json={"phone": PHONE, "code": second, "new_password": NEW_PASSWORD},
     ).status_code == 200
-    assert client.post(
-        "/auth/password-reset/confirm",
-        json={"phone": PHONE, "code": first, "new_password": "thirdpassword3"},
-    ).status_code == 400
+
+    db = client.session_factory()
+    try:
+        # Both rows are spent, not just the one that was used. Two six digit
+        # codes can collide, so the assertion is about the rows rather than
+        # about replaying the first code.
+        assert db.query(models.PasswordResetToken).filter(
+            models.PasswordResetToken.consumed.is_(False)
+        ).count() == 0
+    finally:
+        db.close()
+    assert first is not None

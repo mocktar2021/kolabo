@@ -9,8 +9,22 @@ class MessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=4000)
 
 
+class DirectMessageIn(BaseModel):
+    """A message addressed to a person, on the counterparty endpoint.
+
+    No to_user_id: the recipient is in the path. Carrying it in the body as
+    well would create two places to say who this is for and one of them would
+    eventually be wrong.
+    """
+
+    body: str = Field(min_length=1, max_length=4000)
+
+
 class MessageOut(BaseModel):
     id: str
+    # Which job this message was about. Kept on every message, including ones
+    # sent through the counterparty endpoint, because provenance is what a
+    # dispute reads: "when was the revision asked for, and on which job".
     campaign_id: str
     sender_user_id: str
     recipient_user_id: str
@@ -23,12 +37,13 @@ class MessageOut(BaseModel):
 
 
 class ThreadOut(BaseModel):
-    """One conversation on the inbox screen.
+    """One conversation on the inbox screen: one row per PERSON.
 
-    A row per campaign the caller has a contract on, named by the OTHER
-    person: a creator's inbox says "Maison Kola", a brand's says "Ama K.".
-    Naming it by campaign title alone would give a brand working with six
-    creators on one campaign six identical rows.
+    It used to be one row per CONTRACT, which meant a creator who worked with
+    the same brand three times had three inboxes with the same name on them.
+    The relationship gets more valuable each time it repeats and the product
+    was chopping it up in response, so the row is now the counterparty and the
+    contracts are an attribute of it.
 
     counterparty_name is null when the other side has written no profile — the
     same rule identity follows everywhere else, and for the same reason: the
@@ -36,16 +51,25 @@ class ThreadOut(BaseModel):
     to the other side of a deal.
     """
 
-    campaign_id: str
-    campaign_title: str | None = None
-    # The contract that opened this thread. The client links straight to it,
-    # and it is also the answer to "why am I allowed in here".
-    contract_id: str
     counterparty_user_id: str
     counterparty_name: str | None = None
     # Only ever set for a creator counterparty. A business has a company name
     # and no avatar in this system.
     counterparty_avatar_url: str | None = None
+    # Every contract between the two, newest first, and how many there are.
+    # "We have done four jobs together" is a fact about a relationship worth
+    # showing, and a client that wants to link to one job still can.
+    contract_ids: list[str] = Field(default_factory=list)
+    contract_count: int = 0
+    # The newest shared contract and its campaign, spelled out on their own.
+    # Kept so a client written against the per-contract shape keeps rendering,
+    # and because "the job we are currently on" is what a thread header wants
+    # to name anyway.
+    contract_id: str
+    campaign_id: str
+    campaign_title: str | None = None
     last_message: str | None = None
     last_message_at: datetime | None = None
+    # Across the whole relationship, not one job: an unanswered question is
+    # unanswered whichever contract it was asked under.
     unread_count: int = 0

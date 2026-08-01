@@ -75,5 +75,23 @@ def submit_proposal(
     db: Session = Depends(get_db),
     influencer_user_id: str = Depends(get_current_user_id),
 ):
-    """Submit a proposal. Resubmitting creates a new version. KOL-23."""
+    """Submit a proposal, with an optional note. Resubmitting creates a new version. KOL-23."""
     return service.submit_proposal(db, campaign_id, influencer_user_id, payload)
+
+
+@router.post(
+    "/{campaign_id}/proposals/{proposal_id}/reply",
+    response_model=schemas.ProposalOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def reply_to_proposal(
+    campaign_id: str,
+    proposal_id: str,
+    payload: schemas.ProposalReplyIn,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Answer a proposal as the campaign owner: a note, and optionally a
+    counter on rate or timeline. The answer is the next version in the same
+    chain, which is how the negotiation stays on the platform. KOL-23."""
+    return service.reply_to_proposal(db, campaign_id, proposal_id, business_user_id, payload)

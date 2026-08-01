@@ -30,6 +30,18 @@ function BrandOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/* The mirror image of BrandOnly. Invitations flow to creators: a business
+   sends them, it never receives one, so /campaigns/invitations/mine can only
+   ever answer a business with an empty list. A business's equivalent view is
+   the proposals on its own campaign — that is where the answers to its
+   invitations actually arrive — so it goes back to the dashboard rather than
+   sitting on a page that is empty by construction. Agencies buy the way
+   businesses do, hence isBusinessLike. */
+function CreatorOnly({ children }: { children: ReactNode }) {
+  if (isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -45,7 +57,7 @@ export default function App() {
         <Route path="/campaigns" element={<CampaignList />} />
         <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />
         <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
-        <Route path="/invitations" element={<MyInvitations />} />
+        <Route path="/invitations" element={<CreatorOnly><MyInvitations /></CreatorOnly>} />
         <Route path="/contracts" element={<ContractsList />} />
         <Route path="/contracts/:id" element={<ContractPage />} />
         <Route path="/u/:userId" element={<PublicProfilePage />} />

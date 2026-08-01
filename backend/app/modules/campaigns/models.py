@@ -6,7 +6,7 @@ never as a float, per the multi currency principle in the architecture notes.
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -31,6 +31,12 @@ SUBMITTED = "submitted"
 SUPERSEDED = "superseded"
 PROPOSAL_ACCEPTED = "accepted"
 PROPOSAL_REJECTED = "rejected"
+
+# Which side of the table a proposal version came from. A negotiation is two
+# parties alternating, and without this a chain of five versions looks like one
+# creator changing their mind five times.
+AUTHOR_INFLUENCER = "influencer"
+AUTHOR_BUSINESS = "business"
 
 
 class Campaign(Base):
@@ -68,5 +74,15 @@ class Proposal(Base):
     rate_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     rate_currency: Mapped[str] = mapped_column(String, nullable=False)
     timeline_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Why the number is the number. A rate with no reasoning attached gets
+    # discussed somewhere else — which in this market means WhatsApp, and a
+    # deal that leaves the platform is a deal we cannot contract or escrow.
+    # The note hangs off the version rather than off a thread of its own: it
+    # is an argument for these terms, and it stops being true the moment the
+    # terms change.
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Defaults to the creator because every proposal that existed before this
+    # column came from one.
+    author_role: Mapped[str] = mapped_column(String, default=AUTHOR_INFLUENCER, nullable=False)
     status: Mapped[str] = mapped_column(String, default=SUBMITTED, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

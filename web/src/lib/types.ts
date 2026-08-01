@@ -19,6 +19,20 @@ export type Invitation = {
   status: string;
 };
 
+/* Which side wrote a proposal version. The creator opens a chain and the
+   business answers inside it, so a version carries an author even though the
+   whole chain is filed under the creator it belongs to. */
+export type ProposalAuthorRole = "influencer" | "business";
+
+/* One version of one negotiation — a complete offer, never a diff: a business
+   reply that counters nothing repeats the previous rate and timeline, so no
+   row has to be read against the one above it to know what is on the table.
+
+   note is what the numbers mean ("the budget stops at 40k", "can you do it in
+   five days"), capped at 2000 characters server-side. display_name and
+   avatar_url identify the creator behind the chain and are null until they
+   have a profile — the users table holds only a phone number besides, and a
+   phone number is never handed to the other side of a deal. */
 export type Proposal = {
   id: string;
   campaign_id: string;
@@ -28,11 +42,34 @@ export type Proposal = {
   rate_currency: string;
   timeline_days: number;
   status: string;
+  note: string | null;
+  author_role: ProposalAuthorRole;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
+/* proposals is a flat list, not a list of chains: every version of every
+   negotiation on the campaign, oldest first, capped at the twenty most recent
+   (the cap is taken from the recent end, because the last version is the live
+   offer and the only one that can be accepted). Chains are the rows sharing an
+   influencer_user_id, ordered by version — CampaignDetail.tsx groups them. */
 export type CampaignDetail = Campaign & {
   invitations: Invitation[];
   proposals: Proposal[];
+};
+
+/* A row of GET /discovery/favorites. Everything past the id is optional and
+   stays optional: a creator can be favourited before they have filled in
+   anything, and an incomplete card is still usable while a failed request is
+   not. country_code is the one field taken from the users table — the only
+   other identifier a user row holds is a phone number, which never reaches a
+   payload. */
+export type Favorite = {
+  influencer_user_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  headline: string | null;
+  country_code: string | null;
 };
 
 /* A row of GET /campaigns/invitations/mine. The brand's company name rides at

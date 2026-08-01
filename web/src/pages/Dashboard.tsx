@@ -148,7 +148,11 @@ export default function Dashboard() {
               artifact; a creator's equivalent is a package on their profile,
               and the briefs aimed at them arrive under Invitations. */}
           {isBusinessLike(role) && <ActionCard to="/campaigns" title={t("dash.campaignTitle")} desc={t("dash.campaignDesc")} />}
-          <ActionCard to="/invitations" title={t("dash.invitationsTitle")} desc={t("dash.invitationsDesc")} />
+          {/* And the mirror of that: invitations flow to creators. A business
+              sends them, it never receives one, so "Répondez aux invitations
+              avec une proposition" is an offer it can never take up. Its
+              equivalent view is the proposals on its own campaign. */}
+          {!isBusinessLike(role) && <ActionCard to="/invitations" title={t("dash.invitationsTitle")} desc={t("dash.invitationsDesc")} />}
           <ActionCard to="/contracts" title={t("dash.contractsTitle")} desc={t("dash.contractsDesc")} />
         </div>
         {/* Influencers only: businesses and agencies (isBusinessLike) buy, they

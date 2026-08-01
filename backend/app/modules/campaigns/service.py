@@ -621,6 +621,12 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
     and this is the surface where they find out somebody bought their package.
     is_direct on the nested campaign is what lets the client render it as an
     order with a clock rather than as a brief to price.
+
+    Each row also carries the live version of its negotiation. For a brief
+    that is context; for an order it is the thing itself — accept and decline
+    are addressed by proposal id, and this is the only creator-facing list an
+    order appears in (campaign detail is owner-only). Without it the creator
+    would see an order they had no way to answer.
     """
     invitations = (
         db.query(models.CampaignInvitation)
@@ -641,5 +647,11 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
         if campaign.business_user_id not in company_names:
             company_names[campaign.business_user_id] = _company_name(db, campaign.business_user_id)
         item["business_company_name"] = company_names[campaign.business_user_id]
+        # Identity is deliberately left null here. display_name and avatar_url
+        # exist so a BUSINESS can tell one proposer from another; every row in
+        # this list belongs to the creator reading it, so the lookup would buy
+        # nothing and cost a query per row.
+        latest = latest_in_chain(db, campaign.id, influencer_user_id)
+        item["proposal"] = _proposal_out(latest) if latest is not None else None
         result.append(item)
     return result

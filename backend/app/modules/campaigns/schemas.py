@@ -143,3 +143,14 @@ class InvitationWithCampaign(BaseModel):
     # Who is asking. Null while the business has not filled in a profile — the
     # users table has only a phone number to offer, and that is never exposed.
     business_company_name: str | None = None
+    # The live version of the negotiation, or None when nothing has been
+    # offered yet. A brief's invitation normally arrives before any proposal
+    # exists; a direct order always carries one, because the buyer's offer IS
+    # the order.
+    #
+    # It is here because this is the ONLY creator-facing list an order appears
+    # in, and accepting or declining one is addressed by proposal id. Campaign
+    # detail is owner-only, so without this the creator could see an order and
+    # have nothing to answer it with. expires_at on it is also what tells the
+    # two kinds of row apart client-side: only a direct order runs on a clock.
+    proposal: ProposalOut | None = None

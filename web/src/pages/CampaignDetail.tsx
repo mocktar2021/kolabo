@@ -390,6 +390,14 @@ export default function CampaignDetailPage() {
      the buyer is deciding on. */
   const [confirming, setConfirming] = useState<"cancel" | "delete" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /* Which invitation is being taken back, by id. One at a time and inline on
+     its own row, for the same reason the campaign confirmations are inline:
+     the sentence that makes this decision easy — the creator is told, and
+     withdrawn is not declined — does not fit in a browser dialog, and a
+     shared confirmation would leave the buyer unsure which row they are
+     about to act on. */
+  const [withdrawingInvitation, setWithdrawingInvitation] = useState<string | null>(null);
+  const [invitationError, setInvitationError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -433,6 +441,38 @@ export default function CampaignDetailPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* Taking an invitation back while it is still only an invitation.
+
+     The row is KEPT, with a 'withdrawn' status rather than deleted, and
+     withdrawn is not declined: nobody said no here, and a creator's record
+     should not carry a refusal they never made. The creator is notified —
+     somebody invited on Monday who finds the row quietly gone on Friday has
+     no way to tell being dropped from something being broken, and the ones
+     who ask are the polite minority. */
+  async function withdrawInvitation(invitationId: string) {
+    if (!campaign) return;
+    setBusy(true);
+    setInvitationError(null);
+    try {
+      await api(`/campaigns/${campaign.id}/invitations/${invitationId}`, { method: "DELETE", token });
+      setWithdrawingInvitation(null);
+      await load();
+    } catch (e) {
+      /* Mapped by STATUS CODE, like every other refusal on this page. The
+         only 400 this endpoint answers covers both of its cases — the
+         invitation is no longer open, or the creator has already priced the
+         brief — and for the buyer both mean the same thing: there is
+         something to answer rather than something to retract. */
+      setInvitationError(
+        e instanceof ApiError && e.status === 400
+          ? t("undo.invitationRefused")
+          : e instanceof Error ? e.message : "Error"
+      );
     } finally {
       setBusy(false);
     }
@@ -522,6 +562,17 @@ export default function CampaignDetailPage() {
   const invitedIds = new Set((campaign?.invitations ?? []).map((i) => i.influencer_user_id));
   const invitableFavorites = favorites.filter((f) => !invitedIds.has(f.influencer_user_id));
   const chains = buildChains(campaign?.proposals ?? []);
+
+  /* Which creators have priced this brief, in any version.
+
+     Mirror of _proposal_exists in backend/app/modules/campaigns/withdrawals.py
+     and it has to be ANY version, including superseded ones and statuses that
+     have since moved on: the question is whether they did the work, and a
+     chain that reached version four is four rounds of it. The invitation's
+     own status cannot answer this — on a brief it stays 'invited' no matter
+     how much negotiating happens underneath it, which is exactly why the
+     button needs this set rather than the row it sits on. */
+  const priced = new Set((campaign?.proposals ?? []).map((p) => p.influencer_user_id));
 
   /* The three questions the owner actions are made of, asked once.
 
@@ -654,16 +705,61 @@ export default function CampaignDetailPage() {
 
             <div className="card" style={{ marginTop: 20 }}>
               <h3 style={{ marginTop: 0 }}>{t("campaign.invitations")} ({campaign.invitations.length})</h3>
+              {invitationError && <div className="alert alert-error">{invitationError}</div>}
               {campaign.invitations.length === 0 ? (
                 <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("campaign.noInvitations")}</p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {campaign.invitations.map((inv) => (
-                    <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                      <CreatorChip creator={inv} />
-                      <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
-                    </div>
-                  ))}
+                  {campaign.invitations.map((inv) => {
+                    /* THE ONE CONDITION, and it is the backend's: an
+                       invitation may be retracted while it is still only an
+                       invitation. Once the creator has PROPOSED they have
+                       priced the brief — read it, worked out what the shoot
+                       costs, decided what their audience is worth — and what
+                       is on the table is an offer that deserves an answer.
+                       withdraw_invitation answers 400 in that case, so the
+                       button is removed rather than left to be refused.
+
+                       This also removes it on every direct order for free,
+                       which is correct rather than incidental: an order always
+                       carries the buyer's own proposal, and an order is closed
+                       by the creator declining it, not by the buyer deleting
+                       the invitation out from under it. */
+                    const retractable = inv.status === "invited" && !priced.has(inv.influencer_user_id);
+                    const confirmingThis = withdrawingInvitation === inv.id;
+                    return (
+                      <div key={inv.id}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                          <CreatorChip creator={inv} />
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
+                            {retractable && !confirmingThis && (
+                              <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }}
+                                disabled={busy}
+                                onClick={() => { setWithdrawingInvitation(inv.id); setInvitationError(null); }}>
+                                {t("undo.invitationWithdraw")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {confirmingThis && (
+                          <div style={{ marginTop: 8, borderLeft: "3px solid var(--line)", paddingLeft: 12 }}>
+                            <p className="muted" style={{ fontSize: 13.5, margin: "0 0 10px" }}>{t("undo.invitationConfirm")}</p>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button type="button" className="btn btn-ghost" disabled={busy}
+                                onClick={() => withdrawInvitation(inv.id)}>
+                                {t("undo.invitationYes")}
+                              </button>
+                              <button type="button" className="btn btn-ghost" disabled={busy}
+                                onClick={() => { setWithdrawingInvitation(null); setInvitationError(null); }}>
+                                {t("undo.invitationNo")}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -135,6 +135,11 @@ export default function ContractPage() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [raising, setRaising] = useState(false);
+  /* Inline confirmation for calling the contract off, kept apart from the
+     page-level error so a refused cancellation does not replace whatever the
+     rest of the screen was saying. */
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const loadEscrow = useCallback(async (contractId: string) => {
     try {
@@ -184,6 +189,49 @@ export default function ContractPage() {
     }
   }
 
+  /* Calling off a contract that has not yet bound anybody.
+
+     EITHER PARTY, not just the buyer. Nothing is owed in either direction
+     yet, and a creator who has realised they cannot deliver should be able to
+     say so on the platform rather than by not answering — silence is what
+     sends the next conversation to WhatsApp and the one after that
+     off-platform for good.
+
+     The refusals are mapped BY STATUS CODE, and the two codes mean different
+     things:
+
+       409  an escrow exists against this contract. Money at the provider
+            turns "should this end" into "who is owed what", which is exactly
+            the question the dispute and resolution path has rules for — a
+            split, commission charged only on what was released, an audit log,
+            an admin. A cancel button running alongside all of that would be a
+            second, unaudited way for money to stop moving, and it would be
+            the one somebody reached for first.
+
+       400  already fully signed, or already cancelled. Both parties put their
+            name to these terms, and a button that walks out of an agreement
+            is the thing a contract exists to prevent. */
+  async function cancelContract() {
+    if (!contract) return;
+    setBusy(true);
+    setCancelError(null);
+    try {
+      await api(`/contracts/${contract.id}/cancel`, { method: "POST", token });
+      setConfirmingCancel(false);
+      await load();
+    } catch (e) {
+      setCancelError(
+        e instanceof ApiError && e.status === 409
+          ? t("undo.contractFunded")
+          : e instanceof ApiError && e.status === 400
+            ? t("undo.contractRefused")
+            : e instanceof Error ? e.message : "Error"
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const isBusiness = !!contract && userId === contract.business_user_id;
@@ -201,6 +249,13 @@ export default function ContractPage() {
      one where the live case goes would tell somebody their money is frozen
      over an argument that ended. */
   const openDispute = escrow ? openDisputeFor(disputes, escrow.id) : null;
+  /* Offered while the contract binds nobody. Two conditions and not one,
+     mirroring cancellation.py: a full signature closes it, and so does an
+     escrow, separately. In practice they line up today because funding
+     requires a full signature — but they are different facts, and the one
+     that matters is the money. A cancelled contract is already closed, so it
+     drops the offer too rather than leaving a button that answers 400. */
+  const cancellable = !!contract && !contract.fully_signed && contract.status !== "cancelled" && !escrow;
 
   return (
     <Layout>
@@ -259,6 +314,44 @@ export default function ContractPage() {
                       {t("contract.sign")}
                     </button>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Below the signature block on purpose: signing is what this page
+                is for, and the way out should not sit above the way through. */}
+            {cancellable && (
+              <div className="card" style={{ marginTop: 16 }}>
+                <h3 style={{ marginTop: 0, fontSize: 16 }}>{t("undo.contractTitle")}</h3>
+                {cancelError && <div className="alert alert-error">{cancelError}</div>}
+                {!confirmingCancel ? (
+                  <>
+                    <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("undo.contractExplain")}</p>
+                    <button type="button" className="btn btn-ghost" disabled={busy}
+                      style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                      onClick={() => { setConfirmingCancel(true); setCancelError(null); }}>
+                      {t("undo.contractCancel")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* The consequence stated before the click, not after it:
+                        the other party is told, the agreement is over, and
+                        working together again means starting from a new
+                        proposal. */}
+                    <p style={{ fontSize: 14, margin: "0 0 10px" }}>{t("undo.contractConfirm")}</p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" className="btn btn-ghost" disabled={busy}
+                        style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                        onClick={cancelContract}>
+                        {t("undo.contractYes")}
+                      </button>
+                      <button type="button" className="btn btn-ghost" disabled={busy}
+                        onClick={() => { setConfirmingCancel(false); setCancelError(null); }}>
+                        {t("undo.contractNo")}
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             )}

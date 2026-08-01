@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.campaigns import cart, editing, orders, schemas, service
+from app.modules.campaigns import cart, editing, orders, schemas, service, withdrawals
 
 router = APIRouter()
 
@@ -26,6 +26,27 @@ def my_invitations(
 ):
     """List the campaign invitations for the current influencer."""
     return service.list_my_invitations(db, influencer_user_id)
+
+
+# Declared before the /{campaign_id} routes below. FastAPI matches in
+# declaration order, and a literal first segment has to come first or
+# "proposals" is read as a campaign id.
+@router.post("/proposals/{proposal_id}/withdraw", response_model=schemas.ProposalOut)
+def withdraw_proposal(
+    proposal_id: str,
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """The creator takes their own live offer back off the table.
+
+    Only yours (403 otherwise), only while it is the live submitted version,
+    and only while no contract has been generated from it (400 otherwise).
+
+    Not available on a direct order: an order is closed by declining it, which
+    also cancels the order and tells the buyer they were not charged. This
+    endpoint answers 400 with that path rather than doing half the job.
+    """
+    return withdrawals.withdraw_proposal(db, proposal_id, influencer_user_id)
 
 
 @router.get("/{campaign_id}", response_model=schemas.CampaignDetailOut)
@@ -199,6 +220,29 @@ def invite_influencer(
 ):
     """Invite a verified influencer to a published campaign. KOL-22."""
     return service.invite_influencer(db, campaign_id, business_user_id, influencer_id)
+
+
+@router.delete(
+    "/{campaign_id}/invitations/{invitation_id}", response_model=schemas.InvitationOut
+)
+def withdraw_invitation(
+    campaign_id: str,
+    invitation_id: str,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """The owner takes an invitation back while it is still unanswered.
+
+    Allowed only while the invitation is 'invited' AND the creator has not
+    proposed. Once they have priced the brief there is an offer on the table
+    to answer, not an invitation to retract, and the answer is 400 saying so.
+    The creator is notified either way it goes.
+
+    The row is kept with a 'withdrawn' status rather than deleted, and
+    withdrawn is not declined: nobody said no here, and a creator's record
+    should not carry a refusal they never made.
+    """
+    return withdrawals.withdraw_invitation(db, campaign_id, invitation_id, business_user_id)
 
 
 @router.post("/{campaign_id}/proposals", response_model=schemas.ProposalOut, status_code=status.HTTP_201_CREATED)

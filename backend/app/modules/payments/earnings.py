@@ -45,7 +45,6 @@ read model: it writes nothing, moves nothing, and the dependency runs one way
 from sqlalchemy.orm import Session
 
 from app.modules.campaigns.models import Campaign
-from app.modules.contracts.models import Contract
 from app.modules.payments import models
 from app.modules.payments.service import commission_for
 from app.modules.profiles.models import BusinessProfile
@@ -109,13 +108,12 @@ def _split_amounts(db: Session, escrow_ids: list[str]) -> dict[str, int]:
 def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
     """The caller's earnings, from the creator side of every escrow they are on.
 
-    Totals cover EVERY qualifying escrow; the year filter and the list cap
-    apply to the payments list alone. Truncating the totals to a page would
-    make "earned" mean "earned, in the hundred rows we felt like loading",
-    which is the kind of almost-true number that gets quoted back to us in a
-    support ticket. The year filter is the one exception a caller asks for
-    explicitly, so it applies to both: somebody who filtered to 2025 wants the
-    2025 totals, not the all-time ones beside a 2025 list.
+    The year filter narrows the totals as well as the list. Somebody who asked
+    for 2025 wants the 2025 totals, not the all-time ones sitting beside a
+    2025 statement. The list cap applies to the list alone, for the opposite
+    reason: totals truncated to a page would mean "earned, in the hundred rows
+    we felt like loading", which is the kind of almost-true number that gets
+    quoted back to us in a support ticket.
     """
     escrows = (
         db.query(models.Escrow)
@@ -146,14 +144,6 @@ def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
         p.user_id: p.company_name
         for p in db.query(BusinessProfile)
         .filter(BusinessProfile.user_id.in_({e.business_user_id for e in escrows}))
-        .all()
-    }
-    # The contract id is on the escrow already; this only confirms the row is
-    # still there, so a payment whose contract was tidied away still renders.
-    known_contracts = {
-        row[0]
-        for row in db.query(Contract.id)
-        .filter(Contract.id.in_({e.contract_id for e in escrows}))
         .all()
     }
 
@@ -199,7 +189,7 @@ def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
         rows.append(
             {
                 "escrow_id": escrow.id,
-                "contract_id": escrow.contract_id if escrow.contract_id in known_contracts else escrow.contract_id,
+                "contract_id": escrow.contract_id,
                 "campaign_title": campaign_titles.get(escrow.campaign_id),
                 "counterparty_name": company_names.get(escrow.business_user_id),
                 "gross": gross,

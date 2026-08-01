@@ -24,6 +24,19 @@ def utcnow() -> datetime:
 PENDING = "pending_signatures"
 SIGNED = "signed"
 VOID = "void"
+# Called off by one of the two parties before it was fully signed and while no
+# escrow existed against it (contracts.cancellation).
+#
+# Its own status rather than VOID, which has never been written by any code
+# path and reads as "this document was never valid" — a statement about the
+# paper. Cancelled is a statement about the deal: it was real, it was on the
+# table, and somebody ended it before it bound anyone. The two want telling
+# apart the first time a contract genuinely has to be voided for a defect.
+#
+# The row is kept, like every other ended thing here. A creator who signed and
+# then watched the brand walk away has a record worth keeping, and the
+# contract_events trail hangs off the row.
+CANCELLED = "cancelled"
 
 
 class Contract(Base):

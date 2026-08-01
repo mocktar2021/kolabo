@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.auth.deps import get_current_user_id
-from app.modules.contracts import schemas, service
+from app.modules.contracts import cancellation, schemas, service
 
 router = APIRouter()
 
@@ -57,3 +57,21 @@ def sign_contract(
 ):
     """E-sign the contract. Both signatures are required and it is then immutable. KOL-25."""
     return service.sign_contract(db, contract_id, user_id, payload.signature)
+
+
+@router.post("/{contract_id}/cancel", response_model=schemas.ContractOut)
+def cancel_contract(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Either party calls off a contract before it binds anybody.
+
+    Allowed only while the contract is NOT fully signed (400 otherwise — both
+    parties agreed to it and it is immutable) and while NO escrow exists
+    against it (409 otherwise — funded money is the dispute and refund path's
+    business, not a button).
+
+    The other party is notified and a contract_events row records who ended it.
+    """
+    return cancellation.cancel_contract(db, contract_id, user_id)

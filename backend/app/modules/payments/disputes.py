@@ -266,25 +266,37 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
     left to freeze, and answering 200 would tell a creator their payout was
     stopped when it was not. 400 rather than 409 because the request is about
     a state the escrow will never return to.
+
+    ORDER MATTERS between those two checks, which is why the duplicate case is
+    tested for first. See the comment at the check itself.
     """
     escrow = load_escrow(db, escrow_id)
     require_party(escrow, actor_user_id)
-    if escrow.status != models.HELD:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only a held escrow can be disputed",
-        )
+
     # One OPEN dispute per escrow — not one ever. A second live case would
     # fork the thread and give an admin two half-cases over the same money, so
     # a party with more to say adds a message to the open one. But a withdrawn
     # or resolved case blocks nothing: the same contract can go wrong twice,
     # and two people settling a first misunderstanding themselves must not
     # cost them the only claim their escrow was ever allowed.
+    #
+    # Checked BEFORE the escrow's own status, and that ordering is the whole
+    # of a bug CI caught. Raising a dispute sets the escrow to DISPUTED, so by
+    # the time a second raise arrives the escrow is no longer HELD and the
+    # status check below would answer first — "only a held escrow can be
+    # disputed", which is true and sends the caller looking at the wrong
+    # thing. The escrow is not held BECAUSE of the case they are duplicating.
+    # Name the real obstacle.
     existing = open_dispute_for_escrow(db, escrow.id)
     if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This escrow already has an open dispute",
+        )
+    if escrow.status != models.HELD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only a held escrow can be disputed",
         )
 
     reason = _checked_reason(payload.reason)

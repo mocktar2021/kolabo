@@ -177,6 +177,19 @@ const resources = {
         unnamedCreator: "Créateur sans nom",
         invite: "Inviter", invitations: "Invitations", noInvitations: "Aucune invitation pour le moment.",
         proposals: "Propositions", noProposals: "Aucune proposition pour le moment.",
+        /* Negotiation thread. authorCreator/authorBrand label who wrote a
+           version; the chain itself always belongs to the creator. */
+        authorCreator: "Créateur", authorBrand: "Marque",
+        currentOffer: "Offre actuelle", daysShort: "j",
+        reply: "Répondre",
+        replyNote: "Votre réponse",
+        replyNotePlaceholder: "Expliquez votre contre-proposition ou posez votre question.",
+        replyRate: "Tarif (optionnel)", replyDays: "Délai (optionnel)",
+        replyHint: "Laissez les montants vides pour conserver les termes actuels.",
+        replySend: "Envoyer la réponse",
+        /* Anti-disintermediation: what the brand loses by moving the
+           conversation to WhatsApp, not what we lose. */
+        keepOnPlatform: "Échangez ici pour garder le contrat et le paiement protégés.",
         accept: "Accepter et créer le contrat", viewContract: "Voir le contrat"
       },
       invitation: {
@@ -185,7 +198,11 @@ const resources = {
         /* The brief the creator prices against: who is asking, for what, by
            when. brandFallback covers a business that has not named itself yet. */
         brandFallback: "Marque", noDeadline: "Pas d'échéance", yourProposal: "Votre proposition",
-        rate: "Tarif proposé", days: "Délai (jours)", send: "Envoyer", proposalSent: "Proposition envoyée."
+        rate: "Tarif proposé", days: "Délai (jours)", send: "Envoyer", proposalSent: "Proposition envoyée.",
+        /* Optional: the note carries the reasoning behind the numbers, in the
+           same record as the numbers. */
+        note: "Note (optionnel)",
+        notePlaceholder: "Précisez ce qui est inclus, vos délais, vos conditions."
       },
       contract: {
         listTitle: "Mes contrats", listSub: "Signez vos contrats et suivez les paiements.",
@@ -350,6 +367,19 @@ const resources = {
         unnamedCreator: "Unnamed creator",
         invite: "Invite", invitations: "Invitations", noInvitations: "No invitations yet.",
         proposals: "Proposals", noProposals: "No proposals yet.",
+        /* Negotiation thread. authorCreator/authorBrand label who wrote a
+           version; the chain itself always belongs to the creator. */
+        authorCreator: "Creator", authorBrand: "Brand",
+        currentOffer: "Current offer", daysShort: "d",
+        reply: "Reply",
+        replyNote: "Your reply",
+        replyNotePlaceholder: "Explain your counter-offer or ask your question.",
+        replyRate: "Rate (optional)", replyDays: "Timeline (optional)",
+        replyHint: "Leave the amounts blank to keep the current terms.",
+        replySend: "Send reply",
+        /* Anti-disintermediation: what the brand loses by moving the
+           conversation to WhatsApp, not what we lose. */
+        keepOnPlatform: "Negotiate here to keep the contract and payment protected.",
         accept: "Accept and create contract", viewContract: "View contract"
       },
       invitation: {
@@ -358,7 +388,11 @@ const resources = {
         /* The brief the creator prices against: who is asking, for what, by
            when. brandFallback covers a business that has not named itself yet. */
         brandFallback: "Brand", noDeadline: "No deadline", yourProposal: "Your proposal",
-        rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent."
+        rate: "Proposed rate", days: "Timeline (days)", send: "Send", proposalSent: "Proposal sent.",
+        /* Optional: the note carries the reasoning behind the numbers, in the
+           same record as the numbers. */
+        note: "Note (optional)",
+        notePlaceholder: "Spell out what is included, your timing, your conditions."
       },
       contract: {
         listTitle: "My contracts", listSub: "Sign your contracts and track payments.",

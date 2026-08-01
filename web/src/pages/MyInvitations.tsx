@@ -8,12 +8,18 @@ import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { InvitationWithCampaign } from "../lib/types";
 
+/* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. Enforced
+   here too so the limit is hit as a full textarea rather than as a 422 after
+   the creator has finished typing. */
+const NOTE_MAX_LENGTH = 2000;
+
 function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () => void }) {
   const { t } = useTranslation();
   const { token } = useAuth();
   const [rate, setRate] = useState("");
   const [currency, setCurrency] = useState("XOF");
   const [days, setDays] = useState("");
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -23,10 +29,21 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
     setBusy(true);
     setError(null);
     try {
+      /* The note travels with the offer rather than in a message beside it, so
+         the terms and the reasoning for them stay in one record — the same
+         record the business answers and the contract is eventually written
+         from. Omitted entirely when empty: a creator who wants to send bare
+         numbers still can. */
+      const trimmed = note.trim();
       await api(`/campaigns/${campaignId}/proposals`, {
         method: "POST",
         token,
-        body: { rate_amount: Number(rate), rate_currency: currency, timeline_days: Number(days) }
+        body: {
+          rate_amount: Number(rate),
+          rate_currency: currency,
+          timeline_days: Number(days),
+          ...(trimmed ? { note: trimmed } : {})
+        }
       });
       setDone(true);
       onDone();
@@ -42,7 +59,7 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
   return (
     <div>
       {error && <div className="alert alert-error">{error}</div>}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 1fr auto", gap: 8, alignItems: "end" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 1fr", gap: 8, alignItems: "end" }}>
         <div>
           <label className="label">{t("invitation.rate")}</label>
           <input className="input" inputMode="numeric" value={rate} onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))} placeholder="40000" />
@@ -57,8 +74,20 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
           <label className="label">{t("invitation.days")}</label>
           <input className="input" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} placeholder="7" />
         </div>
-        <button className="btn btn-primary" disabled={busy || !rate || !days} onClick={submit}>{t("invitation.send")}</button>
       </div>
+      <div style={{ marginTop: 12 }}>
+        <label className="label">{t("invitation.note")}</label>
+        <textarea
+          className="input"
+          rows={3}
+          maxLength={NOTE_MAX_LENGTH}
+          style={{ resize: "vertical" }}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t("invitation.notePlaceholder")}
+        />
+      </div>
+      <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={busy || !rate || !days} onClick={submit}>{t("invitation.send")}</button>
     </div>
   );
 }

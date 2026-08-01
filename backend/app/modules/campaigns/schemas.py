@@ -9,6 +9,19 @@ from pydantic import BaseModel, Field
 # can carry their own reasoning, not so the negotiation can become a thread.
 MAX_NOTE_LENGTH = 2000
 
+# The fields that together make up a negotiated offer. Named as a group
+# because the rule about them is a group rule: all of them or none of them,
+# and never alongside a package_id.
+CUSTOM_OFFER_FIELDS = (
+    "creator_user_id",
+    "platform",
+    "deliverable_type",
+    "quantity",
+    "rate_amount",
+    "currency",
+    "timeline_days",
+)
+
 
 class Deliverable(BaseModel):
     platform: str
@@ -97,16 +110,44 @@ class ProposalReplyIn(BaseModel):
 
 
 class OrderIn(BaseModel):
-    """A brand buying a creator's package outright.
+    """A brand ordering from a creator, in one of two forms.
 
-    Only the package id and an optional word to the creator. Everything a
-    campaign normally asks for — title, budget, deliverables, currency — is
-    read off the package, because the whole promise of a package is that the
-    creator already decided all of it and published a price.
+        {"package_id": "..."}
+            The package exactly as listed. Title, budget, deliverable and
+            currency are read off it, because the whole promise of a package
+            is that the creator already decided all of it and published a
+            price.
+
+        {"creator_user_id": ..., "platform": ..., "deliverable_type": ...,
+         "quantity": ..., "rate_amount": ..., "currency": ...,
+         "timeline_days": ...}
+            Terms the brand negotiated instead. Everything a package would
+            have decided, decided by the buyer — because plenty of deals do
+            not fit a listed bundle, and the ones that do not were the deals
+            leaving for WhatsApp.
+
+    Exactly one form per request. A body carrying both is not a preference to
+    resolve, it is two different orders in one envelope.
+
+    The bounds on the custom fields (quantity, floor price, timeline) are NOT
+    declared here. They are checked in campaigns.negotiated so the answer is a
+    400 naming the rule and what is allowed, in the same words the packages
+    module uses — a 422 field-error would tell a brand that its price is
+    invalid without ever mentioning the floor.
     """
 
-    package_id: str
+    # Shared by both forms: a word to the creator about the offer.
     note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
+
+    package_id: str | None = None
+
+    creator_user_id: str | None = None
+    platform: str | None = None
+    deliverable_type: str | None = None
+    quantity: int | None = None
+    rate_amount: int | None = None
+    currency: str | None = None
+    timeline_days: int | None = None
 
 
 class OrderOut(BaseModel):
@@ -114,7 +155,9 @@ class OrderOut(BaseModel):
 
     Deliberately not the whole campaign: the interesting facts are where the
     order lives, which offer the creator is answering, and the deadline they
-    are answering by. The campaign detail endpoint serves the rest.
+    are answering by. The campaign detail endpoint serves the rest. The same
+    for both forms of order, because from here on there is only one kind of
+    thing.
     """
 
     campaign_id: str

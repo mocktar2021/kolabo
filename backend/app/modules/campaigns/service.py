@@ -15,9 +15,12 @@ agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
 contract, escrow, or protect either side of.
 
 Direct orders: a brand can also skip the brief entirely and buy a creator's
-package at the published price. That order is created here, as a hidden
-single-creator campaign, because the campaigns module owns the campaign — see
-create_direct_order for why it is shaped that way.
+package at the published price — or offer terms of its own when no listed
+package fits. Both are created here, as hidden single-creator campaigns,
+because the campaigns module owns the campaign. They are built by one function
+(_place_order) on purpose: downstream there is exactly one accept path, one
+contract path and one escrow path, and nothing after creation can tell the two
+kinds of order apart.
 
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
@@ -31,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
-from app.modules.campaigns import models, schemas
+from app.modules.campaigns import models, negotiated, schemas
 from app.modules.notifications.service import notify
 from app.modules.profiles.models import BusinessProfile, Package
 
@@ -65,9 +68,10 @@ ORDER_ACCEPT_WINDOW_HOURS = 48
 #
 # A package's duration describes the deliverable ("30 seconds"), not how long
 # the creator needs to produce it, and the catalog of duration units is
-# seconds/minutes/hours — so in practice every order lands on this default.
-# One week is the figure creators quote most often on briefs, and both sides
-# can renegotiate it: an order is a proposal like any other.
+# seconds/minutes/hours — so in practice every package order lands on this
+# default. One week is the figure creators quote most often on briefs, and
+# both sides can renegotiate it: an order is a proposal like any other. A
+# negotiated order never uses it — there the buyer states the timeline.
 DEFAULT_ORDER_TIMELINE_DAYS = 7
 
 
@@ -232,8 +236,19 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
     return _invitation_out(invitation, identity)
 
 
-def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
-    """A brand buys a creator's package at the published price.
+def _place_order(
+    db: Session,
+    business_user_id: str,
+    creator_user_id: str,
+    title: str,
+    deliverable: dict,
+    rate_amount: int,
+    currency: str,
+    timeline_days: int,
+    note: str | None,
+    notice: str,
+) -> dict:
+    """Build the order itself: a hidden campaign, one invitation, one offer.
 
     Shape of the thing, and why. An order is a HIDDEN, single-creator campaign
     carrying exactly one invitation and one proposal — not a table of its own.
@@ -244,10 +259,18 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
     twice. One payment path is worth the small strangeness of a campaign
     nobody can browse.
 
-    Who is proposing, and why it is the business. The buyer picked a price the
-    creator had already published and offered it back, so author_role is
-    business — that is literally what happened, and it is what makes the
-    creator's accept-or-decline an answer rather than a second offer.
+    Both forms of order come through here, and that is deliberate rather than
+    convenient. A package order and a negotiated order are the SAME object
+    downstream — one accept path, one contract path, one escrow path — and the
+    only way that stays true is for one function to build both. Two builders
+    would drift, and where they drifted is the code that decides what a
+    contract says.
+
+    Who is proposing, and why it is the business. Either the buyer picked a
+    price the creator had already published and offered it back, or it named
+    terms of its own; both are the brand making an offer, so author_role is
+    business. That is what makes the creator's accept-or-decline an answer
+    rather than a second offer.
 
     What does NOT happen here: no money moves. The creator has
     ORDER_ACCEPT_WINDOW_HOURS to accept, and escrow is funded only after they
@@ -258,6 +281,178 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
     All of it in one transaction: a campaign with no invitation, or an
     invitation with no offer attached, is an order the creator can see and
     cannot answer.
+    """
+    campaign = models.Campaign(
+        business_user_id=business_user_id,
+        title=title,
+        budget_amount=rate_amount,
+        budget_currency=currency,
+        deliverables=[deliverable],
+        # No deadline. A brief needs one because creators bid against it and
+        # have to know what they are bidding on; an order has no bidding, and
+        # the proposal's timeline_days is the commitment instead.
+        deadline=None,
+        # Published on creation, bypassing _publish_ready on purpose: that
+        # gate exists so a half-written brief cannot go live in front of
+        # creators. An order is complete the moment it is placed — the terms
+        # are already agreed on one side — and it goes in front of exactly one
+        # person.
+        status=models.PUBLISHED,
+        is_direct=True,
+    )
+    db.add(campaign)
+    # Flushed, not committed: the invitation and the proposal need the
+    # campaign id, and all three land or none of them do.
+    db.flush()
+
+    invitation = models.CampaignInvitation(
+        campaign_id=campaign.id, influencer_user_id=creator_user_id, status=models.INVITED
+    )
+    db.add(invitation)
+
+    proposal = models.Proposal(
+        campaign_id=campaign.id,
+        influencer_user_id=creator_user_id,
+        version=1,
+        rate_amount=rate_amount,
+        rate_currency=currency,
+        timeline_days=timeline_days,
+        note=note,
+        author_role=models.AUTHOR_BUSINESS,
+        status=models.SUBMITTED,
+        # Only direct orders carry an expiry. A brief's proposals stay open
+        # indefinitely because nobody promised anything by leaving one open;
+        # here a buyer is waiting on an answer to terms it already named.
+        expires_at=models.utcnow() + timedelta(hours=ORDER_ACCEPT_WINDOW_HOURS),
+    )
+    db.add(proposal)
+
+    notify(db, creator_user_id, "direct_order", notice)
+    db.commit()
+    db.refresh(campaign)
+    db.refresh(proposal)
+    return {
+        "campaign_id": campaign.id,
+        "proposal_id": proposal.id,
+        "expires_at": proposal.expires_at,
+    }
+
+
+def create_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -> dict:
+    """Place an order: a package at its listed price, or negotiated terms.
+
+    One endpoint, two forms, exactly one of them per request. A body carrying
+    both is not a preference to resolve — it is two different orders in one
+    envelope, and guessing which one the buyer meant is how somebody ends up
+    charged for the wrong thing. A body carrying neither is a client bug, and
+    the error names the two shapes rather than the missing field, because the
+    caller has to pick a form before it can pick fields.
+
+    A half-filled custom offer is rejected the same way. There is no sensible
+    default for a rate or a deliverable: an order with a blank in it is an
+    order the creator cannot answer.
+    """
+    supplied = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is not None]
+
+    if payload.package_id is not None and supplied:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Send either package_id or custom terms, not both. "
+                f"Custom terms received: {', '.join(supplied)}"
+            ),
+        )
+    if payload.package_id is not None:
+        return create_direct_order(db, business_user_id, payload.package_id, payload.note)
+    if not supplied:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "An order needs either package_id or a full custom offer ("
+                f"{', '.join(schemas.CUSTOM_OFFER_FIELDS)})."
+            ),
+        )
+
+    missing = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is None]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A custom offer is incomplete. Missing: {', '.join(missing)}",
+        )
+    return create_negotiated_order(db, business_user_id, payload)
+
+
+def create_negotiated_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -> dict:
+    """A brand offers its own terms instead of taking a package as listed.
+
+    Plenty of work does not fit a listed bundle — a different quantity, a
+    tighter timeline, a rate the two sides talked about — and those were
+    exactly the deals that left the platform to be agreed somewhere we cannot
+    contract or escrow them. So the terms are negotiable and nothing else is:
+    the same 48 hour window, the same hidden campaign, the same accept and
+    decline endpoints.
+
+    What is different is only that nobody validated these terms before. A
+    package was checked when it was published; typed-in terms are checked here
+    (campaigns.negotiated), price floor included.
+    """
+    negotiated.validate_offer(payload)
+
+    # Checked before the role guard so the message is the true one, exactly as
+    # ordering your own package is. A creator offering to themselves would
+    # also fail the author check, but "only businesses can order" is not what
+    # went wrong.
+    if payload.creator_user_id == business_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot send an offer to yourself.",
+        )
+    creator = db.query(User).filter(User.id == payload.creator_user_id).first()
+    if creator is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
+    if creator.role != AUTHOR_EXCLUDED_ROLE:
+        # AUTHOR_EXCLUDED_ROLE is the selling side of the market: the role
+        # that may not author a brief is precisely the role that can be sent
+        # one. Reused rather than re-stated so a new buyer-side role cannot
+        # accidentally become orderable.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You can only send an offer to a creator.",
+        )
+    # Same guard, same rule, same wording as authoring a brief and as ordering
+    # a package: an order IS a campaign, and the buying side of the market is
+    # the side that may create one.
+    _require_campaign_author(db, business_user_id)
+
+    title = negotiated.order_title(payload.platform, payload.deliverable_type, payload.quantity)
+    return _place_order(
+        db,
+        business_user_id=business_user_id,
+        creator_user_id=payload.creator_user_id,
+        title=title,
+        deliverable={
+            "platform": payload.platform,
+            "type": payload.deliverable_type,
+            "quantity": payload.quantity,
+        },
+        rate_amount=payload.rate_amount,
+        currency=payload.currency.upper(),
+        timeline_days=payload.timeline_days,
+        note=payload.note,
+        notice=(
+            f"A brand sent you a custom offer: {title}. You have "
+            f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
+        ),
+    )
+
+
+def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
+    """A brand buys a creator's package at the published price.
+
+    The terms are the package's, none of them re-entered: that is the whole
+    promise of a package, that the creator already decided all of it. The
+    order this produces is built by _place_order like every other, which is
+    where the shape of an order and the reasons for it are written down.
     """
     package = db.query(Package).filter(Package.id == package_id).first()
     if package is None:
@@ -283,71 +478,29 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
     # one. Reused rather than re-stated so the two can never drift apart.
     _require_campaign_author(db, business_user_id)
 
-    campaign = models.Campaign(
-        business_user_id=business_user_id,
-        title=package.title,
-        budget_amount=package.price_amount,
-        budget_currency=package.currency,
-        deliverables=[
-            {"platform": package.platform, "type": package.deliverable_type, "quantity": package.quantity}
-        ],
-        # No deadline. A brief needs one because creators bid against it and
-        # have to know what they are bidding on; an order has no bidding, and
-        # the proposal's timeline_days is the commitment instead.
-        deadline=None,
-        # Published on creation, bypassing _publish_ready on purpose: that
-        # gate exists so a half-written brief cannot go live in front of
-        # creators. An order is complete the moment it is placed — the terms
-        # are the package's — and it goes in front of exactly one person.
-        status=models.PUBLISHED,
-        is_direct=True,
-    )
-    db.add(campaign)
-    # Flushed, not committed: the invitation and the proposal need the
-    # campaign id, and all three land or none of them do.
-    db.flush()
-
-    invitation = models.CampaignInvitation(
-        campaign_id=campaign.id, influencer_user_id=package.user_id, status=models.INVITED
-    )
-    db.add(invitation)
-
     timeline_days = DEFAULT_ORDER_TIMELINE_DAYS
     if package.duration_unit == "days" and package.duration_value:
         timeline_days = package.duration_value
 
-    proposal = models.Proposal(
-        campaign_id=campaign.id,
-        influencer_user_id=package.user_id,
-        version=1,
+    return _place_order(
+        db,
+        business_user_id=business_user_id,
+        creator_user_id=package.user_id,
+        title=package.title,
+        deliverable={
+            "platform": package.platform,
+            "type": package.deliverable_type,
+            "quantity": package.quantity,
+        },
         rate_amount=package.price_amount,
-        rate_currency=package.currency,
+        currency=package.currency,
         timeline_days=timeline_days,
         note=note,
-        author_role=models.AUTHOR_BUSINESS,
-        status=models.SUBMITTED,
-        # Only direct orders carry an expiry. A brief's proposals stay open
-        # indefinitely because nobody promised anything by leaving one open;
-        # here a buyer is waiting on an answer to a price they already named.
-        expires_at=models.utcnow() + timedelta(hours=ORDER_ACCEPT_WINDOW_HOURS),
+        notice=(
+            f"A brand ordered your package {package.title}. You have "
+            f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
+        ),
     )
-    db.add(proposal)
-
-    notify(
-        db,
-        package.user_id,
-        "direct_order",
-        f"A brand ordered your package {package.title}. You have "
-        f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline.",
-    )
-    db.commit()
-    db.refresh(campaign)
-    db.refresh(proposal)
-    return {
-        "campaign_id": campaign.id,
-        "proposal_id": proposal.id,
-        "expires_at": proposal.expires_at,
-    }
 
 
 def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> models.Proposal | None:
@@ -397,6 +550,15 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         note=payload.note,
         author_role=models.AUTHOR_INFLUENCER,
         status=models.SUBMITTED,
+        # Carried forward from whatever this version answers, exactly as
+        # reply_to_proposal carries it the other way. This is how a creator
+        # counters a direct order — there is no creator-side counter endpoint,
+        # the next version IS the counter — and a counter is still the same
+        # order on the same clock. Left to default it went to NULL, which took
+        # the order off the clock entirely: the expiry sweep only touches rows
+        # with an expires_at, so a countered order would have sat open
+        # forever. Null stays null for a brief, which is what a brief wants.
+        expires_at=latest.expires_at if latest is not None else None,
     )
     db.add(proposal)
     notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
@@ -605,9 +767,10 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
     to different buyers.
 
     Direct orders appear here too, and must: the creator is the invited party,
-    and this is the surface where they find out somebody bought their package.
-    is_direct on the nested campaign is what lets the client render it as an
-    order with a clock rather than as a brief to price.
+    and this is the surface where they find out somebody bought their package
+    or sent them terms of their own. is_direct on the nested campaign is what
+    lets the client render it as an order with a clock rather than as a brief
+    to price.
 
     Each row also carries the live version of its negotiation. For a brief
     that is context; for an order it is the thing itself — accept and decline

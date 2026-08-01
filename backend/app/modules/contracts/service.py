@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
+from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import models
 from app.modules.notifications.service import notify
 
@@ -77,29 +78,41 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
     if campaign.business_user_id != business_user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your campaign")
-    existing = db.query(models.Contract).filter(models.Contract.proposal_id == proposal_id).first()
+
+    # A proposal id names a negotiation, not a frozen offer. Since the business
+    # can now counter, the chain moves on — sometimes by the business's own
+    # hand — and the id on the page can be a round or two behind. The contract
+    # is written from the LAST version in the chain, so nobody ever signs terms
+    # that were already replaced.
+    latest = campaigns_service.latest_in_chain(db, proposal.campaign_id, proposal.influencer_user_id) or proposal
+
+    existing = (
+        db.query(models.Contract)
+        .filter(models.Contract.proposal_id.in_({proposal_id, latest.id}))
+        .first()
+    )
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A contract already exists for this proposal")
-    if proposal.status != campaigns.SUBMITTED:
+    if latest.status != campaigns.SUBMITTED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only a submitted proposal can be accepted")
 
     business = db.query(User).filter(User.id == business_user_id).first()
-    influencer = db.query(User).filter(User.id == proposal.influencer_user_id).first()
+    influencer = db.query(User).filter(User.id == latest.influencer_user_id).first()
     language = _language_for(business.country_code)
 
     # Accepting the proposal is what triggers contract generation.
-    proposal.status = campaigns.PROPOSAL_ACCEPTED
+    latest.status = campaigns.PROPOSAL_ACCEPTED
 
     contract = models.Contract(
         campaign_id=campaign.id,
-        proposal_id=proposal.id,
+        proposal_id=latest.id,
         business_user_id=business.id,
         influencer_user_id=influencer.id,
         language=language,
-        body=_build_body(language, campaign, proposal, business, influencer),
-        rate_amount=proposal.rate_amount,
-        rate_currency=proposal.rate_currency,
-        timeline_days=proposal.timeline_days,
+        body=_build_body(language, campaign, latest, business, influencer),
+        rate_amount=latest.rate_amount,
+        rate_currency=latest.rate_currency,
+        timeline_days=latest.timeline_days,
         deliverables=campaign.deliverables,
         status=models.PENDING,
     )

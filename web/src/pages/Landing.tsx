@@ -322,8 +322,17 @@ export default function Landing() {
       )}
 
       {/* PLACEHOLDER metrics — replace with real numbers before public launch */}
-      <section className="container section-tight tb-band">
-        <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 13.5, marginBottom: 26 }}>{t("landing.trustedBy")}</p>
+      <section className="container section tb-band">
+        {/* The heading is a heading. It used to be a small grey label above
+            four large stat cards, which made it read as a caption belonging to
+            the numbers rather than as the title of the section — backwards,
+            and the only section on the page doing it. The size comes from
+            `.section h2` in theme.css, the same rule every other section
+            heading here uses, so nothing is invented: the band simply carries
+            `.section` (its padding stays `.tb-band`'s either way, that rule
+            comes later in the file). Only the centring is local, matching the
+            centred grid underneath. */}
+        <h2 style={{ textAlign: "center", marginBottom: 26 }}>{t("landing.trustedBy")}</h2>
         <div className="tb-grid">
           {trustStats.map((s) => (
             <div key={s.l} className="tb-cell">

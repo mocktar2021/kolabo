@@ -10,7 +10,7 @@ from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
-from app.modules.profiles.models import BusinessProfile
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 
 
 @pytest.fixture()
@@ -53,6 +53,18 @@ def _business_profile(client, user_id, company_name):
     db = client.session_factory()
     try:
         db.add(BusinessProfile(user_id=user_id, company_name=company_name))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _influencer_profile(client, user_id, display_name, avatar_media_id=None):
+    """The creator's public identity, which is what a proposal row shows."""
+    db = client.session_factory()
+    try:
+        db.add(InfluencerProfile(
+            user_id=user_id, display_name=display_name, avatar_media_id=avatar_media_id,
+        ))
         db.commit()
     finally:
         db.close()
@@ -226,6 +238,36 @@ def test_invitation_company_name_is_null_without_a_business_profile(client):
     row = client.get("/campaigns/invitations/mine", headers=inf).json()[0]
     assert row["business_company_name"] is None
     assert "+22990000111" not in str(row)
+
+
+def test_proposal_row_names_the_proposer(client):
+    """The business is choosing between people. A row reading "Créateur
+    424275c0" cannot be chosen, so the proposal carries the creator's name
+    and photo."""
+    _, biz = _user(client, "+22990000113", "business")
+    inf_id, inf = _user(client, "+22990000114", "influencer")
+    _influencer_profile(client, inf_id, "Ama K.", avatar_media_id="media-abc")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/proposals", json={"rate_amount": 40000, "rate_currency": "XOF", "timeline_days": 7}, headers=inf)
+
+    row = client.get(f"/campaigns/{cid}", headers=biz).json()["proposals"][0]
+    assert row["influencer_user_id"] == inf_id
+    assert row["display_name"] == "Ama K."
+    assert row["avatar_url"] == "/profiles/media/media-abc"
+
+
+def test_proposal_row_is_null_without_a_creator_profile(client):
+    """Same rule as the invitation card: no profile means no name, and never
+    a phone number standing in for one."""
+    _, biz = _user(client, "+22990000115", "business")
+    inf_id, inf = _user(client, "+22990000116", "influencer")
+    cid = _published_campaign(client, biz).json()["id"]
+    client.post(f"/campaigns/{cid}/proposals", json={"rate_amount": 40000, "rate_currency": "XOF", "timeline_days": 7}, headers=inf)
+
+    row = client.get(f"/campaigns/{cid}", headers=biz).json()["proposals"][0]
+    assert row["display_name"] is None
+    assert row["avatar_url"] is None
+    assert "+22990000116" not in str(row)
 
 
 def test_mine_requires_auth(client):

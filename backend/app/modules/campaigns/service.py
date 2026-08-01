@@ -7,7 +7,12 @@ source of truth packages sell from.
 KOL-22: invite a specific influencer. Blocked if the influencer is not verified;
 the influencer is notified.
 KOL-23: submit a proposal. A proposal is locked once submitted, so an edit is a
-new version and the previous one is superseded; the business is notified.
+new version and the previous one is superseded; the business is notified. Each
+version may carry a note explaining its terms, and the business can answer with
+a note of its own and an optional counter — which is another version in the
+same chain, not a message. Terms that get argued over somewhere else end up
+agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
+contract, escrow, or protect either side of.
 """
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -16,7 +21,7 @@ from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas
 from app.modules.notifications.service import notify
-from app.modules.profiles.models import BusinessProfile
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 
 # Nobody briefs a hundred-plus of anything in one campaign; past that the
 # number is a typo (an amount pasted into the quantity box), so reject it
@@ -27,6 +32,12 @@ MAX_DELIVERABLE_QUANTITY = 100
 # who is allowed: a new buyer-side role should be able to brief on the day it
 # is introduced, without anyone remembering to add it to a whitelist here.
 AUTHOR_EXCLUDED_ROLE = "influencer"
+
+# How many versions of a negotiation a campaign page carries. Twenty rounds is
+# already far past the point where two people should have picked up the phone,
+# and an unbounded chain would let one stubborn thread decide how long the
+# whole page takes to load.
+MAX_PROPOSAL_VERSIONS = 20
 
 
 def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str) -> models.Campaign:
@@ -191,6 +202,26 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
     }
 
 
+def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> models.Proposal | None:
+    """The current state of one negotiation.
+
+    A chain is every version exchanged between one creator and one campaign,
+    whichever side wrote each one. The last version is the live offer: it is
+    what a reply answers, what a new version supersedes, and — the part that
+    matters most — what an acceptance signs. Everything before it has already
+    been withdrawn by somebody.
+    """
+    return (
+        db.query(models.Proposal)
+        .filter(
+            models.Proposal.campaign_id == campaign_id,
+            models.Proposal.influencer_user_id == influencer_user_id,
+        )
+        .order_by(models.Proposal.version.desc())
+        .first()
+    )
+
+
 def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payload: schemas.ProposalIn) -> dict:
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
@@ -198,20 +229,15 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
     if campaign.status != models.PUBLISHED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campaign is not open for proposals")
 
-    previous = (
-        db.query(models.Proposal)
-        .filter(
-            models.Proposal.campaign_id == campaign_id,
-            models.Proposal.influencer_user_id == influencer_user_id,
-            models.Proposal.status == models.SUBMITTED,
-        )
-        .order_by(models.Proposal.version.desc())
-        .first()
-    )
+    latest = latest_in_chain(db, campaign_id, influencer_user_id)
     next_version = 1
-    if previous is not None:
-        previous.status = models.SUPERSEDED
-        next_version = previous.version + 1
+    if latest is not None:
+        # Numbered off the whole chain, business replies included. Two rows
+        # sharing a version number would make "the latest terms" ambiguous,
+        # and the latest terms are the ones that get signed.
+        next_version = latest.version + 1
+        if latest.status == models.SUBMITTED:
+            latest.status = models.SUPERSEDED
 
     proposal = models.Proposal(
         campaign_id=campaign_id,
@@ -220,22 +246,87 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         rate_amount=payload.rate_amount,
         rate_currency=payload.rate_currency.upper(),
         timeline_days=payload.timeline_days,
+        note=payload.note,
+        author_role=models.AUTHOR_INFLUENCER,
         status=models.SUBMITTED,
     )
     db.add(proposal)
     notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
     db.commit()
     db.refresh(proposal)
-    return {
-        "id": proposal.id,
-        "campaign_id": proposal.campaign_id,
-        "influencer_user_id": proposal.influencer_user_id,
-        "version": proposal.version,
-        "rate_amount": proposal.rate_amount,
-        "rate_currency": proposal.rate_currency,
-        "timeline_days": proposal.timeline_days,
-        "status": proposal.status,
-    }
+    identity = _proposer_identity(db, [influencer_user_id]).get(influencer_user_id)
+    return _proposal_out(proposal, identity)
+
+
+def reply_to_proposal(
+    db: Session,
+    campaign_id: str,
+    proposal_id: str,
+    business_user_id: str,
+    payload: schemas.ProposalReplyIn,
+) -> dict:
+    """The business answers an offer, on the platform.
+
+    Until now the only reply available to a business was accept or silence, so
+    every "could you do 40k" went to WhatsApp — and a deal agreed there is a
+    deal with no contract, no escrow and no recourse for either side. A reply
+    is therefore a proposal version like any other, authored by the business:
+    same chain, next number, and the offer on the table is still whatever the
+    last version says.
+
+    A reply with no counter repeats the previous terms rather than leaving them
+    blank. Every row in a chain is then a complete offer, and answering "what
+    are we agreed on" never means reading backwards through the thread
+    reassembling terms from four different rows.
+
+    The proposal id only has to name the negotiation, not its newest version:
+    the business's page may be a round or two behind, and being out of date is
+    not a reason to reject a reply.
+    """
+    campaign = _require_campaign_owner(db, campaign_id, business_user_id)
+    proposal = (
+        db.query(models.Proposal)
+        .filter(models.Proposal.id == proposal_id, models.Proposal.campaign_id == campaign_id)
+        .first()
+    )
+    if proposal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+
+    latest = latest_in_chain(db, campaign_id, proposal.influencer_user_id)
+    if latest.status != models.SUBMITTED:
+        # Accepted or rejected: the negotiation is over. Reopening it by reply
+        # would let terms drift after a contract was written from them.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This proposal is closed and cannot be answered",
+        )
+
+    reply = models.Proposal(
+        campaign_id=campaign_id,
+        influencer_user_id=latest.influencer_user_id,
+        version=latest.version + 1,
+        rate_amount=payload.rate_amount if payload.rate_amount is not None else latest.rate_amount,
+        # Never counter-able: the chain is priced in the currency the creator
+        # quoted in, and a version that silently changed it would be a
+        # different deal wearing the same version number.
+        rate_currency=latest.rate_currency,
+        timeline_days=payload.timeline_days if payload.timeline_days is not None else latest.timeline_days,
+        note=payload.note,
+        author_role=models.AUTHOR_BUSINESS,
+        status=models.SUBMITTED,
+    )
+    latest.status = models.SUPERSEDED
+    db.add(reply)
+    notify(
+        db,
+        latest.influencer_user_id,
+        "proposal_reply",
+        f"The business replied to your proposal for {campaign.title}",
+    )
+    db.commit()
+    db.refresh(reply)
+    identity = _proposer_identity(db, [reply.influencer_user_id]).get(reply.influencer_user_id)
+    return _proposal_out(reply, identity)
 
 
 def _invitation_out(inv: models.CampaignInvitation) -> dict:
@@ -247,7 +338,47 @@ def _invitation_out(inv: models.CampaignInvitation) -> dict:
     }
 
 
-def _proposal_out(p: models.Proposal) -> dict:
+def _proposer_identity(db: Session, influencer_user_ids: list[str]) -> dict:
+    """Display name and photo for the creators behind a set of proposals.
+
+    A business reviewing proposals is choosing between people, and a list of
+    ids gives it nothing to choose with: "Créateur 424275c0" is not somebody
+    you can hire. One query for the whole list, not one per row — a campaign
+    with thirty proposals should not cost thirty extra round trips.
+
+    Null when the creator has no profile yet, and null is where it stops. The
+    users table could supply a phone number and nothing else, and a phone
+    number is never part of a payload handed to the other side of a deal:
+    that is the difference between a marketplace and an introduction service.
+
+    A chain names the creator on every row, business replies included: the
+    thread belongs to that creator, and author_role is what says who wrote
+    which version.
+    """
+    if not influencer_user_ids:
+        return {}
+    rows = (
+        db.query(
+            InfluencerProfile.user_id,
+            InfluencerProfile.display_name,
+            InfluencerProfile.avatar_media_id,
+        )
+        .filter(InfluencerProfile.user_id.in_(set(influencer_user_ids)))
+        .all()
+    )
+    return {
+        user_id: {
+            "display_name": display_name,
+            # Same URL shape the profiles module builds its media links from,
+            # so one media route serves the proposal list too.
+            "avatar_url": f"/profiles/media/{avatar_media_id}" if avatar_media_id else None,
+        }
+        for user_id, display_name, avatar_media_id in rows
+    }
+
+
+def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
+    identity = identity or {}
     return {
         "id": p.id,
         "campaign_id": p.campaign_id,
@@ -257,6 +388,10 @@ def _proposal_out(p: models.Proposal) -> dict:
         "rate_currency": p.rate_currency,
         "timeline_days": p.timeline_days,
         "status": p.status,
+        "note": p.note,
+        "author_role": p.author_role,
+        "display_name": identity.get("display_name"),
+        "avatar_url": identity.get("avatar_url"),
     }
 
 
@@ -278,15 +413,25 @@ def get_campaign_detail(db: Session, campaign_id: str, business_user_id: str) ->
         .order_by(models.CampaignInvitation.created_at.desc())
         .all()
     )
+    # Read as a conversation: oldest first, so an offer sits above the answer
+    # it produced. The cap takes the most recent MAX_PROPOSAL_VERSIONS rather
+    # than the first ones — the last version is the live offer and the only
+    # one that can be accepted, so truncating from that end would hide the
+    # single row the page exists to act on. Queried newest-first with a limit
+    # (the database does the cutting, not us) and then flipped.
     proposals = (
         db.query(models.Proposal)
         .filter(models.Proposal.campaign_id == campaign_id)
-        .order_by(models.Proposal.version.desc())
+        .order_by(models.Proposal.created_at.desc(), models.Proposal.version.desc())
+        .limit(MAX_PROPOSAL_VERSIONS)
         .all()
     )
+    proposals.reverse()
+    # Looked up once for the whole page rather than per proposal row.
+    identities = _proposer_identity(db, [p.influencer_user_id for p in proposals])
     out = _to_out(campaign)
     out["invitations"] = [_invitation_out(i) for i in invitations]
-    out["proposals"] = [_proposal_out(p) for p in proposals]
+    out["proposals"] = [_proposal_out(p, identities.get(p.influencer_user_id)) for p in proposals]
     return out
 
 

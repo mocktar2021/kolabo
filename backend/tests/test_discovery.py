@@ -278,3 +278,48 @@ def test_search_is_public_and_returns_card_fields(client):
     for key in ("display_name", "headline", "avatar_url", "starting_price_amount", "average_stars", "review_count"):
         assert key in body
     assert body["review_count"] == 0
+
+
+def test_favorite_row_carries_name_and_avatar(client):
+    """Inviting someone to a campaign starts from this list, so the row has to
+    name a person: "Créateur 05317bc0" is not somebody you can pick."""
+    uid = _profile_without_rate(client, "+22990000301", ["fashion"], 5000)
+    db = client.session_factory()
+    asset = pmodels.MediaAsset(owner_user_id=uid, content_type="image/png", data=b"fake")
+    db.add(asset); db.commit(); db.refresh(asset)
+    media_id = asset.id
+    prof = db.query(pmodels.InfluencerProfile).filter(pmodels.InfluencerProfile.user_id == uid).first()
+    prof.avatar_media_id = media_id
+    db.commit(); db.close()
+
+    _, headers = _make_business_token(client, phone="+22990000302")
+    client.post(f"/discovery/favorites/{uid}", headers=headers)
+    row = client.get("/discovery/favorites", headers=headers).json()[0]
+    assert row["display_name"] == "Ama K."
+    assert row["avatar_url"] == f"/profiles/media/{media_id}"
+    assert row["headline"] == "Lifestyle creator"
+    assert row["country_code"] == "BJ"
+
+
+def test_favorite_without_a_profile_returns_nulls_not_an_error(client):
+    """A creator can be favourited the day they sign up, before they have
+    written anything. That row comes back empty rather than taking the whole
+    shortlist down with it — and empty means empty: no phone number stands in
+    for the missing name."""
+    db = client.session_factory()
+    user = User(phone="+22990000303", password_hash="x", country_code="TG", role="influencer", is_verified=True)
+    db.add(user); db.commit(); db.refresh(user)
+    uid = user.id
+    db.close()
+
+    _, headers = _make_business_token(client, phone="+22990000304")
+    assert client.post(f"/discovery/favorites/{uid}", headers=headers).status_code == 201
+    r = client.get("/discovery/favorites", headers=headers)
+    assert r.status_code == 200
+    row = r.json()[0]
+    assert row["influencer_user_id"] == uid
+    assert row["display_name"] is None
+    assert row["avatar_url"] is None
+    assert row["headline"] is None
+    assert row["country_code"] == "TG"
+    assert "+22990000303" not in str(row)

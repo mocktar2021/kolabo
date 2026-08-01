@@ -3,8 +3,21 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { EvidencePicker } from "../components/EvidencePicker";
 import { useAuth } from "../lib/auth";
-import type { ContractDetail, Escrow } from "../lib/types";
+import {
+  DISPUTE_REASONS,
+  MAX_STATEMENT_CHARS,
+  MIN_STATEMENT_CHARS,
+  openDisputeFor
+} from "../lib/disputes";
+import type {
+  ContractDetail,
+  Dispute,
+  DisputeReason,
+  Escrow,
+  UploadedMedia
+} from "../lib/types";
 
 function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
   return (
@@ -15,21 +28,129 @@ function Row({ label, value, ok }: { label: string; value: string; ok?: boolean 
   );
 }
 
+/* Raising a dispute, inline and on the contract itself.
+
+   Not a modal. This is the most consequential button on the page and the
+   terms it is about — the amount, the timeline, the document — are three
+   centimetres above it; a dialog would cover exactly the thing somebody needs
+   to reread while they write down what was supposed to happen.
+
+   The reason is a select over the closed set because the admin queue triages
+   by it and free text cannot be triaged. The statement carries the words, and
+   its bounds are the server's, shown as a counter rather than discovered as a
+   400 after four hundred words. */
+function RaiseDisputeForm({
+  escrowId,
+  busy,
+  onSubmit,
+  onCancel
+}: {
+  escrowId: string;
+  busy: boolean;
+  onSubmit: (body: { reason: DisputeReason; statement: string; media_ids: string[] }) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState<DisputeReason>("not_delivered");
+  const [statement, setStatement] = useState("");
+  const [evidence, setEvidence] = useState<UploadedMedia[]>([]);
+
+  const length = statement.trim().length;
+  const tooShort = length < MIN_STATEMENT_CHARS;
+  const tooLong = length > MAX_STATEMENT_CHARS;
+
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+      <h4 style={{ margin: "0 0 10px" }}>{t("dispute.formTitle")}</h4>
+
+      <label className="label" htmlFor={`dispute-reason-${escrowId}`}>{t("dispute.reason")}</label>
+      <select
+        id={`dispute-reason-${escrowId}`}
+        className="input"
+        value={reason}
+        disabled={busy}
+        onChange={(e) => setReason(e.target.value as DisputeReason)}
+      >
+        {DISPUTE_REASONS.map((r) => (
+          <option key={r} value={r}>{t(`dispute.reason_${r}`)}</option>
+        ))}
+      </select>
+
+      <label className="label" style={{ marginTop: 10 }} htmlFor={`dispute-statement-${escrowId}`}>
+        {t("dispute.statement")}
+      </label>
+      <textarea
+        id={`dispute-statement-${escrowId}`}
+        className="input"
+        rows={5}
+        value={statement}
+        disabled={busy}
+        maxLength={MAX_STATEMENT_CHARS}
+        placeholder={t("dispute.statementPlaceholder")}
+        onChange={(e) => setStatement(e.target.value)}
+      />
+      <p className="muted" style={{ fontSize: 13, margin: "4px 0 10px" }}>
+        {t("dispute.counter", { n: length, max: MAX_STATEMENT_CHARS })}
+        {tooShort && length > 0 && ` · ${t("dispute.statementTooShort", { n: MIN_STATEMENT_CHARS })}`}
+      </p>
+
+      <EvidencePicker items={evidence} onChange={setEvidence} disabled={busy} />
+
+      {/* Said before the act, not after it: the funds freeze for BOTH sides
+          and the other party gets an exclusive window. A creator who learns
+          that afterwards has frozen a payout they were about to receive. */}
+      <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>{t("dispute.consequence")}</p>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button
+          className="btn btn-primary"
+          disabled={busy || tooShort || tooLong}
+          onClick={() =>
+            onSubmit({
+              reason,
+              statement: statement.trim(),
+              media_ids: evidence.map((e) => e.id)
+            })
+          }
+        >
+          {t("dispute.submit")}
+        </button>
+        <button className="btn btn-ghost" disabled={busy} onClick={onCancel}>
+          {t("dispute.cancel")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ContractPage() {
   const { t } = useTranslation();
   const { token, userId, isAuthenticated } = useAuth();
   const { id } = useParams();
   const [contract, setContract] = useState<ContractDetail | null>(null);
   const [escrow, setEscrow] = useState<Escrow | null>(null);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [signature, setSignature] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [raising, setRaising] = useState(false);
 
   const loadEscrow = useCallback(async (contractId: string) => {
     try {
       const e = await api<Escrow>(`/payments/escrow/by-contract/${contractId}`, { token });
       setEscrow(e);
+      /* The caller's cases, in one request for every escrow they are in.
+         There is no per-escrow dispute endpoint and there does not need to
+         be: /disputes/mine is what a party is allowed to read, and a person
+         has few enough of these that filtering client-side is free. A failure
+         here is not worth an error state — it costs the link to an existing
+         case, and the server still refuses a duplicate with a 409. */
+      try {
+        setDisputes(await api<Dispute[]>("/payments/disputes/mine", { token }));
+      } catch {
+        setDisputes([]);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) setEscrow(null);
     }
@@ -74,6 +195,12 @@ export default function ContractPage() {
   const counterpartyId = contract
     ? (isBusiness ? contract.influencer_user_id : contract.business_user_id)
     : null;
+  /* The OPEN case on this escrow, if there is one — not the most recent.
+     Since one open dispute at a time replaced one dispute ever, an escrow can
+     carry withdrawn and resolved rows as well, and those are history: showing
+     one where the live case goes would tell somebody their money is frozen
+     over an argument that ended. */
+  const openDispute = escrow ? openDisputeFor(disputes, escrow.id) : null;
 
   return (
     <Layout>
@@ -159,22 +286,61 @@ export default function ContractPage() {
                       <Row label={t("contract.commission")} value={`${escrow.commission_amount} ${escrow.currency}`} />
                     )}
                     {escrow.status === "held" && (
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        {isBusiness && (
-                          <button className="btn btn-teal" disabled={busy}
-                            onClick={() => act(() => api(`/payments/escrow/${escrow.id}/release`, { method: "POST", token }))}>
-                            {t("contract.release")}
-                          </button>
+                      <>
+                        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                          {isBusiness && (
+                            <button className="btn btn-teal" disabled={busy}
+                              onClick={() => act(() => api(`/payments/escrow/${escrow.id}/release`, { method: "POST", token }))}>
+                              {t("contract.release")}
+                            </button>
+                          )}
+                          {/* Either party. A dispute is a claim on money held
+                              between the two of them, and either can be the
+                              one who was let down. */}
+                          {!raising && (
+                            <button className="btn btn-ghost" disabled={busy} onClick={() => setRaising(true)}>
+                              {t("dispute.open")}
+                            </button>
+                          )}
+                        </div>
+                        {raising && (
+                          <RaiseDisputeForm
+                            escrowId={escrow.id}
+                            busy={busy}
+                            onCancel={() => setRaising(false)}
+                            onSubmit={(body) =>
+                              act(async () => {
+                                await api(`/payments/escrow/${escrow.id}/dispute`, { method: "POST", token, body });
+                                setRaising(false);
+                              })
+                            }
+                          />
                         )}
-                        <button className="btn btn-ghost" disabled={busy}
-                          onClick={() => act(() => api(`/payments/escrow/${escrow.id}/dispute`, { method: "POST", token }))}>
-                          {t("contract.dispute")}
-                        </button>
-                      </div>
+                      </>
                     )}
                     {escrow.status === "released" && <div className="alert alert-success" style={{ marginTop: 12, marginBottom: 0 }}>{t("contract.released")}</div>}
-                    {escrow.status === "disputed" && <div className="alert alert-info" style={{ marginTop: 12, marginBottom: 0 }}>{t("contract.disputed")}</div>}
+                    {escrow.status === "disputed" && (
+                      <div style={{ marginTop: 12 }}>
+                        <div className="alert alert-info">{t("dispute.existing")}</div>
+                        {/* The case itself, rather than the form: there is
+                            already a thread to answer in, and a second claim
+                            over the same money would give an admin two half
+                            cases. */}
+                        {openDispute && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", background: "var(--surface-2)", padding: "3px 10px", borderRadius: 999 }}>
+                              {t(`dispute.status_${openDispute.status}`)}
+                            </span>
+                            <Link className="btn btn-ghost" to={`/disputes/${openDispute.id}`}>
+                              {t("dispute.view")}
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {escrow.status === "refunded" && <div className="alert alert-info" style={{ marginTop: 12, marginBottom: 0 }}>{t("contract.refunded")}</div>}
+                  </>
+                )}
                   </>
                 )}
               </div>

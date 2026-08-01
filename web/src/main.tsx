@@ -7,6 +7,7 @@ import "./lib/onboardingStrings";
 import "./lib/marketingStrings";
 import "./lib/cartStrings";
 import "./lib/messagesStrings";
+import "./lib/disputeStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

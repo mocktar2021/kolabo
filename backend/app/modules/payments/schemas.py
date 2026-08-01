@@ -62,5 +62,11 @@ class DisputeOut(BaseModel):
     released_amount: int | None = None
     refunded_amount: int | None = None
     resolved_by: str | None = None
+    # When the case was opened. An escrow can carry several disputes over its
+    # life, so "which one is this" is answered by a date as often as by an id:
+    # a list of a contract's cases is unreadable without it. dispute_out has
+    # always built it; leaving it off here quietly stripped it back out of the
+    # one dispute response that has a schema.
+    created_at: str
     attachments: list[str] = []
     escrow: EscrowOut | None = None

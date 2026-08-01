@@ -233,6 +233,69 @@ export type Escrow = {
   status: string;
 };
 
+/* What POST /profiles/{userId}/media answers with (MediaOut). The id is what
+   gets attached to things — a portfolio row, an avatar, a piece of dispute
+   evidence — and the url is the path to serve it back from, which still needs
+   mediaSrc() to become absolute. */
+export type UploadedMedia = { id: string; url: string };
+
+/* Disputes (KOL-37).
+
+   Mirror of DISPUTE_REASONS in backend/app/modules/payments/models.py. A
+   closed set rather than free text because two things read it and neither
+   reads prose: the admin queue triages by it, and it is what fraud analytics
+   will eventually count. The statement is where the words go. */
+export type DisputeReason =
+  | "not_delivered"
+  | "late"
+  | "wrong_content"
+  | "quality"
+  | "payment_issue"
+  | "other";
+
+/* awaiting_response is the 72 h window that belongs to the two parties;
+   awaiting_admin is the queue. resolved and withdrawn are closed records —
+   they are read, never written to, and they do not stop a new dispute being
+   raised on the same escrow. */
+export type DisputeStatus =
+  | "awaiting_response"
+  | "awaiting_admin"
+  | "resolved"
+  | "withdrawn";
+
+/* One case, as both parties and an admin read it.
+
+   attachments are the opening statement's evidence only — server paths like
+   "/profiles/media/{id}", so they go through mediaSrc() before they reach an
+   <img>. Evidence on later messages hangs off the messages themselves.
+
+   released_amount / refunded_amount / resolution are null until an admin has
+   decided, and they are the decision itself rather than a copy of the escrow:
+   the escrow says where the money ended up, these say what was ruled.
+
+   respond_by and created_at arrive naive UTC like every other datetime from
+   this API, so both go through parseApiDate.
+
+   escrow is nested by every dispute endpoint, but the response schema types
+   it optional, so it stays nullable here rather than being asserted away. */
+export type Dispute = {
+  id: string;
+  escrow_id: string;
+  opened_by_user_id: string;
+  reason: DisputeReason;
+  statement: string;
+  status: DisputeStatus;
+  respond_by: string;
+  resolved_at: string | null;
+  resolution: string | null;
+  released_amount: number | null;
+  refunded_amount: number | null;
+  resolved_by: string | null;
+  created_at: string;
+  attachments: string[];
+  escrow: Escrow | null;
+};
+
 /* Referrals (GET /auth/me/referral).
 
    status is the only part of this that carries money: "signed_up" means the

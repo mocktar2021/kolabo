@@ -163,6 +163,21 @@ const resources = {
         orderCancel: "Annuler",
         orderSent: "Commande envoyée. Le créateur a 48 h pour répondre.",
         orderView: "Voir ma commande",
+        /* Negotiating instead of taking the package as listed. Secondary to
+           the order button on purpose: the published price is still the fast
+           path, and this is the way out for the deals that do not fit it —
+           the ones that were being agreed on WhatsApp instead. The terms are
+           the only thing that changes; the 48 h rule, the note and the
+           success line are the package order's. */
+        negotiate: "Négocier une offre",
+        negotiateOr: "ou",
+        negotiateTitle: "Votre offre",
+        negotiatePlatform: "Plateforme",
+        negotiateDeliverable: "Livrable",
+        negotiateQuantity: "Quantité",
+        negotiatePrice: "Prix total",
+        negotiateDays: "Délai (jours)",
+        negotiateSend: "Envoyer l'offre",
         allPhotos: "Toutes les photos",
         reviewsTitle: "Avis", reviewCount_one: "{{count}} avis", reviewCount_other: "{{count}} avis",
         verifiedClient: "Client vérifié",
@@ -203,6 +218,12 @@ const resources = {
            version; the chain itself always belongs to the creator. */
         authorCreator: "Créateur", authorBrand: "Marque",
         currentOffer: "Offre actuelle", daysShort: "j",
+        /* Whose turn it is, derived from the live version's author_role. The
+           mirror image of the badge the creator reads on their invitations
+           page: exactly one side is being waited on, and both screens read
+           it off the same field rather than off a stored flag. */
+        awaitingCreator: "En attente du créateur",
+        creatorReplied: "Le créateur a répondu",
         reply: "Répondre",
         replyNote: "Votre réponse",
         replyNotePlaceholder: "Expliquez votre contre-proposition ou posez votre question.",
@@ -237,7 +258,19 @@ const resources = {
         /* Said before the refusal rather than after it: nothing has been
            charged, so a no costs the brand nothing but the wait. */
         orderDeclineConfirm: "Aucun paiement n'a été prélevé ; la marque sera prévenue.",
-        orderDeclineYes: "Confirmer le refus", orderDeclineNo: "Annuler"
+        orderDeclineYes: "Confirmer le refus", orderDeclineNo: "Annuler",
+        /* Reading the exchange, and answering it. The badge says whose move
+           it is — derived from the live version's author_role, never stored.
+           historyLatestOnly is an honest limit and not a design: the
+           invitations endpoint nests the LIVE version only, so earlier rounds
+           are not available to the creator yet. */
+        negotiationTitle: "Négociation",
+        turnYours: "À vous de répondre",
+        turnBrand: "En attente de la marque",
+        historyLatestOnly: "Seule la dernière version est affichée ici.",
+        counter: "Contre-proposer",
+        counterSend: "Envoyer la contre-proposition",
+        counterHint: "Une contre-proposition reste dans le même délai de 48 h."
       },
       contract: {
         listTitle: "Mes contrats", listSub: "Signez vos contrats et suivez les paiements.",
@@ -388,6 +421,21 @@ const resources = {
         orderCancel: "Cancel",
         orderSent: "Order sent. The creator has 48 h to answer.",
         orderView: "View my order",
+        /* Negotiating instead of taking the package as listed. Secondary to
+           the order button on purpose: the published price is still the fast
+           path, and this is the way out for the deals that do not fit it —
+           the ones that were being agreed on WhatsApp instead. The terms are
+           the only thing that changes; the 48 h rule, the note and the
+           success line are the package order's. */
+        negotiate: "Negotiate an offer",
+        negotiateOr: "or",
+        negotiateTitle: "Your offer",
+        negotiatePlatform: "Platform",
+        negotiateDeliverable: "Deliverable",
+        negotiateQuantity: "Quantity",
+        negotiatePrice: "Total price",
+        negotiateDays: "Timeline (days)",
+        negotiateSend: "Send the offer",
         allPhotos: "All photos",
         reviewsTitle: "Reviews", reviewCount_one: "{{count}} review", reviewCount_other: "{{count}} reviews",
         verifiedClient: "Verified client",
@@ -428,6 +476,12 @@ const resources = {
            version; the chain itself always belongs to the creator. */
         authorCreator: "Creator", authorBrand: "Brand",
         currentOffer: "Current offer", daysShort: "d",
+        /* Whose turn it is, derived from the live version's author_role. The
+           mirror image of the badge the creator reads on their invitations
+           page: exactly one side is being waited on, and both screens read
+           it off the same field rather than off a stored flag. */
+        awaitingCreator: "Waiting on the creator",
+        creatorReplied: "The creator replied",
         reply: "Reply",
         replyNote: "Your reply",
         replyNotePlaceholder: "Explain your counter-offer or ask your question.",
@@ -462,7 +516,19 @@ const resources = {
         /* Said before the refusal rather than after it: nothing has been
            charged, so a no costs the brand nothing but the wait. */
         orderDeclineConfirm: "No payment has been taken; the brand will be notified.",
-        orderDeclineYes: "Confirm decline", orderDeclineNo: "Cancel"
+        orderDeclineYes: "Confirm decline", orderDeclineNo: "Cancel",
+        /* Reading the exchange, and answering it. The badge says whose move
+           it is — derived from the live version's author_role, never stored.
+           historyLatestOnly is an honest limit and not a design: the
+           invitations endpoint nests the LIVE version only, so earlier rounds
+           are not available to the creator yet. */
+        negotiationTitle: "Negotiation",
+        turnYours: "Your turn to answer",
+        turnBrand: "Waiting on the brand",
+        historyLatestOnly: "Only the latest version is shown here.",
+        counter: "Counter-offer",
+        counterSend: "Send counter-offer",
+        counterHint: "A counter-offer stays within the same 48 h window."
       },
       contract: {
         listTitle: "My contracts", listSub: "Sign your contracts and track payments.",

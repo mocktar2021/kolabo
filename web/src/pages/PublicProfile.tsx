@@ -437,7 +437,7 @@ export default function PublicProfilePage() {
                   <h2>{t("profile.faqTitle")}</h2>
                   {faqEntries.map((f) => (
                     <div key={f.key} className="pp-faq-item">
-                      <button type="button" className="pp-faq-q" aria-експanded={undefined} aria-expanded={openFaq.has(f.key)} onClick={() => toggleFaq(f.key)}>
+                      <button type="button" className="pp-faq-q" aria-expanded={openFaq.has(f.key)} onClick={() => toggleFaq(f.key)}>
                         {f.question}
                         <span className={`pp-chevron${openFaq.has(f.key) ? " open" : ""}`} aria-hidden="true">▾</span>
                       </button>

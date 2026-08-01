@@ -145,12 +145,32 @@ function ProposalThread({
   const { t } = useTranslation();
   const [replyOpen, setReplyOpen] = useState(false);
   const latest = chain.latest;
+  // The brand wrote the live version, so the creator is the one being waited
+  // on. Derived from author_role rather than stored, for the reason spelled
+  // out in MyInvitations.tsx: a stored flag is a second copy of this fact and
+  // the copy is the one that goes stale.
+  const awaitingCreator = latest.author_role === "business";
 
   return (
     <div style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <CreatorChip creator={latest} />
-        <span className="muted" style={{ fontSize: 13 }}>{latest.status}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* The mirror of the badge the creator reads on their invitations
+              page, off the same field. Emphasis goes on the side that is
+              waiting for this reader: "the creator replied" is the brand's
+              turn to act, "waiting on the creator" is not. */}
+          {latest.status === "submitted" && (
+            <span
+              style={awaitingCreator
+                ? { fontSize: 12, fontWeight: 600, color: "var(--muted)", background: "var(--surface-2)", padding: "3px 10px", borderRadius: 999 }
+                : { fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--teal-600)", padding: "3px 10px", borderRadius: 999 }}
+            >
+              {awaitingCreator ? t("campaign.awaitingCreator") : t("campaign.creatorReplied")}
+            </span>
+          )}
+          <span className="muted" style={{ fontSize: 13 }}>{latest.status}</span>
+        </div>
       </div>
 
       <div style={{ display: "grid", gap: 8, marginTop: 10 }}>

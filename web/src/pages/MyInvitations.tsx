@@ -93,27 +93,152 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
   );
 }
 
-/* The terms of a direct order, and the two answers to it.
+/* The creator's answer with different numbers on it.
 
-   Nothing here is a form. On a brief the creator names the price; on an order
-   the brand already did, from the creator's own published package — so the
-   numbers are printed, not typed, and the only decision left is yes or no.
+   There is no creator-side counter endpoint and there does not need to be
+   one: the next version in the chain IS the counter, so this posts to the
+   same submit path a brief's first proposal takes.
 
-   A direct order is a private transaction, not a public brief: it came to
-   this creator alone and nobody else can see it or bid against it. */
-function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => void }) {
+   On a direct order it keeps the 48 h clock. submit_proposal carries
+   expires_at forward from the version it answers, deliberately — a countered
+   order is still the same order, and restarting the window on every round
+   would let one chain run forever while the buyer waits.
+
+   Prefilled with the terms on the table rather than blank: the creator is
+   almost always changing one of the two numbers, and the endpoint needs both
+   regardless. */
+function CounterForm({ campaignId, live, isOrder, onSent }: {
+  campaignId: string;
+  live: Proposal;
+  isOrder: boolean;
+  onSent: () => void;
+}) {
+  const { t } = useTranslation();
+  const { token } = useAuth();
+  const [rate, setRate] = useState(String(live.rate_amount));
+  const [days, setDays] = useState(String(live.timeline_days));
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!rate || !days) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const trimmed = note.trim();
+      await api(`/campaigns/${campaignId}/proposals`, {
+        method: "POST",
+        token,
+        body: {
+          rate_amount: Number(rate),
+          /* Not counterable: a chain is priced in one currency or it is two
+             negotiations pretending to be one. The business reply endpoint
+             refuses to change it for exactly the same reason, so the counter
+             repeats the currency already on the table. */
+          rate_currency: live.rate_currency,
+          timeline_days: Number(days),
+          ...(trimmed ? { note: trimmed } : {})
+        }
+      });
+      onSent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: 14 }}>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div>
+          <label className="label">{t("invitation.rate")} ({live.rate_currency})</label>
+          <input className="input" inputMode="numeric" value={rate}
+            onChange={(e) => setRate(e.target.value.replace(/\D/g, ""))} />
+        </div>
+        <div>
+          <label className="label">{t("invitation.days")}</label>
+          <input className="input" inputMode="numeric" value={days}
+            onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} />
+        </div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <label className="label">{t("invitation.note")}</label>
+        <textarea
+          className="input"
+          rows={3}
+          maxLength={NOTE_MAX_LENGTH}
+          style={{ resize: "vertical" }}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t("invitation.notePlaceholder")}
+        />
+      </div>
+      {isOrder && <p className="hint">{t("invitation.counterHint")}</p>}
+      <button className="btn btn-primary" style={{ marginTop: 12 }} disabled={busy || !rate || !days} onClick={submit}>
+        {t("invitation.counterSend")}
+      </button>
+    </div>
+  );
+}
+
+/* Whose turn it is, and what the other side actually said.
+
+   A business could already answer a proposal, but the answer landed in a
+   notification and nowhere else: the creator was shown a blank proposal form
+   and had no way to read the counter they were meant to be answering. A
+   negotiation with one side unable to read it is not a negotiation, and the
+   place it moves to instead is WhatsApp.
+
+   The turn is DERIVED from the live version's author_role rather than stored.
+   author_role already answers the question — one of the two sides wrote the
+   last word and there is exactly one of those — so a "waiting_on" column
+   would be a second copy of that fact, written by hand at every step. The
+   first counter that forgot to update it would confidently tell a creator to
+   wait on a reply they were themselves holding. Deriving cannot drift.
+
+   What the creator may DO is not symmetric, and the asymmetry is the
+   backend's rather than a styling choice:
+
+     - Accept exists only on a direct order whose live version is the brand's.
+       A brief's proposals are accepted by the BUSINESS through the contracts
+       path — campaigns/orders.py refuses a non-direct campaign outright — and
+       accepting one's own counter is a 400 ("This is your own counter-offer.
+       The brand has to accept it."). A button that exists only to be refused
+       is worse than no button, so it is not offered at all.
+
+     - Decline stays on an open order whichever side holds the live version.
+       Withdrawing an offer you made is a different act from signing one, and
+       the backend allows it on purpose: a creator who changed their mind
+       should be able to close the order rather than leave the buyer waiting
+       on a number nobody intends to honour.
+
+     - Counter is the answer available on both kinds of row, and it is simply
+       the next version in the chain. */
+function Negotiation({ campaignId, live, isOrder, onDone }: {
+  campaignId: string;
+  live: Proposal;
+  isOrder: boolean;
+  onDone: () => void;
+}) {
   const { t } = useTranslation();
   const { token } = useAuth();
   const navigate = useNavigate();
+  const [counterOpen, setCounterOpen] = useState(false);
   const [confirmingDecline, setConfirmingDecline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const left = proposal.expires_at ? orderTimeLeft(proposal.expires_at) : null;
-  const expired = left === null;
-  // Superseded, accepted or declined: already answered, so there is nothing
-  // left to act on and the row is history.
-  const open = proposal.status === "submitted";
+  const left = live.expires_at ? orderTimeLeft(live.expires_at) : null;
+  // Only orders run on a clock, so only orders can lapse. A brief's proposal
+  // has no expires_at and stays answerable.
+  const expired = isOrder && left === null;
+  // Superseded, accepted or declined: already answered, so the row is history.
+  const open = live.status === "submitted";
+  // The brand wrote the live version, so the ball is in the creator's court.
+  const theirMove = live.author_role === "business";
 
   async function accept() {
     setBusy(true);
@@ -123,7 +248,7 @@ function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => vo
          signing is the next thing both sides have to do, so that is where the
          creator goes. Money still has not moved: escrow is funded by the buyer
          after both signatures. */
-      const contract = await api<Contract>(`/campaigns/orders/${proposal.id}/accept`, { method: "POST", token });
+      const contract = await api<Contract>(`/campaigns/orders/${live.id}/accept`, { method: "POST", token });
       navigate(`/contracts/${contract.id}`);
     } catch (e) {
       // Covers the late click: "This order has expired." arrives as a 400 and
@@ -137,7 +262,7 @@ function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => vo
     setBusy(true);
     setError(null);
     try {
-      await api(`/campaigns/orders/${proposal.id}/decline`, { method: "POST", token });
+      await api(`/campaigns/orders/${live.id}/decline`, { method: "POST", token });
       // Reload rather than patch locally: the invitation status, the campaign
       // status and the proposal status all move together server-side.
       onDone();
@@ -150,33 +275,64 @@ function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => vo
 
   return (
     <div style={{ borderTop: "1px solid var(--line)", marginTop: 20, paddingTop: 16 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 24px", fontSize: 14 }}>
-        <span>
-          <span className="muted">{t("invitation.orderPrice")} : </span>
-          <strong>{proposal.rate_amount} {proposal.rate_currency}</strong>
-        </span>
-        <span>
-          <span className="muted">{t("invitation.orderDelay")} : </span>
-          {proposal.timeline_days} {t("campaign.daysShort")}
-        </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span className="label" style={{ margin: 0 }}>{t("invitation.negotiationTitle")}</span>
+        {open && (
+          <span
+            style={theirMove
+              ? { fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--teal-600)", padding: "3px 10px", borderRadius: 999 }
+              : { fontSize: 12, fontWeight: 600, color: "var(--muted)", background: "var(--surface-2)", padding: "3px 10px", borderRadius: 999 }}
+          >
+            {theirMove ? t("invitation.turnYours") : t("invitation.turnBrand")}
+          </span>
+        )}
       </div>
 
-      {proposal.note && (
-        <div style={{ marginTop: 12 }}>
-          <span className="label">{t("invitation.orderNote")}</span>
-          <p style={{ fontSize: 14, margin: 0, whiteSpace: "pre-wrap" }}>{proposal.note}</p>
+      {/* The offer itself, laid out the way CampaignDetail lays out a chain —
+          author, terms, note, version — so the two sides are reading the same
+          exchange in the same shape. */}
+      <div
+        style={{
+          borderLeft: "3px solid var(--indigo)",
+          background: "var(--surface-2)",
+          borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
+          padding: "8px 12px",
+          marginTop: 10
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+          <span style={{ fontWeight: 700 }}>
+            {theirMove ? t("campaign.authorBrand") : t("campaign.authorCreator")}
+          </span>
+          <span className="muted">v{live.version}</span>
         </div>
-      )}
+        <div style={{ fontSize: 14.5, fontWeight: 700 }}>
+          {live.rate_amount} {live.rate_currency} · {live.timeline_days} {t("campaign.daysShort")}
+        </div>
+        {live.note && (
+          <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{live.note}</p>
+        )}
+      </div>
+
+      {/* Said only once there is something missing to explain. The invitations
+          endpoint nests the LIVE version of the chain and nothing else, so
+          from version 2 onwards the creator is reading the current offer with
+          the rounds above it not sent to them at all. Better to say so than to
+          let the round they remember writing look as though it vanished. */}
+      {live.version > 1 && <p className="hint">{t("invitation.historyLatestOnly")}</p>}
 
       {/* The clock, stated in the unit that is still useful: hours while there
-          is a day left, minutes in the last stretch. */}
-      <p className="muted" style={{ fontSize: 13, margin: "12px 0 0", fontWeight: expired ? 600 : 400 }}>
-        {expired
-          ? t("invitation.orderExpired")
-          : left.unit === "hours"
-            ? t("invitation.orderExpiresHours", { n: left.n })
-            : t("invitation.orderExpiresMinutes", { n: left.n })}
-      </p>
+          is a day left, minutes in the last stretch. Orders only — a brief's
+          proposal has nothing to count down. */}
+      {isOrder && (
+        <p className="muted" style={{ fontSize: 13, margin: "12px 0 0", fontWeight: expired ? 600 : 400 }}>
+          {expired || left === null
+            ? t("invitation.orderExpired")
+            : left.unit === "hours"
+              ? t("invitation.orderExpiresHours", { n: left.n })
+              : t("invitation.orderExpiresMinutes", { n: left.n })}
+        </p>
+      )}
 
       {error && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{error}</div>}
 
@@ -194,10 +350,26 @@ function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => vo
           </div>
         ) : (
           <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <button className="btn btn-primary" disabled={busy || expired} onClick={accept}>{t("invitation.orderAccept")}</button>
-            <button className="btn btn-ghost" disabled={busy || expired} onClick={() => setConfirmingDecline(true)}>{t("invitation.orderDecline")}</button>
+            {isOrder && theirMove && (
+              <button className="btn btn-primary" disabled={busy || expired} onClick={accept}>{t("invitation.orderAccept")}</button>
+            )}
+            {isOrder && (
+              <button className="btn btn-ghost" disabled={busy || expired} onClick={() => setConfirmingDecline(true)}>{t("invitation.orderDecline")}</button>
+            )}
+            {theirMove && !expired && (
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setCounterOpen((o) => !o)}>{t("invitation.counter")}</button>
+            )}
           </div>
         )
+      )}
+
+      {counterOpen && open && theirMove && !expired && (
+        <CounterForm
+          campaignId={campaignId}
+          live={live}
+          isOrder={isOrder}
+          onSent={() => { setCounterOpen(false); onDone(); }}
+        />
       )}
     </div>
   );
@@ -209,13 +381,14 @@ function OrderTerms({ proposal, onDone }: { proposal: Proposal; onDone: () => vo
    seeing the deliverables was guesswork.
 
    Two kinds of row share this card. A live proposal carrying expires_at means
-   a brand bought a package outright and the terms are already set; anything
-   else is a brief to price. Only direct orders run on a clock, which is what
-   makes that field the test — see lib/orders.ts. */
+   a brand bought a package or sent terms of its own and the offer is already
+   on the table; anything else is a brief to price. Only direct orders run on a
+   clock, which is what makes that field the test — see lib/orders.ts. */
 function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: () => void }) {
   const { t } = useTranslation();
   const c = inv.campaign;
   const order = directOrderOf(inv);
+  const live = inv.proposal;
 
   return (
     <div className="card">
@@ -239,7 +412,7 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
       </div>
 
       {/* A brief is priced against a budget and a deadline. An order has
-          neither to argue about: the price is the package's and the timeline
+          neither to argue about: the price is already named and the timeline
           is on the offer below, so the line would only repeat itself. */}
       {!order && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 24px", marginTop: 10, fontSize: 14 }}>
@@ -270,8 +443,12 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
         )}
       </div>
 
-      {order ? (
-        <OrderTerms proposal={order} onDone={onDone} />
+      {live ? (
+        /* A live version means the negotiation has started, whoever opened it.
+           The blank form below is for the other case only: a brief nobody has
+           priced yet. Showing it while an offer is on the table is what used
+           to hide the brand's counter behind an empty rate box. */
+        <Negotiation campaignId={inv.campaign_id} live={live} isOrder={order !== null} onDone={onDone} />
       ) : (
         /* The rule above the line is the brand's; everything below it is the
            creator's answer, so the two are separated visually. */

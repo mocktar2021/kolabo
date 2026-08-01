@@ -5,7 +5,8 @@ import { Logo } from "./Logo";
 import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { useCart } from "../lib/cart";
-import type { MessageThread } from "../lib/types";
+import { awaitingMyAnswer } from "../lib/disputes";
+import type { Dispute, MessageThread } from "../lib/types";
 
 function LanguageSwitch() {
   const { i18n } = useTranslation();
@@ -147,6 +148,46 @@ function MessagesIndicator() {
   );
 }
 
+/* Disputes, with what is waiting on the CALLER. Both roles, for the reason
+   messages are: a dispute is a claim on money held between two people and
+   either of them may be the one who has not answered.
+
+   The badge counts the cases awaiting THIS person's answer and not their open
+   cases. The 72 h window is the only thing here that expires, it expires
+   against the party who did not open the case, and a number that also counted
+   the ones they raised themselves would sit there unclearable for as long as
+   they waited for a reply — which is exactly when a badge stops being read.
+
+   Fetched once on mount and not polled, like the messages badge and for the
+   same reason. */
+function DisputesIndicator() {
+  const { t } = useTranslation();
+  const { token, userId } = useAuth();
+  const [waiting, setWaiting] = useState(0);
+
+  useEffect(() => {
+    if (!token || !userId) return;
+    let live = true;
+    api<Dispute[]>("/payments/disputes/mine", { token })
+      .then((rows) => {
+        if (live) setWaiting(awaitingMyAnswer(rows, userId).length);
+      })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [token, userId]);
+
+  return (
+    <Link className="btn btn-ghost" to="/disputes" aria-label={t("dispute.navAria", { n: waiting })}>
+      {t("dispute.nav")}
+      {waiting > 0 && (
+        <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", borderRadius: 999, padding: "1px 7px" }}>
+          {waiting}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 function AppNav() {
   const { t } = useTranslation();
   const { logout } = useAuth();
@@ -165,7 +206,7 @@ function AppNav() {
 
      Messages are the exception that proves it: a contract has two parties and
      the thread belongs to both, so that entry is not asked the question at
-     all. */
+     all. Disputes are the same exception for the same reason. */
   const isBrand = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
@@ -175,6 +216,7 @@ function AppNav() {
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
       <MessagesIndicator />
+      <DisputesIndicator />
       {isBrand && <CartIndicator />}
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
       <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>

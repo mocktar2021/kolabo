@@ -1,4 +1,10 @@
-"""Tests for Epic G (KOL-7): escrow funding, release, dispute, resolution."""
+"""Tests for Epic G (KOL-7): escrow funding, release, and the referral hook.
+
+Disputes have their own two files — test_disputes.py for raising and answering
+one, test_dispute_resolution.py for the admin's split and the queue. What is
+left here is the ordinary money path plus the one dispute fact that belongs to
+it: a frozen escrow cannot be released by the business.
+"""
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -46,6 +52,20 @@ def _headers(uid):
 
 
 ADMIN = {"X-Admin-Id": "admin-1"}
+
+# Raising a dispute now costs a reason and a statement. The cases below only
+# need A dispute, not a particular one; what the payload is FOR is tested in
+# test_disputes.py.
+DISPUTE_BODY = {
+    "reason": "not_delivered",
+    "statement": "The deliverable never arrived and the agreed date has passed.",
+}
+
+
+def _dispute(client, escrow_id, user_id):
+    return client.post(
+        f"/payments/escrow/{escrow_id}/dispute", json=DISPUTE_BODY, headers=_headers(user_id)
+    )
 
 
 def _signed_contract(client, signed=True, amount=10000):
@@ -159,40 +179,26 @@ def test_auto_release_after_timeout(client):
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "released"
 
 
-def test_dispute_freezes_then_admin_refunds(client):
+def test_a_frozen_escrow_cannot_be_released_by_the_business(client):
+    """Freezing it is what raising a dispute is for. The split that ends it is
+    tested in test_dispute_resolution.py."""
     biz, inf, cid = _signed_contract(client, amount=20000)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
     eid = escrow["id"]
-    r = client.post(f"/payments/escrow/{eid}/dispute", headers=_headers(inf))
-    assert r.json()["status"] == "disputed"
-    # A disputed escrow cannot be released by the business directly.
+    r = _dispute(client, eid, inf)
+    # The response is now the DISPUTE, which starts in its response window;
+    # the frozen escrow rides along on it.
+    assert r.status_code == 201
+    assert r.json()["status"] == "awaiting_response"
+    assert r.json()["escrow"]["status"] == "disputed"
     assert client.post(f"/payments/escrow/{eid}/release", headers=_headers(biz)).status_code == 400
-    r = client.post(f"/payments/escrow/{eid}/resolve", json={"decision": "refund"}, headers=ADMIN)
-    assert r.json()["status"] == "refunded"
-    assert pay_service.payment_provider.payouts[-1]["amount"] == 20000
-    # Admin decision is logged.
-    from app.modules.admin.models import AdminActionLog
+    # And no auto release can slip past the freeze either: the sweep only
+    # looks at held escrows.
     db = client.session_factory()
-    log = db.query(AdminActionLog).filter(AdminActionLog.target_id == eid).first()
-    db.close()
-    assert log is not None and log.action == "dispute_refund"
-
-
-def test_admin_can_resolve_dispute_by_releasing(client):
-    biz, inf, cid = _signed_contract(client, amount=10000)
-    escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
-    eid = escrow["id"]
-    client.post(f"/payments/escrow/{eid}/dispute", headers=_headers(biz))
-    r = client.post(f"/payments/escrow/{eid}/resolve", json={"decision": "release"}, headers=ADMIN)
-    assert r.json()["status"] == "released"
-    assert r.json()["commission_amount"] == 1500
-
-
-def test_resolve_requires_admin_header(client):
-    biz, inf, cid = _signed_contract(client)
-    escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
-    client.post(f"/payments/escrow/{escrow['id']}/dispute", headers=_headers(biz))
-    assert client.post(f"/payments/escrow/{escrow['id']}/resolve", json={"decision": "release"}).status_code == 401
+    e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == eid).first()
+    e.due_release_at = pay_models.utcnow().replace(year=2020)
+    db.commit(); db.close()
+    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
 
 
 def test_fund_requires_auth(client):

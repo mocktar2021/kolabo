@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     # Days a held escrow waits before it auto releases if the business does
     # not confirm delivery.
     auto_release_days: int = 7
+    # Hours the other party has to answer a dispute before it reaches the
+    # admin queue. Long enough that somebody in another timezone with a day
+    # job can actually reply; short enough that a real refusal is not a month
+    # of frozen money. A setting rather than a constant because the right
+    # number is a thing the pilot will tell us, not a thing we know.
+    dispute_response_hours: int = 72
     # Comma separated list of origins allowed to call the API from a browser
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.

@@ -53,6 +53,12 @@ const fr = {
   untitled: "Campagne sans titre",
   unknownCreator: "Créateur",
 
+  /* La contrepartie, telle qu'elle s'appelle de ce côté du séquestre. Sur
+     l'écran du créateur le même filtre s'appelle "Client" : c'est toujours
+     "l'autre partie", et qui c'est dépend de qui regarde. */
+  creatorLabel: "Créateur",
+  creatorAll: "Tous les créateurs",
+
   empty: "Aucun paiement pour l'instant.",
   emptyHint: "Un paiement apparaît ici quand vous bloquez l'argent en séquestre — après la signature du contrat, pas à la commande.",
   loadFailed: "Impossible de charger vos paiements pour l'instant."
@@ -87,6 +93,9 @@ const en = {
   noDate: "—",
   untitled: "Untitled campaign",
   unknownCreator: "Creator",
+
+  creatorLabel: "Creator",
+  creatorAll: "All creators",
 
   empty: "No payments yet.",
   emptyHint: "A payment appears here when you hold the money in escrow — after the contract is signed, not when you order.",

@@ -90,6 +90,16 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/* Three totals, each a map of currency to amount. Written out rather than
+   inferred because the memo below has an early return for "no data yet", and
+   an empty object literal infers as {} — which cannot be indexed by a
+   currency code. */
+type EarningsTotals = {
+  earned: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+};
+
 export default function EarningsPage() {
   const { t, i18n } = useTranslation();
   const { token, isAuthenticated } = useAuth();
@@ -138,7 +148,7 @@ export default function EarningsPage() {
      carries, so they are the better answer whenever they are an answer to the
      same question. The moment this page narrows further, they stop being an
      answer to the same question and are rebuilt from the surviving rows. */
-  const totals = useMemo(() => {
+  const totals = useMemo<EarningsTotals>(() => {
     if (!data) return { earned: {}, pending: {}, disputed: {} };
     if (filtersLocally(filter)) return earningsTotals(payments);
     return { earned: data.earned, pending: data.pending, disputed: data.disputed };

@@ -92,6 +92,17 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/* Four totals, each a map of currency to amount. Written out rather than
+   inferred because the memo below has an early return for "no data yet", and
+   an empty object literal infers as {} — which cannot be indexed by a
+   currency code. */
+type SpendTotals = {
+  spent: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+  refunded: Record<string, number>;
+};
+
 export default function PaymentsPage() {
   const { t, i18n } = useTranslation();
   const { token, isAuthenticated } = useAuth();
@@ -134,7 +145,7 @@ export default function PaymentsPage() {
      computed over every escrow rather than over the hundred rows the list
      carries. Rebuilt here the moment this page narrows further, so the
      figures never describe a wider question than the table under them. */
-  const totals = useMemo(() => {
+  const totals = useMemo<SpendTotals>(() => {
     if (!data) return { spent: {}, pending: {}, disputed: {}, refunded: {} };
     if (filtersLocally(filter)) return spendTotals(payments);
     return { spent: data.spent, pending: data.pending, disputed: data.disputed, refunded: data.refunded };

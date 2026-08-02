@@ -26,6 +26,13 @@ WHAT DOES NOT CHANGE, AND WHY.
     of "is there a contract between us ON THIS CAMPAIGN", which is the same
     question one scope wider.
 
+  * THE CONTACT GUARD. Addressing a person rather than a campaign changes
+    nothing about what may travel: send_to runs the same
+    app.core.contact_guard check as the per-campaign send, for the same
+    reason. Two ways to write a message must not mean one way to write a
+    phone number — a guard with a hole in it is worse than none, because it
+    looks finished.
+
   * campaign_id STAYS ON THE MESSAGE ROW. It would have been tidy to drop it
     now that messages are addressed by person, and it would have thrown away
     history: every message ever sent knows which job it was about, and that
@@ -52,6 +59,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.contact_guard import check_no_contact_details
 from app.core.identity import creator_identities
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
@@ -297,6 +305,16 @@ def send_to(db: Session, sender_id: str, to_user_id: str, body: str) -> dict:
         )
 
     shared = _require_contracts(db, sender_id, to_user_id)
+
+    # The same rule as the per-campaign send, deliberately not a different
+    # one: swapping contact details is how a deal leaves Kolabo with the
+    # escrow and the fee, and two endpoints that write the same table must not
+    # disagree about what may go into it. A guard wired to one of two send
+    # paths is worse than no guard, because it looks finished. See
+    # service.send_message for the rule in full, including why it is friction
+    # rather than prevention and why nothing is ever silently redacted.
+    check_no_contact_details(body, "message")
+
     newest = shared[0]
 
     message = Message(

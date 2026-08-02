@@ -306,12 +306,73 @@ export type EarningPayment = {
 
    A business calling this endpoint gets empty maps and an empty list, on
    purpose — buyer-side SPEND is a different question with the opposite sign
-   and wants its own endpoint. */
+   and has its own endpoint, GET /payments/spend, typed just below. */
 export type Earnings = {
   earned: Record<string, number>;
   pending: Record<string, number>;
   disputed: Record<string, number>;
   payments: EarningPayment[];
+};
+
+/* One line of a BUYER's statement (GET /payments/spend). Mirror of
+   SpendPaymentOut in backend/app/modules/payments/schemas.py.
+
+   NO COMMISSION COLUMNS, which is the visible difference from EarningPayment
+   and the whole reason the two are separate types rather than one with
+   optional fields. The platform's cut comes out of the creator's release and
+   not out of the buyer's payment: a brand that funded 100000 paid 100000, and
+   a "net" field here would invite it to think it had been charged something
+   it was not.
+
+   refunded_amount is the part of this contract that came back after a dispute
+   split, and it is zero on almost every row. It is ON THE LINE and not only
+   in the totals because otherwise a split shows 60000 spent against a
+   contract the buyer funded with 100000, and the missing 40000 sits in a
+   total with no line to trace it to.
+
+   counterparty_name is the CREATOR here, where on an earnings row it is the
+   buyer — the field is "the other party", resolved by whichever side is
+   reading. Null before they have written a profile, never a phone number
+   standing in for it.
+
+   date is when it settled if it settled and when it was funded if it has not,
+   naive UTC like every other datetime from this API, so it goes through
+   parseApiDate. */
+export type SpendPayment = {
+  escrow_id: string;
+  contract_id: string;
+  campaign_title: string | null;
+  counterparty_name: string | null;
+  amount: number;
+  refunded_amount: number;
+  currency: string;
+  status: string;
+  date: string | null;
+};
+
+/* The buyer's money in FOUR states (GET /payments/spend).
+
+   Four rather than the earnings screen's three because refunded money is a
+   real line in a buyer's ledger and no line at all in a creator's: they paid
+   it and got it back, and both halves have to be visible or the arithmetic
+   does not close. For the creator it is money that never arrived.
+
+   Every total is a map of currency to amount for exactly the reason Earnings
+   is, and the rule is the same one: XOF and GHS are not addends, so there is
+   no field here a client could render as "total spend" across two markets.
+
+   disputed stays out of pending for the mirror of the reason it does on the
+   creator's screen: pending is money the buyer expects to lose, disputed is
+   money they may get back.
+
+   A creator calling this endpoint gets four empty maps and an empty list, on
+   purpose — they are on no escrow as the buyer. */
+export type Spend = {
+  spent: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+  refunded: Record<string, number>;
+  payments: SpendPayment[];
 };
 
 /* What POST /profiles/{userId}/media answers with (MediaOut). The id is what

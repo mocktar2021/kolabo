@@ -36,6 +36,17 @@ def test_platforms_without_public_metrics_are_excluded_from_audience():
     assert "instagram" in platforms.PLATFORMS_WITH_AUDIENCE
 
 
+def test_every_catalog_platform_is_connectable(): 
+    """SOCIAL_PLATFORMS is DERIVED from the catalog rather than listed beside
+    it, which is what makes this true by construction: adding a platform to
+    PLATFORM_DELIVERABLES makes it connectable in the same edit, and there is
+    no second allow-list to forget. The ones with no public audience metric
+    are in the catalog too — having no follower count is not the same as not
+    existing."""
+    assert platforms.SOCIAL_PLATFORMS == set(platforms.PLATFORM_DELIVERABLES)
+    assert {"whatsapp", "discord", "ugc"} <= platforms.SOCIAL_PLATFORMS
+
+
 @pytest.fixture()
 def client():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
@@ -101,3 +112,53 @@ def test_follower_count_is_stored_per_platform(client):
     accounts = client.get(f"/profiles/{uid}/social-accounts").json()
     counts = {a["platform"]: a["follower_count"] for a in accounts}
     assert counts == {"instagram": 6100, "tiktok": 2100}
+
+
+def test_a_creator_can_connect_a_whatsapp_account(client):
+    """WhatsApp is a first-class platform to connect, and nothing in the path
+    treats it as second class: SOCIAL_PLATFORMS is derived from the catalog so
+    membership is automatic, and connect_social_account holds it to the same
+    two rules as any other platform (a known platform, and a proof_url when
+    the method is manual).
+
+    WHAT IT DOES NOT GET IS A FOLLOWER COUNT, and dropping one is not the same
+    as refusing the connection. WhatsApp Status exposes no public metric, so a
+    number supplied for it is unverifiable, and showing a buyer a figure the
+    platform itself cannot confirm is worse than showing none. The account
+    connects, lists, and carries a null count — which is a real answer
+    ("unknown"), not a zero.
+
+    A creator who sells WhatsApp Status therefore appears with an audience of
+    null rather than being unable to say they are on WhatsApp at all. Their
+    packages price it; app.core.identity simply never picks it as the headline
+    number.
+    """
+    uid = _user(client, "+22990000304")
+    r = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "whatsapp", "handle": "ama-studio", "method": "manual",
+        "proof_url": "https://p", "follower_count": 5000,
+    })
+    assert r.status_code == 201, r.text
+    assert r.json()["platform"] == "whatsapp"
+    assert r.json()["status"] == "pending"
+    assert r.json()["follower_count"] is None
+
+    listed = client.get(f"/profiles/{uid}/social-accounts").json()
+    assert [(a["platform"], a["follower_count"]) for a in listed] == [("whatsapp", None)]
+
+
+def test_a_whatsapp_status_package_can_be_sold(client):
+    """The other half of connecting one: status is WhatsApp's only deliverable
+    and it is orderable like any other."""
+    uid = _user(client, "+22990000305")
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "whatsapp", "deliverable_type": "status",
+        "title": "1 WhatsApp Status", "price_amount": 15000, "currency": "XOF",
+    })
+    assert r.status_code == 201, r.text
+    r = client.post(f"/profiles/{uid}/packages", json={
+        "platform": "whatsapp", "deliverable_type": "post",
+        "title": "Not a thing", "price_amount": 15000, "currency": "XOF",
+    })
+    assert r.status_code == 400
+    assert "not available on whatsapp" in r.json()["detail"]

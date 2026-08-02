@@ -49,7 +49,7 @@ favourite all name a creator the same way. The notifications this module
 raises spend that same identity, because a notification that does not name the
 person it is about is one the reader has to open the app to understand.
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -77,6 +77,12 @@ AUTHOR_EXCLUDED_ROLE = "influencer"
 # and an unbounded chain would let one stubborn thread decide how long the
 # whole page takes to load.
 MAX_PROPOSAL_VERSIONS = 20
+
+# The statuses a buyer may filter its own campaign list by — which is every
+# status a campaign can hold. Named off models rather than spelled out again,
+# so a fourth status becomes filterable the day it exists instead of silently
+# becoming a 400 for anybody who asks about it.
+MY_CAMPAIGN_STATUSES = (models.DRAFT, models.PUBLISHED, models.CANCELLED)
 
 # What a notification calls somebody who has not written a profile yet.
 #
@@ -203,6 +209,29 @@ def _checked_description(description: str | None) -> str | None:
     """
     check_no_contact_details(description, "brief description")
     return description
+
+
+def _checked_campaign_status(value: str | None) -> str | None:
+    """A status a buyer may filter its own list by, or a 400 naming the set.
+
+    Refused rather than answered with an empty list, which is the opposite of
+    what discovery search does with an unknown platform — and the difference
+    is whose data is being asked about. An empty search result is a true
+    answer about strangers. An empty list of YOUR OWN campaigns reads as "you
+    have none", which is the single most alarming thing this endpoint could
+    say to somebody with a quarter of live briefs, and it sends them to
+    support rather than to the fix.
+
+    A module-level helper rather than an inline check because the parameter it
+    validates is called `status`, which shadows the fastapi module of the same
+    name inside list_my_campaigns. Here the name is free.
+    """
+    if value is None or value in MY_CAMPAIGN_STATUSES:
+        return value
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"status must be one of: {', '.join(MY_CAMPAIGN_STATUSES)}",
+    )
 
 
 def _validate_deliverables(deliverables: list) -> None:
@@ -986,20 +1015,62 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
     }
 
 
-def list_my_campaigns(db: Session, business_user_id: str) -> list[dict]:
-    """The buyer's own campaigns, briefs and direct orders alike.
+def list_my_campaigns(
+    db: Session,
+    business_user_id: str,
+    status: str | None = None,
+    created_after=None,
+    created_before=None,
+) -> list[dict]:
+    """The buyer's own campaigns, briefs and direct orders alike, newest first.
 
     Deliberately NOT filtered on is_direct. Hiding direct orders is about
     keeping a private transaction off a public board; this list is scoped to
     the one person who placed them, and an order they cannot find is an order
     they cannot chase.
+
+    THE FILTERS ARE THE BUYER'S OWN VIEW, exactly as the open board's are the
+    creator's: they narrow what comes back and change nothing about the rows
+    or the order (still newest first). A brand three months into using this
+    has a list it scrolls to find last week's brief in, and "which of these
+    are still live" is the question it opens the page asking. Both default to
+    None, so a client that sends neither gets the whole list it always got.
+
+    THE DATE RANGE IS ON created_at AND IS IN UTC, because created_at is
+    stored as naive UTC (models.utcnow). A buyer in Cotonou asking for "today"
+    gets the UTC day, which is an hour off theirs and is the honest thing to
+    do until the client sends a timezone: guessing one here would put a brief
+    in the wrong day silently, where being an hour wide is at least uniform.
+
+    created_before is INCLUSIVE OF THE WHOLE DAY. Somebody picking a date on a
+    calendar means "up to and including that day", and a naive `created_at <=
+    midnight` would drop everything written after midnight on the day they
+    picked — which is all of it.
+
+    `status` shadows the fastapi module imported at the top of this file, but
+    only inside this function, and nothing in here needs it: the one refusal
+    it can raise lives in _checked_campaign_status, where the name is free.
+    The parameter keeps the field's name because that is what the client and
+    the column already call it.
     """
-    rows = (
-        db.query(models.Campaign)
-        .filter(models.Campaign.business_user_id == business_user_id)
-        .order_by(models.Campaign.created_at.desc())
-        .all()
+    query = db.query(models.Campaign).filter(
+        models.Campaign.business_user_id == business_user_id
     )
+    checked = _checked_campaign_status(status)
+    if checked is not None:
+        query = query.filter(models.Campaign.status == checked)
+    if created_after is not None:
+        query = query.filter(
+            models.Campaign.created_at >= datetime.combine(created_after, time.min)
+        )
+    if created_before is not None:
+        # The start of the NEXT day, strictly greater-than, which is how a
+        # whole inclusive day is expressed against a timestamp column.
+        query = query.filter(
+            models.Campaign.created_at
+            < datetime.combine(created_before, time.min) + timedelta(days=1)
+        )
+    rows = query.order_by(models.Campaign.created_at.desc()).all()
     return [_to_out(c) for c in rows]
 
 

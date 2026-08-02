@@ -27,6 +27,30 @@ row from anybody's board.
   and that costs it the creator. So the targeting fields buy ranking, not
   exclusion.
 
+THE CREATOR'S FILTERS ARE A DIFFERENT THING FROM THE BRAND'S TARGETING, and
+the two are close enough to be mistaken for each other, so: the query
+parameters on GET /campaigns/open (min_budget, max_budget, category, country,
+platform, deadline_before) NARROW the set of briefs. match_score does not
+narrow anything and never has — it ORDERS whatever survives the narrowing.
+They run in that order and they are not the same mechanism wearing two names.
+
+  Why one is allowed to hide briefs and the other is not. The paragraph above
+  refuses a hard filter because it is the BRAND deciding, in advance and
+  invisibly, which creators are allowed to see a budget — and the creator it
+  excluded never learns the brief existed. A filter here is the CREATOR
+  deciding, for themselves, right now, that they do not want to read briefs
+  under 100k. They chose it, they can see they chose it, and they undo it by
+  clearing the box. Nobody is being kept out of a room they did not know was
+  there.
+
+  A consequence worth stating because it looks like a bug: filtering on
+  category or country reads the brand's TARGET lists, so an untargeted brief
+  — which by design appears on every unfiltered board — drops out of a
+  category-filtered one. Its target_categories is empty, so it matches no
+  category. That is the honest answer to "show me briefs aimed at fashion":
+  a brief aimed at nobody in particular is not one of them, and the creator
+  who wants to see it again clears the filter.
+
 WHO MAY READ THE BOARD. Signed-in creators, and nobody else — not the public,
 and not the buying side. A brief carries a budget, a deadline and the shape of
 a brand's plans for the quarter, which is competitive information: discovery
@@ -35,14 +59,16 @@ is the opposite of that. A business or agency calling it gets a 403 rather
 than an empty list, because an empty list reads as "there are no open briefs"
 and sends them to support.
 
-A separate module from service.py for the reason editing.py and withdrawals.py
-are: service.py is already long and is about creating campaigns and running
-the negotiation on them. The dependency runs one way — router -> board ->
-service, models. PROPOSAL CREATION IS NOT DUPLICATED HERE: applying calls
-service.submit_proposal, which stays the one place a proposal row is written,
-numbered and notified. The only thing this module tells it is that the bid was
-unsolicited, which changes the wording of that notification and nothing else.
+A separate module from service.py, which is already long and is about
+creating campaigns and running the negotiation on them. The dependency runs
+one way — router -> board -> service, models. PROPOSAL CREATION IS NOT
+DUPLICATED HERE: applying calls service.submit_proposal, which stays the one
+place a proposal row is written, numbered and notified. The only thing this
+module tells it is that the bid was unsolicited, which changes the wording of
+that notification and nothing else.
 """
+from datetime import date
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -127,7 +153,8 @@ def match_score(
     giving an untargeted brief a middling score so it interleaves — would
     push real matches down the page on behalf of briefs whose author never
     said who they wanted. The untargeted brief still APPEARS, on every
-    creator's board, which is the part that matters: it is open to all.
+    creator's unfiltered board, which is the part that matters: it is open to
+    all.
 
     An unknown follower count scores nothing rather than being read as zero.
     Zero is a claim we cannot make, and making it would sink every creator
@@ -248,11 +275,56 @@ def _targeting_out(campaign: models.Campaign) -> dict:
     }
 
 
+def _matches_list_filters(
+    campaign: models.Campaign,
+    category: str | None,
+    country: str | None,
+    platform: str | None,
+) -> bool:
+    """The three filters that read a JSON column, applied in Python.
+
+    IN PYTHON RATHER THAN IN SQL, and the reason is the storage rather than a
+    preference. target_categories, target_countries and deliverables are JSON
+    columns — the campaigns model says why: nothing joins on them, they are
+    read whole, one campaign at a time. Containment over JSON is a different
+    expression on SQLite (tests) than on Postgres (production), and a filter
+    that behaves differently in the two is a filter nobody can trust a test
+    about. The row set is already bounded by the three status filters and is
+    pilot-sized, and every row is already being scored in Python one line
+    below this, so the scan costs nothing that was not already being paid.
+
+    Budget and deadline are real columns and are filtered in SQL, where they
+    belong. That split is the only reason the filtering happens in two places.
+
+    A brief matches a `platform` filter when ANY of its deliverables is on
+    that platform, not all of them: a brief asking for two Instagram posts and
+    a TikTok video is work a TikTok creator can do a part of, and hiding it
+    would hide a job from somebody qualified to bid on some of it.
+    """
+    if category is not None and category not in (campaign.target_categories or []):
+        return False
+    if country is not None and country not in (campaign.target_countries or []):
+        return False
+    if platform is not None and not any(
+        (deliverable or {}).get("platform") == platform
+        for deliverable in (campaign.deliverables or [])
+    ):
+        return False
+    return True
+
+
 def list_open_campaigns(
     db: Session,
     influencer_user_id: str,
     limit: int = BOARD_LIMIT,
     offset: int = 0,
+    *,
+    min_budget: int | None = None,
+    max_budget: int | None = None,
+    category: str | None = None,
+    country: str | None = None,
+    platform: str | None = None,
+    deadline_before: date | None = None,
 ) -> list[dict]:
     """The open board for one creator: every open brief, best fit first.
 
@@ -264,8 +336,32 @@ def list_open_campaigns(
     campaign's clothes, and the rule that it stays off any listing somebody
     else can read is older than this module.
 
-    Targeting is NOT in the filter and that is the whole design — see the
-    module docstring. It is in the sort.
+    THE BRAND'S TARGETING IS STILL NOT IN THE FILTER. It is in the sort, and
+    the module docstring says why at length.
+
+    THE CREATOR'S OWN FILTERS ARE, and they are a different mechanism that
+    happens to sit beside it. Every keyword argument below NARROWS the set;
+    match_score then ORDERS whatever survived. Read in that order the two are
+    obviously distinct, and read in any other order they look like one feature
+    contradicting itself: the ranking is not consulted about what to hide, and
+    the filters are not consulted about what comes first. A filtered board is
+    still a ranked board — the best fit among the briefs the creator asked to
+    see.
+
+    All six default to None, meaning "no opinion", so a client that has never
+    heard of them gets exactly the board it got before.
+
+    Two notes on the edges, because both are decisions rather than accidents:
+
+      * deadline_before is INCLUSIVE (<=). A creator typing a date means "work
+        I can still deliver by then", and a brief due on precisely that day
+        qualifies. It also drops briefs with NO deadline, which SQL does for
+        free by never matching NULL: "due by the 30th" cannot honestly include
+        a brief that never said when it is due. In practice this is empty — a
+        deadline is required to publish — but rows predating that rule exist.
+
+      * min_budget and max_budget likewise drop a brief with no budget at all.
+        Same reason, same NULL behaviour, same practical emptiness.
     """
     user = _require_creator(db, influencer_user_id)
     profile = (
@@ -280,21 +376,34 @@ def list_open_campaigns(
     creator_categories = list(profile.categories or []) if profile is not None else []
     creator_followers = profile.follower_count if profile is not None else None
 
-    campaigns = (
-        db.query(models.Campaign)
-        .filter(
-            models.Campaign.status == models.PUBLISHED,
-            models.Campaign.is_open.is_(True),
-            models.Campaign.is_direct.is_(False),
-        )
-        .all()
+    query = db.query(models.Campaign).filter(
+        models.Campaign.status == models.PUBLISHED,
+        models.Campaign.is_open.is_(True),
+        models.Campaign.is_direct.is_(False),
     )
+    # The column-backed filters, in the database. See _matches_list_filters
+    # for why the other three are not.
+    if min_budget is not None:
+        query = query.filter(models.Campaign.budget_amount >= min_budget)
+    if max_budget is not None:
+        query = query.filter(models.Campaign.budget_amount <= max_budget)
+    if deadline_before is not None:
+        query = query.filter(models.Campaign.deadline <= deadline_before)
+
+    campaigns = [
+        campaign
+        for campaign in query.all()
+        if _matches_list_filters(campaign, category, country, platform)
+    ]
     if not campaigns:
         return []
 
     names = _company_names(db, [c.business_user_id for c in campaigns])
     applied, invited = _my_state(db, [c.id for c in campaigns], influencer_user_id)
 
+    # Ranking, over whatever the filters left. Unchanged by their arrival:
+    # this scores the set it is handed, and it has never had an opinion about
+    # how that set was chosen.
     scored = [
         (
             campaign,
@@ -347,6 +456,12 @@ def apply_to_campaign(
     its campaign page, with no change there at all — get_campaign_detail
     selects every proposal on the campaign and has never filtered by
     invitation.
+
+    NOTHING HERE CONSULTS THE BOARD'S FILTERS, and that is the point of them
+    being the creator's own view rather than a rule. A creator who narrowed
+    their board to fashion briefs over 100k may still apply to a 40k travel
+    brief they reached by any other route: the filter decided what they were
+    shown, never what they are allowed to want.
 
     is_application=True is the ONE thing this path tells submit_proposal, and
     it changes the notification's wording and nothing else. The row and the

@@ -202,8 +202,9 @@ const MENU_DASH: React.CSSProperties = {
    screen, the account settings and signing out. They are what you go looking
    for once you have stopped, which is the shape a profile menu has in every
    product that has one. Moving them behind the avatar leaves the live
-   destinations (Découvrir, Campagnes or Invitations, Contrats, Messages,
-   Litiges) readable at laptop widths instead of wrapping onto a second row.
+   destinations (Découvrir, Briefs or Campagnes, Invitations, Contrats,
+   Messages, Litiges) readable at laptop widths instead of wrapping onto a
+   second row.
 
    THE AVATAR IS A GRADIENT AND NOT A PHOTO, and that is a decision rather
    than a placeholder. Layout mounts on every screen of the app and already
@@ -328,12 +329,12 @@ function AppNav() {
      one, so for a creator /campaigns is a page that can never hold anything.
      Invitations run the other way — a business sends them and never receives
      one, so its invitations page would be empty by construction; the answers
-     to what it sent arrive as proposals on its own campaign. The cart is the
-     same question a third time: a creator has nothing to put in one and the
-     checkout endpoint answers them 403, so the indicator is hidden rather
-     than linking to a page that could only refuse them — which is exactly
-     what BrandOnly does for the route itself. Agencies buy the way businesses
-     do, hence isBusinessLike.
+     to what it sent arrive as proposals on its own campaign. The open board
+     is the same question a third time and the sharpest version of it: GET
+     /campaigns/open answers a brand 403, because a brief carries a budget and
+     the shape of a competitor's quarter. The cart is the fourth: a creator has
+     nothing to put in one and checkout answers them 403. Agencies buy the way
+     businesses do, hence isBusinessLike.
 
      Messages are the exception that proves it: a contract has two parties and
      the thread belongs to both, so that entry is not asked the question at
@@ -348,6 +349,7 @@ function AppNav() {
     <div className="nav-links">
       <LanguageSwitch />
       <Link className="btn btn-ghost" to="/discover">{t("nav.discover")}</Link>
+      {!isBrand && <Link className="btn btn-ghost" to="/board">{t("nav.board")}</Link>}
       {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>

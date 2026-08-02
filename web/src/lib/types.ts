@@ -25,6 +25,53 @@ export type Campaign = {
      the edit form, because PATCH answers 400 on one. An order's terms are a
      negotiation, and the way to change them is to counter. */
   is_direct: boolean;
+  /* Whether the brief is on the open board, where any creator may apply to it
+     without an invitation. On the ordinary campaign payload and not only on
+     the board's own, because the buyer's list of its campaigns has to be able
+     to say which of them strangers can answer — that is the difference
+     between a brief with three invited creators and a brief that may collect
+     thirty applications overnight. */
+  is_open: boolean;
+  /* Who the brand hopes to reach. THESE FOUR RANK, THEY DO NOT EXCLUDE: a
+     creator who matches sees the brief first, and every creator sees it.
+     backend/app/modules/campaigns/board.py holds the reasoning; the naming
+     says "target" rather than "require" for exactly that reason.
+
+     The two lists are NOT NULL server-side and arrive as [] when nothing is
+     targeted, so no reader has to handle a null. The two bounds are genuinely
+     nullable — an unnamed end of the band is open rather than zero or
+     infinite. */
+  target_categories: string[];
+  target_countries: string[];
+  target_min_followers: number | null;
+  target_max_followers: number | null;
+};
+
+/* One row of the open board (GET /campaigns/open). Mirror of OpenBriefOut in
+   backend/app/modules/campaigns/schemas.py.
+
+   The whole brief and not a summary of it, because a creator decides from
+   this card whether to spend an evening pricing the job — and deliverables,
+   budget and deadline are exactly what they would be pricing. Campaign
+   already carries all of it, so this only adds what the board itself knows.
+
+   match_score is a small bounded whole number (0..MAX_MATCH_SCORE in
+   campaigns/board.py) and is A RANKING HINT, NOT A VERDICT: a zero-scoring
+   brief is just as applicable as a perfect one, which is the entire point of
+   a soft filter. It is shown rather than hidden, because a board that
+   silently reorders itself is a board creators invent theories about.
+
+   has_applied and is_invited keep the card honest about what this creator has
+   already done here — applying twice is refused with a 409, and finding that
+   out from the button rather than from the error is the difference between a
+   board and a trap. */
+export type OpenBrief = Campaign & {
+  /* Who is asking. Null while the buyer has written no profile — the users
+     table has only a phone number to offer, and that is never exposed. */
+  business_company_name: string | null;
+  match_score: number;
+  has_applied: boolean;
+  is_invited: boolean;
 };
 
 /* How a creator appears on any row a business reads: favourites, campaign

@@ -12,6 +12,7 @@ import AccountPage from "./pages/Account";
 import EarningsPage from "./pages/Earnings";
 import PaymentsPage from "./pages/Payments";
 import Discover from "./pages/Discover";
+import BoardPage from "./pages/Board";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
 import CampaignDetailPage from "./pages/CampaignDetail";
@@ -67,7 +68,15 @@ function BrandOnly({ children }: { children: ReactNode }) {
    gone from their wallet rather than money coming into it. Answering both
    from one endpoint would make every field mean two things, so buyer-side
    spend has its own endpoint (GET /payments/spend) and its own screen at
-   /payments. A business sent away from here has somewhere to go. */
+   /payments. A business sent away from here has somewhere to go.
+
+   THE OPEN BOARD IS THE STRONGEST CASE FOR THIS WRAPPER, because the API does
+   not merely answer a brand emptily — GET /campaigns/open answers it 403. A
+   brief carries a budget, a deadline and the shape of a brand's plans for the
+   quarter, which is competitive information: discovery search is public
+   because a creator's storefront exists to be seen, and the board is the
+   opposite of that. A brand that typed /board would get an error page where
+   its competitors' budgets were never going to be. */
 function CreatorOnly({ children }: { children: ReactNode }) {
   if (isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -100,6 +109,9 @@ export default function App() {
               why it is not the same route with a role branch inside it. */}
           <Route path="/payments" element={<BrandOnly><PaymentsPage /></BrandOnly>} />
           <Route path="/discover" element={<Discover />} />
+          {/* The open board: the briefs a creator can find without having been
+              invited. Creators only, because the API says so with a 403. */}
+          <Route path="/board" element={<CreatorOnly><BoardPage /></CreatorOnly>} />
           <Route path="/campaigns" element={<CampaignList />} />
           <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />
           <Route path="/campaigns/:id" element={<CampaignDetailPage />} />

@@ -14,6 +14,10 @@ same chain, not a message. Terms that get argued over somewhere else end up
 agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
 contract, escrow, or protect either side of.
 
+Which is also why the note is the one free-text field in this module that is
+guarded: see _checked_note, and app.core.contact_guard for the rule and for
+the honest limits of it.
+
 Direct orders: a brand can also skip the brief entirely and buy a creator's
 package at the published price — or offer terms of its own when no listed
 package fits. Both are created here, as hidden single-creator campaigns,
@@ -47,6 +51,7 @@ from datetime import timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.contact_guard import check_no_contact_details
 from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
@@ -133,6 +138,34 @@ def _require_campaign_author(db: Session, user_id: str) -> User:
             detail="Only businesses and agencies can create campaigns.",
         )
     return user
+
+
+def _checked_note(note: str | None) -> str | None:
+    """A proposal note, refused if it carries contact details.
+
+    THE PRODUCT RULE, AND THE HONEST CLAIM ABOUT IT. Swapping a phone number
+    or an email is how a deal leaves Kolabo, and it takes the contract, the
+    escrow and the fee with it — what the two of them agree afterwards has
+    nothing behind it when it goes wrong. The note is where that is most
+    tempting, because it is the first free-text field either side gets and it
+    arrives before there is any contract to open a thread with. It is FRICTION,
+    NOT PREVENTION: a determined sender can spell a number out in words. It
+    stops the habit, which is most of them.
+
+    APPLIED AT EVERY WRITER OF Proposal.note, not just the obvious one. A
+    creator's bid, the business's counter, and the note on either kind of
+    direct order are four different functions writing the same column, and a
+    guard on one of them is worse than no guard — it looks finished. The two
+    order paths are checked in the RESOLVERS rather than in _place_order,
+    which keeps the property campaigns.cart depends on: every item in a basket
+    is held to the rule before a single row is written.
+
+    Never redacted. An altered note is worse than a refused one — these are
+    the terms of a deal, and a sentence quietly edited by the platform is a
+    term nobody agreed to.
+    """
+    check_no_contact_details(note, "proposal note")
+    return note
 
 
 def _validate_deliverables(deliverables: list) -> None:
@@ -335,6 +368,11 @@ def _place_order(
     second builder for multi-deliverable orders. rate_amount is the whole
     order's price, so for a cart it is the sum the caller worked out.
 
+    The note arrives already checked for contact details — both resolvers run
+    _checked_note before returning terms, which is what lets a cart refuse a
+    basket before it has written half of it. Nothing is re-checked here; one
+    answer to "may this note be written" is enough.
+
     Who is proposing, and why it is the business. Either the buyer picked a
     price the creator had already published and offered it back, or it named
     terms of its own; both are the brand making an offer, so author_role is
@@ -520,7 +558,10 @@ def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
         "rate_amount": offer.rate_amount,
         "currency": offer.currency.upper(),
         "timeline_days": offer.timeline_days,
-        "note": offer.note,
+        # Checked HERE rather than in _place_order so that a cart is refused
+        # before it has written any of its rows, which is the whole reason
+        # this function exists apart from the builder.
+        "note": _checked_note(offer.note),
     }
 
 
@@ -573,7 +614,10 @@ def resolve_package_terms(
         "rate_amount": package.price_amount,
         "currency": package.currency,
         "timeline_days": timeline_days,
-        "note": note,
+        # The buyer's own words, and the only free text on a package order —
+        # so the only place contact details could ride in. Same rule, same
+        # helper, same reason as everywhere else this column is written.
+        "note": _checked_note(note),
     }
 
 
@@ -703,6 +747,10 @@ def submit_proposal(
     if campaign.status != models.PUBLISHED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campaign is not open for proposals")
 
+    # Before the chain is touched, so a refused note leaves the previous
+    # version live rather than superseded by something that was never written.
+    note = _checked_note(payload.note)
+
     latest = latest_in_chain(db, campaign_id, influencer_user_id)
     next_version = 1
     if latest is not None:
@@ -720,7 +768,7 @@ def submit_proposal(
         rate_amount=payload.rate_amount,
         rate_currency=payload.rate_currency.upper(),
         timeline_days=payload.timeline_days,
-        note=payload.note,
+        note=note,
         author_role=models.AUTHOR_INFLUENCER,
         status=models.SUBMITTED,
         # Carried forward from whatever this version answers, exactly as
@@ -774,6 +822,11 @@ def reply_to_proposal(
     same chain, next number, and the offer on the table is still whatever the
     last version says.
 
+    Which is exactly why the note is guarded on THIS side too. A rule that
+    stopped a creator writing a phone number and let the brand write one back
+    would not be a rule, it would be a formality — and this is the reply that
+    was going to WhatsApp in the first place.
+
     A reply with no counter repeats the previous terms rather than leaving them
     blank. Every row in a chain is then a complete offer, and answering "what
     are we agreed on" never means reading backwards through the thread
@@ -801,6 +854,10 @@ def reply_to_proposal(
             detail="This proposal is closed and cannot be answered",
         )
 
+    # Before the supersede below, for the same reason as in submit_proposal: a
+    # refused reply must leave the creator's offer standing.
+    note = _checked_note(payload.note)
+
     reply = models.Proposal(
         campaign_id=campaign_id,
         influencer_user_id=latest.influencer_user_id,
@@ -811,7 +868,7 @@ def reply_to_proposal(
         # different deal wearing the same version number.
         rate_currency=latest.rate_currency,
         timeline_days=payload.timeline_days if payload.timeline_days is not None else latest.timeline_days,
-        note=payload.note,
+        note=note,
         author_role=models.AUTHOR_BUSINESS,
         status=models.SUBMITTED,
         # Carried forward, not restarted. A direct order that is being

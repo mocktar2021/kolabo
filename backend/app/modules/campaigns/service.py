@@ -14,9 +14,12 @@ same chain, not a message. Terms that get argued over somewhere else end up
 agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
 contract, escrow, or protect either side of.
 
-Which is also why the note is the one free-text field in this module that is
-guarded: see _checked_note, and app.core.contact_guard for the rule and for
-the honest limits of it.
+Which is also why the free text this module writes is guarded: see
+_checked_note for a proposal's reasoning, _checked_description for the brief
+itself, and app.core.contact_guard for the rule and for the honest limits of
+it. The two are the same rule at different blast radii — a note is read by one
+counterparty, while an open brief is readable by every signed-in creator on
+the board.
 
 Direct orders: a brand can also skip the brief entirely and buy a creator's
 package at the published price — or offer terms of its own when no listed
@@ -168,6 +171,40 @@ def _checked_note(note: str | None) -> str | None:
     return note
 
 
+def _checked_description(description: str | None) -> str | None:
+    """A brief in prose, refused if it carries contact details.
+
+    THE WIDEST-READ TEXT ON THE PLATFORM, which is why it is guarded even
+    though it is the brand's own words about the brand's own campaign. The
+    note above is read by ONE counterparty. An open brief is readable by every
+    signed-in creator on the board, so a number in a description is not one
+    leak that might cost one deal: it is the buyer's phone number placed in
+    front of the entire supply side in a single post, and every creator who
+    takes it off the board is a deal with no contract, no escrow and no
+    recourse for either side. A brand doing it does not even have to intend
+    anything — "des questions ? appelez-nous" is a habit, not a scheme, which
+    is exactly the case app.core.contact_guard is built to catch.
+
+    APPLIED AT BOTH WRITERS OF Campaign.description, for the reason
+    _checked_note gives about its own four: half a rule looks finished and is
+    not. Description is deliberately NOT in campaigns.editing.LOCKED_FIELDS —
+    it is description and not terms, so it stays editable from draft to
+    cancellation — and a guard that only ran at create would therefore be one
+    a brand clears by saving the brief a second time.
+
+    Same 400 and the same sentence as every other surface, naming the field so
+    the author knows which box to fix. Never redacted: a brief quietly edited
+    by the platform is a brief creators are pricing against words the brand
+    never wrote.
+
+    A closed brief is guarded too, and that is not overreach. is_open is one
+    PATCH away at any time, and a description written while nobody could read
+    it does not become safe the moment the brand opens the board.
+    """
+    check_no_contact_details(description, "brief description")
+    return description
+
+
 def _validate_deliverables(deliverables: list) -> None:
     """Reject briefs that ask for something no platform sells.
 
@@ -245,6 +282,10 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     # first keeps a creator from getting field-level errors on a request that
     # was never going to be accepted.
     _require_campaign_author(db, business_user_id)
+    # Before the catalog check and before any row is built. A brief whose
+    # prose cannot be published should hear about the prose, not first be
+    # marched through a deliverables error it would have hit anyway.
+    description = _checked_description(payload.description)
     deliverables = [d.model_dump() for d in payload.deliverables]
     # Validated even for drafts: a draft with deliverables the catalog does
     # not recognise would only blow up later, at publish, when the fix is no
@@ -253,7 +294,7 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     campaign = models.Campaign(
         business_user_id=business_user_id,
         title=payload.title,
-        description=payload.description,
+        description=description,
         budget_amount=payload.budget_amount,
         budget_currency=payload.budget_currency,
         deliverables=deliverables,

@@ -15,6 +15,11 @@ but left the row behind, or that quietly stripped the number and saved the
 rest, would pass a status-code assertion and would be a worse product than no
 guard at all — an altered message is a sentence the sender never wrote and the
 recipient cannot trust.
+
+The surfaces under test, in order of how many people can read them: a campaign
+description (every signed-in creator, once the brief is open), a message and a
+proposal note (one counterparty), a dispute statement (the parties and an
+admin).
 """
 from datetime import timedelta
 from types import SimpleNamespace
@@ -28,7 +33,9 @@ from sqlalchemy.pool import StaticPool
 from app.core.contact_guard import EMAIL, HANDLE, PHONE, find_contact_details
 from app.core.db import Base
 from app.modules.auth.models import User
+from app.modules.campaigns import editing as campaigns_editing
 from app.modules.campaigns import models as campaigns
+from app.modules.campaigns import schemas as campaigns_schemas
 from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import models as contracts
 from app.modules.messaging import conversations as messaging_conversations
@@ -171,8 +178,8 @@ def db():
 def _deal(db):
     """A brand, a creator, a published campaign, a contract and a held escrow.
 
-    Everything the four guarded surfaces need between them. The contract is
-    what opens messaging; the escrow is what a dispute freezes.
+    Everything the guarded surfaces need between them. The contract is what
+    opens messaging; the escrow is what a dispute freezes.
     """
     biz = User(
         phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True
@@ -312,6 +319,86 @@ def test_the_proposal_note_refuses_an_email(db):
     # live one, and no new row was written.
     assert db.query(campaigns.Proposal).count() == 1
     assert db.query(campaigns.Proposal).one().status == campaigns.SUBMITTED
+
+
+# --- the brief itself ------------------------------------------------------
+#
+# The widest-read free text on the platform. A note is read by one
+# counterparty; an OPEN brief is readable by every signed-in creator on the
+# board, so a number in a description is not one leak — it is the brand's
+# phone number put in front of the entire supply side in a single post.
+
+
+def test_a_brief_description_refuses_a_phone_number_on_create(db):
+    deal = _deal(db)
+    with pytest.raises(HTTPException) as exc:
+        campaigns_service.create_campaign(
+            db,
+            deal.business,
+            campaigns_schemas.CampaignCreate(
+                title="Launch push",
+                description="Brief complet sur demande, appelle-moi au 06 12 34 56 78.",
+                is_open=True,
+            ),
+        )
+    assert exc.value.status_code == 400
+    assert "phone number" in exc.value.detail
+    # The refusal names the surface, so the brand knows which box to fix.
+    assert "brief description" in exc.value.detail
+    # Refused, not redacted, and not half-saved: the only campaign in the
+    # database is still the one the fixture wrote.
+    assert db.query(campaigns.Campaign).count() == 1
+
+
+def test_editing_a_brief_cannot_smuggle_a_number_into_the_description(db):
+    """Description stays editable from draft to cancellation, so a guard that
+    only ran at create would be one a brand clears by saving twice."""
+    deal = _deal(db)
+    created = campaigns_service.create_campaign(
+        db,
+        deal.business,
+        campaigns_schemas.CampaignCreate(
+            title="Launch push", description="Warm, everyday, no studio lighting."
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        campaigns_editing.update_campaign(
+            db,
+            created["id"],
+            deal.business,
+            campaigns_schemas.CampaignPatch(
+                description="Écris-moi sur WhatsApp pour le brief complet."
+            ),
+        )
+    assert exc.value.status_code == 400
+    assert "messaging app handle" in exc.value.detail
+    # The stored brief is exactly what the creators reading it last saw.
+    stored = (
+        db.query(campaigns.Campaign).filter(campaigns.Campaign.id == created["id"]).one()
+    )
+    assert stored.description == "Warm, everyday, no studio lighting."
+
+
+def test_an_ordinary_brief_still_saves(db):
+    """The friction assertion for this surface. A real brief is full of the
+    numbers this marketplace runs on — a budget, a deadline, a reference — and
+    refusing one would teach a brand the platform is broken."""
+    deal = _deal(db)
+    created = campaigns_service.create_campaign(
+        db,
+        deal.business,
+        campaigns_schemas.CampaignCreate(
+            title="Launch push",
+            description=(
+                "Budget 1 000 000 XOF pour trois posts, livrés avant le 02/08/2026. "
+                "Référence interne CT-2026-000123."
+            ),
+            is_open=True,
+        ),
+    )
+    assert created["description"].startswith("Budget 1 000 000 XOF")
+    assert db.query(campaigns.Campaign).count() == 2
 
 
 def test_the_dispute_statement_refuses_a_phone_number(db):

@@ -24,6 +24,11 @@ product rules, written down once here:
     campaign, tells the people who were invited, and leaves the history where
     it is.
 
+Description staying editable forever is exactly why the contact guard has to
+run HERE as well as at create: see service._checked_description. A rule that
+only held the first time a brief was saved would be a rule a brand clears by
+saving it a second time.
+
 A separate module from service.py, which is already long and is about
 creating campaigns and running the negotiation on them. The dependency runs
 one way — router -> editing -> service — and contracts are read through
@@ -107,6 +112,11 @@ def update_campaign(
     Typos happen, and a brief nobody can fix is a brief that gets deleted and
     re-posted — which loses the proposals already on it. So editing is allowed
     and it is the SCOPE that narrows as the campaign acquires an audience.
+
+    The one thing that never widens is what the text may CONTAIN. Description
+    is editable from draft to cancellation, so it is the obvious way round a
+    guard that only ran at create, and it is checked here with the same helper
+    and the same sentence.
     """
     campaign = service._require_campaign_owner(db, campaign_id, business_user_id)
     _reject_direct(campaign)
@@ -133,6 +143,18 @@ def update_campaign(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="A campaign needs a title."
         )
+
+    if "description" in data:
+        # Same rule, same helper and same wording as authoring the brief. It
+        # runs on the key being PRESENT rather than on the value being truthy,
+        # so clearing the description to null still goes through the one
+        # function that decides what a description may say — and an explicit
+        # null is simply nothing to find.
+        #
+        # Order does not matter for the row: nothing below is written until
+        # the setattr loop at the end, so a refused description leaves the
+        # brief exactly as the creators reading it last saw it.
+        service._checked_description(data["description"])
 
     if campaign.status == models.PUBLISHED and _proposal_count(db, campaign_id) > 0:
         for field in LOCKED_FIELDS:

@@ -11,6 +11,7 @@ import "./lib/disputeStrings";
 import "./lib/adminStrings";
 import "./lib/accountStrings";
 import "./lib/earningsStrings";
+import "./lib/spendStrings";
 import "./lib/undoStrings";
 import "./lib/navMenuStrings";
 import "./styles/theme.css";

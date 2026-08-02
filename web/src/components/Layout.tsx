@@ -248,16 +248,18 @@ function AccountMenu() {
     };
   }, [open]);
 
-  /* The money entry is a different question on each side of the market — a
-     creator receives net of commission, a buyer pays gross — so the two are
-     two screens rather than one. Only the creator's exists so far; the
-     buyer's spend screen adds its own entry here when it lands. Offering a
-     brand a link now would be a menu item whose only outcome is a redirect
-     back to the dashboard, which is what the FeaturesMenu rule above
-     forbids: every entry links to a live route. */
+  /* The money entry, and it is a different question on each side of the
+     market — which is why it is two routes and not one. A creator opens
+     /earnings and reads NET figures, because the commission comes off at
+     release. A buyer opens /payments and reads GROSS ones, because the
+     commission never came out of their payment; their screen also carries a
+     refunded column, which is a line that does not exist in a creator's
+     ledger at all. Each side is offered the one that will answer it. */
   const items = [
     { to: "/profile", label: t("nav.profile") },
-    ...(isBrand ? [] : [{ to: "/earnings", label: t("nav.earnings") }]),
+    isBrand
+      ? { to: "/payments", label: t("nav.payments") }
+      : { to: "/earnings", label: t("nav.earnings") },
     /* The profile is how the market sees you; the account is how you sign
        in. They were the same page until the account settings existed, and
        the delete-account block sitting at the bottom of a profile form was

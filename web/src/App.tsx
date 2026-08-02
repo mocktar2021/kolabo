@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
 import AccountPage from "./pages/Account";
 import EarningsPage from "./pages/Earnings";
+import PaymentsPage from "./pages/Payments";
 import Discover from "./pages/Discover";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
@@ -36,7 +37,15 @@ import MarketingPage from "./pages/MarketingPage";
 
    The cart is guarded by the same wrapper for the same reason: checking out
    runs the identical role check server-side, and a creator who typed /cart
-   would be looking at a basket they can never order. */
+   would be looking at a basket they can never order.
+
+   /payments is the third: GET /payments/spend filters on business_user_id,
+   and a creator is on no escrow as the buyer, so the endpoint answers them
+   four empty maps. Their equivalent is /earnings, and the two are separate
+   screens rather than one because A BUYER PAYS GROSS WHILE A CREATOR RECEIVES
+   NET — the commission comes off the release, not the payment — and because
+   refunds are a real line in a buyer's ledger and money that never arrived in
+   a creator's. */
 function BrandOnly({ children }: { children: ReactNode }) {
   if (!isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -57,9 +66,8 @@ function BrandOnly({ children }: { children: ReactNode }) {
    deducted from it, refunds belong in it, and "pending" means money already
    gone from their wallet rather than money coming into it. Answering both
    from one endpoint would make every field mean two things, so buyer-side
-   spend is a separate view that does not exist yet. Until it does, a business
-   goes back to the dashboard rather than to a page that is zero by
-   construction. */
+   spend has its own endpoint (GET /payments/spend) and its own screen at
+   /payments. A business sent away from here has somewhere to go. */
 function CreatorOnly({ children }: { children: ReactNode }) {
   if (isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -88,6 +96,9 @@ export default function App() {
               DO on Kolabo, not in what an account is. */}
           <Route path="/account" element={<AccountPage />} />
           <Route path="/earnings" element={<CreatorOnly><EarningsPage /></CreatorOnly>} />
+          {/* The buyer's half of the same question. See BrandOnly above for
+              why it is not the same route with a role branch inside it. */}
+          <Route path="/payments" element={<BrandOnly><PaymentsPage /></BrandOnly>} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/campaigns" element={<CampaignList />} />
           <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />

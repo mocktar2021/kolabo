@@ -23,6 +23,9 @@ import "./lib/boardStrings";
 /* Same arrangement: this one adds nav.notifications to the nav.* group
    i18n.ts owns, so it has to come after it. */
 import "./lib/notificationStrings";
+/* And this one adds profile.noAudienceHint to the profile.* group i18n.ts
+   owns, for the same reason and in the same way. */
+import "./lib/socialStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

@@ -9,7 +9,7 @@ import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries
 import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import { minPrice } from "../lib/pricing";
-import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
+import { SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
@@ -93,7 +93,14 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
 
 /* Connected social accounts: list, inline edit, delete, and add. The add flow
    reuses the platform-tile + handle-modal pattern from onboarding as a light
-   local implementation rather than a shared component. */
+   local implementation rather than a shared component.
+
+   THE FOLLOWER COUNT IS NOT ASKED FOR ON EVERY PLATFORM. platformHasAudience
+   mirrors PLATFORMS_WITH_AUDIENCE in backend/app/core/platforms.py: WhatsApp
+   Status publishes no public metric, so there is no number to type, nothing
+   to verify it against later, and no figure a brand could compare with
+   anybody else's. Offering the box anyway would collect a guess and then show
+   it on a profile card as though the platform had confirmed it. */
 function SocialSection({ userId, token }: { userId: string; token: string | null }) {
   const { t } = useTranslation();
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
@@ -121,11 +128,23 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
     setBusy(true);
     setError(null);
     try {
+      /* Null for a platform with no audience, whatever is in the box.
+         Belt and braces: the input is not rendered there, so the state cannot
+         normally hold anything — but it CAN hold a stale value from the
+         previous row, because startEdit fills it from whichever account was
+         opened before. Reading the platform here rather than trusting the
+         form is what stops an Instagram figure being saved onto a WhatsApp
+         account. */
+      const platform = accounts.find((a) => a.id === id)?.platform;
+      const withAudience = platform ? platformHasAudience(platform) : true;
       // The response carries the new status: editing the handle resets a
       // verified account to pending, and the chip must reflect that at once.
       const updated = await api<SocialAccount>(`/profiles/${userId}/social-accounts/${id}`, {
         method: "PUT", token,
-        body: { handle: editHandle, follower_count: editFollowers ? Number(editFollowers) : null }
+        body: {
+          handle: editHandle,
+          follower_count: withAudience && editFollowers ? Number(editFollowers) : null
+        }
       });
       setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
       setEditingId(null);
@@ -172,16 +191,23 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
         <p className="muted" style={{ fontSize: 13.5 }}>{t("profile.socialEmpty")}</p>
       ) : (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-          {accounts.map((a) =>
-            editingId === a.id ? (
+          {accounts.map((a) => {
+            const withAudience = platformHasAudience(a.platform);
+            return editingId === a.id ? (
               <div key={a.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
                 <strong style={{ fontSize: 14 }}>{PLATFORM_LABELS[a.platform] ?? a.platform}</strong>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: withAudience ? "1fr 1fr" : "1fr", gap: 8, marginTop: 8 }}>
                   <input className="input" aria-label={t("onb.yourHandle")} value={editHandle}
                     onChange={(e) => setEditHandle(e.target.value.replace(/^@/, "").trim())} />
-                  <input className="input" aria-label={t("profile.followers")} inputMode="numeric" placeholder={t("profile.followers")}
-                    value={editFollowers} onChange={(e) => setEditFollowers(e.target.value.replace(/\D/g, ""))} />
+                  {withAudience && (
+                    <input className="input" aria-label={t("profile.followers")} inputMode="numeric" placeholder={t("profile.followers")}
+                      value={editFollowers} onChange={(e) => setEditFollowers(e.target.value.replace(/\D/g, ""))} />
+                  )}
                 </div>
+                {/* Said rather than left to be noticed. A creator who counts on
+                    their WhatsApp audience will see the missing box and assume
+                    something broke. */}
+                {!withAudience && <div className="hint">{t("profile.noAudienceHint")}</div>}
                 <div className="hint">{t("profile.socialEditHint")}</div>
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button type="button" className="btn btn-primary" style={{ padding: "7px 14px", fontSize: 13 }} disabled={busy || !editHandle} onClick={() => saveEdit(a.id)}>
@@ -195,6 +221,9 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ fontSize: 14 }}>{PLATFORM_LABELS[a.platform] ?? a.platform}</strong>
                   <div className="muted" style={{ fontSize: 12 }}>
+                    {/* The audience half only renders on a non-null count,
+                        which is what keeps a WhatsApp row from showing an
+                        empty chip: the server never stores one for it. */}
                     @{a.handle}{a.follower_count !== null && ` · ${a.follower_count.toLocaleString()} ${t("public.audienceUnit")}`}
                   </div>
                 </div>
@@ -210,8 +239,8 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                   <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(a.id)}>{t("profile.socialDelete")}</button>
                 </div>
               </div>
-            )
-          )}
+            );
+          })}
         </div>
       )}
 
@@ -243,6 +272,11 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                 value={newHandle} onChange={(e) => setNewHandle(e.target.value.replace(/^@/, "").trim())}
                 onKeyDown={(e) => { if (e.key === "Enter" && newHandle) add(newHandle); }} />
             </div>
+            {/* Nothing about an audience is asked for here on any platform —
+                the add flow only takes a handle — but the hint belongs on the
+                platforms where it will never be asked for at all, so a
+                creator knows before connecting rather than after. */}
+            {!platformHasAudience(adding.id) && <div className="hint">{t("profile.noAudienceHint")}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
               <button className="btn btn-ghost" onClick={() => { setAdding(null); setNewHandle(""); }}>{t("onb.cancel")}</button>
               <button className="btn btn-primary" disabled={!newHandle || busy} onClick={() => add(newHandle)}>

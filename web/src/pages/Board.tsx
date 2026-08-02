@@ -5,7 +5,9 @@ import { Layout } from "../components/Layout";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
-import { PLATFORM_LABELS } from "../lib/platforms";
+import { CATEGORIES } from "../lib/categories";
+import { COUNTRIES } from "../lib/countries";
+import { PLATFORM_LABELS, SELLABLE_PLATFORMS } from "../lib/platforms";
 import type { OpenBrief } from "../lib/types";
 
 /* The open board: briefs a creator can find without having been invited.
@@ -26,12 +28,21 @@ import type { OpenBrief } from "../lib/types";
    THE ORDER IS THE SERVER'S AND IS NEVER TOUCHED HERE. The API ranks by match
    score and then by newest, and re-sorting client-side would silently
    contradict the ranking the brand's targeting paid for — and would do it
-   differently on every client. The rows render in the order they arrive.
+   differently on every client. The rows render in the order they arrive. THAT
+   IS STILL TRUE WITH THE FILTERS ON: they change WHICH briefs come back and
+   never in what order, so a filtered board is still a ranked board.
 
    THE MATCH SCORE RANKS, IT DOES NOT FILTER. Every open brief is on every
-   creator's board, including the ones scoring zero, and the page says so
-   above the list rather than leaving creators to invent a theory about why
-   some briefs are near the top. */
+   creator's unfiltered board, including the ones scoring zero, and the page
+   says so above the list rather than leaving creators to invent a theory
+   about why some briefs are near the top.
+
+   THE CREATOR'S FILTERS ARE THE OTHER MECHANISM AND THEY DO HIDE THINGS —
+   which is allowed for the reason campaigns/board.py gives at length: a
+   brand's targeting excluding a creator would be somebody else deciding, in
+   advance and invisibly, that they may not see a budget. A filter here is the
+   creator deciding for themselves, seeing that they decided it, and undoing
+   it with one button. */
 
 /* Mirrors MAX_MATCH_SCORE in backend/app/modules/campaigns/board.py
    (CATEGORY_WEIGHT 3 + COUNTRY_WEIGHT 2 + FOLLOWER_WEIGHT 1). Only ever used
@@ -41,6 +52,46 @@ const MAX_MATCH_SCORE = 6;
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. */
 const NOTE_MAX_LENGTH = 2000;
+
+/* The six query parameters GET /campaigns/open takes, as the form holds them:
+   strings throughout, because that is what an <input> and a <select> produce
+   and converting on the way out is one place rather than six. "" means "no
+   opinion" and is simply not sent. */
+type Filters = {
+  minBudget: string;
+  maxBudget: string;
+  category: string;
+  country: string;
+  platform: string;
+  deadlineBefore: string;
+};
+
+/* A module constant rather than a fresh object, so resetting to it twice does
+   not retrigger the fetch: React bails out of a state update to an identical
+   reference. */
+const NO_FILTERS: Filters = {
+  minBudget: "", maxBudget: "", category: "", country: "", platform: "", deadlineBefore: ""
+};
+
+function anyFilter(f: Filters): boolean {
+  return Object.values(f).some((value) => value !== "");
+}
+
+/* Only what was actually set. Sending min_budget= empty would be a different
+   request from sending nothing at all — FastAPI would parse it as a 422 on an
+   int parameter — and "no opinion" is precisely what an absent parameter
+   means to board.list_open_campaigns. */
+function queryFor(f: Filters): string {
+  const params = new URLSearchParams();
+  if (f.minBudget) params.set("min_budget", f.minBudget);
+  if (f.maxBudget) params.set("max_budget", f.maxBudget);
+  if (f.category) params.set("category", f.category);
+  if (f.country) params.set("country", f.country);
+  if (f.platform) params.set("platform", f.platform);
+  if (f.deadlineBefore) params.set("deadline_before", f.deadlineBefore);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
 
 /* How well this brief fits, as one chip. Deliberately not a percentage: the
    score is three coarse weights and dressing it up as 67% would claim a
@@ -260,27 +311,50 @@ export default function BoardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* TWO COPIES OF THE FILTERS, AND THAT IS THE POINT. `draft` is what the
+     form holds; `applied` is what the last request was made with, and only
+     submitting moves one into the other.
+
+     A single live-bound object would fire a request per keystroke in the two
+     budget boxes — "100000" is six requests, five of which describe a budget
+     the creator was in the middle of typing and the last of which may come
+     back out of order. Debouncing would fix the volume and not the ordering.
+     A submit is also what makes the state legible: the board on screen is
+     the board somebody asked for, not the board their last keystroke asked
+     for. */
+  const [draft, setDraft] = useState<Filters>(NO_FILTERS);
+  const [applied, setApplied] = useState<Filters>(NO_FILTERS);
+
   useEffect(() => {
     if (!token) return;
     let live = true;
-    api<OpenBrief[]>("/campaigns/open", { token })
+    setLoading(true);
+    api<OpenBrief[]>(`/campaigns/open${queryFor(applied)}`, { token })
       .then((rows) => {
         if (!live) return;
         // Stored exactly as they arrive. The ranking is the server's; see the
-        // note at the top of this file.
+        // note at the top of this file. The filters narrowed the set, they
+        // did not reorder it, and nothing here reorders it either.
         setBriefs(rows);
         setError(null);
       })
       .catch(() => { if (live) setError(t("board.loadFailed")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [token, t]);
+  }, [token, applied, t]);
 
   function markApplied(id: string) {
     setBriefs((rows) => rows.map((r) => (r.id === id ? { ...r, has_applied: true } : r)));
   }
 
+  function reset() {
+    setDraft(NO_FILTERS);
+    setApplied(NO_FILTERS);
+  }
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  const filtered = anyFilter(applied);
 
   return (
     <Layout>
@@ -292,14 +366,100 @@ export default function BoardPage() {
             not for them. */}
         <p className="muted" style={{ fontSize: 13.5 }}>{t("board.rankHint")}</p>
 
+        <form
+          className="card"
+          style={{ marginTop: 16 }}
+          onSubmit={(e) => { e.preventDefault(); setApplied(draft); }}
+        >
+          <span className="label">{t("board.filters")}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 6 }}>
+            <div>
+              <label className="label" htmlFor="f-min">{t("board.budgetMin")}</label>
+              <input id="f-min" className="input" inputMode="numeric" placeholder="50000" value={draft.minBudget}
+                onChange={(e) => setDraft({ ...draft, minBudget: e.target.value.replace(/\D/g, "") })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="f-max">{t("board.budgetMax")}</label>
+              <input id="f-max" className="input" inputMode="numeric" placeholder="500000" value={draft.maxBudget}
+                onChange={(e) => setDraft({ ...draft, maxBudget: e.target.value.replace(/\D/g, "") })} />
+            </div>
+            <div>
+              <label className="label" htmlFor="f-cat">{t("board.niche")}</label>
+              <select id="f-cat" className="select" value={draft.category}
+                onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+                <option value="">{t("board.nicheAll")}</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{t(`cat.${c}`, c)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="f-country">{t("board.country")}</label>
+              <select id="f-country" className="select" value={draft.country}
+                onChange={(e) => setDraft({ ...draft, country: e.target.value })}>
+                <option value="">{t("board.countryAll")}</option>
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="f-platform">{t("board.platform")}</label>
+              <select id="f-platform" className="select" value={draft.platform}
+                onChange={(e) => setDraft({ ...draft, platform: e.target.value })}>
+                <option value="">{t("board.platformAll")}</option>
+                {/* SELLABLE_PLATFORMS rather than the connectable list: this
+                    matches a brief's DELIVERABLES, and a brief can ask for UGC
+                    from somebody with no UGC account because there is no such
+                    thing as one. */}
+                {SELLABLE_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="f-deadline">{t("board.deadlineBefore")}</label>
+              <input id="f-deadline" type="date" className="input" value={draft.deadlineBefore}
+                onChange={(e) => setDraft({ ...draft, deadlineBefore: e.target.value })} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <button className="btn btn-primary" type="submit" disabled={loading}>{t("board.apply2")}</button>
+            {/* Offered whenever anything is set in either copy, so a creator
+                who typed into a box and never submitted can still clear it in
+                one click rather than emptying six controls by hand. */}
+            {(filtered || anyFilter(draft)) && (
+              <button className="btn btn-ghost" type="button" onClick={reset}>{t("board.reset")}</button>
+            )}
+          </div>
+          {/* The one sentence that keeps the two mechanisms apart in the
+              reader's head. The filters decide WHAT is on the page; the match
+              score decides the ORDER, and it still does. */}
+          <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("board.filterNote")}</p>
+        </form>
+
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
         {loading ? (
           <p className="muted" style={{ marginTop: 18 }}>{t("discover.loading")}</p>
         ) : briefs.length === 0 ? (
           <div className="card" style={{ marginTop: 18 }}>
-            <p style={{ margin: 0 }}>{t("board.empty")}</p>
-            <p className="muted" style={{ fontSize: 13.5, margin: "8px 0 0" }}>{t("board.emptyHint")}</p>
+            {filtered ? (
+              <>
+                <p style={{ margin: 0 }}>{t("board.emptyFiltered")}</p>
+                {/* THE EDGE THAT LOOKS LIKE A BUG, said rather than left to be
+                    discovered: category and country match the BRAND'S TARGET
+                    lists, so a brief that targets nobody in particular — which
+                    is on every unfiltered board precisely because it is open
+                    to everyone — matches no category and no country, and drops
+                    out. Clearing the filter is what brings it back, so the
+                    copy points at the button. */}
+                <p className="muted" style={{ fontSize: 13.5, margin: "8px 0 0" }}>{t("board.emptyFilteredHint")}</p>
+                <button className="btn btn-primary" type="button" style={{ marginTop: 12 }} onClick={reset}>
+                  {t("board.reset")}
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: 0 }}>{t("board.empty")}</p>
+                <p className="muted" style={{ fontSize: 13.5, margin: "8px 0 0" }}>{t("board.emptyHint")}</p>
+              </>
+            )}
           </div>
         ) : (
           briefs.map((brief) => <BriefCard key={brief.id} brief={brief} onApplied={markApplied} />)

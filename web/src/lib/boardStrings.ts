@@ -19,6 +19,22 @@ const frBoard = {
      range, il n'exclut pas. */
   rankHint: "Les briefs qui correspondent le mieux à votre profil sont placés en premier. Ce n'est qu'un classement : vous pouvez postuler à tous les briefs de cette page, y compris à ceux qui ne vous correspondent pas.",
 
+  /* Les filtres du créateur. À ne pas confondre avec le ciblage de la marque :
+     l'un réduit la liste, l'autre en décide l'ordre. */
+  filters: "Filtres",
+  budgetMin: "Budget minimum",
+  budgetMax: "Budget maximum",
+  niche: "Niche",
+  nicheAll: "Toutes les niches",
+  country: "Pays",
+  countryAll: "Tous les pays",
+  platform: "Plateforme",
+  platformAll: "Toutes les plateformes",
+  deadlineBefore: "Échéance avant le",
+  apply2: "Filtrer",
+  reset: "Réinitialiser",
+  filterNote: "Les filtres réduisent la liste ; ils n'en changent pas l'ordre. Ce qui reste affiché est toujours classé par correspondance avec votre profil.",
+
   matchStrong: "Correspond à votre profil",
   matchNone: "Ouvert à tous",
   matchAria: "Correspondance {{n}} sur {{max}}",
@@ -50,6 +66,16 @@ const frBoard = {
 
   empty: "Aucun brief ouvert pour l'instant.",
   emptyHint: "Un brief apparaît ici quand une marque publie une campagne et l'ouvre aux candidatures. En attendant, les invitations qui vous sont adressées arrivent dans Invitations.",
+
+  /* L'ÉTAT VIDE FILTRÉ, et il doit dire une chose précise qui ressemble à un
+     bug : les filtres Niche et Pays lisent le CIBLAGE de la marque. Un brief
+     qui ne vise personne en particulier — celui-là même qui est ouvert à tout
+     le monde et qui apparaît sur tous les tableaux non filtrés — ne
+     correspond donc à aucune niche et à aucun pays, et disparaît. Le seul
+     moyen de le revoir est d'élargir : la phrase pointe vers le bouton. */
+  emptyFiltered: "Aucun brief ne correspond à ces filtres.",
+  emptyFilteredHint: "Attention aux filtres Niche et Pays : ils lisent le ciblage de la marque, donc ils masquent aussi les briefs qui ne visent personne en particulier — et ce sont justement ceux qui sont ouverts à tout le monde. Élargissez vos filtres ou réinitialisez-les pour les revoir.",
+
   loadFailed: "Impossible de charger les briefs ouverts pour l'instant."
 };
 
@@ -58,6 +84,20 @@ const enBoard = {
   sub: "Published campaigns any creator can apply to, without an invitation.",
 
   rankHint: "The briefs that best fit your profile are placed first. It is only a ranking: you can apply to every brief on this page, including the ones that do not match you.",
+
+  filters: "Filters",
+  budgetMin: "Minimum budget",
+  budgetMax: "Maximum budget",
+  niche: "Niche",
+  nicheAll: "All niches",
+  country: "Country",
+  countryAll: "All countries",
+  platform: "Platform",
+  platformAll: "All platforms",
+  deadlineBefore: "Deadline before",
+  apply2: "Filter",
+  reset: "Reset",
+  filterNote: "Filters narrow the list; they do not change its order. Whatever is left is still ranked by how well it fits your profile.",
 
   matchStrong: "Fits your profile",
   matchNone: "Open to everyone",
@@ -88,6 +128,10 @@ const enBoard = {
 
   empty: "No open briefs yet.",
   emptyHint: "A brief appears here when a brand publishes a campaign and opens it to applications. In the meantime, invitations addressed to you arrive under Invitations.",
+
+  emptyFiltered: "No brief matches these filters.",
+  emptyFilteredHint: "Watch the Niche and Country filters: they read the brand's targeting, so they also hide briefs that target nobody in particular — and those are exactly the ones open to everyone. Widen your filters or reset them to see those again.",
+
   loadFailed: "Open briefs could not be loaded right now."
 };
 

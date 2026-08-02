@@ -9,13 +9,7 @@ import { checkoutItem, useCart, UNKNOWN_CREATOR, type CartCheckoutOrder, type Ca
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { CreatorIdentity } from "../lib/types";
 
-/* A line with the position the server will know it by. The checkout endpoint
-   addresses items by their index in the array that was posted, so the index
-   has to survive the grouping — otherwise "Item 3" cannot be pointed at once
-   the flat basket has been sorted into piles. */
-type IndexedLine = CartLine & { index: number };
-
-type CreatorGroup = { creator_user_id: string; creator: CreatorIdentity; lines: IndexedLine[] };
+type CreatorGroup = { creator_user_id: string; creator: CreatorIdentity; lines: CartLine[] };
 
 /* Money, per currency, never across them. The platform sets no exchange rate
    and does not want to: an order carries one escrow and an escrow carries one
@@ -34,27 +28,55 @@ function totalsByCurrency(lines: { amount: number; currency: string }[]): [strin
    declined on its own, on its own clock, for its own money — so buying three
    packages from one person is one order with three deliverables, while two
    people are two independent orders. Showing the basket any other way would
-   promise a shape the receipt then contradicts. */
+   promise a shape the receipt then contradicts.
+
+   IT IS ALSO WHY THE CHECKBOX IS PER GROUP AND NOT PER LINE. The unit the
+   server creates is the creator's order; ticking two of somebody's three
+   packages would look like a choice the buyer had made and would arrive as
+   one order for two — the same order, quietly different. A creator who wants
+   only two removes the third. */
 function groupByCreator(lines: CartLine[]): CreatorGroup[] {
   const groups: CreatorGroup[] = [];
-  lines.forEach((line, index) => {
+  for (const line of lines) {
     const found = groups.find((g) => g.creator_user_id === line.creator_user_id);
-    if (found) found.lines.push({ ...line, index });
-    else groups.push({ creator_user_id: line.creator_user_id, creator: line.creator, lines: [{ ...line, index }] });
-  });
+    if (found) found.lines.push(line);
+    else groups.push({ creator_user_id: line.creator_user_id, creator: line.creator, lines: [line] });
+  }
   return groups;
 }
 
 export default function CartPage() {
   const { t, i18n } = useTranslation();
   const { token, isAuthenticated } = useAuth();
-  const { lines, remove, clear } = useCart();
+  const { lines, remove } = useCart();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /* Which line the server refused, zero-based. Null when the failure was not
-     about a particular item (a role check, a network error). */
-  const [rejected, setRejected] = useState<number | null>(null);
+  /* Which line the server refused, by ID rather than by position.
+
+     It used to be the index, and the index used to be right: the basket was
+     posted whole, so the server's zero-based "Item 3" was the fourth row on
+     screen. With a selection it is the fourth row OF WHAT WAS POSTED, which
+     is a different row as soon as anything is unticked — and highlighting the
+     wrong line is worse than highlighting none, because the buyer then edits
+     an item the server never complained about. The posted list is kept below
+     and the index is resolved through it once, here. */
+  const [rejectedId, setRejectedId] = useState<string | null>(null);
   const [orders, setOrders] = useState<CartCheckoutOrder[] | null>(null);
+  /* The lines that became those orders. Kept because they are removed from
+     the basket on success and the receipt still has to name who each order is
+     for. */
+  const [orderedLines, setOrderedLines] = useState<CartLine[]>([]);
+
+  /* WHAT IS **NOT** SELECTED, rather than what is.
+
+     Default-all-selected is the requirement, and storing the negative is what
+     makes it true without any syncing: a group added after this state was
+     created is selected because it is not in the set, so adding a package on
+     another profile and coming back does not silently leave it out of the
+     order. A positive set would have to be topped up every time the basket
+     changed, and the day somebody forgot, the bug would be a paid order
+     missing a line. */
+  const [deselected, setDeselected] = useState<Set<string>>(new Set());
 
   const locale = i18n.language.startsWith("en") ? "en-US" : "fr-FR";
   const money = (n: number, currency: string) => `${n.toLocaleString(locale)} ${currency}`;
@@ -77,25 +99,53 @@ export default function CartPage() {
     display_name: creator.display_name || t("cart.unknownCreator")
   });
 
+  function toggleGroup(creatorUserId: string) {
+    setDeselected((prev) => {
+      const next = new Set(prev);
+      if (next.has(creatorUserId)) next.delete(creatorUserId);
+      else next.add(creatorUserId);
+      return next;
+    });
+  }
+
+  const groups = groupByCreator(lines);
+  const selectedGroups = groups.filter((g) => !deselected.has(g.creator_user_id));
+  const selectedLines = selectedGroups.flatMap((g) => g.lines);
+  const selectedTotals = totalsByCurrency(selectedLines);
+
   async function checkout() {
+    /* Frozen before the request. selectedLines is derived from state that a
+       click could change while the round trip is in flight, and the index the
+       server sends back has to be resolved against exactly what was sent —
+       not against whatever the page is showing when the answer arrives. */
+    const posted = selectedLines;
+    if (posted.length === 0) return;
     setBusy(true);
     setError(null);
-    setRejected(null);
+    setRejectedId(null);
     try {
       const res = await api<CartCheckoutResult>("/campaigns/orders/checkout", {
         method: "POST",
         token,
-        body: { items: lines.map(checkoutItem) }
+        body: { items: posted.map(checkoutItem) }
       });
       setOrders(res.orders);
-      // The basket became orders. Keeping it would invite the buyer to check
-      // out the same six packages twice.
-      clear();
+      setOrderedLines(posted);
+      /* Only what was ordered leaves the basket. clear() was right while the
+         whole cart was always posted; with a selection it would throw away
+         the groups the buyer deliberately held back, which is the one thing
+         holding them back was for. */
+      posted.forEach((line) => remove(line.id));
     } catch (e) {
       /* Every item is validated before a single row is written and the writes
          are one transaction, so a rejected line means NOTHING was ordered —
          not "the first two went through". That is said out loud next to the
          error, because a buyer who assumes otherwise re-orders the first two.
+
+         THE ALL-OR-NOTHING IS PER REQUEST, which is exactly why the selection
+         is a selection and not a partial order: the server has no way to
+         create some of a basket, so choosing less means SENDING less. What
+         goes up is still ordered whole.
 
          The position is parsed off the message and is ZERO-BASED: cart.py
          enumerates the items from zero. It is used only to highlight the row;
@@ -104,7 +154,7 @@ export default function CartPage() {
          same words the packages module uses. */
       if (e instanceof ApiError && e.status === 400) {
         const match = /^Item (\d+):/.exec(e.message);
-        if (match) setRejected(Number(match[1]));
+        if (match) setRejectedId(posted[Number(match[1])]?.id ?? null);
       }
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -113,9 +163,6 @@ export default function CartPage() {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-
-  const groups = groupByCreator(lines);
-  const grandTotals = totalsByCurrency(lines);
 
   return (
     <Layout>
@@ -132,21 +179,33 @@ export default function CartPage() {
           <div className="card" style={{ marginTop: 18 }}>
             <div className="alert alert-success">{t("cart.successTitle")}</div>
             <p className="muted" style={{ fontSize: 13.5, marginTop: 0 }}>{t("cart.successRule")}</p>
+            {/* Anything held back is still in the basket and is still
+                orderable. Said here because the success banner otherwise
+                reads as "the cart is done". */}
+            {lines.length > 0 && (
+              <p className="muted" style={{ fontSize: 13.5, marginTop: 0 }}>{t("cart.remaining", { n: lines.length })}</p>
+            )}
             <div style={{ display: "grid", gap: 10 }}>
               {orders.map((o) => (
                 <div key={o.campaign_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-                  {/* The basket has been cleared by now, so this looks the
-                      identity up in the lines captured before the clear — and
-                      falls back to the empty identity rather than assuming
-                      one is there, which is the same defence readStored
-                      applies to a line written by an older build. */}
-                  <CreatorChip creator={chipFor(lines.find((l) => l.creator_user_id === o.creator_user_id)?.creator ?? UNKNOWN_CREATOR)} />
+                  {/* Looked up in the lines that were ordered, which is why
+                      they were kept — and falling back to the empty identity
+                      rather than assuming one is there, the same defence
+                      readStored applies to a line written by an older
+                      build. */}
+                  <CreatorChip creator={chipFor(orderedLines.find((l) => l.creator_user_id === o.creator_user_id)?.creator ?? UNKNOWN_CREATOR)} />
                   <Link to={`/campaigns/${o.campaign_id}`} style={{ fontWeight: 600 }}>{t("cart.viewOrder")}</Link>
                 </div>
               ))}
             </div>
             <div style={{ marginTop: 14 }}>
-              <Link className="btn btn-ghost" to="/discover">{t("cart.emptyCta")}</Link>
+              {lines.length > 0 ? (
+                <button type="button" className="btn btn-primary" onClick={() => { setOrders(null); setOrderedLines([]); }}>
+                  {t("cart.backToCart")}
+                </button>
+              ) : (
+                <Link className="btn btn-ghost" to="/discover">{t("cart.emptyCta")}</Link>
+              )}
             </div>
           </div>
         ) : lines.length === 0 ? (
@@ -163,15 +222,46 @@ export default function CartPage() {
               </div>
             )}
 
+            {/* Only offered once there is more than one pile to choose
+                between. "Tout sélectionner" over a single group is a control
+                that can only ever undo itself. */}
+            {groups.length > 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+                <span className="muted" style={{ fontSize: 13.5 }}>
+                  {t("cart.selectedCount", { n: selectedGroups.length, total: groups.length })}
+                </span>
+                <button type="button" className="pp-see-more" onClick={() => setDeselected(new Set())}>
+                  {t("cart.selectAll")}
+                </button>
+                <button type="button" className="pp-see-more"
+                  onClick={() => setDeselected(new Set(groups.map((g) => g.creator_user_id)))}>
+                  {t("cart.selectNone")}
+                </button>
+              </div>
+            )}
+
             {groups.map((group) => {
               const subtotals = totalsByCurrency(group.lines);
+              const selected = !deselected.has(group.creator_user_id);
               return (
-                <div key={group.creator_user_id} className="card" style={{ marginTop: 16 }}>
-                  <CreatorChip creator={chipFor(group.creator)} />
+                <div key={group.creator_user_id} className="card"
+                  style={{ marginTop: 16, opacity: selected ? 1 : 0.55 }}>
+                  {/* The checkbox and the chip in one label, so the whole
+                      header is the hit target rather than a 13 px box. */}
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={busy}
+                      onChange={() => toggleGroup(group.creator_user_id)}
+                      aria-label={t("cart.selectGroup", { name: group.creator.display_name || t("cart.unknownCreator") })}
+                    />
+                    <CreatorChip creator={chipFor(group.creator)} />
+                  </label>
 
                   <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                     {group.lines.map((line) => {
-                      const isRejected = rejected === line.index;
+                      const isRejected = rejectedId === line.id;
                       return (
                         <div
                           key={line.id}
@@ -234,24 +324,51 @@ export default function CartPage() {
                     {subtotals.length > 1 && (
                       <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>{t("cart.mixedCurrency")}</p>
                     )}
+                    {/* Only on the piles that are being left behind, so the
+                        basket does not repeat itself on every card. */}
+                    {!selected && (
+                      <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>{t("cart.groupExcluded")}</p>
+                    )}
                   </div>
                 </div>
               );
             })}
 
             <div className="card" style={{ marginTop: 16 }}>
-              {grandTotals.map(([currency, amount]) => (
-                <div key={currency} style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
-                  <strong>{t("cart.total")}</strong>
-                  <strong style={{ fontFamily: "var(--font-display)" }}>{money(amount, currency)}</strong>
-                </div>
-              ))}
-              {grandTotals.length > 1 && (
+              {selectedTotals.length === 0 ? (
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("cart.noneSelected")}</p>
+              ) : (
+                selectedTotals.map(([currency, amount]) => (
+                  <div key={currency} style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
+                    {/* The label says the total is of the SELECTION as soon as
+                        anything is unticked. A figure called "Total" that
+                        silently ignores a group is the way somebody adds the
+                        cards up, gets a different number, and concludes our
+                        arithmetic is wrong. */}
+                    <strong>{selectedGroups.length === groups.length ? t("cart.total") : t("cart.totalSelected")}</strong>
+                    <strong style={{ fontFamily: "var(--font-display)" }}>{money(amount, currency)}</strong>
+                  </div>
+                ))
+              )}
+              {selectedTotals.length > 1 && (
                 <p className="muted" style={{ fontSize: 13, margin: "6px 0 0" }}>{t("cart.totalsNote")}</p>
               )}
               <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("cart.rule")}</p>
-              <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} disabled={busy} onClick={checkout}>
-                {busy ? t("auth.working") : t("cart.checkout")}
+              {/* THE DISTINCTION THIS WHOLE FEATURE RESTS ON, said once, where
+                  the decision is made: the server cannot create part of a
+                  basket — it validates every item and writes them in one
+                  transaction — so a partial cart is a partial SELECTION and
+                  never a partial order. What goes up goes up whole. */}
+              {groups.length > 1 && (
+                <p className="muted" style={{ fontSize: 13, margin: "6px 0 0" }}>{t("cart.selectionNote")}</p>
+              )}
+              <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
+                disabled={busy || selectedGroups.length === 0} onClick={checkout}>
+                {busy
+                  ? t("auth.working")
+                  : selectedGroups.length === groups.length
+                    ? t("cart.checkout")
+                    : t("cart.checkoutSelected", { n: selectedGroups.length })}
               </button>
             </div>
           </>

@@ -1,7 +1,7 @@
 """Schemas for the campaigns module."""
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # A note is a sentence or two explaining an offer, not a chat window. Past a
 # couple of thousand characters somebody is holding a conversation in a text
@@ -27,6 +27,11 @@ CUSTOM_OFFER_FIELDS = (
     "timeline_days",
 )
 
+# The list-valued targeting columns, named as a group because one rule covers
+# both of them: they are NOT NULL, so an explicit null has to mean the empty
+# list rather than reaching the database.
+TARGET_LIST_FIELDS = ("target_categories", "target_countries")
+
 
 class Deliverable(BaseModel):
     platform: str
@@ -34,7 +39,45 @@ class Deliverable(BaseModel):
     quantity: int = Field(ge=1)
 
 
-class CampaignCreate(BaseModel):
+class TargetingIn(BaseModel):
+    """Who a brand is hoping to reach with a brief, on the way in.
+
+    Shared by create and patch because it is one set of fields with one
+    meaning, and a second copy would be a second place for the null rule
+    below to be forgotten.
+
+    NONE OF IT NARROWS ANYTHING. These four fields rank the open board for a
+    creator and never hide a brief from one — campaigns.board says why at
+    length. The naming says "target", not "require", for exactly that reason.
+    """
+
+    target_categories: list[str] | None = None
+    target_countries: list[str] | None = None
+    # ge=0 rather than ge=1: a brand may legitimately say "up to 5000", and
+    # the floor of that band is zero followers, not one.
+    target_min_followers: int | None = Field(default=None, ge=0)
+    target_max_followers: int | None = Field(default=None, ge=0)
+
+    @field_validator(*TARGET_LIST_FIELDS, mode="before")
+    @classmethod
+    def _null_clears_to_empty(cls, value):
+        """An explicit null on a targeting list means "clear it".
+
+        Coerced to [] here rather than refused, because the two spellings
+        plainly mean the same thing: a form whose last chip was just removed
+        posts [] in some clients and null in others, and both are a brand
+        saying it no longer wants to target that dimension. The column is NOT
+        NULL, so letting the null through would turn a cleared form into an
+        integrity error at commit — a 500 for a user who did nothing wrong.
+
+        Only runs on a value the client actually sent, so the exclude_unset
+        contract PATCH depends on is untouched: a field nobody mentioned stays
+        unmentioned.
+        """
+        return [] if value is None else value
+
+
+class CampaignCreate(TargetingIn):
     title: str = Field(min_length=1)
     description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
     budget_amount: int | None = Field(default=None, ge=1)
@@ -42,9 +85,15 @@ class CampaignCreate(BaseModel):
     deliverables: list[Deliverable] = Field(default_factory=list)
     deadline: date | None = None
     publish: bool = False
+    # Whether the brief goes onto the open board. Accepted at creation as well
+    # as on a PATCH because deciding who a brief is for is part of writing it,
+    # and making a brand save the brief and then open it in a second request
+    # would be two calls for one decision. Still defaults to False: a client
+    # that has never heard of the board cannot open a brief by accident.
+    is_open: bool = False
 
 
-class CampaignPatch(BaseModel):
+class CampaignPatch(TargetingIn):
     """A partial correction to a campaign.
 
     Every field is optional, and the rule is exclude_unset — the same contract
@@ -59,6 +108,13 @@ class CampaignPatch(BaseModel):
     a 400 naming the field — a 422 field-error would tell a brand its budget
     is invalid without ever explaining that a creator has already bid on it.
 
+    The targeting fields inherited from TargetingIn are deliberately NOT in
+    campaigns.editing.LOCKED_FIELDS, so they stay editable after a creator has
+    bid. They are not terms: nobody prices a brief against who else the brand
+    was hoping to hear from, and a bid on the table means exactly what it
+    meant before the brand widened its board. is_open is the same — closing a
+    brief to new applications takes nothing away from the offers already made.
+
     publish is absent on purpose. Going live is a state change with its own
     readiness gate (POST /campaigns/{id}/publish), not a field to set.
     """
@@ -72,6 +128,7 @@ class CampaignPatch(BaseModel):
     budget_currency: str | None = None
     deliverables: list[Deliverable] | None = None
     deadline: date | None = None
+    is_open: bool | None = None
 
 
 class CampaignOut(BaseModel):
@@ -88,6 +145,43 @@ class CampaignOut(BaseModel):
     # label the card as an order rather than a brief, and to know there is
     # nobody else bidding.
     is_direct: bool = False
+    # Whether the brief is on the open board. Carried on the ordinary campaign
+    # payload, not only on the board's own, because the buyer's list of its
+    # campaigns has to be able to say which of them strangers can apply to —
+    # that is the difference between a brief with three invited creators and a
+    # brief that may collect thirty applications overnight.
+    is_open: bool = False
+    target_categories: list[str] = Field(default_factory=list)
+    target_countries: list[str] = Field(default_factory=list)
+    target_min_followers: int | None = None
+    target_max_followers: int | None = None
+
+
+class OpenBriefOut(CampaignOut):
+    """One row of the open board (GET /campaigns/open).
+
+    The whole brief, not a summary of it: a creator decides from this card
+    whether to spend an evening pricing the job, and deliverables, budget and
+    deadline are exactly what they would be pricing.
+
+    match_score is shown rather than hidden. A board that silently reorders
+    itself is a board creators invent theories about, and the number is small,
+    explainable and bounded (campaigns.board.MAX_MATCH_SCORE). It is a
+    ranking hint and not a verdict — a zero-scoring brief is just as
+    applicable as a perfect one, which is the point of a soft filter.
+
+    has_applied and is_invited keep the card honest about what the creator has
+    already done here: applying twice is refused with a 409, and finding that
+    out from the button rather than from the error is the difference between
+    a board and a trap.
+    """
+
+    # Who is asking. Null while the buyer has written no profile — the users
+    # table has only a phone number to offer, and that is never exposed.
+    business_company_name: str | None = None
+    match_score: int = 0
+    has_applied: bool = False
+    is_invited: bool = False
 
 
 class CreatorIdentity(BaseModel):

@@ -11,6 +11,30 @@ database built by `alembic upgrade head` alone — which is what the deployment
 path is meant to be — has no otp_challenges, and registration fails on the
 insert at the end of it.
 
+WHICH IS WHY THIS MIGRATION IS CONDITIONAL. The same create_all that hid the
+problem guarantees two different starting points: a database that has ever
+booted the app already has both tables, and one raised purely by alembic has
+neither. A plain create_table crashes the first kind with DuplicateTable — and
+because the container runs `alembic upgrade head && uvicorn`, a failed upgrade
+takes the whole API down rather than just the migration. So each table is
+created only when the inspector reports it missing.
+
+Nothing is altered on a table that is already there. What create_all built is
+the same schema this migration describes, and dropping and recreating it to
+feel authoritative would discard live OTP rows to prove a point. After this
+revision the tables belong to alembic either way, which is what the downgrade
+assumes when it drops them unconditionally.
+
+NOTE THAT CI CANNOT CATCH THIS CLASS OF BUG. test_migrations builds a fresh
+database and runs upgrade head against it, so a migration that only breaks
+databases which already exist passes green every time. The first report comes
+from whoever pulls and restarts.
+
+THE REAL FIX IS UPSTREAM and deliberately not attempted here: init_db should
+stop calling create_all outside the test suite, so that alembic is the only
+thing that ever builds a schema and the two can never diverge again. That
+changes how every environment boots and is not a migration's decision to make.
+
 password_reset_tokens.token is INDEXED AND NOT UNIQUE, which is a change from
 what the model used to say. It now holds the same six digit code the
 registration OTP uses, because a reset code arrives by SMS and gets retyped
@@ -54,34 +78,56 @@ FK_RESET_USER = 'fk_password_reset_tokens_user_id'
 IX_RESET_TOKEN = 'ix_password_reset_tokens_token'
 
 
-def upgrade() -> None:
-    op.create_table(
-        'otp_challenges',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('user_id', sa.String(), nullable=False),
-        sa.Column('code', sa.String(), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('consumed', sa.Boolean(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id', name=PK_OTP),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=FK_OTP_USER),
-    )
+def _inspector():
+    return sa.inspect(op.get_bind())
 
-    op.create_table(
-        'password_reset_tokens',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('user_id', sa.String(), nullable=False),
-        sa.Column('token', sa.String(), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('consumed', sa.Boolean(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id', name=PK_RESET),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=FK_RESET_USER),
-    )
-    op.create_index(IX_RESET_TOKEN, 'password_reset_tokens', ['token'], unique=False)
+
+def upgrade() -> None:
+    inspector = _inspector()
+    existing = set(inspector.get_table_names())
+
+    if 'otp_challenges' not in existing:
+        op.create_table(
+            'otp_challenges',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('user_id', sa.String(), nullable=False),
+            sa.Column('code', sa.String(), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.Column('consumed', sa.Boolean(), nullable=False),
+            sa.Column('created_at', sa.DateTime(), nullable=False),
+            sa.PrimaryKeyConstraint('id', name=PK_OTP),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=FK_OTP_USER),
+        )
+
+    if 'password_reset_tokens' not in existing:
+        op.create_table(
+            'password_reset_tokens',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('user_id', sa.String(), nullable=False),
+            sa.Column('token', sa.String(), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.Column('consumed', sa.Boolean(), nullable=False),
+            sa.Column('created_at', sa.DateTime(), nullable=False),
+            sa.PrimaryKeyConstraint('id', name=PK_RESET),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=FK_RESET_USER),
+        )
+
+    # Re-read: the table may have just been created above, and on a create_all
+    # database the index is already there under the same name.
+    indexes = {
+        index['name']
+        for index in _inspector().get_indexes('password_reset_tokens')
+    }
+    if IX_RESET_TOKEN not in indexes:
+        op.create_index(
+            IX_RESET_TOKEN, 'password_reset_tokens', ['token'], unique=False
+        )
 
 
 def downgrade() -> None:
+    # Unconditional on purpose. Whoever created these tables, this revision is
+    # what claims them; going back past it means going back to a schema that
+    # has neither.
     op.drop_index(IX_RESET_TOKEN, table_name='password_reset_tokens')
     op.drop_table('password_reset_tokens')
     op.drop_table('otp_challenges')

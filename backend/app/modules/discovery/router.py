@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.auth.deps import get_current_user_id
-from app.modules.discovery import schemas, service
+from app.modules.discovery import featured, schemas, service
 
 router = APIRouter()
 
@@ -23,6 +23,26 @@ def search_influencers(
 ):
     """Search influencers by category, follower range, and platform. Verified rank first. KOL-19."""
     return service.search_influencers(db, category, min_followers, max_followers, country, q, platform, limit, offset)
+
+
+@router.get("/featured", response_model=list[schemas.InfluencerSearchResult])
+def featured_creators(
+    limit: int = featured.DEFAULT_FEATURED_LIMIT,
+    db: Session = Depends(get_db),
+):
+    """A random sample of searchable creators for the landing page strip.
+
+    Same eligibility rule and same card as /search, different ordering: search
+    is deterministic on purpose, which meant the landing page showed the same
+    eight faces on every visit and the ninth-ranked creator was invisible to
+    every brand that never scrolled. This one shuffles, so the roster gets
+    seen.
+
+    Public, exactly like /search: a creator's storefront exists to be found,
+    and putting the landing page behind a login would mean a brand has to sign
+    up before it can see whether anybody is on the platform.
+    """
+    return featured.featured_creators(db, limit)
 
 
 @router.post("/favorites/{influencer_id}", response_model=schemas.FavoriteOut, status_code=status.HTTP_201_CREATED)

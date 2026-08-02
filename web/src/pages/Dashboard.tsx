@@ -140,7 +140,7 @@ function ReferralPanel({ token }: { token: string | null }) {
           <tbody>
             {info.referrals.map((r, i) => (
               <tr key={i}>
-                {/* The active language, not the browser's: someone reading the
+                {/* The active language, not the browser's: somebody reading the
                     app in French should not get an en-US date beside it. */}
                 <td>{new Date(r.joined_at).toLocaleDateString(i18n.language)}</td>
                 {/* Agencies buy the way businesses do (isBusinessLike), so both
@@ -194,6 +194,21 @@ export default function Dashboard() {
           <ActionCard to="/contracts"
             title={isBusinessLike(role) ? t("dash.ordersTitle") : t("dash.contractsTitle")}
             desc={isBusinessLike(role) ? t("dash.ordersDesc") : t("dash.contractsDesc")} />
+          {/* Asked no role question, exactly as the nav asks it none: a
+              contract has two parties and the thread belongs to both, so
+              either of them may be the one who has not replied. The dashboard
+              was the only screen where a signed-in person could not find
+              their inbox at all. */}
+          <ActionCard to="/messages" title={t("dash.messagesTitle")} desc={t("dash.messagesDesc")} />
+          {/* Creators only, for the reason /earnings is CreatorOnly in
+              App.tsx: GET /payments/earnings answers a business empty totals
+              on purpose, because what a buyer wants there is SPEND — a
+              different question with the opposite sign. */}
+          {!isBusinessLike(role) && <ActionCard to="/earnings" title={t("dash.earningsTitle")} desc={t("dash.earningsDesc")} />}
+          {/* Both sides again, and for the same reason as messages: a dispute
+              is a claim on money held between two people, and either of them
+              may be the one making it or the one who has to answer it. */}
+          <ActionCard to="/disputes" title={t("dash.disputesTitle")} desc={t("dash.disputesDesc")} />
         </div>
         {/* Influencers only: businesses and agencies (isBusinessLike) buy, they
             do not recruit fellow creators. Full width under the action cards

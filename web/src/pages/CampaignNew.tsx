@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { DeliverableRows, emptyDeliverable } from "../components/DeliverableRows";
+import { EMPTY_TARGETING, TargetingFields, targetingBody, type Targeting } from "../components/TargetingFields";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
@@ -23,6 +24,13 @@ export default function CampaignNew() {
   const [deadline, setDeadline] = useState("");
   const [deliverables, setDeliverables] = useState<Deliverable[]>([emptyDeliverable()]);
   const [publishNow, setPublishNow] = useState(false);
+  /* Who the brief is for, and whether strangers may answer it. Set at
+     creation rather than only on a later PATCH because deciding who a brief
+     is for is part of writing it — the API takes these fields on POST for
+     exactly that reason, so a brand does not save a brief and then open it in
+     a second request. Still defaults to closed: nobody opens a brief to the
+     whole platform by accident. */
+  const [targeting, setTargeting] = useState<Targeting>(EMPTY_TARGETING);
 
   const [created, setCreated] = useState<Campaign | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +55,8 @@ export default function CampaignNew() {
           budget_currency: budget ? currency : null,
           deliverables,
           deadline: deadline || null,
-          publish: publishNow
+          publish: publishNow,
+          ...targetingBody(targeting)
         }
       });
       setCreated(campaign);
@@ -100,6 +109,12 @@ export default function CampaignNew() {
                 <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
               ))}
             </ul>
+            {/* Confirmed back rather than assumed: opening a brief to the whole
+                platform is the one setting on this form whose consequence
+                arrives from strangers, and a brand should see that it took. */}
+            {created.is_open && (
+              <p className="muted" style={{ fontSize: 13, margin: "0 0 14px" }}>{t("target.openHint")}</p>
+            )}
             {created.status !== "published" ? (
               <button className="btn btn-teal" disabled={busy} onClick={publish}>{t("campaign.publish")}</button>
             ) : (
@@ -144,6 +159,12 @@ export default function CampaignNew() {
               <span className="label">{t("campaign.deliverables")}</span>
               <DeliverableRows value={deliverables} onChange={setDeliverables} />
             </div>
+
+            {/* Targeting ranks who sees this brief first and blocks nobody from
+                applying. The rule lives in components/TargetingFields.tsx and
+                is stated on screen there, because a brand that believes it set
+                a hard filter declines off-target applications unread. */}
+            <TargetingFields idPrefix="c" value={targeting} onChange={setTargeting} />
 
             <div className="field">
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.payments import disputes, earnings, resolution, schemas, service
+from app.modules.payments import disputes, earnings, resolution, schemas, service, spend
 
 router = APIRouter()
 
@@ -49,11 +49,32 @@ def my_earnings(
     overstate every line. Disputed is kept separate from pending because
     frozen money is not money on its way.
 
-    Creator side only. A business gets empty totals: what a buyer would want
-    here is spend, which is a different question with the opposite sign, and
-    answering both from one endpoint would make every field mean two things.
+    Creator side only. A business gets empty totals: what a buyer wants here
+    is spend, which is a different question with the opposite sign, and it has
+    its own endpoint at GET /payments/spend.
     """
     return earnings.my_earnings(db, user_id, year)
+
+
+@router.get("/spend", response_model=schemas.SpendOut)
+def my_spend(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """What the caller has spent, has committed, and has had come back.
+
+    The mirror of /payments/earnings and deliberately a separate endpoint,
+    because the same words mean different things on the buyer's side: nothing
+    here is net of commission (the platform's cut comes off the creator's
+    release, not the brand's payment), refunds are a real line rather than
+    money that never arrived, and "pending" is money already gone from the
+    wallet rather than money on its way into one. One endpoint answering both
+    would make every field mean two opposite things depending on who asked.
+
+    Buyer side only. A creator gets empty figures, for the same reason a
+    business gets them from /earnings.
+    """
+    return spend.my_spend(db, user_id)
 
 
 @router.post("/escrow/{escrow_id}/release", response_model=schemas.EscrowOut)

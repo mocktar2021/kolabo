@@ -12,11 +12,18 @@ import i18n from "../i18n";
 const frMenu = {
   /* The label is on the button rather than inside it: the control is an
      avatar and three dashes, which say nothing to a screen reader. */
-  account: "Menu du compte"
+  account: "Menu du compte",
+
+  /* Quand /auth/me renvoie display_name à null, c'est-à-dire tant que la
+     personne n'a pas écrit de profil. On ne remplit jamais ce trou avec le
+     numéro de téléphone : c'est la seule colonne lisible de la table users, et
+     un numéro n'a rien à faire dans un emplacement d'affichage. */
+  noName: "Votre compte"
 };
 
 const enMenu = {
-  account: "Account menu"
+  account: "Account menu",
+  noName: "Your account"
 };
 
 /* The cards a role could reach from the nav but not from the dashboard.

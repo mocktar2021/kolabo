@@ -22,6 +22,13 @@ const fr = {
   note: "Note",
   subtotal: "Sous-total",
   total: "Total",
+
+  /* NEUTRE, ET PAS « Créateur sans nom ». Une ligne ajoutée avant que le
+     panier ne garde l'identité du créateur n'a pas de nom parce que personne
+     ne l'a jamais demandé — pas parce que cette personne n'en a pas. Dire le
+     contraire serait affirmer un fait qu'on n'a pas vérifié. */
+  unknownCreator: "Créateur",
+
   /* Why there is no single grand total. */
   totalsNote: "Les devises ne sont jamais additionnées : chaque commande porte un séquestre, et un séquestre porte une seule devise.",
   mixedCurrency: "Ce créateur a des articles dans plusieurs devises. Une commande ne peut en porter qu'une : commandez chaque devise séparément.",
@@ -55,6 +62,12 @@ const en = {
   note: "Note",
   subtotal: "Subtotal",
   total: "Total",
+
+  /* Neutral, and not "Unnamed creator": a line added before the cart kept the
+     creator's identity has no name because nobody ever asked — not because
+     that person has none. */
+  unknownCreator: "Creator",
+
   /* Why there is no single grand total. */
   totalsNote: "Currencies are never added together: each order carries one escrow, and an escrow carries one currency.",
   mixedCurrency: "This creator has items in more than one currency. An order can only carry one: check out each currency separately.",

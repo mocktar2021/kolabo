@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AuthProvider } from "./lib/auth";
+import { MeProvider } from "./lib/me";
 import "./i18n";
 import "./lib/onboardingStrings";
 import "./lib/marketingStrings";
@@ -27,7 +28,13 @@ import "./styles/theme.css";
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      {/* Inside AuthProvider because it reads the token, and OUTSIDE the
+          router (which App owns) because it must not remount on navigation —
+          that is the difference between one /auth/me per session and one per
+          page. */}
+      <MeProvider>
+        <App />
+      </MeProvider>
     </AuthProvider>
   </React.StrictMode>
 );

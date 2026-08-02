@@ -5,7 +5,7 @@ import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { checkoutItem, useCart, type CartCheckoutOrder, type CartCheckoutResult, type CartLine } from "../lib/cart";
+import { checkoutItem, useCart, UNKNOWN_CREATOR, type CartCheckoutOrder, type CartCheckoutResult, type CartLine } from "../lib/cart";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { CreatorIdentity } from "../lib/types";
 
@@ -59,6 +59,23 @@ export default function CartPage() {
   const locale = i18n.language.startsWith("en") ? "en-US" : "fr-FR";
   const money = (n: number, currency: string) => `${n.toLocaleString(locale)} ${currency}`;
   const platformLabel = (id: string | null) => (id ? PLATFORM_LABELS[id] ?? id : "");
+
+  /* The creator as CreatorChip should render them here.
+
+     THE FALLBACK IS NOT THE CHIP'S OWN. CreatorChip answers a null name with
+     "Créateur sans nom", which is right everywhere it is used — a favourite,
+     an invitation, a proposal all come from the server, so a missing name
+     really does mean the creator has not written one, and the brand should
+     notice. A basket line is the one place that is not true: a line added
+     before the identity snapshot existed carries no name because NOBODY EVER
+     ASKED, and telling a buyer this person is nameless would be asserting
+     something we never checked. So an un-snapshotted line gets a neutral
+     label, and a creator who genuinely has no display name gets the same one,
+     which is the honest floor for both. */
+  const chipFor = (creator: CreatorIdentity): CreatorIdentity => ({
+    ...creator,
+    display_name: creator.display_name || t("cart.unknownCreator")
+  });
 
   async function checkout() {
     setBusy(true);
@@ -118,9 +135,12 @@ export default function CartPage() {
             <div style={{ display: "grid", gap: 10 }}>
               {orders.map((o) => (
                 <div key={o.campaign_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-                  <CreatorChip creator={lines.find((l) => l.creator_user_id === o.creator_user_id)?.creator ?? {
-                    display_name: null, avatar_url: null, top_platform: null, top_follower_count: null
-                  }} />
+                  {/* The basket has been cleared by now, so this looks the
+                      identity up in the lines captured before the clear — and
+                      falls back to the empty identity rather than assuming
+                      one is there, which is the same defence readStored
+                      applies to a line written by an older build. */}
+                  <CreatorChip creator={chipFor(lines.find((l) => l.creator_user_id === o.creator_user_id)?.creator ?? UNKNOWN_CREATOR)} />
                   <Link to={`/campaigns/${o.campaign_id}`} style={{ fontWeight: 600 }}>{t("cart.viewOrder")}</Link>
                 </div>
               ))}
@@ -147,7 +167,7 @@ export default function CartPage() {
               const subtotals = totalsByCurrency(group.lines);
               return (
                 <div key={group.creator_user_id} className="card" style={{ marginTop: 16 }}>
-                  <CreatorChip creator={group.creator} />
+                  <CreatorChip creator={chipFor(group.creator)} />
 
                   <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                     {group.lines.map((line) => {

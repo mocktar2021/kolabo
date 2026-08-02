@@ -14,6 +14,13 @@ same chain, not a message. Terms that get argued over somewhere else end up
 agreed somewhere else, and a deal agreed on WhatsApp is a deal we cannot
 contract, escrow, or protect either side of.
 
+Which is also why the free text this module writes is guarded: see
+_checked_note for a proposal's reasoning, _checked_description for the brief
+itself, and app.core.contact_guard for the rule and for the honest limits of
+it. The two are the same rule at different blast radii — a note is read by one
+counterparty, while an open brief is readable by every signed-in creator on
+the board.
+
 Direct orders: a brand can also skip the brief entirely and buy a creator's
 package at the published price — or offer terms of its own when no listed
 package fits. Both are created here, as hidden single-creator campaigns,
@@ -38,13 +45,16 @@ proposal of its own.
 
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
-favourite all name a creator the same way.
+favourite all name a creator the same way. The notifications this module
+raises spend that same identity, because a notification that does not name the
+person it is about is one the reader has to open the app to understand.
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.contact_guard import check_no_contact_details
 from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
@@ -67,6 +77,23 @@ AUTHOR_EXCLUDED_ROLE = "influencer"
 # and an unbounded chain would let one stubborn thread decide how long the
 # whole page takes to load.
 MAX_PROPOSAL_VERSIONS = 20
+
+# The statuses a buyer may filter its own campaign list by — which is every
+# status a campaign can hold. Named off models rather than spelled out again,
+# so a fourth status becomes filterable the day it exists instead of silently
+# becoming a 400 for anybody who asks about it.
+MY_CAMPAIGN_STATUSES = (models.DRAFT, models.PUBLISHED, models.CANCELLED)
+
+# What a notification calls somebody who has not written a profile yet.
+#
+# Both sides of the market can be live before they have a profile: a creator
+# can bid on the board the day they sign up, and a brand can order before it
+# has filled in a company name. The alternative to a placeholder is putting a
+# user id in the sentence, which turns "Ama K. applied to your open brief"
+# into a line nobody can read — and these strings go out by email, where the
+# reader has no screen to cross-reference it against.
+UNNAMED_CREATOR = "A creator"
+UNNAMED_BUYER = "A business"
 
 # How long a creator has to accept or decline a direct order.
 #
@@ -120,6 +147,91 @@ def _require_campaign_author(db: Session, user_id: str) -> User:
             detail="Only businesses and agencies can create campaigns.",
         )
     return user
+
+
+def _checked_note(note: str | None) -> str | None:
+    """A proposal note, refused if it carries contact details.
+
+    THE PRODUCT RULE, AND THE HONEST CLAIM ABOUT IT. Swapping a phone number
+    or an email is how a deal leaves Kolabo, and it takes the contract, the
+    escrow and the fee with it — what the two of them agree afterwards has
+    nothing behind it when it goes wrong. The note is where that is most
+    tempting, because it is the first free-text field either side gets and it
+    arrives before there is any contract to open a thread with. It is FRICTION,
+    NOT PREVENTION: a determined sender can spell a number out in words. It
+    stops the habit, which is most of them.
+
+    APPLIED AT EVERY WRITER OF Proposal.note, not just the obvious one. A
+    creator's bid, the business's counter, and the note on either kind of
+    direct order are four different functions writing the same column, and a
+    guard on one of them is worse than no guard — it looks finished. The two
+    order paths are checked in the RESOLVERS rather than in _place_order,
+    which keeps the property campaigns.cart depends on: every item in a basket
+    is held to the rule before a single row is written.
+
+    Never redacted. An altered note is worse than a refused one — these are
+    the terms of a deal, and a sentence quietly edited by the platform is a
+    term nobody agreed to.
+    """
+    check_no_contact_details(note, "proposal note")
+    return note
+
+
+def _checked_description(description: str | None) -> str | None:
+    """A brief in prose, refused if it carries contact details.
+
+    THE WIDEST-READ TEXT ON THE PLATFORM, which is why it is guarded even
+    though it is the brand's own words about the brand's own campaign. The
+    note above is read by ONE counterparty. An open brief is readable by every
+    signed-in creator on the board, so a number in a description is not one
+    leak that might cost one deal: it is the buyer's phone number placed in
+    front of the entire supply side in a single post, and every creator who
+    takes it off the board is a deal with no contract, no escrow and no
+    recourse for either side. A brand doing it does not even have to intend
+    anything — "des questions ? appelez-nous" is a habit, not a scheme, which
+    is exactly the case app.core.contact_guard is built to catch.
+
+    APPLIED AT BOTH WRITERS OF Campaign.description, for the reason
+    _checked_note gives about its own four: half a rule looks finished and is
+    not. Description is deliberately NOT in campaigns.editing.LOCKED_FIELDS —
+    it is description and not terms, so it stays editable from draft to
+    cancellation — and a guard that only ran at create would therefore be one
+    a brand clears by saving the brief a second time.
+
+    Same 400 and the same sentence as every other surface, naming the field so
+    the author knows which box to fix. Never redacted: a brief quietly edited
+    by the platform is a brief creators are pricing against words the brand
+    never wrote.
+
+    A closed brief is guarded too, and that is not overreach. is_open is one
+    PATCH away at any time, and a description written while nobody could read
+    it does not become safe the moment the brand opens the board.
+    """
+    check_no_contact_details(description, "brief description")
+    return description
+
+
+def _checked_campaign_status(value: str | None) -> str | None:
+    """A status a buyer may filter its own list by, or a 400 naming the set.
+
+    Refused rather than answered with an empty list, which is the opposite of
+    what discovery search does with an unknown platform — and the difference
+    is whose data is being asked about. An empty search result is a true
+    answer about strangers. An empty list of YOUR OWN campaigns reads as "you
+    have none", which is the single most alarming thing this endpoint could
+    say to somebody with a quarter of live briefs, and it sends them to
+    support rather than to the fix.
+
+    A module-level helper rather than an inline check because the parameter it
+    validates is called `status`, which shadows the fastapi module of the same
+    name inside list_my_campaigns. Here the name is free.
+    """
+    if value is None or value in MY_CAMPAIGN_STATUSES:
+        return value
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"status must be one of: {', '.join(MY_CAMPAIGN_STATUSES)}",
+    )
 
 
 def _validate_deliverables(deliverables: list) -> None:
@@ -199,6 +311,10 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     # first keeps a creator from getting field-level errors on a request that
     # was never going to be accepted.
     _require_campaign_author(db, business_user_id)
+    # Before the catalog check and before any row is built. A brief whose
+    # prose cannot be published should hear about the prose, not first be
+    # marched through a deliverables error it would have hit anyway.
+    description = _checked_description(payload.description)
     deliverables = [d.model_dump() for d in payload.deliverables]
     # Validated even for drafts: a draft with deliverables the catalog does
     # not recognise would only blow up later, at publish, when the fix is no
@@ -207,7 +323,7 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     campaign = models.Campaign(
         business_user_id=business_user_id,
         title=payload.title,
-        description=payload.description,
+        description=description,
         budget_amount=payload.budget_amount,
         budget_currency=payload.budget_currency,
         deliverables=deliverables,
@@ -321,6 +437,11 @@ def _place_order(
     brief always could. Widening the parameter was cheaper and safer than a
     second builder for multi-deliverable orders. rate_amount is the whole
     order's price, so for a cart it is the sum the caller worked out.
+
+    The note arrives already checked for contact details — both resolvers run
+    _checked_note before returning terms, which is what lets a cart refuse a
+    basket before it has written half of it. Nothing is re-checked here; one
+    answer to "may this note be written" is enough.
 
     Who is proposing, and why it is the business. Either the buyer picked a
     price the creator had already published and offered it back, or it named
@@ -507,7 +628,10 @@ def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
         "rate_amount": offer.rate_amount,
         "currency": offer.currency.upper(),
         "timeline_days": offer.timeline_days,
-        "note": offer.note,
+        # Checked HERE rather than in _place_order so that a cart is refused
+        # before it has written any of its rows, which is the whole reason
+        # this function exists apart from the builder.
+        "note": _checked_note(offer.note),
     }
 
 
@@ -560,7 +684,10 @@ def resolve_package_terms(
         "rate_amount": package.price_amount,
         "currency": package.currency,
         "timeline_days": timeline_days,
-        "note": note,
+        # The buyer's own words, and the only free text on a package order —
+        # so the only place contact details could ride in. Same rule, same
+        # helper, same reason as everywhere else this column is written.
+        "note": _checked_note(note),
     }
 
 
@@ -653,7 +780,13 @@ def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> m
     )
 
 
-def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payload: schemas.ProposalIn) -> dict:
+def submit_proposal(
+    db: Session,
+    campaign_id: str,
+    influencer_user_id: str,
+    payload: schemas.ProposalIn,
+    is_application: bool = False,
+) -> dict:
     """Write the next version of one creator's offer on one campaign.
 
     THE ONE PLACE A PROPOSAL ROW IS WRITTEN. An invited creator pricing a
@@ -663,12 +796,30 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
     building a proposal of its own. A second writer would be a second place
     for the version numbering to drift, and the version chain is what a
     contract gets written from.
+
+    is_application changes THE NOTIFICATION AND NOTHING ELSE. The row, the
+    version chain, the supersede rule and the brand's proposals list are
+    identical either way, and they must stay identical — that sameness is the
+    entire reason the board delegates here. But they are not the same news to
+    wake up to: a bid from an invited creator is an answer the brand was
+    waiting for, while an application is a stranger the brand now has to
+    decide whether to look at. One line of a bell menu has to tell them apart,
+    because that is where the brand decides which one to open.
+
+    Both messages NAME THE CREATOR. These strings go out by email as well as
+    into the bell, where the reader has no screen to cross-reference against,
+    and "a new proposal was submitted" left them with neither who nor which
+    brief — two questions that can only be answered by opening the app.
     """
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
     if campaign.status != models.PUBLISHED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campaign is not open for proposals")
+
+    # Before the chain is touched, so a refused note leaves the previous
+    # version live rather than superseded by something that was never written.
+    note = _checked_note(payload.note)
 
     latest = latest_in_chain(db, campaign_id, influencer_user_id)
     next_version = 1
@@ -687,7 +838,7 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         rate_amount=payload.rate_amount,
         rate_currency=payload.rate_currency.upper(),
         timeline_days=payload.timeline_days,
-        note=payload.note,
+        note=note,
         author_role=models.AUTHOR_INFLUENCER,
         status=models.SUBMITTED,
         # Carried forward from whatever this version answers, exactly as
@@ -701,10 +852,27 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         expires_at=latest.expires_at if latest is not None else None,
     )
     db.add(proposal)
-    notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
+    # Resolved before the notification rather than after the commit, because
+    # the notification spends it. It is the same single lookup the response
+    # needs either way, moved rather than added.
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id) or blank_identity()
+    actor = identity["display_name"] or UNNAMED_CREATOR
+    if is_application:
+        notify(
+            db,
+            campaign.business_user_id,
+            "brief_application",
+            f"{actor} applied to your open brief {campaign.title}",
+        )
+    else:
+        notify(
+            db,
+            campaign.business_user_id,
+            "proposal_submitted",
+            f"{actor} sent a proposal for {campaign.title}",
+        )
     db.commit()
     db.refresh(proposal)
-    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
     return _proposal_out(proposal, identity)
 
 
@@ -723,6 +891,11 @@ def reply_to_proposal(
     is therefore a proposal version like any other, authored by the business:
     same chain, next number, and the offer on the table is still whatever the
     last version says.
+
+    Which is exactly why the note is guarded on THIS side too. A rule that
+    stopped a creator writing a phone number and let the brand write one back
+    would not be a rule, it would be a formality — and this is the reply that
+    was going to WhatsApp in the first place.
 
     A reply with no counter repeats the previous terms rather than leaving them
     blank. Every row in a chain is then a complete offer, and answering "what
@@ -751,6 +924,10 @@ def reply_to_proposal(
             detail="This proposal is closed and cannot be answered",
         )
 
+    # Before the supersede below, for the same reason as in submit_proposal: a
+    # refused reply must leave the creator's offer standing.
+    note = _checked_note(payload.note)
+
     reply = models.Proposal(
         campaign_id=campaign_id,
         influencer_user_id=latest.influencer_user_id,
@@ -761,7 +938,7 @@ def reply_to_proposal(
         # different deal wearing the same version number.
         rate_currency=latest.rate_currency,
         timeline_days=payload.timeline_days if payload.timeline_days is not None else latest.timeline_days,
-        note=payload.note,
+        note=note,
         author_role=models.AUTHOR_BUSINESS,
         status=models.SUBMITTED,
         # Carried forward, not restarted. A direct order that is being
@@ -771,11 +948,22 @@ def reply_to_proposal(
     )
     latest.status = models.SUPERSEDED
     db.add(reply)
+    # Named, and distinguished. "The business replied to your proposal" told a
+    # creator neither who was asking nor whether anything had moved — and a
+    # counter changes the money or the date, which is the only one of the two
+    # that needs an answer. A creator with several live briefs cannot triage
+    # a bell where every row says the same sentence.
+    countered = payload.rate_amount is not None or payload.timeline_days is not None
+    buyer = _company_name(db, business_user_id) or UNNAMED_BUYER
     notify(
         db,
         latest.influencer_user_id,
         "proposal_reply",
-        f"The business replied to your proposal for {campaign.title}",
+        (
+            f"{buyer} countered your proposal for {campaign.title}"
+            if countered
+            else f"{buyer} replied to your proposal for {campaign.title}"
+        ),
     )
     db.commit()
     db.refresh(reply)
@@ -827,20 +1015,62 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
     }
 
 
-def list_my_campaigns(db: Session, business_user_id: str) -> list[dict]:
-    """The buyer's own campaigns, briefs and direct orders alike.
+def list_my_campaigns(
+    db: Session,
+    business_user_id: str,
+    status: str | None = None,
+    created_after=None,
+    created_before=None,
+) -> list[dict]:
+    """The buyer's own campaigns, briefs and direct orders alike, newest first.
 
     Deliberately NOT filtered on is_direct. Hiding direct orders is about
     keeping a private transaction off a public board; this list is scoped to
     the one person who placed them, and an order they cannot find is an order
     they cannot chase.
+
+    THE FILTERS ARE THE BUYER'S OWN VIEW, exactly as the open board's are the
+    creator's: they narrow what comes back and change nothing about the rows
+    or the order (still newest first). A brand three months into using this
+    has a list it scrolls to find last week's brief in, and "which of these
+    are still live" is the question it opens the page asking. Both default to
+    None, so a client that sends neither gets the whole list it always got.
+
+    THE DATE RANGE IS ON created_at AND IS IN UTC, because created_at is
+    stored as naive UTC (models.utcnow). A buyer in Cotonou asking for "today"
+    gets the UTC day, which is an hour off theirs and is the honest thing to
+    do until the client sends a timezone: guessing one here would put a brief
+    in the wrong day silently, where being an hour wide is at least uniform.
+
+    created_before is INCLUSIVE OF THE WHOLE DAY. Somebody picking a date on a
+    calendar means "up to and including that day", and a naive `created_at <=
+    midnight` would drop everything written after midnight on the day they
+    picked — which is all of it.
+
+    `status` shadows the fastapi module imported at the top of this file, but
+    only inside this function, and nothing in here needs it: the one refusal
+    it can raise lives in _checked_campaign_status, where the name is free.
+    The parameter keeps the field's name because that is what the client and
+    the column already call it.
     """
-    rows = (
-        db.query(models.Campaign)
-        .filter(models.Campaign.business_user_id == business_user_id)
-        .order_by(models.Campaign.created_at.desc())
-        .all()
+    query = db.query(models.Campaign).filter(
+        models.Campaign.business_user_id == business_user_id
     )
+    checked = _checked_campaign_status(status)
+    if checked is not None:
+        query = query.filter(models.Campaign.status == checked)
+    if created_after is not None:
+        query = query.filter(
+            models.Campaign.created_at >= datetime.combine(created_after, time.min)
+        )
+    if created_before is not None:
+        # The start of the NEXT day, strictly greater-than, which is how a
+        # whole inclusive day is expressed against a timestamp column.
+        query = query.filter(
+            models.Campaign.created_at
+            < datetime.combine(created_before, time.min) + timedelta(days=1)
+        )
+    rows = query.order_by(models.Campaign.created_at.desc()).all()
     return [_to_out(c) for c in rows]
 
 

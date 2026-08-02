@@ -9,6 +9,16 @@ routing every disagreement straight to a human does not survive volume growth:
 it prices a marketplace's support desk off the number of arguments rather than
 off the number of real failures.
 
+AND IT STAYS ON KOLABO. Both free-text fields here — the opening statement and
+every message in the thread — are checked for contact details, which is worth
+spelling out because a dispute is the one place both parties genuinely do need
+to reach each other. It is also the place with the strongest pull off the
+platform: somebody is losing money and wants to sort it out directly. Sorting
+it out directly is precisely what forfeits the escrow decision they are asking
+for, and an agreement reached in a phone call is one no admin can read, audit
+or enforce. See app.core.contact_guard for the rule and for the honest limits
+of it — it is friction, not prevention.
+
 WHY THIS IS ITS OWN MODULE. service.py already carries funding, release, the
 auto-release sweep and the referral hook, all of which move money on the happy
 path. Disputes are a second lifecycle with their own states, their own
@@ -24,6 +34,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.contact_guard import check_no_contact_details
 from app.modules.notifications.service import notify
 from app.modules.payments import models
 from app.modules.payments import service as payments_service
@@ -129,6 +140,13 @@ def _checked_statement(statement: str | None) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A statement is at most {MAX_STATEMENT_CHARS} characters.",
         )
+    # The contact guard lives with the length checks rather than in
+    # raise_dispute, so that the statement is held to every rule it has in one
+    # place — and so that a future second way to open a case cannot acquire
+    # the lengths and miss this. Refused, never redacted: a statement is
+    # evidence, and evidence the platform quietly edited is worth nothing to
+    # the admin who has to decide on it.
+    check_no_contact_details(text, "statement")
     return text
 
 
@@ -147,6 +165,11 @@ def _checked_body(body: str | None) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A message is at most {MAX_STATEMENT_CHARS} characters.",
         )
+    # The same rule as the statement, and it matters more here: this is the
+    # turn where somebody says "let's just sort this out between us, call
+    # me" — which is the moment the escrow decision they asked for stops being
+    # possible.
+    check_no_contact_details(text, "message")
     return text
 
 

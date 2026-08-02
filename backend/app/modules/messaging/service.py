@@ -23,6 +23,12 @@ carry it. The thread also becomes the evidence trail a dispute needs — when a
 delivery was promised, when a revision was asked for, when it went quiet —
 which is why read_at is a timestamp and not a flag.
 
+AND WHAT MAY NOT TRAVEL THROUGH IT. The gate keeps the conversation from
+starting too early; app.core.contact_guard keeps it from being moved somewhere
+else once it has. A message carrying a phone number, an email address or a
+handle is refused rather than edited — see the comment at the check in
+send_message for the rule and for the honest limits of it.
+
 WHO MAY READ. Both parties to the contract, and nobody else. That includes an
 admin: there is deliberately no admin path into a thread in this module.
 Reading two parties' private working conversation is a real privacy cost, and
@@ -39,13 +45,15 @@ WHAT LIVES HERE AND WHAT LIVES NEXT DOOR. This file owns the PER-CAMPAIGN
 send and read — one job's thread, addressed by the campaign it hangs off — and
 the gate helpers. Addressing a COUNTERPARTY instead, and the inbox that groups
 by person rather than by contract, live in messaging.conversations, which
-calls the same gate. Both are kept: the per-campaign pair is what the web app
-calls and is still the precise way to reach one job's thread.
+calls the same gate and the same contact guard. Both are kept: the
+per-campaign pair is what the web app calls and is still the precise way to
+reach one job's thread.
 """
 from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.contact_guard import check_no_contact_details
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.messaging.models import Message, utcnow
@@ -123,6 +131,24 @@ def send_message(db: Session, campaign_id: str, sender_id: str, to_user_id: str,
     # as whether they may talk, so no separate owner-or-influencer check is
     # needed: a contract names exactly two people.
     _require_contract(db, campaign_id, sender_id, to_user_id)
+
+    # THE PRODUCT RULE. Swapping a phone number or an email is how a deal
+    # leaves Kolabo, and it takes the contract, the escrow and the fee with it:
+    # what the two of them agree afterwards has nothing behind it if it goes
+    # wrong. This is the last free-text field in the flow, so it is the last
+    # place to say so.
+    #
+    # It is FRICTION, NOT PREVENTION, and that is the honest claim. Anyone set
+    # on passing a number can spell it out in words or split it over two
+    # messages. What this stops is the habit — "here's my number, call me" —
+    # which is most of them.
+    #
+    # After the gate, so authorisation still answers first and a stranger
+    # learns nothing about a thread they cannot see. Before the row is
+    # written, so a refusal saves nothing. Never a redaction: an altered
+    # message is worse than a refused one, because the sender believes they
+    # said something they did not say.
+    check_no_contact_details(body, "message")
 
     message = Message(
         campaign_id=campaign_id, sender_user_id=sender_id, recipient_user_id=to_user_id, body=body

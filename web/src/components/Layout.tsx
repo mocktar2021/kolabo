@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "./Logo";
-import { api } from "../lib/api";
+import { NotificationsBell } from "./NotificationsBell";
+import { api, mediaSrc } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { useCart } from "../lib/cart";
 import { awaitingMyAnswer } from "../lib/disputes";
+import { useMe } from "../lib/me";
 import type { Dispute, MessageThread } from "../lib/types";
 
 function LanguageSwitch() {
@@ -206,15 +208,21 @@ const MENU_DASH: React.CSSProperties = {
    Messages, Litiges) readable at laptop widths instead of wrapping onto a
    second row.
 
-   THE AVATAR IS A GRADIENT AND NOT A PHOTO, and that is a decision rather
-   than a placeholder. Layout mounts on every screen of the app and already
-   spends two requests per navigation on the message and dispute badges;
-   there is no endpoint that hands a caller their own avatar without also
-   handing over a whole profile (and a business has no avatar in this system
-   at all — it has a company name). A third request on every page to decorate
-   a 28 px button is a bad trade, so the control draws the brand gradient with
-   a neutral glyph. The day a cheap /auth/me-style response carries an
-   avatar_url, this component is the only thing that changes.
+   THE AVATAR IS NOW THE SIGNED-IN USER'S OWN PHOTO, and what changed was the
+   API rather than this component's mind. It used to draw the brand gradient
+   with a neutral glyph, and that was a decision and not a placeholder: no
+   endpoint handed a caller their own avatar without also handing over a whole
+   profile, and a third request on every page of the app to decorate a 28 px
+   button was a bad trade. GET /auth/me carries display_name and avatar_url
+   now, and lib/me.tsx fetches it ONCE PER SESSION rather than once per page —
+   keyed on the token, mounted above the router — which is the only reason
+   this is worth doing at all. Fetching it here instead would be exactly the
+   per-navigation request that was refused.
+
+   THE GRADIENT REMAINS, as the fallback and permanently. A business has a
+   company name and no avatar anywhere in this system, and a creator who has
+   not uploaded a photo is an ordinary state rather than a failure, so the
+   no-image path is the common one and has to look deliberate.
 
    Closes on an outside click and on Escape, and every entry is a real link or
    button, so the whole menu is reachable and operable from the keyboard
@@ -222,6 +230,7 @@ const MENU_DASH: React.CSSProperties = {
 function AccountMenu() {
   const { t } = useTranslation();
   const { logout } = useAuth();
+  const { me, loading } = useMe();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -268,6 +277,11 @@ function AccountMenu() {
     { to: "/account", label: t("nav.account") }
   ];
 
+  // mediaSrc turns the server path ("/profiles/media/{id}") into an absolute
+  // URL against VITE_API_URL, and answers undefined for a null path — so this
+  // is also the null test.
+  const avatar = mediaSrc(me?.avatar_url);
+
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
@@ -288,20 +302,46 @@ function AccountMenu() {
         <span
           aria-hidden="true"
           style={{
-            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-            background: "var(--gradient-brand)", color: "#fff",
+            width: 28, height: 28, borderRadius: "50%", flexShrink: 0, overflow: "hidden",
+            /* The gradient only paints where there is no photo. Leaving it
+               underneath an image would show through while the image loads,
+               which reads as a flash rather than as a placeholder. */
+            background: avatar ? "var(--surface-2)" : "var(--gradient-brand)", color: "#fff",
             display: "inline-flex", alignItems: "center", justifyContent: "center"
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8.4" r="3.4" />
-            <path d="M4.8 19.4c1.1-3.2 3.9-5 7.2-5s6.1 1.8 7.2 5" />
-          </svg>
+          {avatar ? (
+            <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8.4" r="3.4" />
+              <path d="M4.8 19.4c1.1-3.2 3.9-5 7.2-5s6.1 1.8 7.2 5" />
+            </svg>
+          )}
         </span>
       </button>
       {open && (
-        <div className="menu-panel" role="menu" style={{ left: "auto", right: 0, width: 220 }}>
+        <div className="menu-panel" role="menu" style={{ left: "auto", right: 0, width: 240 }}>
+          {/* Who is signed in, at the top of the menu that is about them. The
+              name only — NOT the phone number, which /auth/me does carry and
+              which belongs on the account screen where somebody is checking
+              which number they log in with, not under an avatar in a nav that
+              is open on a shared screen.
+
+              While the first request is in flight this renders nothing rather
+              than the fallback: "Votre compte" appearing for a frame and then
+              turning into a name is worse than a beat of empty space. */}
+          {!loading && (
+            <div style={{ padding: "2px 12px 9px", borderBottom: "1px solid var(--line)", marginBottom: 5 }}>
+              <strong style={{
+                fontFamily: "var(--font-display)", fontSize: 14.5, display: "block",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+              }}>
+                {me?.display_name || t("menu.noName")}
+              </strong>
+            </div>
+          )}
           {items.map((it) => (
             <Link key={it.to} className="menu-item" role="menuitem" to={it.to} onClick={() => setOpen(false)}>
               <span className="t">{it.label}</span>
@@ -338,7 +378,9 @@ function AppNav() {
 
      Messages are the exception that proves it: a contract has two parties and
      the thread belongs to both, so that entry is not asked the question at
-     all. Disputes are the same exception for the same reason.
+     all. Disputes are the same exception for the same reason, AND SO ARE
+     NOTIFICATIONS — both sides of the market are told about things, and an
+     invitation and a proposal are the same event read from two ends.
 
      What is NOT here any more: the profile, the money screen, the account
      settings and sign out. They live behind the avatar in AccountMenu — they
@@ -356,6 +398,10 @@ function AppNav() {
       <MessagesIndicator />
       <DisputesIndicator />
       {isBrand && <CartIndicator />}
+      {/* An icon rather than a word, and next to the avatar rather than out
+          with the destinations: the bell is not a place you go, it is what
+          tells you where to go. */}
+      <NotificationsBell />
       <AccountMenu />
     </div>
   );

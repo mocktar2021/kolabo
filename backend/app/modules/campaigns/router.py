@@ -1,4 +1,6 @@
 """Epic D (KOL-11): Campaigns and Collaboration."""
+from datetime import date
+
 from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
@@ -12,11 +14,34 @@ router = APIRouter()
 
 @router.get("/mine", response_model=list[schemas.CampaignOut])
 def my_campaigns(
+    # `status` shadows the fastapi module of the same name imported above, but
+    # only inside this function, and nothing in here needs it. The query
+    # parameter is named for the field it filters, because that is the name
+    # the client and the column already use.
+    status: str | None = None,
+    created_after: date | None = None,
+    created_before: date | None = None,
     db: Session = Depends(get_db),
     business_user_id: str = Depends(get_current_user_id),
 ):
-    """List the campaigns owned by the current business."""
-    return service.list_my_campaigns(db, business_user_id)
+    """List the campaigns owned by the current business, newest first.
+
+    Optionally narrowed by status (draft, published, cancelled) and by the day
+    the campaign was created. A buyer three months into using this has a list
+    it has to scroll to find last week's brief in, and "which of these are
+    still live" is the question it opens the page asking.
+
+    An unrecognised status is a 400 naming the three, not an empty list. This
+    is the buyer's own work: showing nothing would read as "you have no
+    campaigns", which is the one answer that sends somebody to support.
+    """
+    return service.list_my_campaigns(
+        db,
+        business_user_id,
+        status=status,
+        created_after=created_after,
+        created_before=created_before,
+    )
 
 
 @router.get("/invitations/mine", response_model=list[schemas.InvitationWithCampaign])
@@ -35,6 +60,12 @@ def my_invitations(
 def open_briefs(
     limit: int = board.BOARD_LIMIT,
     offset: int = 0,
+    min_budget: int | None = None,
+    max_budget: int | None = None,
+    category: str | None = None,
+    country: str | None = None,
+    platform: str | None = None,
+    deadline_before: date | None = None,
     db: Session = Depends(get_db),
     influencer_user_id: str = Depends(get_current_user_id),
 ):
@@ -47,11 +78,34 @@ def open_briefs(
     behind a creator login. An empty list would also read as "there are no
     open briefs", which is a different and untrue answer.
 
-    Ranked by match_score and then by newest. THE SCORE RANKS, IT DOES NOT
-    FILTER: every open brief appears on every creator's board, including the
-    ones scoring zero. campaigns.board says why.
+    THE FILTERS NARROW, THE SCORE ORDERS, and they are two mechanisms rather
+    than one. min_budget, max_budget, category, country, platform and
+    deadline_before decide WHICH briefs come back; match_score decides what
+    order they come back IN, exactly as it did before they existed. Every one
+    of them is optional, so a client that sends none gets the whole board.
+
+    THE SCORE STILL DOES NOT FILTER: with no filters set, every open brief
+    appears on every creator's board, including the ones scoring zero. The
+    brand's targeting never hides a brief from anybody — only the creator's
+    own filters do, and only for as long as they leave them set.
+
+    category and country match the brand's TARGET lists, so they mean "briefs
+    aimed at this", which is why an untargeted brief does not answer them.
+    platform matches any one of a brief's deliverables. deadline_before is
+    inclusive. campaigns.board argues all of it.
     """
-    return board.list_open_campaigns(db, influencer_user_id, limit, offset)
+    return board.list_open_campaigns(
+        db,
+        influencer_user_id,
+        limit,
+        offset,
+        min_budget=min_budget,
+        max_budget=max_budget,
+        category=category,
+        country=country,
+        platform=platform,
+        deadline_before=deadline_before,
+    )
 
 
 @router.post("/proposals/{proposal_id}/withdraw", response_model=schemas.ProposalOut)
@@ -107,6 +161,10 @@ def update_campaign(
     a creator has bid. They are not terms: nobody prices a brief against who
     else the brand hoped to hear from, so widening the board or closing it to
     new applications takes nothing away from the offers already on the table.
+
+    A description carrying a phone number, an email or a messaging handle is
+    refused with a 400, the same as at creation — an open brief is read by
+    every creator on the board.
     """
     return editing.update_campaign(db, campaign_id, business_user_id, payload)
 
@@ -263,6 +321,9 @@ def apply_to_campaign(
     Allowed only on a published, open, non-direct campaign (400 otherwise) and
     only while the caller has no live proposal on it already (409) — a second
     application would supersede terms the brand may be reading right now.
+
+    The board's filters have no say here. They decided what the creator was
+    shown; they never decide what the creator may bid on.
     """
     return board.apply_to_campaign(db, campaign_id, influencer_user_id, payload)
 

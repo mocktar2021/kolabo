@@ -388,8 +388,12 @@ def test_clearing_targeting_with_null_is_not_a_crash(client):
 
 def test_applying_creates_a_proposal_the_brand_sees_in_its_proposals_list(client):
     """An application is an ordinary proposal on the ordinary chain. The brand
-    answers it from the campaign page it already uses, with no new surface and
-    no way to tell it apart from a bid by somebody it invited."""
+    answers it from the campaign page it already uses, with no new surface —
+    and it IS told which kind of proposal arrived: an unsolicited application
+    rings as `brief_application`, not as the `proposal_submitted` an invited
+    creator's bid rings as. Those are two different decisions for the brand,
+    and only one of them was expected. The row and the chain stay identical;
+    the wording of the bell is the only thing that differs."""
     _, biz = _user(client, "+22990001120", "business")
     inf_id, inf = _user(client, "+22990001121", "influencer")
     cid = _open_brief(client, biz, "Launch push")
@@ -412,12 +416,20 @@ def test_applying_creates_a_proposal_the_brand_sees_in_its_proposals_list(client
     # And it really was an application: nobody invited this creator.
     assert detail["invitations"] == []
 
-    # The buyer is told, through the path submit_proposal already had.
+    # The buyer is told, through the path submit_proposal already had — and
+    # told that it was an application rather than an invited creator's answer.
     from app.modules.notifications.models import Notification
     db = client.session_factory()
-    types = [n.type for n in db.query(Notification).all()]
+    notifications = [(n.type, n.message) for n in db.query(Notification).all()]
     db.close()
-    assert "proposal_submitted" in types
+    types = [t for t, _ in notifications]
+    assert "brief_application" in types
+    assert "proposal_submitted" not in types
+    # And the sentence says so too, naming the brief the brand has to go and
+    # answer: a bell that only says "a proposal" sends it hunting.
+    message = next(m for t, m in notifications if t == "brief_application")
+    assert "applied to your open brief" in message
+    assert "Launch push" in message
 
 
 def test_applying_twice_conflicts(client):

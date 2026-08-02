@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AuthProvider } from "./lib/auth";
+import { MeProvider } from "./lib/me";
 import "./i18n";
 import "./lib/onboardingStrings";
 import "./lib/marketingStrings";
@@ -19,12 +20,24 @@ import "./lib/navMenuStrings";
    brand-facing brief section to: addResourceBundle deep-merges, so the new
    keys join that group rather than replacing it. */
 import "./lib/boardStrings";
+/* Same arrangement: this one adds nav.notifications to the nav.* group
+   i18n.ts owns, so it has to come after it. */
+import "./lib/notificationStrings";
+/* And this one adds profile.noAudienceHint to the profile.* group i18n.ts
+   owns, for the same reason and in the same way. */
+import "./lib/socialStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      {/* Inside AuthProvider because it reads the token, and OUTSIDE the
+          router (which App owns) because it must not remount on navigation —
+          that is the difference between one /auth/me per session and one per
+          page. */}
+      <MeProvider>
+        <App />
+      </MeProvider>
     </AuthProvider>
   </React.StrictMode>
 );

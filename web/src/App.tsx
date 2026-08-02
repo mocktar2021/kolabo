@@ -18,6 +18,7 @@ import CampaignList from "./pages/CampaignList";
 import CampaignDetailPage from "./pages/CampaignDetail";
 import CartPage from "./pages/CartPage";
 import MessagesPage from "./pages/Messages";
+import NotificationsPage from "./pages/Notifications";
 import MyInvitations from "./pages/MyInvitations";
 import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
@@ -121,6 +122,12 @@ export default function App() {
               ask about. The gate is the contract itself, and it is the
               server's — /messaging answers 403 to anybody without one. */}
           <Route path="/messages" element={<MessagesPage />} />
+          {/* Neither wrapper either, for the plainest version of the same
+              reason: both sides of the market are notified about things, and
+              every route under /notifications takes its subject from the
+              bearer token — there is no id in any of them for a role to be
+              asked about. */}
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/invitations" element={<CreatorOnly><MyInvitations /></CreatorOnly>} />
           <Route path="/contracts" element={<ContractsList />} />
           <Route path="/contracts/:id" element={<ContractPage />} />

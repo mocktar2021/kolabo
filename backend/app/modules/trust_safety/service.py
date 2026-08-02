@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.modules.admin.models import AdminActionLog
+from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
 from app.modules.trust_safety import models
 
@@ -154,6 +155,19 @@ def list_reports(db: Session, report_status: str | None) -> list[dict]:
 
 
 def resolve_report(db: Session, admin_id: str, report_id: str, decision: str) -> dict:
+    """An admin closes a case, and the person who raised it is told.
+
+    THE REPORTER HEARS THAT IT CLOSED AND NEVER WHAT WAS DECIDED, and the two
+    halves of that are both deliberate. They hear something because a report
+    that vanishes into an admin queue is a report nobody files a second time,
+    and reporting is the only signal we have about behaviour that never
+    touches a contract. They do not hear the outcome because the outcome is a
+    fact about SOMEBODY ELSE'S ACCOUNT: "we acted on your report" tells the
+    reporter that a named person was sanctioned, which is not theirs to know
+    and is exactly what turns a reporting tool into a harassment tool.
+
+    So reviewed and dismissed produce the same sentence. That is the point.
+    """
     if decision not in DECISIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be reviewed or dismissed")
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
@@ -173,6 +187,12 @@ def resolve_report(db: Session, admin_id: str, report_id: str, decision: str) ->
             target_id=report_id,
             reason=report.reason_code,
         )
+    )
+    notify(
+        db,
+        report.reporter_user_id,
+        "report",
+        f"Your report about a {report.target_type} has been reviewed and the case is closed.",
     )
     db.commit()
     return {

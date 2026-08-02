@@ -1,8 +1,18 @@
-"""Admin verification queue and decision logic (KOL-18)."""
+"""Admin verification queue and decision logic (KOL-18).
+
+A DECISION IS TOLD TO THE PERSON IT IS ABOUT. Approving or rejecting a
+document or a connected account used to write an AdminActionLog row and stop
+there — accountability for us, silence for them. There is no screen in this
+product that polls a verification status, so somebody who uploaded an ID and
+is waiting to be allowed to trade had no way to learn the answer except by
+opening the app on the off chance; a rejection, which needs them to DO
+something, was the case that silence hurt most.
+"""
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.modules.admin.models import AdminActionLog, utcnow
+from app.modules.notifications.service import notify
 from app.modules.profiles import models as profiles
 
 DECISIONS = {"approved", "rejected"}
@@ -50,6 +60,25 @@ def decide_document(db: Session, admin_id: str, doc_id: str, decision: str, reas
     doc.reviewer_id = admin_id
     doc.reviewed_at = utcnow()
     _log(db, admin_id, f"document_{decision}", "verification_document", doc.id, reason)
+    # THE REASON TRAVELS WITH A REJECTION. It is already required by the guard
+    # above, and it is required because a rejection is an instruction: without
+    # it the user re-uploads the same unreadable photograph and rejoins the
+    # same queue, which costs them days and costs us the review twice.
+    #
+    # The underscore in the stored doc_type is a database value, not a
+    # sentence — "business_registration" in a notification reads like a leak
+    # of an internal name.
+    doc_name = doc.doc_type.replace("_", " ")
+    notify(
+        db,
+        doc.user_id,
+        "verification",
+        (
+            f"Your {doc_name} document was approved."
+            if decision == "approved"
+            else f"Your {doc_name} document was rejected: {reason}"
+        ),
+    )
     db.commit()
     return {"id": doc.id, "status": doc.status, "reviewer_id": doc.reviewer_id}
 
@@ -64,6 +93,19 @@ def decide_social(db: Session, admin_id: str, social_id: str, decision: str, rea
     account.reviewer_id = admin_id
     account.reviewed_at = utcnow()
     _log(db, admin_id, f"social_{decision}", "social_account", account.id, reason)
+    # The platform and the handle are both named because a creator can have
+    # several accounts in this queue at once, and "your account was verified"
+    # would not say which one — a verified badge is what a brand filters on,
+    # so which account carries it is the whole content of the message.
+    #
+    # Unlike a document rejection, a reason is optional here, so it is
+    # appended only when there is one rather than printing "None".
+    subject = f"Your {account.platform} account @{account.handle}"
+    if decision == "approved":
+        message = f"{subject} was verified."
+    else:
+        message = f"{subject} was rejected" + (f": {reason}" if reason else ".")
+    notify(db, account.user_id, "verification", message)
     db.commit()
     return {"id": account.id, "status": account.status, "reviewer_id": account.reviewer_id}
 

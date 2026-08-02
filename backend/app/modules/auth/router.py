@@ -51,7 +51,14 @@ def get_me(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """The caller's own account: id, phone, role, country, verified, joined.
+    """The caller's own account: id, phone, role, country, verified, joined —
+    and who they are to look at.
+
+    display_name and avatar_url ride along so a nav can draw the signed-in
+    user without a second request per page. They come from the creator
+    profile, else the business profile's company name with a null avatar, else
+    both null; they are never assembled from the users table, whose only
+    human-readable column is the phone number.
 
     Never anyone else's — the subject comes from the bearer token and there is
     no id parameter to walk. The password hash is not on the response and

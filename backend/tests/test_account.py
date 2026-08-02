@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 from app.core.db import Base, get_db
 from app.modules.auth import models
 from app.modules.auth.router import router as auth_router
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 
 PHONE = "+22990000001"
 OTHER_PHONE = "+22990000002"
@@ -90,6 +91,39 @@ def _headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _user_id(client, phone=PHONE):
+    db = client.session_factory()
+    try:
+        return db.query(models.User).filter(models.User.phone == phone).first().id
+    finally:
+        db.close()
+
+
+def _influencer_profile(client, phone=PHONE, display_name=None, avatar_media_id=None):
+    """The creator's own public identity, which is what their nav shows them."""
+    db = client.session_factory()
+    try:
+        db.add(
+            InfluencerProfile(
+                user_id=_user_id(client, phone),
+                display_name=display_name,
+                avatar_media_id=avatar_media_id,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _business_profile(client, phone=PHONE, company_name="Maison Kola"):
+    db = client.session_factory()
+    try:
+        db.add(BusinessProfile(user_id=_user_id(client, phone), company_name=company_name))
+        db.commit()
+    finally:
+        db.close()
+
+
 def _reset_code(client, phone=PHONE):
     """The newest reset code for a phone, read straight from the table.
 
@@ -132,6 +166,78 @@ def test_me_returns_the_callers_own_account_and_never_the_hash(client):
 
 def test_me_requires_auth(client):
     assert client.get("/auth/me").status_code == 401
+
+
+# --------------------------------------------------------------------------
+# Who the caller is to look at: their own name and picture
+# --------------------------------------------------------------------------
+
+
+def test_me_carries_the_creators_own_name_and_photo(client):
+    """The nav draws the signed-in user, and nothing on the users row can.
+
+    A phone number, a role and a country are not things a person recognises
+    themselves by, so this is the only field the avatar button has to work
+    with — and the URL is the same media route every other surface uses.
+    """
+    token = _verified_token(client)
+    _influencer_profile(client, display_name="Ama K.", avatar_media_id="media-abc")
+
+    body = client.get("/auth/me", headers=_headers(token)).json()
+    assert body["display_name"] == "Ama K."
+    assert body["avatar_url"] == "/profiles/media/media-abc"
+
+
+def test_me_gives_a_business_its_company_name_and_no_avatar(client):
+    """A business has a company name and no avatar anywhere in this system,
+    which is the same fact the messaging inbox records when it sets a
+    counterparty avatar for creators only."""
+    token = _verified_token(client, role="business")
+    _business_profile(client, company_name="Maison Kola")
+
+    body = client.get("/auth/me", headers=_headers(token)).json()
+    assert body["display_name"] == "Maison Kola"
+    assert body["avatar_url"] is None
+
+
+def test_me_is_two_nulls_and_not_a_500_without_any_profile(client):
+    """Somebody who has just signed up has written no profile yet, and that is
+    a real answer rather than an error. It must never fall back to the users
+    table: the only human-readable column there is the phone number."""
+    token = _verified_token(client)
+
+    r = client.get("/auth/me", headers=_headers(token))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["display_name"] is None
+    assert body["avatar_url"] is None
+
+
+def test_a_creator_profile_with_no_name_yet_does_not_borrow_one(client):
+    """A profile row that exists still wins the precedence, blank or not.
+    Falling through would show somebody a name they never chose."""
+    token = _verified_token(client)
+    _influencer_profile(client, display_name=None, avatar_media_id=None)
+
+    body = client.get("/auth/me", headers=_headers(token)).json()
+    assert body["display_name"] is None
+    assert body["avatar_url"] is None
+
+
+def test_the_patch_response_carries_the_name_too(client):
+    """PATCH answers with the same shape GET does, so a client that re-renders
+    the nav from the response of a settings save does not blank the avatar."""
+    token = _verified_token(client)
+    _influencer_profile(client, display_name="Ama K.", avatar_media_id="media-abc")
+
+    body = client.patch(
+        "/auth/me",
+        json={"current_password": PASSWORD, "phone": FREE_PHONE},
+        headers=_headers(token),
+    ).json()
+    assert body["phone"] == FREE_PHONE
+    assert body["display_name"] == "Ama K."
+    assert body["avatar_url"] == "/profiles/media/media-abc"
 
 
 # --------------------------------------------------------------------------

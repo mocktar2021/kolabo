@@ -22,6 +22,30 @@ const fr = {
   note: "Note",
   subtotal: "Sous-total",
   total: "Total",
+
+  /* NEUTRE, ET PAS « Créateur sans nom ». Une ligne ajoutée avant que le
+     panier ne garde l'identité du créateur n'a pas de nom parce que personne
+     ne l'a jamais demandé — pas parce que cette personne n'en a pas. Dire le
+     contraire serait affirmer un fait qu'on n'a pas vérifié. */
+  unknownCreator: "Créateur",
+
+  /* La sélection par créateur. */
+  selectGroup: "Inclure {{name}} dans la commande",
+  selectedCount: "{{n}} créateur(s) sélectionné(s) sur {{total}}",
+  selectAll: "Tout sélectionner",
+  selectNone: "Tout désélectionner",
+  totalSelected: "Total de la sélection",
+  checkoutSelected: "Commander la sélection ({{n}})",
+  noneSelected: "Sélectionnez au moins un créateur pour commander.",
+  groupExcluded: "Ce créateur ne sera pas commandé cette fois. Il reste dans votre panier.",
+  /* LA DISTINCTION QUI PORTE TOUTE LA FONCTIONNALITÉ. Le serveur ne sait pas
+     créer une partie d'un panier : il valide tous les articles puis les écrit
+     en une seule transaction. Choisir moins, c'est donc ENVOYER moins — ce
+     qui part, part en entier. */
+  selectionNote: "Le panier est envoyé en une seule fois : décocher un créateur ne commande pas la moitié du panier, cela l'envoie sans lui. Ce qui n'est pas coché reste dans votre panier.",
+  remaining: "Il reste {{n}} article(s) dans votre panier.",
+  backToCart: "Revenir au panier",
+
   /* Why there is no single grand total. */
   totalsNote: "Les devises ne sont jamais additionnées : chaque commande porte un séquestre, et un séquestre porte une seule devise.",
   mixedCurrency: "Ce créateur a des articles dans plusieurs devises. Une commande ne peut en porter qu'une : commandez chaque devise séparément.",
@@ -55,6 +79,24 @@ const en = {
   note: "Note",
   subtotal: "Subtotal",
   total: "Total",
+
+  /* Neutral, and not "Unnamed creator": a line added before the cart kept the
+     creator's identity has no name because nobody ever asked — not because
+     that person has none. */
+  unknownCreator: "Creator",
+
+  selectGroup: "Include {{name}} in the order",
+  selectedCount: "{{n}} of {{total}} creators selected",
+  selectAll: "Select all",
+  selectNone: "Deselect all",
+  totalSelected: "Selected total",
+  checkoutSelected: "Order the selection ({{n}})",
+  noneSelected: "Select at least one creator to order.",
+  groupExcluded: "This creator will not be ordered this time. They stay in your cart.",
+  selectionNote: "The cart is sent in one go: unticking a creator does not order half the cart, it sends the cart without them. Whatever is unticked stays in your cart.",
+  remaining: "{{n}} item(s) still in your cart.",
+  backToCart: "Back to the cart",
+
   /* Why there is no single grand total. */
   totalsNote: "Currencies are never added together: each order carries one escrow, and an escrow carries one currency.",
   mixedCurrency: "This creator has items in more than one currency. An order can only carry one: check out each currency separately.",

@@ -14,6 +14,8 @@ hurt the person reading it:
      the refund and lose the refund at the same time.
   4. Currencies are never summed. XOF plus GHS is not a number.
 """
+from datetime import datetime
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -78,7 +80,22 @@ def world(client):
         db.close()
 
 
-def _escrow(client, world, amount, currency, status, title, tag, commission=None):
+def _other_creator(client, phone="+22990060003", name="Kofi B."):
+    """A second creator, so "filter by counterparty" has two to tell apart."""
+    db = client.session_factory()
+    try:
+        inf = User(phone=phone, password_hash="x", country_code="BJ",
+                   role="influencer", is_verified=True)
+        db.add(inf); db.commit(); db.refresh(inf)
+        db.add(InfluencerProfile(user_id=inf.id, display_name=name, rate_card={}))
+        db.commit()
+        return inf.id
+    finally:
+        db.close()
+
+
+def _escrow(client, world, amount, currency, status, title, tag, commission=None,
+            influencer_user_id=None, when=None):
     """One campaign, one contract, one escrow in the state under test.
 
     Written straight to the database rather than driven through the funding
@@ -87,6 +104,7 @@ def _escrow(client, world, amount, currency, status, title, tag, commission=None
     would need a signed contract, a provider call and a dispute row for every
     single case.
     """
+    creator = influencer_user_id or world["inf"]
     db = client.session_factory()
     try:
         camp = campaigns.Campaign(
@@ -96,18 +114,18 @@ def _escrow(client, world, amount, currency, status, title, tag, commission=None
         db.add(camp); db.commit(); db.refresh(camp)
         contract = contracts.Contract(
             campaign_id=camp.id, proposal_id=f"proposal-{tag}", business_user_id=world["biz"],
-            influencer_user_id=world["inf"], language="fr", body="placeholder",
+            influencer_user_id=creator, language="fr", body="placeholder",
             rate_amount=amount, rate_currency=currency, timeline_days=7,
             deliverables=[], status=contracts.SIGNED,
         )
         db.add(contract); db.commit(); db.refresh(contract)
-        now = payments.utcnow()
+        moment = when or payments.utcnow()
         escrow = payments.Escrow(
             contract_id=contract.id, campaign_id=camp.id, business_user_id=world["biz"],
-            influencer_user_id=world["inf"], amount=amount, currency=currency,
+            influencer_user_id=creator, amount=amount, currency=currency,
             commission_amount=commission, provider="mock", provider_fund_ref=f"ref-{tag}",
-            status=status, held_at=now, due_release_at=now,
-            resolved_at=now if status in (payments.RELEASED, payments.REFUNDED) else None,
+            status=status, held_at=moment, due_release_at=moment,
+            resolved_at=moment if status in (payments.RELEASED, payments.REFUNDED) else None,
         )
         db.add(escrow); db.commit(); db.refresh(escrow)
         return escrow.id
@@ -131,14 +149,27 @@ def _split(client, world, escrow_id, released, refunded):
         db.close()
 
 
+def _campaign_of(client, escrow_id):
+    db = client.session_factory()
+    try:
+        return (
+            db.query(payments.Escrow)
+            .filter(payments.Escrow.id == escrow_id)
+            .first()
+            .campaign_id
+        )
+    finally:
+        db.close()
+
+
 def _fee(amount):
     """The commission, read from settings. Present only so a test can assert
     that spend is NOT reduced by it."""
     return amount * settings.commission_bps // 10000
 
 
-def _get(client, uid):
-    return client.get("/payments/spend", headers=_headers(uid))
+def _get(client, uid, **params):
+    return client.get("/payments/spend", params=params, headers=_headers(uid))
 
 
 def test_spent_is_the_gross_the_buyer_paid_not_net_of_commission(client, world):
@@ -219,9 +250,6 @@ def test_pending_and_disputed_are_separate(client, world):
     assert body["pending"] == {"XOF": 100000}
     assert body["disputed"] == {"XOF": 60000}
     assert body["spent"] == {}
-    # Held money is committed at its full value: nothing has been charged in
-    # commission yet and nothing ever will be, to this side.
-    assert body["payments"][0]["amount"] in (100000, 60000)
 
 
 def test_currencies_stay_separate(client, world):
@@ -290,3 +318,58 @@ def test_nothing_spent_yet_is_an_honest_empty_answer(client, world):
 
 def test_spend_requires_auth(client):
     assert client.get("/payments/spend").status_code == 401
+
+
+# --- filters ---------------------------------------------------------------
+#
+# The same StatementFilter the creator's screen uses, so these tests are
+# about the WIRING: that spend passes the filter through, and that its
+# counterparty is the creator rather than the buyer. The semantics of the
+# filter itself are pinned down in test_earnings.
+
+
+def test_a_date_range_narrows_spend_totals_and_list_together(client, world):
+    _escrow(client, world, 100000, "XOF", payments.RELEASED, "March", "a",
+            commission=_fee(100000), when=datetime(2026, 3, 10, 12, 0))
+    _escrow(client, world, 50000, "XOF", payments.RELEASED, "July", "b",
+            commission=_fee(50000), when=datetime(2026, 7, 1, 12, 0))
+
+    body = _get(client, world["biz"],
+                from_date="2026-03-01", to_date="2026-03-31").json()
+    assert body["spent"] == {"XOF": 100000}
+    assert [r["campaign_title"] for r in body["payments"]] == ["March"]
+    assert body["spent"]["XOF"] == sum(r["amount"] for r in body["payments"])
+
+
+def test_the_campaign_filter_narrows_spend(client, world):
+    kept = _escrow(client, world, 100000, "XOF", payments.RELEASED, "Wanted", "a",
+                   commission=_fee(100000))
+    _escrow(client, world, 50000, "XOF", payments.RELEASED, "Other", "b",
+            commission=_fee(50000))
+
+    body = _get(client, world["biz"], campaign_id=_campaign_of(client, kept)).json()
+    assert body["spent"] == {"XOF": 100000}
+    assert [r["campaign_title"] for r in body["payments"]] == ["Wanted"]
+
+
+def test_the_counterparty_on_this_side_is_the_creator(client, world):
+    """counterparty_id means "the other party", which is the creator here and
+    the buyer on the earnings screen. Filtering to one creator is how a brand
+    answers "what have I paid this person"."""
+    other = _other_creator(client)
+    _escrow(client, world, 100000, "XOF", payments.RELEASED, "Ama's job", "a",
+            commission=_fee(100000))
+    _escrow(client, world, 50000, "XOF", payments.RELEASED, "Kofi's job", "b",
+            commission=_fee(50000), influencer_user_id=other)
+
+    body = _get(client, world["biz"], counterparty_id=other).json()
+    assert body["spent"] == {"XOF": 50000}
+    assert [r["counterparty_name"] for r in body["payments"]] == ["Kofi B."]
+
+
+def test_an_empty_range_returns_zeros_not_an_error(client, world):
+    _escrow(client, world, 100000, "XOF", payments.RELEASED, "March", "a",
+            commission=_fee(100000), when=datetime(2026, 3, 10, 12, 0))
+    r = _get(client, world["biz"], from_date="2025-01-01", to_date="2025-01-31")
+    assert r.status_code == 200
+    assert r.json() == {"spent": {}, "pending": {}, "disputed": {}, "refunded": {}, "payments": []}

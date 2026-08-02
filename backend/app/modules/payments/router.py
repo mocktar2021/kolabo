@@ -1,4 +1,6 @@
 """Epic G (KOL-7): Payments and Escrow."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.orm import Session
 
@@ -6,6 +8,7 @@ from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
 from app.modules.payments import disputes, earnings, resolution, schemas, service, spend
+from app.modules.payments.filters import StatementFilter
 
 router = APIRouter()
 
@@ -26,6 +29,35 @@ def get_case_viewer(
     return get_current_user_id(authorization), False
 
 
+def get_statement_filter(
+    year: int | None = Query(default=None),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    campaign_id: str | None = Query(default=None),
+    counterparty_id: str | None = Query(default=None),
+) -> StatementFilter:
+    """The four narrowings both statement screens understand.
+
+    One dependency for both endpoints so the parameter names, the types and
+    the semantics cannot drift between them: a brand and a creator filtering
+    the same contract to the same month must be asking the same question.
+
+    from_date and to_date are typed as dates, so an unparseable one is a 422
+    from FastAPI before any of our code runs. That is the right answer for a
+    malformed date — it is a client bug, not a rule the user broke, and it
+    needs no sentence about what is allowed. An INVERTED range is not an error
+    at all: it matches nothing and the screens answer zero, which is the
+    honest reading of "between the 5th and the 1st".
+    """
+    return StatementFilter(
+        year=year,
+        from_date=from_date,
+        to_date=to_date,
+        campaign_id=campaign_id,
+        counterparty_id=counterparty_id,
+    )
+
+
 @router.post("/escrow/fund", response_model=schemas.EscrowOut, status_code=status.HTTP_201_CREATED)
 def fund_escrow(
     payload: schemas.FundIn,
@@ -38,9 +70,9 @@ def fund_escrow(
 
 @router.get("/earnings", response_model=schemas.EarningsOut)
 def my_earnings(
-    year: int | None = Query(default=None),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
+    statement_filter: StatementFilter = Depends(get_statement_filter),
 ):
     """What the caller has earned, is waiting on, and has frozen in a dispute.
 
@@ -49,17 +81,27 @@ def my_earnings(
     overstate every line. Disputed is kept separate from pending because
     frozen money is not money on its way.
 
+    Optional filters: year, from_date, to_date (ISO dates, both inclusive),
+    campaign_id and counterparty_id — the counterparty being the buyer on this
+    side. EVERY ONE OF THEM NARROWS THE TOTALS AND THE LIST TOGETHER: a
+    filtered statement under an all-time total is how a creator adds up the
+    rows, gets a different number, and concludes the screen is lying. year and
+    a date range compose as an intersection (see payments/filters.py), so
+    year=2025 with a March window means March 2025 and a contradictory pair
+    honestly answers zero.
+
     Creator side only. A business gets empty totals: what a buyer wants here
     is spend, which is a different question with the opposite sign, and it has
     its own endpoint at GET /payments/spend.
     """
-    return earnings.my_earnings(db, user_id, year)
+    return earnings.my_earnings(db, user_id, filters=statement_filter)
 
 
 @router.get("/spend", response_model=schemas.SpendOut)
 def my_spend(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
+    statement_filter: StatementFilter = Depends(get_statement_filter),
 ):
     """What the caller has spent, has committed, and has had come back.
 
@@ -71,10 +113,13 @@ def my_spend(
     wallet rather than money on its way into one. One endpoint answering both
     would make every field mean two opposite things depending on who asked.
 
+    Takes the same filters as /earnings, from the same dependency, with
+    counterparty_id meaning the creator on this side.
+
     Buyer side only. A creator gets empty figures, for the same reason a
     business gets them from /earnings.
     """
-    return spend.my_spend(db, user_id)
+    return spend.my_spend(db, user_id, filters=statement_filter)
 
 
 @router.post("/escrow/{escrow_id}/release", response_model=schemas.EscrowOut)

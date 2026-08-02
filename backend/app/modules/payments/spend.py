@@ -33,14 +33,20 @@ same shape earnings has in reverse, and it is deliberate: an empty answer with
 the right fields is a usable screen, and there is no version of "what have I
 spent" that means anything to somebody who has never bought.
 
+WHICH ROWS the screen is about — period, campaign, counterparty — comes from
+payments/filters.py, the same object the creator's screen uses, so a brand and
+a creator filtering the same contract to the same month are answered by one
+definition of what that means.
+
 A read model like earnings.py: it writes nothing, moves nothing, and the
-dependency runs one way — router -> spend -> models, identity.
+dependency runs one way — router -> spend -> filters, models, identity.
 """
 from sqlalchemy.orm import Session
 
 from app.core.identity import creator_identities
 from app.modules.campaigns.models import Campaign
 from app.modules.payments import models
+from app.modules.payments.filters import StatementFilter
 
 # How many rows the statement carries, the same bound and the same reasoning as
 # earnings: a panel on a screen, not an accounting export. Somebody who wants
@@ -93,13 +99,27 @@ def _empty() -> dict:
     """The right shape with nothing in it.
 
     Not a 404. A brand that has never funded an escrow still opens this
-    screen, and zero is the true answer; it is also what a creator gets, for
-    the reason at the top of the module.
+    screen, and zero is the true answer; it is also what a creator gets, and
+    what a filter matching nothing gets — an empty range is a question with
+    the answer zero, not an error.
     """
     return {"spent": {}, "pending": {}, "disputed": {}, "refunded": {}, "payments": []}
 
 
-def my_spend(db: Session, user_id: str) -> dict:
+def _add(bucket: dict, currency: str, amount: int) -> None:
+    """Add to one currency's total, never across them.
+
+    A named helper rather than the expression inline four times, because the
+    thing being protected is that every one of these totals is keyed by
+    currency — and the way that rule gets broken is somebody adding a fifth
+    figure and writing a plain += .
+    """
+    bucket[currency] = bucket.get(currency, 0) + amount
+
+
+def my_spend(
+    db: Session, user_id: str, filters: StatementFilter | None = None
+) -> dict:
     """The caller's spend, from the buyer side of every escrow they are on.
 
     Four figures, each a map of currency to minor units:
@@ -114,11 +134,14 @@ def my_spend(db: Session, user_id: str) -> dict:
       refunded  money that came back, whether the whole escrow or the
                 refunded half of a split.
 
-    The list cap applies to the LIST alone and never to the totals, the same
-    rule earnings runs on: totals truncated to a page would mean "spent, in
-    the hundred rows we felt like loading", which is the kind of almost-true
-    number that gets quoted back to us in a support ticket.
+    EVERY FILTER NARROWS THE TOTALS AND THE LIST TOGETHER, the same rule the
+    creator's screen runs on and for the same reason: a filtered statement
+    under an unfiltered total is how somebody decides the numbers are wrong.
+    The list cap applies to the list alone — totals truncated to a page would
+    mean "spent, in the hundred rows we felt like loading".
     """
+    active = filters if filters is not None else StatementFilter()
+
     escrows = (
         db.query(models.Escrow)
         .filter(
@@ -150,8 +173,11 @@ def my_spend(db: Session, user_id: str) -> dict:
     rows = []
 
     for escrow in escrows:
-        # How much of this escrow went each way, and when it was decided.
-        # amount is what the row is ABOUT under its own status; came_back is
+        # Work out what this row is worth and when it happened BEFORE asking
+        # whether the filter wants it: the date a row is filtered on has to be
+        # the same date the row displays, and that date depends on its status.
+        #
+        # amount is what the row is about under its own status; came_back is
         # the part of a split that returned to the buyer.
         came_back = 0
         if escrow.status == models.RELEASED:
@@ -163,20 +189,29 @@ def my_spend(db: Session, user_id: str) -> dict:
             # resolved_at is when the money actually moved; held_at is the
             # fallback only for rows predating that column being filled in.
             when = escrow.resolved_at or escrow.held_at
-            _add(spent, escrow.currency, amount)
-            if came_back:
-                _add(refunded, escrow.currency, came_back)
+            bucket = spent
         elif escrow.status == models.REFUNDED:
             # Fully refunded: resolution only writes this status when nothing
             # at all reached the creator, so the whole escrow came back.
             amount = escrow.amount
             when = escrow.resolved_at or escrow.held_at
-            _add(refunded, escrow.currency, amount)
+            bucket = refunded
         else:
             amount = escrow.amount
             when = escrow.held_at
-            _add(disputed if escrow.status == models.DISPUTED else pending,
-                 escrow.currency, amount)
+            bucket = disputed if escrow.status == models.DISPUTED else pending
+
+        # The counterparty on this side of the escrow is the creator.
+        if not active.matches(when, escrow.campaign_id, escrow.influencer_user_id):
+            continue
+
+        _add(bucket, escrow.currency, amount)
+        if came_back:
+            # The refunded half of a split lands in refunded while the
+            # released half lands in spent: one contract, two lines of the
+            # buyer's ledger, because that is what actually happened to their
+            # money.
+            _add(refunded, escrow.currency, came_back)
 
         rows.append(
             {
@@ -212,14 +247,3 @@ def my_spend(db: Session, user_id: str) -> dict:
         "refunded": refunded,
         "payments": rows[:SPEND_LIST_LIMIT],
     }
-
-
-def _add(bucket: dict, currency: str, amount: int) -> None:
-    """Add to one currency's total, never across them.
-
-    A named helper rather than the expression inline four times, because the
-    thing being protected is that every one of these totals is keyed by
-    currency — and the way that rule gets broken is somebody adding a fifth
-    figure and writing a plain += .
-    """
-    bucket[currency] = bucket.get(currency, 0) + amount

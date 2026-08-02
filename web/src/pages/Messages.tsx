@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
@@ -8,17 +8,17 @@ import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
 import type { Message, MessageThread } from "../lib/types";
 
-/* Mirrors the body cap on MessageIn in
+/* Mirrors the body cap on DirectMessageIn in
    backend/app/modules/messaging/schemas.py. */
 const BODY_MAX_LENGTH = 4000;
 
 /* THE PRODUCT RULE THIS WHOLE SCREEN RESTS ON.
 
-   A thread exists on a campaign only once a CONTRACT exists on it between the
-   two people in it. Not an invitation, not a proposal — a contract. The
-   inbox is therefore built server-side from contracts rather than from
-   messages, which is why a conversation nobody has written in yet still shows
-   up: a contract just signed is precisely when somebody needs to start one.
+   A thread exists between two people only once a CONTRACT exists between
+   them. Not an invitation, not a proposal — a contract. The inbox is
+   therefore built server-side from contracts rather than from messages, which
+   is why a conversation nobody has written in yet still shows up: a contract
+   just signed is precisely when somebody needs to start one.
 
    Open messaging between any brand and any creator is a lead channel, and a
    lead channel is a thing people mine: a hundred identical "hi, what are your
@@ -35,7 +35,17 @@ const BODY_MAX_LENGTH = 4000;
    revisions, "the light was wrong, can I reshoot Thursday". That is also the
    evidence trail a dispute reads, which is why read_at is a timestamp and not
    a flag. All of which is what the empty state says out loud instead of
-   apologising for being empty. */
+   apologising for being empty.
+
+   AND THE ROW IS A PERSON, NOT A JOB. This screen used to list one thread per
+   CONTRACT, so a creator on their third campaign with the same brand had
+   three inboxes with the same name on them: three places to look for what was
+   said about a deadline last time, and a history that fragmented further with
+   every job they won. Exactly backwards — a relationship is worth more each
+   time it repeats, and the product was chopping it up in response, which made
+   the strongest repeat business look like the most confusing inbox. The
+   contracts are now an attribute of the relationship: a count on the row and
+   a list in the header. */
 export default function MessagesPage() {
   const { t } = useTranslation();
   const { token, userId, isAuthenticated } = useAuth();
@@ -79,7 +89,12 @@ export default function MessagesPage() {
   /* Opening a thread IS reading it: the endpoint stamps the caller's incoming
      messages read as it serves them, which is why there is no separate
      mark-as-read call and why the list is refetched afterwards — the unread
-     badges on it have just changed underneath us. */
+     badges on it have just changed underneath us.
+
+     Addressed to the PERSON. The per-campaign endpoint still exists and still
+     works, but it answers one job's slice of a conversation, and a question
+     asked during the second job and answered during the third only reads as a
+     conversation here. */
   const openThread = useCallback(
     async (thread: MessageThread) => {
       setActive(thread);
@@ -87,14 +102,14 @@ export default function MessagesPage() {
       setDraft("");
       try {
         const rows = await api<Message[]>(
-          `/messaging/campaigns/${thread.campaign_id}/messages?with_user_id=${encodeURIComponent(thread.counterparty_user_id)}`,
+          `/messaging/with/${encodeURIComponent(thread.counterparty_user_id)}`,
           { token }
         );
         setMessages(rows);
         await loadThreads();
       } catch (e) {
-        // A 403 here means the contract that opened this thread is gone, which
-        // the server explains in its own words. Shown as-is.
+        // A 403 here means every contract with this person is gone, which the
+        // server explains in its own words. Shown as-is.
         setMessages([]);
         setError(e instanceof Error ? e.message : "Error");
       }
@@ -107,18 +122,23 @@ export default function MessagesPage() {
   }, [loadThreads]);
 
   /* Arriving from a contract page, which links with the campaign and the
-     other party in the query string. Matched against the loaded list rather
-     than trusted blindly: the thread carries the counterparty's name and
-     unread count, and a hand-typed URL for a contract that does not exist
-     should land on the inbox rather than on a broken conversation. */
+     other party in the query string.
+
+     Only `with` is read now: a row is a person, so the counterparty alone
+     identifies it and a campaign cannot narrow it further. The parameter is
+     still SENT by the contract page and is accepted and ignored rather than
+     required, so a link or a bookmark written against the per-contract shape
+     still lands on the right conversation.
+
+     Matched against the loaded list rather than trusted blindly: the thread
+     carries the counterparty's name, contracts and unread count, and a
+     hand-typed URL for somebody the reader has no contract with should land
+     on the inbox rather than on a broken conversation. */
   useEffect(() => {
     if (active || threads.length === 0) return;
-    const campaign = params.get("campaign");
     const withUser = params.get("with");
-    if (!campaign || !withUser) return;
-    const found = threads.find(
-      (th) => th.campaign_id === campaign && th.counterparty_user_id === withUser
-    );
+    if (!withUser) return;
+    const found = threads.find((th) => th.counterparty_user_id === withUser);
     if (found) openThread(found);
   }, [threads, active, params, openThread]);
 
@@ -128,10 +148,18 @@ export default function MessagesPage() {
     setBusy(true);
     setError(null);
     try {
-      await api(`/messaging/campaigns/${active.campaign_id}/messages`, {
+      /* Posted to the person, not to a campaign. The server stamps the
+         message with the most recent shared contract's campaign, which keeps
+         every message's provenance intact — which job a conversation was
+         about is what a dispute reads — without the client having to choose a
+         campaign the two of them are "currently" on.
+
+         No to_user_id in the body: the recipient is in the path, and two
+         places to say who a message is for is one place to get it wrong. */
+      await api(`/messaging/with/${encodeURIComponent(active.counterparty_user_id)}`, {
         method: "POST",
         token,
-        body: { to_user_id: active.counterparty_user_id, body }
+        body: { body }
       });
       // Refetched rather than appended locally: the server assigns the id and
       // the timestamp, and a message that exists only on screen is the one
@@ -174,12 +202,13 @@ export default function MessagesPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, alignItems: "start", marginTop: 18 }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               {threads.map((thread) => {
-                const isActive =
-                  active?.campaign_id === thread.campaign_id &&
-                  active?.counterparty_user_id === thread.counterparty_user_id;
+                const isActive = active?.counterparty_user_id === thread.counterparty_user_id;
                 return (
                   <button
-                    key={thread.contract_id}
+                    /* Keyed by the PERSON. It used to be the contract id, which
+                       is what produced four rows with the same name on them
+                       for four jobs with the same brand. */
+                    key={thread.counterparty_user_id}
                     type="button"
                     onClick={() => openThread(thread)}
                     style={{
@@ -190,18 +219,30 @@ export default function MessagesPage() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                       <CreatorChip creator={chipFor(thread)} />
-                      {/* Unread is always about what was sent TO the reader;
-                          their own outgoing messages are never unread to
-                          them. Zero renders nothing at all. */}
+                      {/* Unread is always about what was sent TO the reader,
+                          and now across the whole relationship rather than one
+                          job: an unanswered question is unanswered whichever
+                          contract it was asked under. Zero renders nothing. */}
                       {thread.unread_count > 0 && (
                         <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", borderRadius: 999, padding: "1px 8px" }}>
                           {thread.unread_count}
                         </span>
                       )}
                     </div>
-                    {thread.campaign_title && (
-                      <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{thread.campaign_title}</div>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                      {/* The job they are currently on names the row; how many
+                          they have done together is the fact worth adding, and
+                          only once there is more than one — "1 contrat" on
+                          every row of the list is noise. */}
+                      {thread.campaign_title && (
+                        <span className="muted" style={{ fontSize: 12.5 }}>{thread.campaign_title}</span>
+                      )}
+                      {thread.contract_count > 1 && (
+                        <span style={{ fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: "var(--surface-2)", color: "var(--muted)", whiteSpace: "nowrap" }}>
+                          {t("msg.contractsCount", { n: thread.contract_count })}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 4 }}>
                       <span className="muted clamp-2" style={{ fontSize: 13, minWidth: 0 }}>
                         {thread.last_message ?? t("msg.noMessages")}
@@ -224,9 +265,7 @@ export default function MessagesPage() {
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <CreatorChip creator={chipFor(active)} />
-                    <Link to={`/contracts/${active.contract_id}`} style={{ fontSize: 13.5, fontWeight: 600 }}>
-                      {t("contract.title")}
-                    </Link>
+                    <ContractsMenu thread={active} />
                   </div>
 
                   <div style={{ display: "grid", gap: 8, margin: "14px 0" }}>
@@ -277,5 +316,81 @@ export default function MessagesPage() {
         )}
       </div>
     </Layout>
+  );
+}
+
+/* The jobs behind one relationship, in the conversation header.
+
+   One contract renders as the plain link it always was — a dropdown holding a
+   single item is a control that exists to be opened and disappoint. Several
+   render as a toggle over the list, newest first, because that is the whole
+   point of collapsing the rows: the conversation is one thing, and the four
+   contracts under it are still individually reachable.
+
+   NAMED BY POSITION, oldest first, so a new contract never renumbers the ones
+   above it. Only the newest one's campaign title comes down on the thread
+   payload, and fetching a title for each of the others would be a request per
+   contract to decorate a link somebody opened this menu to click. The newest
+   is marked as the current job, which is the one thing that actually
+   distinguishes them at a glance. */
+function ContractsMenu({ thread }: { thread: MessageThread }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on any click outside, the same way the marketing features menu
+  // does: a document listener needs no new dependency and survives clicks on
+  // elements that never receive focus.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  /* Falls back to the single contract the row has always carried, so a thread
+     served by an older API build (contract_ids absent, contract_id present)
+     still renders a working link rather than an empty menu. */
+  const ids = thread.contract_ids && thread.contract_ids.length > 0
+    ? thread.contract_ids
+    : [thread.contract_id];
+
+  if (ids.length === 1) {
+    return (
+      <Link to={`/contracts/${ids[0]}`} style={{ fontSize: 13.5, fontWeight: 600 }}>
+        {t("contract.title")}
+      </Link>
+    );
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }}
+        aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {t("msg.contracts")} ({ids.length}) ▾
+      </button>
+      {open && (
+        <div className="menu-panel" role="menu" style={{ right: 0 }}>
+          {ids.map((contractId, index) => (
+            <Link key={contractId} className="menu-item" role="menuitem"
+              to={`/contracts/${contractId}`} onClick={() => setOpen(false)}>
+              <span className="t">{t("msg.contractN", { n: ids.length - index })}</span>
+              {/* The list arrives newest first, so index 0 is the job the two
+                  of them are on right now — and the only one whose campaign
+                  title the thread payload carries. */}
+              {index === 0 && (
+                <span className="d">
+                  {thread.campaign_title
+                    ? `${thread.campaign_title} · ${t("msg.contractCurrent")}`
+                    : t("msg.contractCurrent")}
+                </span>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

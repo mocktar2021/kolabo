@@ -75,6 +75,20 @@ class MeOut(BaseModel):
     country_code: str
     is_verified: bool
     created_at: datetime
+    # WHO THE CALLER IS TO LOOK AT, which nothing else on this row answers: a
+    # phone number, a role and a country are not things a person recognises
+    # themselves by, so a nav that wanted to draw the signed-in user had no
+    # source and drew a glyph. Resolved from the creator profile if there is
+    # one, else the business profile's company name — with a NULL AVATAR,
+    # because a business has a company name and no avatar anywhere in this
+    # system — else both null.
+    #
+    # Null is a real answer for somebody who has not written a profile yet,
+    # and it stays null. It must never be filled in from the users table: the
+    # only human-readable column there is the phone number, and putting that
+    # in a display slot is how it ends up rendered somewhere it should not be.
+    display_name: str | None = None
+    avatar_url: str | None = None
 
 
 class AccountPatch(BaseModel):

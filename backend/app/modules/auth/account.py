@@ -38,6 +38,7 @@ from app.modules.auth.schemas import (
     PasswordResetRequest,
 )
 from app.modules.notifications.service import notify
+from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 
 # The same sender registration uses. Module level so a test can swap it, like
 # the one in service.py.
@@ -55,14 +56,81 @@ GENERIC_RESET_RESPONSE = {"message": "If the phone is registered, a reset code h
 INVALID_CODE_DETAIL = "Reset code is invalid or expired"
 
 
-def _me_out(user: User) -> dict:
+def _own_identity(db: Session, user_id: str) -> tuple[str | None, str | None]:
+    """The caller's own name and picture, in ONE query.
+
+    Why this is on the account response at all. The users table holds a phone
+    number, a role and a country, and not one of those is something a person
+    recognises themselves by — so the web nav had nothing to draw the
+    signed-in user with and painted a gradient glyph instead. The alternative
+    was a second request on every page to decorate a 28px button, which is a
+    bad trade for a response the client already fetches.
+
+    ONE OUTER-JOINED SELECT, not a lookup per table. /auth/me is called on
+    every page load, so the cost of answering it is paid constantly, and
+    asking two tables in turn would double that for a fact that is one row
+    either way. Joining also lets the PROFILE ROW decide which branch we are
+    in rather than the role column: role is what somebody signed up intending
+    to be, and the profile is what they actually wrote.
+
+    Precedence is the creator profile first, then the business one. A creator
+    profile that exists with a blank display_name still wins and still answers
+    None — falling through would show a name from the other table, and telling
+    somebody they are called something they did not choose is worse than
+    telling them nothing.
+
+    A BUSINESS GETS A NAME AND NO AVATAR. That is not a gap on this endpoint;
+    a business has a company name and no avatar anywhere in this system, which
+    is the same fact messaging.conversations records when it sets
+    counterparty_avatar_url for creators only.
+
+    Neither profile means two nulls, and they stay null. It must never fall
+    back to the users table: the only human-readable column there is the phone
+    number, and a phone number is not a display name — it is the credential
+    this whole module exists to protect.
+    """
+    row = (
+        db.query(
+            # Selected as the presence marker for the join, because
+            # display_name is nullable and "no creator profile" and "a creator
+            # profile with no name yet" are different answers.
+            InfluencerProfile.id,
+            InfluencerProfile.display_name,
+            InfluencerProfile.avatar_media_id,
+            BusinessProfile.company_name,
+        )
+        .select_from(User)
+        .outerjoin(InfluencerProfile, InfluencerProfile.user_id == User.id)
+        .outerjoin(BusinessProfile, BusinessProfile.user_id == User.id)
+        .filter(User.id == user_id)
+        .first()
+    )
+    if row is None:
+        return None, None
+
+    profile_id, display_name, avatar_media_id, company_name = row
+    if profile_id is not None:
+        # The same URL shape profiles.service._media_url builds, restated here
+        # rather than imported for the reason core.identity restates it: one
+        # media route serves every surface that shows a face, and auth has no
+        # business reaching into another module's private helper.
+        avatar_url = f"/profiles/media/{avatar_media_id}" if avatar_media_id else None
+        return display_name, avatar_url
+    return company_name, None
+
+
+def _me_out(db: Session, user: User) -> dict:
     """The account, without the hash.
 
     Assembled field by field rather than dumped off the model. A whitelist is
     the only version of this that stays safe when somebody adds a column: an
     exclude list silently starts leaking the moment a new secret is stored on
     the users row and nobody remembers this function exists.
+
+    Takes the session because two of the fields are not on the users row at
+    all — see _own_identity for why they are answered here anyway.
     """
+    display_name, avatar_url = _own_identity(db, user.id)
     return {
         "id": user.id,
         "phone": user.phone,
@@ -70,6 +138,8 @@ def _me_out(user: User) -> dict:
         "country_code": user.country_code,
         "is_verified": user.is_verified,
         "created_at": user.created_at,
+        "display_name": display_name,
+        "avatar_url": avatar_url,
     }
 
 
@@ -102,9 +172,10 @@ def get_me(db: Session, user_id: str) -> dict:
 
     The subject is taken from the bearer token and from nothing else, so this
     endpoint has no lookup surface at all: there is no parameter an attacker
-    could walk through other people's rows with.
+    could walk through other people's rows with. That holds for the name and
+    the picture too — they are resolved from the same token-derived id.
     """
-    return _me_out(_require_user(db, user_id))
+    return _me_out(db, _require_user(db, user_id))
 
 
 def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
@@ -159,7 +230,7 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
 
     db.commit()
     db.refresh(user)
-    return _me_out(user)
+    return _me_out(db, user)
 
 
 def _live_reset_tokens(db: Session, user: User, now):

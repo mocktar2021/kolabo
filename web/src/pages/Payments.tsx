@@ -2,9 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { StatementFilters } from "../components/StatementFilters";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
+import {
+  NO_FILTER,
+  NO_OPTIONS,
+  applyLocalFilter,
+  filtersLocally,
+  hasOptions,
+  isFiltered,
+  optionsFrom,
+  serverQuery,
+  spendTotals,
+  type StatementFilter,
+  type StatementOptions
+} from "../lib/statement";
 import type { Spend, SpendPayment } from "../lib/types";
 
 /* What a buyer has spent, has committed, and has had come back.
@@ -33,7 +47,12 @@ import type { Spend, SpendPayment } from "../lib/types";
    screen and for the same reason: XOF and GHS are not addends, and a brand
    running in two markets has two budgets rather than one meaningless total.
    The API returns each figure as a map keyed by currency and this page
-   renders one group of tiles per currency. */
+   renders one group of tiles per currency.
+
+   AND THE FILTER NARROWS THE TOTALS WITH THE LIST, from the same shared
+   definition the creator's screen uses — a brand and a creator narrowing the
+   same contract to the same month are answered by one rule. See
+   lib/statement.ts. */
 
 /* Rendered as the API sends it, grouped for the active locale with the
    currency code beside — the same way the escrow rows on the contract page
@@ -77,50 +96,87 @@ export default function PaymentsPage() {
   const { t, i18n } = useTranslation();
   const { token, isAuthenticated } = useAuth();
   const [data, setData] = useState<Spend | null>(null);
+  const [filter, setFilter] = useState<StatementFilter>(NO_FILTER);
+  /* Derived from the ALL-TIME response and then kept, exactly as on the
+     creator's screen: recomputing the choices from a FILTERED response would
+     leave each droplist holding only the value already chosen. */
+  const [options, setOptions] = useState<StatementOptions>(NO_OPTIONS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* Only the period reaches the server. The campaign and the creator are
+     matched here, because the statement row carries their NAMES and not their
+     ids — lib/statement.ts says why at length. */
+  const query = serverQuery(filter);
 
   useEffect(() => {
     if (!token) return;
     let live = true;
     setLoading(true);
-    api<Spend>("/payments/spend", { token })
+    api<Spend>(`/payments/spend${query}`, { token })
       .then((res) => {
         if (!live) return;
         setData(res);
         setError(null);
+        if (query === "") setOptions(optionsFrom(res.payments));
       })
       .catch(() => { if (live) setError(t("spend.loadFailed")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [token, t]);
+  }, [token, query, t]);
+
+  const payments: SpendPayment[] = useMemo(
+    () => applyLocalFilter(data?.payments ?? [], filter),
+    [data, filter]
+  );
+
+  /* The server's own totals whenever it did all the narrowing — they are
+     computed over every escrow rather than over the hundred rows the list
+     carries. Rebuilt here the moment this page narrows further, so the
+     figures never describe a wider question than the table under them. */
+  const totals = useMemo(() => {
+    if (!data) return { spent: {}, pending: {}, disputed: {}, refunded: {} };
+    if (filtersLocally(filter)) return spendTotals(payments);
+    return { spent: data.spent, pending: data.pending, disputed: data.disputed, refunded: data.refunded };
+  }, [data, payments, filter]);
 
   /* One group per currency, never a sum over them. The union of the four
      maps, because a brand can have money frozen in a market it has never had
      a release in — and a currency that appears in only one of the four still
      deserves its group. */
-  const currencies = useMemo(() => {
-    if (!data) return [];
-    return Array.from(
+  const currencies = useMemo(
+    () => Array.from(
       new Set([
-        ...Object.keys(data.spent),
-        ...Object.keys(data.pending),
-        ...Object.keys(data.disputed),
-        ...Object.keys(data.refunded)
+        ...Object.keys(totals.spent),
+        ...Object.keys(totals.pending),
+        ...Object.keys(totals.disputed),
+        ...Object.keys(totals.refunded)
       ])
-    ).sort();
-  }, [data]);
+    ).sort(),
+    [totals]
+  );
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  const payments: SpendPayment[] = data?.payments ?? [];
-  const nothing = !loading && currencies.length === 0 && payments.length === 0;
+  const filtering = isFiltered(filter);
+  const nothing = !loading && !filtering && currencies.length === 0 && payments.length === 0;
 
   return (
     <Layout>
       <div className="container page">
         <h1 style={{ margin: 0 }}>{t("spend.title")}</h1>
         <p className="muted" style={{ marginTop: 6 }}>{t("spend.sub")}</p>
+
+        {hasOptions(options) && (
+          <StatementFilters
+            idPrefix="spend"
+            value={filter}
+            onChange={setFilter}
+            options={options}
+            counterpartyLabel={t("spend.creatorLabel")}
+            counterpartyAll={t("spend.creatorAll")}
+          />
+        )}
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
@@ -133,6 +189,15 @@ export default function PaymentsPage() {
           </div>
         ) : (
           <>
+            {/* Said as soon as anything is narrowed, above the numbers it is
+                about — the same line, in the same place, as on the creator's
+                screen. */}
+            {filtering && (
+              <p className="muted" style={{ fontSize: 13.5, margin: "16px 0 -2px", fontWeight: 600 }}>
+                {t("filt.totals")} <span style={{ fontWeight: 400 }}>— {t("filt.totalsHint")}</span>
+              </p>
+            )}
+
             {currencies.map((currency) => (
               <section key={currency} style={{ marginTop: 18 }}>
                 {/* The currency names the group rather than sitting inside the
@@ -143,13 +208,13 @@ export default function PaymentsPage() {
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                   <Tile label={t("spend.spent")} hint={t("spend.spentHint")}
-                    value={amount(data?.spent[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.spent[currency] ?? 0, currency, i18n.language)} />
                   <Tile label={t("spend.pending")} hint={t("spend.pendingHint")}
-                    value={amount(data?.pending[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.pending[currency] ?? 0, currency, i18n.language)} />
                   <Tile label={t("spend.disputed")} hint={t("spend.disputedHint")}
-                    value={amount(data?.disputed[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.disputed[currency] ?? 0, currency, i18n.language)} />
                   <Tile label={t("spend.refunded")} hint={t("spend.refundedHint")}
-                    value={amount(data?.refunded[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.refunded[currency] ?? 0, currency, i18n.language)} />
                 </div>
               </section>
             ))}
@@ -165,7 +230,7 @@ export default function PaymentsPage() {
             <div className="card" style={{ marginTop: 18, overflowX: "auto" }}>
               <h3 style={{ marginTop: 0 }}>{t("spend.statement")}</h3>
               {payments.length === 0 ? (
-                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("spend.empty")}</p>
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{filtering ? t("filt.none") : t("spend.empty")}</p>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                   <thead>

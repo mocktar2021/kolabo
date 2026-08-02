@@ -12,6 +12,7 @@ import "./lib/adminStrings";
 import "./lib/accountStrings";
 import "./lib/earningsStrings";
 import "./lib/spendStrings";
+import "./lib/filterStrings";
 import "./lib/undoStrings";
 import "./lib/navMenuStrings";
 import "./styles/theme.css";

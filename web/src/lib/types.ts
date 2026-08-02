@@ -25,6 +25,53 @@ export type Campaign = {
      the edit form, because PATCH answers 400 on one. An order's terms are a
      negotiation, and the way to change them is to counter. */
   is_direct: boolean;
+  /* Whether the brief is on the open board, where any creator may apply to it
+     without an invitation. On the ordinary campaign payload and not only on
+     the board's own, because the buyer's list of its campaigns has to be able
+     to say which of them strangers can answer — that is the difference
+     between a brief with three invited creators and a brief that may collect
+     thirty applications overnight. */
+  is_open: boolean;
+  /* Who the brand hopes to reach. THESE FOUR RANK, THEY DO NOT EXCLUDE: a
+     creator who matches sees the brief first, and every creator sees it.
+     backend/app/modules/campaigns/board.py holds the reasoning; the naming
+     says "target" rather than "require" for exactly that reason.
+
+     The two lists are NOT NULL server-side and arrive as [] when nothing is
+     targeted, so no reader has to handle a null. The two bounds are genuinely
+     nullable — an unnamed end of the band is open rather than zero or
+     infinite. */
+  target_categories: string[];
+  target_countries: string[];
+  target_min_followers: number | null;
+  target_max_followers: number | null;
+};
+
+/* One row of the open board (GET /campaigns/open). Mirror of OpenBriefOut in
+   backend/app/modules/campaigns/schemas.py.
+
+   The whole brief and not a summary of it, because a creator decides from
+   this card whether to spend an evening pricing the job — and deliverables,
+   budget and deadline are exactly what they would be pricing. Campaign
+   already carries all of it, so this only adds what the board itself knows.
+
+   match_score is a small bounded whole number (0..MAX_MATCH_SCORE in
+   campaigns/board.py) and is A RANKING HINT, NOT A VERDICT: a zero-scoring
+   brief is just as applicable as a perfect one, which is the entire point of
+   a soft filter. It is shown rather than hidden, because a board that
+   silently reorders itself is a board creators invent theories about.
+
+   has_applied and is_invited keep the card honest about what this creator has
+   already done here — applying twice is refused with a 409, and finding that
+   out from the button rather than from the error is the difference between a
+   board and a trap. */
+export type OpenBrief = Campaign & {
+  /* Who is asking. Null while the buyer has written no profile — the users
+     table has only a phone number to offer, and that is never exposed. */
+  business_company_name: string | null;
+  match_score: number;
+  has_applied: boolean;
+  is_invited: boolean;
 };
 
 /* How a creator appears on any row a business reads: favourites, campaign
@@ -306,12 +353,73 @@ export type EarningPayment = {
 
    A business calling this endpoint gets empty maps and an empty list, on
    purpose — buyer-side SPEND is a different question with the opposite sign
-   and wants its own endpoint. */
+   and has its own endpoint, GET /payments/spend, typed just below. */
 export type Earnings = {
   earned: Record<string, number>;
   pending: Record<string, number>;
   disputed: Record<string, number>;
   payments: EarningPayment[];
+};
+
+/* One line of a BUYER's statement (GET /payments/spend). Mirror of
+   SpendPaymentOut in backend/app/modules/payments/schemas.py.
+
+   NO COMMISSION COLUMNS, which is the visible difference from EarningPayment
+   and the whole reason the two are separate types rather than one with
+   optional fields. The platform's cut comes out of the creator's release and
+   not out of the buyer's payment: a brand that funded 100000 paid 100000, and
+   a "net" field here would invite it to think it had been charged something
+   it was not.
+
+   refunded_amount is the part of this contract that came back after a dispute
+   split, and it is zero on almost every row. It is ON THE LINE and not only
+   in the totals because otherwise a split shows 60000 spent against a
+   contract the buyer funded with 100000, and the missing 40000 sits in a
+   total with no line to trace it to.
+
+   counterparty_name is the CREATOR here, where on an earnings row it is the
+   buyer — the field is "the other party", resolved by whichever side is
+   reading. Null before they have written a profile, never a phone number
+   standing in for it.
+
+   date is when it settled if it settled and when it was funded if it has not,
+   naive UTC like every other datetime from this API, so it goes through
+   parseApiDate. */
+export type SpendPayment = {
+  escrow_id: string;
+  contract_id: string;
+  campaign_title: string | null;
+  counterparty_name: string | null;
+  amount: number;
+  refunded_amount: number;
+  currency: string;
+  status: string;
+  date: string | null;
+};
+
+/* The buyer's money in FOUR states (GET /payments/spend).
+
+   Four rather than the earnings screen's three because refunded money is a
+   real line in a buyer's ledger and no line at all in a creator's: they paid
+   it and got it back, and both halves have to be visible or the arithmetic
+   does not close. For the creator it is money that never arrived.
+
+   Every total is a map of currency to amount for exactly the reason Earnings
+   is, and the rule is the same one: XOF and GHS are not addends, so there is
+   no field here a client could render as "total spend" across two markets.
+
+   disputed stays out of pending for the mirror of the reason it does on the
+   creator's screen: pending is money the buyer expects to lose, disputed is
+   money they may get back.
+
+   A creator calling this endpoint gets four empty maps and an empty list, on
+   purpose — they are on no escrow as the buyer. */
+export type Spend = {
+  spent: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+  refunded: Record<string, number>;
+  payments: SpendPayment[];
 };
 
 /* What POST /profiles/{userId}/media answers with (MediaOut). The id is what

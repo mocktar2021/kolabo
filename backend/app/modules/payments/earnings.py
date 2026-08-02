@@ -31,21 +31,27 @@ across two markets is not a rounding problem, it is a meaningless number, and
 the one place it would appear is the screen a creator trusts most.
 
 CREATOR SIDE ONLY. A business calling this gets empty totals and an empty
-list, deliberately. What a business would want here is SPEND, which is a
-different question with a different shape — commission is not deducted from
-it, refunds belong in it, and "pending" means money already gone from their
-wallet rather than money coming into it. Answering both from one endpoint
-would mean one field meaning two opposite things depending on who asked.
-Buyer-side spend is out of scope here and wants its own endpoint.
+list, deliberately. What a business wants here is SPEND, which is a different
+question with a different shape — commission is not deducted from it, refunds
+belong in it, and "pending" means money already gone from their wallet rather
+than money coming into it. Answering both from one endpoint would mean one
+field meaning two opposite things depending on who asked, so buyer-side spend
+has its own module (payments/spend.py) and its own endpoint.
+
+WHICH ROWS the screen is about — period, campaign, counterparty — is not
+decided here either: payments/filters.py owns that, shared with spend, and it
+is where the rule that a filter narrows the totals as well as the list is
+written down.
 
 A separate module from service.py, which owns the money path itself. This is a
 read model: it writes nothing, moves nothing, and the dependency runs one way
-— router -> earnings -> service.commission_for, models.
+— router -> earnings -> service.commission_for, filters, models.
 """
 from sqlalchemy.orm import Session
 
 from app.modules.campaigns.models import Campaign
 from app.modules.payments import models
+from app.modules.payments.filters import StatementFilter
 from app.modules.payments.service import commission_for
 from app.modules.profiles.models import BusinessProfile
 
@@ -88,6 +94,10 @@ def _split_amounts(db: Session, escrow_ids: list[str]) -> dict[str, int]:
     One query for the whole page. An escrow can carry several dispute rows
     over its life (escrow_id is indexed, not unique), so the newest RESOLVED
     one wins: it is the one that decided where the money actually went.
+
+    Only the released half, because a creator has no refunded figure —
+    refunded money is money that never reached them. The buyer's screen needs
+    both halves and has its own version (payments/spend.py) that says so.
     """
     if not escrow_ids:
         return {}
@@ -105,16 +115,30 @@ def _split_amounts(db: Session, escrow_ids: list[str]) -> dict[str, int]:
     return {d.escrow_id: d.released_amount for d in rows}
 
 
-def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
+def my_earnings(
+    db: Session,
+    user_id: str,
+    year: int | None = None,
+    filters: StatementFilter | None = None,
+) -> dict:
     """The caller's earnings, from the creator side of every escrow they are on.
 
-    The year filter narrows the totals as well as the list. Somebody who asked
-    for 2025 wants the 2025 totals, not the all-time ones sitting beside a
-    2025 statement. The list cap applies to the list alone, for the opposite
-    reason: totals truncated to a page would mean "earned, in the hundred rows
-    we felt like loading", which is the kind of almost-true number that gets
-    quoted back to us in a support ticket.
+    EVERY FILTER NARROWS THE TOTALS AS WELL AS THE LIST. Somebody who asked
+    for March wants March's totals, not all-time totals sitting beside a March
+    statement — they would add up the rows, get a different number, and
+    conclude the screen is lying. The list cap applies to the list alone, for
+    the opposite reason: totals truncated to a page would mean "earned, in the
+    hundred rows we felt like loading", which is the kind of almost-true
+    number that gets quoted back to us in a support ticket.
+
+    `year` survives as its own parameter so callers written before the filter
+    object keep working unchanged; it is folded into an otherwise empty
+    StatementFilter when no filter is passed. When both arrive, the filter
+    wins, because the router builds it from every query parameter including
+    year and a second reading of the same value would be the bug.
     """
+    active = filters if filters is not None else StatementFilter(year=year)
+
     escrows = (
         db.query(models.Escrow)
         .filter(
@@ -126,7 +150,9 @@ def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
     if not escrows:
         # An empty answer with the right shape, not a 404. A creator who has
         # never been paid still opens this screen, and zero is the true
-        # answer. It is also what a business gets, for the reason at the top.
+        # answer. It is also what a business gets, for the reason at the top,
+        # and what any filter matching nothing gets — an empty range is a
+        # question with the answer zero, not an error.
         return {"earned": {}, "pending": {}, "disputed": {}, "payments": []}
 
     splits = _split_amounts(db, [e.id for e in escrows if e.status == models.RELEASED])
@@ -179,7 +205,10 @@ def my_earnings(db: Session, user_id: str, year: int | None = None) -> dict:
 
         net = gross - commission
 
-        if year is not None and (when is None or when.year != year):
+        # Before the total and before the row, so the two can never disagree
+        # about which payments the screen is showing. The counterparty on this
+        # side of the escrow is the buyer.
+        if not active.matches(when, escrow.campaign_id, escrow.business_user_id):
             continue
 
         # Keyed by currency, never added across them. Two markets are two

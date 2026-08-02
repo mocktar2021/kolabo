@@ -96,6 +96,35 @@ class Campaign(Base):
     # somebody who is not a participant must filter these out; a participant's
     # own views (my campaigns, my invitations, contracts) must still show them.
     is_direct: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Whether this brief appears on the open board (campaigns.board), where a
+    # creator can find it without ever having been invited.
+    #
+    # DEFAULT FALSE, AND THE DEFAULT IS THE POINT. Every campaign written
+    # before the board existed was addressed to invited creators only, and a
+    # migration that flipped them open would start showing strangers'
+    # applications to brands that never asked for any — proposals arriving
+    # from people they had not heard of, against briefs they thought were
+    # private. Opening a brief is a decision the buyer makes, once, on
+    # purpose.
+    is_open: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Who the brand is hoping for. All four are a SOFT filter: they decide
+    # what a creator sees FIRST on the board, and they never decide what a
+    # creator sees at all. campaigns.board argues it at length — briefly, a
+    # hard filter over a pilot-sized roster shows most creators an empty
+    # board, and a brand can decline an application it did not want but can
+    # never receive one it never saw.
+    #
+    # JSON lists rather than association tables because nothing joins on them:
+    # they are read whole, for one campaign at a time, by a scoring function
+    # that already has the row in memory.
+    target_categories: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    target_countries: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # An audience band, either end of which may be left open. NULL means "no
+    # opinion", which is not the same as 0 or as infinity: a brief that says
+    # nothing about audience size must not quietly rank a creator with no
+    # follower count below one who has filled the field in.
+    target_min_followers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_max_followers: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

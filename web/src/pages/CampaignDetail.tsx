@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
 import { DeliverableRows } from "../components/DeliverableRows";
+import { TargetingFields, targetingBody, targetingOf, type Targeting } from "../components/TargetingFields";
 import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
@@ -64,6 +65,13 @@ function buildChains(proposals: Proposal[]): ProposalChain[] {
    silently rewriting that turns a submitted bid into a bid for different work
    which the contract would then be written from.
 
+   TARGETING AND is_open ARE ON THE UNLOCKED SIDE, and deliberately: they are
+   not terms. Nobody prices a brief against who else the brand was hoping to
+   hear from, so widening the board — or closing it to new applications —
+   takes nothing away from the offers already made. editing.py keeps them out
+   of LOCKED_FIELDS for exactly that reason, so they stay editable here even
+   once creators have bid.
+
    A draft locks nothing, and neither does a published campaign nobody has bid
    on: no creator has spent an evening pricing it, so fixing a budget with a
    missing zero costs nobody anything. The lock protects work already done,
@@ -86,6 +94,7 @@ function CampaignEditor({ campaign, locked, onSaved, onClose }: {
   const [currency, setCurrency] = useState(campaign.budget_currency ?? CURRENCIES[0]);
   const [deadline, setDeadline] = useState(campaign.deadline ?? "");
   const [deliverables, setDeliverables] = useState<Deliverable[]>(campaign.deliverables);
+  const [targeting, setTargeting] = useState<Targeting>(targetingOf(campaign));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,6 +121,24 @@ function CampaignEditor({ campaign, locked, onSaved, onClose }: {
       if (JSON.stringify(deliverables) !== JSON.stringify(campaign.deliverables)) {
         patch.deliverables = deliverables;
       }
+    }
+    /* OUTSIDE the lock, on purpose — see the rule above the component. An
+       explicit [] on a targeting list is how a brand clears that dimension,
+       and the server coerces a null to [] for the same reason, so an emptied
+       picker is sent rather than silently skipped. */
+    const target = targetingBody(targeting);
+    if (target.is_open !== campaign.is_open) patch.is_open = target.is_open;
+    if (JSON.stringify(target.target_categories) !== JSON.stringify(campaign.target_categories)) {
+      patch.target_categories = target.target_categories;
+    }
+    if (JSON.stringify(target.target_countries) !== JSON.stringify(campaign.target_countries)) {
+      patch.target_countries = target.target_countries;
+    }
+    if (target.target_min_followers !== campaign.target_min_followers) {
+      patch.target_min_followers = target.target_min_followers;
+    }
+    if (target.target_max_followers !== campaign.target_max_followers) {
+      patch.target_max_followers = target.target_max_followers;
     }
     if (Object.keys(patch).length === 0) {
       // Nothing to say. Closing beats posting an empty PATCH just to hear the
@@ -183,6 +210,9 @@ function CampaignEditor({ campaign, locked, onSaved, onClose }: {
         <span className="label">{t("campaign.deliverables")}</span>
         <DeliverableRows value={deliverables} onChange={setDeliverables} disabled={locked} />
       </div>
+
+      {/* Never disabled, whatever `locked` says: targeting is not a term. */}
+      <TargetingFields idPrefix="e" value={targeting} onChange={setTargeting} />
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button className="btn btn-primary" disabled={busy || !title.trim()} onClick={save}>{t("campaign.saveEdit")}</button>
@@ -620,6 +650,13 @@ export default function CampaignDetailPage() {
                 <li key={i}>{d.quantity} x {t(`deliverable.${d.type}`, d.type)} - {d.platform}</li>
               ))}
             </ul>
+            {/* Whether strangers can answer this brief is the difference
+                between three invited creators and thirty applications
+                overnight, so the campaign says which it is rather than
+                leaving the buyer to open the edit form to find out. */}
+            {campaign.is_open && (
+              <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("target.openHint")}</p>
+            )}
             {campaign.status !== "published" && campaign.status !== "cancelled" && (
               <button className="btn btn-teal" disabled={busy} onClick={publish}>{t("campaign.publish")}</button>
             )}

@@ -2,9 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { StatementFilters } from "../components/StatementFilters";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
+import {
+  NO_FILTER,
+  NO_OPTIONS,
+  applyLocalFilter,
+  earningsTotals,
+  filtersLocally,
+  hasOptions,
+  isFiltered,
+  optionsFrom,
+  serverQuery,
+  type StatementFilter,
+  type StatementOptions
+} from "../lib/statement";
 import type { Earnings, EarningPayment } from "../lib/types";
 
 /* What a creator has made, is waiting on, and cannot touch.
@@ -33,7 +47,12 @@ import type { Earnings, EarningPayment } from "../lib/types";
    visible rather than merely subtracted. No rate is hardcoded here —
    commission_for in backend/app/modules/payments/service.py is the single
    definition, and a percentage copied into the client is the copy that
-   drifts. */
+   drifts.
+
+   AND THE FILTER NARROWS THE TOTALS WITH THE LIST. Whichever half of the
+   filter is doing the work — the server's, for a period, or this page's, for
+   a campaign or a client — the figures above the table always describe the
+   rows in it, and the screen says so out loud. See lib/statement.ts. */
 
 /* Rendered as the API sends them, with grouping for the active locale and the
    currency code beside — the same way the escrow rows on the contract page
@@ -71,84 +90,110 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
+/* Three totals, each a map of currency to amount. Written out rather than
+   inferred because the memo below has an early return for "no data yet", and
+   an empty object literal infers as {} — which cannot be indexed by a
+   currency code. */
+type EarningsTotals = {
+  earned: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+};
+
 export default function EarningsPage() {
   const { t, i18n } = useTranslation();
   const { token, isAuthenticated } = useAuth();
   const [data, setData] = useState<Earnings | null>(null);
-  const [year, setYear] = useState<number | null>(null);
-  /* Derived from the ALL-TIME response and then kept. The API takes a `year`
-     parameter but publishes no list of years, so the options have to come out
-     of the payments themselves — and recomputing them from a FILTERED
-     response would leave the dropdown holding only the year already chosen,
-     with no way back to the others. */
-  const [years, setYears] = useState<number[]>([]);
+  const [filter, setFilter] = useState<StatementFilter>(NO_FILTER);
+  /* Derived from the ALL-TIME response and then kept. The API takes these
+     narrowings but publishes no list of years, campaigns or clients, so the
+     options have to come out of the payments themselves — and recomputing
+     them from a FILTERED response would leave each droplist holding only the
+     value already chosen, with no way back to the others. */
+  const [options, setOptions] = useState<StatementOptions>(NO_OPTIONS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* Only the period reaches the server. The campaign and the client are
+     matched here, because the statement row carries their NAMES and not their
+     ids — lib/statement.ts says why at length. */
+  const query = serverQuery(filter);
 
   useEffect(() => {
     if (!token) return;
     let live = true;
     setLoading(true);
-    api<Earnings>(year === null ? "/payments/earnings" : `/payments/earnings?year=${year}`, { token })
+    api<Earnings>(`/payments/earnings${query}`, { token })
       .then((res) => {
         if (!live) return;
         setData(res);
         setError(null);
-        if (year === null) {
-          const found = new Set<number>();
-          for (const row of res.payments) {
-            // Naive UTC from the API, so it goes through parseApiDate before
-            // a year is read off it — a payment settled at 23:40 UTC on 31
-            // December is not last year's for a reader in Accra and this
-            // year's for one in Douala.
-            if (row.date) found.add(new Date(parseApiDate(row.date)).getUTCFullYear());
-          }
-          setYears(Array.from(found).sort((a, b) => b - a));
-        }
+        // Only the unfiltered response may define the choices; see above.
+        if (query === "") setOptions(optionsFrom(res.payments));
       })
       .catch(() => { if (live) setError(t("earn.loadFailed")); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [token, year, t]);
+  }, [token, query, t]);
+
+  const payments: EarningPayment[] = useMemo(
+    () => applyLocalFilter(data?.payments ?? [], filter),
+    [data, filter]
+  );
+
+  /* The figures above the table, and where they come from.
+
+     The server's own totals whenever it did all the narrowing: they are
+     computed over EVERY escrow rather than over the hundred rows the list
+     carries, so they are the better answer whenever they are an answer to the
+     same question. The moment this page narrows further, they stop being an
+     answer to the same question and are rebuilt from the surviving rows. */
+  const totals = useMemo<EarningsTotals>(() => {
+    if (!data) return { earned: {}, pending: {}, disputed: {} };
+    if (filtersLocally(filter)) return earningsTotals(payments);
+    return { earned: data.earned, pending: data.pending, disputed: data.disputed };
+  }, [data, payments, filter]);
 
   /* One group per currency, never a sum over them. The union of the three
      maps, because a creator can have money pending in a market they have not
      been released in yet — and a currency that appears in only one of the
      three still deserves its group. */
-  const currencies = useMemo(() => {
-    if (!data) return [];
-    return Array.from(
-      new Set([...Object.keys(data.earned), ...Object.keys(data.pending), ...Object.keys(data.disputed)])
-    ).sort();
-  }, [data]);
+  const currencies = useMemo(
+    () => Array.from(
+      new Set([...Object.keys(totals.earned), ...Object.keys(totals.pending), ...Object.keys(totals.disputed)])
+    ).sort(),
+    [totals]
+  );
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  const payments: EarningPayment[] = data?.payments ?? [];
-  const nothing = !loading && currencies.length === 0 && payments.length === 0;
+  const filtering = isFiltered(filter);
+  /* Genuinely empty, as opposed to filtered down to nothing. The two need
+     different sentences: one says there is no money here yet, the other says
+     this filter matches none of it — and only the second leaves somebody
+     looking for the clear button. */
+  const nothing = !loading && !filtering && currencies.length === 0 && payments.length === 0;
 
   return (
     <Layout>
       <div className="container page">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ margin: 0 }}>{t("earn.title")}</h1>
-            <p className="muted" style={{ marginTop: 6 }}>{t("earn.sub")}</p>
-          </div>
-          {/* Offered only once there is more than one year to choose between:
-             a filter over a single year is a control that can only ever
-             reproduce the page it is already on. */}
-          {years.length > 1 && (
-            <div>
-              <label className="label" htmlFor="earn-year">{t("earn.yearLabel")}</label>
-              <select id="earn-year" className="select" value={year === null ? "" : String(year)}
-                onChange={(e) => setYear(e.target.value === "" ? null : Number(e.target.value))}>
-                <option value="">{t("earn.yearAll")}</option>
-                {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
-              </select>
-            </div>
-          )}
+        <div>
+          <h1 style={{ margin: 0 }}>{t("earn.title")}</h1>
+          <p className="muted" style={{ marginTop: 6 }}>{t("earn.sub")}</p>
         </div>
+
+        {/* Offered only once there is something to choose between; see
+            hasOptions in lib/statement.ts. */}
+        {hasOptions(options) && (
+          <StatementFilters
+            idPrefix="earn"
+            value={filter}
+            onChange={setFilter}
+            options={options}
+            counterpartyLabel={t("earn.clientLabel")}
+            counterpartyAll={t("earn.clientAll")}
+          />
+        )}
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
@@ -161,6 +206,17 @@ export default function EarningsPage() {
           </div>
         ) : (
           <>
+            {/* Said as soon as anything is narrowed, above the numbers it is
+                about. Filtered totals beside a filtered list is the honest
+                pairing; what it must never look like is the all-time figure,
+                because somebody would add up the rows, get something else and
+                decide the screen is lying. */}
+            {filtering && (
+              <p className="muted" style={{ fontSize: 13.5, margin: "16px 0 -2px", fontWeight: 600 }}>
+                {t("filt.totals")} <span style={{ fontWeight: 400 }}>— {t("filt.totalsHint")}</span>
+              </p>
+            )}
+
             {currencies.map((currency) => (
               <section key={currency} style={{ marginTop: 18 }}>
                 {/* The currency names the group rather than sitting inside the
@@ -171,11 +227,11 @@ export default function EarningsPage() {
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                   <Tile label={t("earn.earned")} hint={t("earn.earnedHint")}
-                    value={amount(data?.earned[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.earned[currency] ?? 0, currency, i18n.language)} />
                   <Tile label={t("earn.pending")} hint={t("earn.pendingHint")}
-                    value={amount(data?.pending[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.pending[currency] ?? 0, currency, i18n.language)} />
                   <Tile label={t("earn.disputed")} hint={t("earn.disputedHint")}
-                    value={amount(data?.disputed[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.disputed[currency] ?? 0, currency, i18n.language)} />
                 </div>
               </section>
             ))}
@@ -192,7 +248,7 @@ export default function EarningsPage() {
             <div className="card" style={{ marginTop: 18, overflowX: "auto" }}>
               <h3 style={{ marginTop: 0 }}>{t("earn.statement")}</h3>
               {payments.length === 0 ? (
-                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("earn.empty")}</p>
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{filtering ? t("filt.none") : t("earn.empty")}</p>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                   <thead>

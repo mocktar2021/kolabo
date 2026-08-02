@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.campaigns import cart, editing, orders, schemas, service, withdrawals
+from app.modules.campaigns import board, cart, editing, orders, schemas, service, withdrawals
 
 router = APIRouter()
 
@@ -28,9 +28,32 @@ def my_invitations(
     return service.list_my_invitations(db, influencer_user_id)
 
 
-# Declared before the /{campaign_id} routes below. FastAPI matches in
-# declaration order, and a literal first segment has to come first or
-# "proposals" is read as a campaign id.
+# Declared before the /{campaign_id} routes below, with the other literal
+# first segments. FastAPI matches in declaration order and "open" would
+# otherwise be read as a campaign id.
+@router.get("/open", response_model=list[schemas.OpenBriefOut])
+def open_briefs(
+    limit: int = board.BOARD_LIMIT,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """The open board: published briefs any creator may apply to, best fit first.
+
+    SIGNED-IN CREATORS ONLY. A business or agency gets a 403, not an empty
+    list: a brief carries a budget, a deadline and the shape of a brand's
+    plans for the quarter, so unlike discovery search — which is public
+    because a creator's storefront is meant to be seen — the board stays
+    behind a creator login. An empty list would also read as "there are no
+    open briefs", which is a different and untrue answer.
+
+    Ranked by match_score and then by newest. THE SCORE RANKS, IT DOES NOT
+    FILTER: every open brief appears on every creator's board, including the
+    ones scoring zero. campaigns.board says why.
+    """
+    return board.list_open_campaigns(db, influencer_user_id, limit, offset)
+
+
 @router.post("/proposals/{proposal_id}/withdraw", response_model=schemas.ProposalOut)
 def withdraw_proposal(
     proposal_id: str,
@@ -55,7 +78,14 @@ def campaign_detail(
     db: Session = Depends(get_db),
     business_user_id: str = Depends(get_current_user_id),
 ):
-    """Full campaign view with its invitations and proposals (owner only)."""
+    """Full campaign view with its invitations and proposals (owner only).
+
+    Applications from the open board arrive in the proposals list here, with
+    no special casing: this view has always selected every proposal on the
+    campaign and has never filtered by invitation, so a bid from a creator the
+    brand never invited sits beside the ones it did — which is exactly where
+    a brand expects to answer it.
+    """
     return service.get_campaign_detail(db, campaign_id, business_user_id)
 
 
@@ -72,6 +102,11 @@ def update_campaign(
     editable, but budget, currency, deliverables and deadline lock as soon as
     a proposal exists — creators priced against those terms. A direct order is
     not editable here at all; counter it instead.
+
+    is_open and the targeting fields stay editable throughout, including after
+    a creator has bid. They are not terms: nobody prices a brief against who
+    else the brand hoped to hear from, so widening the board or closing it to
+    new applications takes nothing away from the offers already on the table.
     """
     return editing.update_campaign(db, campaign_id, business_user_id, payload)
 
@@ -209,6 +244,27 @@ def cancel_campaign(
     something the buyer does alone.
     """
     return editing.cancel_campaign(db, campaign_id, business_user_id)
+
+
+@router.post("/{campaign_id}/apply", response_model=schemas.ProposalOut, status_code=status.HTTP_201_CREATED)
+def apply_to_campaign(
+    campaign_id: str,
+    payload: schemas.ProposalIn,
+    db: Session = Depends(get_db),
+    influencer_user_id: str = Depends(get_current_user_id),
+):
+    """Apply to an open brief without an invitation, with your terms.
+
+    The body is a proposal, because that is what an application IS: the same
+    rate, currency, timeline and optional note an invited creator sends, and
+    it becomes the same row on the same version chain. The brand answers it
+    from its campaign page exactly as it answers any other proposal.
+
+    Allowed only on a published, open, non-direct campaign (400 otherwise) and
+    only while the caller has no live proposal on it already (409) — a second
+    application would supersede terms the brand may be reading right now.
+    """
+    return board.apply_to_campaign(db, campaign_id, influencer_user_id, payload)
 
 
 @router.post("/{campaign_id}/invitations", response_model=schemas.InvitationOut, status_code=status.HTTP_201_CREATED)

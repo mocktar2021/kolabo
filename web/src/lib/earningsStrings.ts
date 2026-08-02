@@ -47,8 +47,11 @@ const fr = {
   unknownBrand: "Marque",
   viewContract: "Voir le contrat",
 
-  yearLabel: "Année",
-  yearAll: "Toutes les années",
+  /* La contrepartie, telle qu'elle s'appelle de ce côté du séquestre. Sur
+     l'écran de l'acheteur le même filtre s'appelle "Créateur" : c'est
+     toujours "l'autre partie", et qui c'est dépend de qui regarde. */
+  clientLabel: "Client",
+  clientAll: "Tous les clients",
 
   empty: "Aucun paiement pour l'instant.",
   emptyHint: "Un paiement apparaît ici quand une marque bloque l'argent en séquestre — après la signature, pas à la signature.",
@@ -83,8 +86,8 @@ const en = {
   unknownBrand: "Brand",
   viewContract: "View the contract",
 
-  yearLabel: "Year",
-  yearAll: "All years",
+  clientLabel: "Client",
+  clientAll: "All clients",
 
   empty: "No payments yet.",
   emptyHint: "A payment appears here when a brand holds the money in escrow — after signing, not at signing.",

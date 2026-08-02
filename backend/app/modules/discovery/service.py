@@ -10,6 +10,12 @@ KOL-20: favorites shortlist for a business, persisted and removable.
 Results carry the display name, cover image, per platform audience, rating, and
 starting package price so a result card can be shown without a second request
 per creator.
+
+The landing page's featured strip lives next door in discovery.featured. It
+reuses _is_searchable, _card_context and _result_card from here rather than
+restating any of them: two definitions of "who is live" would mean a creator
+visible in one surface and missing from the other, which is a bug nobody
+reports because each screen looks fine on its own.
 """
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -120,6 +126,54 @@ def _active_package_platforms(db: Session) -> set:
     return set(rows)
 
 
+def _card_context(db: Session) -> dict:
+    """Everything a result card needs, looked up once for the whole page.
+
+    Five queries however many creators come back, never five per creator —
+    that is the reason these are maps keyed by user id rather than per-row
+    lookups. Gathered into one object so a second surface showing the same
+    card (discovery.featured) cannot accidentally load four of the five and
+    render a strip of creators with no prices on them.
+    """
+    return {
+        "prices": _starting_prices(db),
+        "package_counts": _active_package_counts(db),
+        "ratings": _rating_summary(db),
+        "socials": _socials_by_user(db),
+        "covers": _cover_by_user(db),
+    }
+
+
+def _result_card(prof: profiles.InfluencerProfile, user: User, ctx: dict) -> dict:
+    """One creator as a card, in the one shape every discovery surface shows.
+
+    Extracted from search so the featured strip is literally the same card
+    rather than a copy of it. A copy is how a field gets added to search and
+    quietly goes missing from the landing page — the two would drift on the
+    exact screen where a brand forms its first impression of the roster.
+    """
+    price = ctx["prices"].get(prof.user_id)
+    avg, count = ctx["ratings"].get(prof.user_id, (None, 0))
+    return {
+        "user_id": prof.user_id,
+        "display_name": prof.display_name,
+        "headline": prof.headline,
+        "location": prof.location,
+        "avatar_url": f"/profiles/media/{prof.avatar_media_id}" if prof.avatar_media_id else None,
+        "cover_url": ctx["covers"].get(prof.user_id),
+        "socials": ctx["socials"].get(prof.user_id, []),
+        "bio": prof.bio,
+        "categories": prof.categories,
+        "follower_count": prof.follower_count,
+        "country_code": user.country_code,
+        "is_verified": user.is_verified,
+        "starting_price_amount": price[0] if price else None,
+        "starting_price_currency": price[1] if price else None,
+        "average_stars": avg,
+        "review_count": count,
+    }
+
+
 def search_influencers(
     db: Session,
     category: str | None = None,
@@ -143,16 +197,12 @@ def search_influencers(
         .join(User, User.id == profiles.InfluencerProfile.user_id)
         .all()
     )
-    prices = _starting_prices(db)
-    package_counts = _active_package_counts(db)
-    ratings = _rating_summary(db)
-    socials = _socials_by_user(db)
-    covers = _cover_by_user(db)
+    ctx = _card_context(db)
     package_platforms = _active_package_platforms(db) if platform else set()
 
     matched = []
     for prof, user in rows:
-        if not _is_searchable(prof, package_counts.get(prof.user_id, 0)):
+        if not _is_searchable(prof, ctx["package_counts"].get(prof.user_id, 0)):
             continue
         if country and user.country_code != country:
             continue
@@ -162,7 +212,9 @@ def search_influencers(
             # Presence on a platform is a connected social account or an
             # active package sold on it. Accounts come from the same map the
             # result card shows, so the filter and the card always agree.
-            has_account = any(s["platform"] == platform for s in socials.get(prof.user_id, []))
+            has_account = any(
+                s["platform"] == platform for s in ctx["socials"].get(prof.user_id, [])
+            )
             if not has_account and (prof.user_id, platform) not in package_platforms:
                 continue
         if min_followers is not None or max_followers is not None:
@@ -188,31 +240,7 @@ def search_influencers(
     matched.sort(key=sort_key)
     page = matched[offset : offset + limit]
 
-    results = []
-    for prof, user in page:
-        price = prices.get(prof.user_id)
-        avg, count = ratings.get(prof.user_id, (None, 0))
-        results.append(
-            {
-                "user_id": prof.user_id,
-                "display_name": prof.display_name,
-                "headline": prof.headline,
-                "location": prof.location,
-                "avatar_url": f"/profiles/media/{prof.avatar_media_id}" if prof.avatar_media_id else None,
-                "cover_url": covers.get(prof.user_id),
-                "socials": socials.get(prof.user_id, []),
-                "bio": prof.bio,
-                "categories": prof.categories,
-                "follower_count": prof.follower_count,
-                "country_code": user.country_code,
-                "is_verified": user.is_verified,
-                "starting_price_amount": price[0] if price else None,
-                "starting_price_currency": price[1] if price else None,
-                "average_stars": avg,
-                "review_count": count,
-            }
-        )
-    return results
+    return [_result_card(prof, user, ctx) for prof, user in page]
 
 
 def _countries(db: Session, user_ids: list[str]) -> dict:

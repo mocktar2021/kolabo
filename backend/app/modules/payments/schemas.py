@@ -95,6 +95,56 @@ class EarningsOut(BaseModel):
     payments: list[EarningPaymentOut] = Field(default_factory=list)
 
 
+class SpendPaymentOut(BaseModel):
+    """One line of a buyer's statement.
+
+    NO COMMISSION COLUMNS, which is the visible difference from the creator's
+    line and the whole reason the two are separate schemas. The platform's cut
+    comes out of the creator's release, not out of the buyer's payment: a
+    brand that funded 100000 paid 100000, and a "net" column here would invite
+    them to think they were charged something they were not.
+    """
+
+    escrow_id: str
+    contract_id: str
+    campaign_title: str | None = None
+    # The creator, by display name, from the shared identity helper so the
+    # brand reads the same name here as on its shortlist and on the proposal
+    # it accepted. Null before they have written a profile — never a phone
+    # number standing in for it.
+    counterparty_name: str | None = None
+    amount: int
+    # The part of this contract that came back after a dispute split. Zero on
+    # almost every row. It is on the line and not only in the totals because
+    # otherwise a split shows 60000 spent against a contract the buyer funded
+    # with 100000 and the missing 40000 appears in a total with no line to
+    # trace it to.
+    refunded_amount: int = 0
+    currency: str
+    status: str
+    date: datetime | None = None
+
+
+class SpendOut(BaseModel):
+    """The buyer's money, in four states and never summed across currencies.
+
+    Four rather than the earnings screen's three because refunded money is a
+    real line in a buyer's ledger and is no line at all in a creator's: they
+    paid it and got it back, and both halves have to be visible or the
+    arithmetic does not close.
+
+    disputed stays out of pending for the mirror of the reason it does on the
+    creator's screen: pending is money the buyer expects to lose, disputed is
+    money they may get back. See app.modules.payments.spend.
+    """
+
+    spent: dict[str, int] = Field(default_factory=dict)
+    pending: dict[str, int] = Field(default_factory=dict)
+    disputed: dict[str, int] = Field(default_factory=dict)
+    refunded: dict[str, int] = Field(default_factory=dict)
+    payments: list[SpendPaymentOut] = Field(default_factory=list)
+
+
 class DisputeOut(BaseModel):
     id: str
     escrow_id: str

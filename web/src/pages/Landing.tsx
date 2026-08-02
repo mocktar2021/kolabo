@@ -124,10 +124,22 @@ export default function Landing() {
   const [wfAuto, setWfAuto] = useState(true);
 
   useEffect(() => {
-    // Silent failure by design: if discovery is down the list stays empty and
-    // the featured section simply does not render. The landing page must never
-    // show an error state for an optional proof section.
-    api<SearchResult[]>("/discovery/search?limit=8").then(setFeatured).catch(() => undefined);
+    /* /discovery/featured rather than /discovery/search, and the difference is
+       the whole point. Search is DETERMINISTIC by design — verified first,
+       then biggest audience, then oldest profile — which is exactly right when
+       somebody is looking for a creator and exactly wrong when the page is
+       looking for somebody to show them. Called with a limit of eight it put
+       the same eight faces above the fold on every visit, forever: the
+       ninth-ranked creator was invisible to every brand that never scrolled
+       and never searched, and the top eight collected every impression the
+       platform had to give. On a pilot roster that is not a ranking, it is a
+       lottery nobody can re-enter. Same eligibility rule, same card, random
+       order, so the roster actually gets seen.
+
+       Silent failure by design: if discovery is down the list stays empty and
+       the featured section simply does not render. The landing page must never
+       show an error state for an optional proof section. */
+    api<SearchResult[]>("/discovery/featured?limit=8").then(setFeatured).catch(() => undefined);
   }, []);
 
   /* The workflow section walks through its six tabs on its own, so a visitor
@@ -176,6 +188,25 @@ export default function Landing() {
     { t: t("landing.step2t"), d: t("landing.step2d") },
     { t: t("landing.step3t"), d: t("landing.step3d") },
     { t: t("landing.step4t"), d: t("landing.step4d") }
+  ];
+
+  /* The market running the other way, for brands: post a brief and let
+     creators come to you, instead of contacting them one at a time.
+
+     NOT ONE NUMBER IN THIS COPY, and unlike the trust band above there is no
+     "exemples" note to excuse one. We do not know how many creators are on
+     the platform, how fast a brief fills, or what a typical application looks
+     like — and a marketing figure nobody can stand behind is how a brand
+     stops believing the rest of the page. The only digits rendered here are
+     the step ordinals .step-grid draws, which are structure and not a claim.
+
+     The copy also has to be honest about the soft filter, because a brand
+     that thinks it set a hard one declines off-target applications unread:
+     targeting ranks who sees the brief first, it stops nobody applying. */
+  const briefSteps = [
+    { t: t("landing.brief1t"), d: t("landing.brief1d") },
+    { t: t("landing.brief2t"), d: t("landing.brief2d") },
+    { t: t("landing.brief3t"), d: t("landing.brief3d") }
   ];
 
   /* Workflow tabs: one per shipped product area, nothing aspirational. The
@@ -444,6 +475,27 @@ export default function Landing() {
               </div>
               <h3>{f.t}</h3>
               <p>{f.d}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* The other direction of the market, for brands: post a brief and let
+          creators apply, instead of finding every one of them yourself. Placed
+          beside the other brand-facing blocks (it sits directly above "Pour
+          les équipes") and built from the same .step-grid the how-it-works
+          section uses, so it reads as part of the page rather than as a
+          bolted-on announcement. See briefSteps above for why there is not a
+          single figure in this copy. */}
+      <section className="container section">
+        <h2>{t("landing.briefTitle")}</h2>
+        <p className="section-sub">{t("landing.briefSub")}</p>
+        <div className="step-grid">
+          {briefSteps.map((s, i) => (
+            <div key={s.t}>
+              <span className="step-num">{i + 1}</span>
+              <h3 style={{ fontSize: 17 }}>{s.t}</h3>
+              <p className="muted" style={{ fontSize: 14.5, margin: 0 }}>{s.d}</p>
             </div>
           ))}
         </div>

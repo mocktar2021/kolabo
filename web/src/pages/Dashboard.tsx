@@ -140,7 +140,7 @@ function ReferralPanel({ token }: { token: string | null }) {
           <tbody>
             {info.referrals.map((r, i) => (
               <tr key={i}>
-                {/* The active language, not the browser's: someone reading the
+                {/* The active language, not the browser's: somebody reading the
                     app in French should not get an en-US date beside it. */}
                 <td>{new Date(r.joined_at).toLocaleDateString(i18n.language)}</td>
                 {/* Agencies buy the way businesses do (isBusinessLike), so both
@@ -194,6 +194,26 @@ export default function Dashboard() {
           <ActionCard to="/contracts"
             title={isBusinessLike(role) ? t("dash.ordersTitle") : t("dash.contractsTitle")}
             desc={isBusinessLike(role) ? t("dash.ordersDesc") : t("dash.contractsDesc")} />
+          {/* Asked no role question, exactly as the nav asks it none: a
+              contract has two parties and the thread belongs to both, so
+              either of them may be the one who has not replied. The dashboard
+              was the only screen where a signed-in person could not find
+              their inbox at all. */}
+          <ActionCard to="/messages" title={t("dash.messagesTitle")} desc={t("dash.messagesDesc")} />
+          {/* The money, and it is one card per side of the market because it
+              is two different questions. A creator opens /earnings and reads
+              NET figures, the commission having come off at release. A buyer
+              opens /payments and reads GROSS ones, because the commission
+              never came out of their payment — and their screen carries a
+              refunded total, which is a line a creator's ledger does not
+              have. Each role is offered the route its own endpoint will
+              actually answer; the other one redirects (see App.tsx). */}
+          {!isBusinessLike(role) && <ActionCard to="/earnings" title={t("dash.earningsTitle")} desc={t("dash.earningsDesc")} />}
+          {isBusinessLike(role) && <ActionCard to="/payments" title={t("dash.paymentsTitle")} desc={t("dash.paymentsDesc")} />}
+          {/* Both sides again, and for the same reason as messages: a dispute
+              is a claim on money held between two people, and either of them
+              may be the one making it or the one who has to answer it. */}
+          <ActionCard to="/disputes" title={t("dash.disputesTitle")} desc={t("dash.disputesDesc")} />
         </div>
         {/* Influencers only: businesses and agencies (isBusinessLike) buy, they
             do not recruit fellow creators. Full width under the action cards

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Logo } from "./Logo";
+import { NotificationsBell } from "./NotificationsBell";
 import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { useCart } from "../lib/cart";
@@ -338,7 +339,9 @@ function AppNav() {
 
      Messages are the exception that proves it: a contract has two parties and
      the thread belongs to both, so that entry is not asked the question at
-     all. Disputes are the same exception for the same reason.
+     all. Disputes are the same exception for the same reason, AND SO ARE
+     NOTIFICATIONS — both sides of the market are told about things, and an
+     invitation and a proposal are the same event read from two ends.
 
      What is NOT here any more: the profile, the money screen, the account
      settings and sign out. They live behind the avatar in AccountMenu — they
@@ -356,6 +359,10 @@ function AppNav() {
       <MessagesIndicator />
       <DisputesIndicator />
       {isBrand && <CartIndicator />}
+      {/* An icon rather than a word, and next to the avatar rather than out
+          with the destinations: the bell is not a place you go, it is what
+          tells you where to go. */}
+      <NotificationsBell />
       <AccountMenu />
     </div>
   );

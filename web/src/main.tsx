@@ -19,6 +19,9 @@ import "./lib/navMenuStrings";
    brand-facing brief section to: addResourceBundle deep-merges, so the new
    keys join that group rather than replacing it. */
 import "./lib/boardStrings";
+/* Same arrangement: this one adds nav.notifications to the nav.* group
+   i18n.ts owns, so it has to come after it. */
+import "./lib/notificationStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

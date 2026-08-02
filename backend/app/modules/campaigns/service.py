@@ -31,7 +31,10 @@ without a second copy of the package and offer checks living inside it.
 
 Editing, deleting and cancelling a campaign live next door in
 campaigns.editing, which is where the rules about what a buyer may still
-change once other people are looking are written down.
+change once other people are looking are written down. The open board — the
+brief a creator can find without being invited, and applying to one — lives in
+campaigns.board, which calls submit_proposal below rather than writing a
+proposal of its own.
 
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
@@ -170,6 +173,23 @@ def _to_out(campaign: models.Campaign) -> dict:
         "deadline": campaign.deadline,
         "status": campaign.status,
         "is_direct": campaign.is_direct,
+        # The open-board fields travel on every campaign payload, not only on
+        # the board's own row. The buyer's list of its campaigns has to be
+        # able to say which briefs strangers can apply to — that is the
+        # difference between a brief with three invited creators and one that
+        # may collect thirty applications overnight — and a PATCH that
+        # changed the targeting has to echo back what it changed. Left off,
+        # the schema defaults would fill in False and empty lists, which is
+        # worse than absent: it would report a targeted, open brief as a
+        # closed one that targets nobody.
+        #
+        # `or []` because the columns are NOT NULL but rows written before
+        # b5d2e9f31a04 ran through a create_all schema may still hold null.
+        "is_open": campaign.is_open,
+        "target_categories": campaign.target_categories or [],
+        "target_countries": campaign.target_countries or [],
+        "target_min_followers": campaign.target_min_followers,
+        "target_max_followers": campaign.target_max_followers,
     }
 
 
@@ -193,6 +213,19 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
         deliverables=deliverables,
         deadline=payload.deadline,
         status=models.DRAFT,
+        # Taken at creation as well as on a PATCH, because deciding who a
+        # brief is for is part of writing it: making a brand save the brief
+        # and then open it in a second request would be two calls for one
+        # decision. The schema still defaults is_open to False, so a client
+        # that has never heard of the board cannot open a brief by accident.
+        is_open=payload.is_open,
+        # Coerced to a list because the schema's null-clears rule hands back
+        # [] for an explicit null but None for a field nobody sent, and the
+        # column is NOT NULL either way.
+        target_categories=list(payload.target_categories or []),
+        target_countries=list(payload.target_countries or []),
+        target_min_followers=payload.target_min_followers,
+        target_max_followers=payload.target_max_followers,
     )
     if payload.publish:
         if not _publish_ready(campaign):
@@ -621,6 +654,16 @@ def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> m
 
 
 def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payload: schemas.ProposalIn) -> dict:
+    """Write the next version of one creator's offer on one campaign.
+
+    THE ONE PLACE A PROPOSAL ROW IS WRITTEN. An invited creator pricing a
+    brief, a creator countering a direct order, and a creator applying to an
+    open brief off the board all land here — campaigns.board.apply_to_campaign
+    checks whether an application is allowed and then calls this rather than
+    building a proposal of its own. A second writer would be a second place
+    for the version numbering to drift, and the version chain is what a
+    contract gets written from.
+    """
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
@@ -802,6 +845,14 @@ def list_my_campaigns(db: Session, business_user_id: str) -> list[dict]:
 
 
 def get_campaign_detail(db: Session, campaign_id: str, business_user_id: str) -> dict:
+    """The owner's view of one campaign: every invitation and every proposal.
+
+    Applications from the open board need nothing special here and get
+    nothing: this has always selected EVERY proposal on the campaign and has
+    never filtered by invitation, so a bid from a creator the brand never
+    invited sits in the same list as the ones it did — which is where the
+    brand answers, counters or rejects it with the endpoints it already has.
+    """
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
     invitations = (
         db.query(models.CampaignInvitation)

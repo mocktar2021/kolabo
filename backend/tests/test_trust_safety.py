@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.db import Base, get_db
+from app.core.db import Base, get_db, import_all_models
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.payments import models as pay_models
@@ -17,6 +17,12 @@ from app.modules.trust_safety.router import router as ts_router
 def client():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True)
     ts = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    # Resolving a report calls notify(), which writes a Notification row, so
+    # the whole metadata has to exist rather than only the tables this
+    # module's imports happen to have registered. Without it the file passes
+    # in a full run (some other test module imported the model first) and
+    # fails when run on its own, which is the worst of both.
+    import_all_models()
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():
@@ -151,6 +157,46 @@ def test_report_appears_in_admin_queue_and_resolves(client):
     log = db.query(AdminActionLog).filter(AdminActionLog.target_id == rid).first()
     db.close()
     assert log is not None and log.action == "report_reviewed"
+
+
+def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client):
+    """A report that vanishes into a queue is a report nobody files twice.
+
+    But the decision is a fact about somebody else's account: telling the
+    reporter "we acted on it" would tell them a named person was sanctioned,
+    which is how a reporting tool becomes a harassment tool. Reviewed and
+    dismissed therefore read identically.
+    """
+    from app.modules.notifications.models import Notification
+
+    def _resolve(target_id, decision):
+        rid = client.post(
+            "/trust-safety/reports",
+            json={"target_type": "user", "target_id": target_id, "reason_code": "spam"},
+            headers=_headers("reporter-1"),
+        ).json()["id"]
+        client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": decision}, headers=ADMIN)
+
+    _resolve("u-1", "reviewed")
+    _resolve("u-2", "dismissed")
+
+    db = client.session_factory()
+    try:
+        notes = db.query(Notification).filter(Notification.user_id == "reporter-1").all()
+        messages = {n.message for n in notes}
+        types = {n.type for n in notes}
+    finally:
+        db.close()
+
+    assert len(notes) == 2
+    assert types == {"report"}
+    # One sentence for both outcomes, and it names neither of them.
+    assert len(messages) == 1
+    message = messages.pop()
+    assert "reviewed and the case is closed" in message
+    assert "dismissed" not in message
+    # And never the account it was about.
+    assert "u-1" not in message and "u-2" not in message
 
 
 def test_admin_queue_requires_admin_header(client):

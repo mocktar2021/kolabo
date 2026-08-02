@@ -38,7 +38,9 @@ proposal of its own.
 
 Who the people on these rows are is not decided here: identity comes from
 app.core.identity, shared with discovery, so an invitation, a proposal and a
-favourite all name a creator the same way.
+favourite all name a creator the same way. The notifications this module
+raises spend that same identity, because a notification that does not name the
+person it is about is one the reader has to open the app to understand.
 """
 from datetime import timedelta
 
@@ -67,6 +69,17 @@ AUTHOR_EXCLUDED_ROLE = "influencer"
 # and an unbounded chain would let one stubborn thread decide how long the
 # whole page takes to load.
 MAX_PROPOSAL_VERSIONS = 20
+
+# What a notification calls somebody who has not written a profile yet.
+#
+# Both sides of the market can be live before they have a profile: a creator
+# can bid on the board the day they sign up, and a brand can order before it
+# has filled in a company name. The alternative to a placeholder is putting a
+# user id in the sentence, which turns "Ama K. applied to your open brief"
+# into a line nobody can read — and these strings go out by email, where the
+# reader has no screen to cross-reference it against.
+UNNAMED_CREATOR = "A creator"
+UNNAMED_BUYER = "A business"
 
 # How long a creator has to accept or decline a direct order.
 #
@@ -653,7 +666,13 @@ def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> m
     )
 
 
-def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payload: schemas.ProposalIn) -> dict:
+def submit_proposal(
+    db: Session,
+    campaign_id: str,
+    influencer_user_id: str,
+    payload: schemas.ProposalIn,
+    is_application: bool = False,
+) -> dict:
     """Write the next version of one creator's offer on one campaign.
 
     THE ONE PLACE A PROPOSAL ROW IS WRITTEN. An invited creator pricing a
@@ -663,6 +682,20 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
     building a proposal of its own. A second writer would be a second place
     for the version numbering to drift, and the version chain is what a
     contract gets written from.
+
+    is_application changes THE NOTIFICATION AND NOTHING ELSE. The row, the
+    version chain, the supersede rule and the brand's proposals list are
+    identical either way, and they must stay identical — that sameness is the
+    entire reason the board delegates here. But they are not the same news to
+    wake up to: a bid from an invited creator is an answer the brand was
+    waiting for, while an application is a stranger the brand now has to
+    decide whether to look at. One line of a bell menu has to tell them apart,
+    because that is where the brand decides which one to open.
+
+    Both messages NAME THE CREATOR. These strings go out by email as well as
+    into the bell, where the reader has no screen to cross-reference against,
+    and "a new proposal was submitted" left them with neither who nor which
+    brief — two questions that can only be answered by opening the app.
     """
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
@@ -701,10 +734,27 @@ def submit_proposal(db: Session, campaign_id: str, influencer_user_id: str, payl
         expires_at=latest.expires_at if latest is not None else None,
     )
     db.add(proposal)
-    notify(db, campaign.business_user_id, "proposal_submitted", f"A new proposal was submitted for {campaign.title}")
+    # Resolved before the notification rather than after the commit, because
+    # the notification spends it. It is the same single lookup the response
+    # needs either way, moved rather than added.
+    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id) or blank_identity()
+    actor = identity["display_name"] or UNNAMED_CREATOR
+    if is_application:
+        notify(
+            db,
+            campaign.business_user_id,
+            "brief_application",
+            f"{actor} applied to your open brief {campaign.title}",
+        )
+    else:
+        notify(
+            db,
+            campaign.business_user_id,
+            "proposal_submitted",
+            f"{actor} sent a proposal for {campaign.title}",
+        )
     db.commit()
     db.refresh(proposal)
-    identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id)
     return _proposal_out(proposal, identity)
 
 
@@ -771,11 +821,22 @@ def reply_to_proposal(
     )
     latest.status = models.SUPERSEDED
     db.add(reply)
+    # Named, and distinguished. "The business replied to your proposal" told a
+    # creator neither who was asking nor whether anything had moved — and a
+    # counter changes the money or the date, which is the only one of the two
+    # that needs an answer. A creator with several live briefs cannot triage
+    # a bell where every row says the same sentence.
+    countered = payload.rate_amount is not None or payload.timeline_days is not None
+    buyer = _company_name(db, business_user_id) or UNNAMED_BUYER
     notify(
         db,
         latest.influencer_user_id,
         "proposal_reply",
-        f"The business replied to your proposal for {campaign.title}",
+        (
+            f"{buyer} countered your proposal for {campaign.title}"
+            if countered
+            else f"{buyer} replied to your proposal for {campaign.title}"
+        ),
     )
     db.commit()
     db.refresh(reply)

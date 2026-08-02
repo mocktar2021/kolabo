@@ -40,7 +40,8 @@ are: service.py is already long and is about creating campaigns and running
 the negotiation on them. The dependency runs one way — router -> board ->
 service, models. PROPOSAL CREATION IS NOT DUPLICATED HERE: applying calls
 service.submit_proposal, which stays the one place a proposal row is written,
-numbered and notified.
+numbered and notified. The only thing this module tells it is that the bid was
+unsolicited, which changes the wording of that notification and nothing else.
 """
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -347,6 +348,13 @@ def apply_to_campaign(
     selects every proposal on the campaign and has never filtered by
     invitation.
 
+    is_application=True is the ONE thing this path tells submit_proposal, and
+    it changes the notification's wording and nothing else. The row and the
+    chain stay identical, which is the point of delegating; but the brand's
+    bell has to tell an unsolicited application from an invited creator's
+    answer, because those are two different decisions and only one of them was
+    expected. Everything downstream still cannot tell them apart, deliberately.
+
     The published check is submit_proposal's, deliberately not repeated: it
     already refuses a draft or a cancelled brief with a sentence, and a second
     copy of that rule here would be a second thing to update.
@@ -380,4 +388,6 @@ def apply_to_campaign(
             status_code=status.HTTP_409_CONFLICT, detail=ALREADY_APPLIED_DETAIL
         )
 
-    return service.submit_proposal(db, campaign_id, influencer_user_id, payload)
+    return service.submit_proposal(
+        db, campaign_id, influencer_user_id, payload, is_application=True
+    )

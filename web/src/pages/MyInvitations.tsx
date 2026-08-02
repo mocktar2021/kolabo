@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { directOrderOf, orderTimeLeft } from "../lib/orders";
@@ -215,6 +215,9 @@ function CounterForm({ campaignId, live, isOrder, onSent }: {
        should be able to close the order rather than leave the buyer waiting
        on a number nobody intends to honour.
 
+     - Withdraw is the BRIEF-side mirror of decline, and the two must not be
+       confused. See withdrawProposal below.
+
      - Counter is the answer available on both kinds of row, and it is simply
        the next version in the chain. */
 function Negotiation({ campaignId, live, isOrder, onDone }: {
@@ -227,7 +230,11 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
   const { token } = useAuth();
   const navigate = useNavigate();
   const [counterOpen, setCounterOpen] = useState(false);
-  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  /* One inline confirmation slot for the two irreversible answers on this
+     card. Never window.confirm: the sentence that makes each of them an easy
+     decision — nobody is charged, nothing is a refusal — does not fit in a
+     browser dialog and cannot be translated in one. */
+  const [confirming, setConfirming] = useState<"decline" | "withdraw" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -239,6 +246,26 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
   const open = live.status === "submitted";
   // The brand wrote the live version, so the ball is in the creator's court.
   const theirMove = live.author_role === "business";
+
+  /* WHEN THE CREATOR MAY PULL THEIR OWN OFFER BACK, and it is narrower than
+     it looks:
+
+       - A BRIEF ONLY. A direct order is deliberately excluded and must not
+         get this button. An order is closed by DECLINING it, which does three
+         things withdrawing does not: it cancels the hidden campaign, moves
+         the invitation to declined, and tells the buyer they were not
+         charged. withdraw_proposal refuses an order with a 400 pointing at
+         the decline endpoint rather than doing half the job — so offering it
+         here would be offering a button whose only outcome is a refusal, next
+         to the Refuser button that actually works.
+
+       - THEIR OWN LIVE VERSION. If the brand wrote the last word, the
+         creator's own version was superseded when they answered it and there
+         is nothing of theirs left on the table; the endpoint answers 400
+         ("not the live offer"). author_role is what tells the two apart.
+
+       - AND STILL OPEN. Accepted, rejected or superseded rows are history. */
+  const withdrawable = !isOrder && open && !theirMove;
 
   async function accept() {
     setBusy(true);
@@ -268,6 +295,39 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* Taking a live offer back off the table on a brief.
+
+     WITHDRAWN IS NOT DECLINED, and the distinction is the whole reason this
+     endpoint exists separately: declining records that somebody said no, and
+     nobody said no here. Putting a refusal on a record that never made one
+     is the kind of small dishonesty that makes a reputation system
+     worthless.
+
+     The superseded version underneath is NOT revived, which the confirmation
+     says out loud: every earlier version was withdrawn by its own author when
+     they wrote the next one, and putting old terms back on the table would be
+     the platform making an offer on somebody's behalf. */
+  async function withdrawProposal() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/campaigns/proposals/${live.id}/withdraw`, { method: "POST", token });
+      onDone();
+    } catch (e) {
+      /* By STATUS CODE. The 400 covers every way this can be refused — not
+         the live version any more, or a contract already generated from it —
+         and the French sentence names the second case because that is the one
+         with somewhere else to go. */
+      setError(
+        e instanceof ApiError && e.status === 400
+          ? t("undo.proposalRefused")
+          : e instanceof Error ? e.message : "Error"
+      );
     } finally {
       setBusy(false);
     }
@@ -337,7 +397,7 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
       {error && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{error}</div>}
 
       {open && (
-        confirmingDecline ? (
+        confirming === "decline" ? (
           <div style={{ marginTop: 14 }}>
             {/* Inline, not a window.confirm: the sentence that makes this an
                 easy decision — no money has moved, so a no costs the brand
@@ -345,7 +405,15 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
             <p className="muted" style={{ fontSize: 13.5, margin: "0 0 10px" }}>{t("invitation.orderDeclineConfirm")}</p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn btn-ghost" disabled={busy} onClick={decline}>{t("invitation.orderDeclineYes")}</button>
-              <button className="btn btn-ghost" disabled={busy} onClick={() => setConfirmingDecline(false)}>{t("invitation.orderDeclineNo")}</button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => setConfirming(null)}>{t("invitation.orderDeclineNo")}</button>
+            </div>
+          </div>
+        ) : confirming === "withdraw" ? (
+          <div style={{ marginTop: 14 }}>
+            <p className="muted" style={{ fontSize: 13.5, margin: "0 0 10px" }}>{t("undo.proposalConfirm")}</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-ghost" disabled={busy} onClick={withdrawProposal}>{t("undo.proposalYes")}</button>
+              <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming(null); setError(null); }}>{t("undo.proposalNo")}</button>
             </div>
           </div>
         ) : (
@@ -354,7 +422,14 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
               <button className="btn btn-primary" disabled={busy || expired} onClick={accept}>{t("invitation.orderAccept")}</button>
             )}
             {isOrder && (
-              <button className="btn btn-ghost" disabled={busy || expired} onClick={() => setConfirmingDecline(true)}>{t("invitation.orderDecline")}</button>
+              <button className="btn btn-ghost" disabled={busy || expired} onClick={() => setConfirming("decline")}>{t("invitation.orderDecline")}</button>
+            )}
+            {/* Briefs only. An order gets Refuser above and nothing else — see
+                withdrawable. */}
+            {withdrawable && (
+              <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming("withdraw"); setError(null); }}>
+                {t("undo.proposalWithdraw")}
+              </button>
             )}
             {theirMove && !expired && (
               <button className="btn btn-ghost" disabled={busy} onClick={() => setCounterOpen((o) => !o)}>{t("invitation.counter")}</button>

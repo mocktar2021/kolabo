@@ -9,6 +9,9 @@ import "./lib/cartStrings";
 import "./lib/messagesStrings";
 import "./lib/disputeStrings";
 import "./lib/adminStrings";
+import "./lib/accountStrings";
+import "./lib/earningsStrings";
+import "./lib/undoStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

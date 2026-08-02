@@ -1,4 +1,4 @@
-"""Auth business logic: registration with OTP, verification, login, and reset.
+"""Auth business logic: registration with OTP, verification, and login.
 
 Design notes tied to the Jira acceptance criteria:
 - KOL-12: a user row is created at registration but stays unverified and cannot
@@ -8,8 +8,9 @@ Design notes tied to the Jira acceptance criteria:
   a verified account is blocked as a duplicate.
 - KOL-13: the country selected at signup must be enabled in country_config, and
   the value drives all later country specific behavior.
-- KOL-14: reset tokens expire after 30 minutes and each phone is limited to 3
-  reset requests per hour.
+- KOL-14: password reset. It lives next door in app.modules.auth.account,
+  together with the account settings that change the same two credentials, and
+  it REUSES the OTP machinery below rather than owning a second one.
 
 Registration still only records attribution — signing up with a code is worth
 nothing on its own, deliberately. What a referral eventually earns, and when,
@@ -39,16 +40,12 @@ from app.modules.auth.models import (
 from app.modules.auth.schemas import (
     DeleteAccountRequest,
     LoginRequest,
-    PasswordResetConfirm,
-    PasswordResetRequest,
     RegisterRequest,
     VerifyOtpRequest,
 )
 from app.modules.auth.schemas import ROLES
 
 OTP_TTL_MINUTES = 10
-RESET_TTL_MINUTES = 30
-RESET_MAX_PER_HOUR = 3
 
 # Referral codes: uppercase A-Z minus the lookalikes I and O, plus digits 2-9
 # (0 and 1 are out for the same reason). Codes get read aloud and retyped from
@@ -386,61 +383,3 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     )
     db.delete(user)
     db.commit()
-
-
-def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
-    generic = {"message": "If the phone is registered, a reset code has been sent"}
-    user = db.query(User).filter(User.phone == payload.phone).first()
-    if user is None:
-        # Do not reveal whether the phone exists.
-        return generic
-
-    one_hour_ago = utcnow() - timedelta(hours=1)
-    recent = (
-        db.query(PasswordResetToken)
-        .filter(
-            PasswordResetToken.user_id == user.id,
-            PasswordResetToken.created_at >= one_hour_ago,
-        )
-        .count()
-    )
-    if recent >= RESET_MAX_PER_HOUR:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many reset requests, try again later",
-        )
-
-    token = PasswordResetToken(
-        user_id=user.id,
-        token=otp.generate_token(),
-        expires_at=utcnow() + timedelta(minutes=RESET_TTL_MINUTES),
-    )
-    db.add(token)
-    db.commit()
-    _sender.send(user.phone, f"Your Kolabo password reset code is {token.token}")
-    return generic
-
-
-def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
-    token = (
-        db.query(PasswordResetToken)
-        .filter(PasswordResetToken.token == payload.token)
-        .first()
-    )
-    if token is None or token.consumed or token.expires_at < utcnow():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Reset token is invalid or expired",
-        )
-
-    user = db.query(User).filter(User.id == token.user_id).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Reset token is invalid or expired",
-        )
-
-    user.password_hash = hash_password(payload.new_password)
-    token.consumed = True
-    db.commit()
-    return {"message": "Password has been reset"}

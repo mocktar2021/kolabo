@@ -180,10 +180,23 @@ export type ContractDetail = Contract & { body: string };
 
 /* One conversation on the inbox screen (GET /messaging/threads).
 
-   A row per CONTRACT, named by the OTHER person: a creator's inbox says
-   "Maison Kola", a brand's says "Ama K.". Naming rows by campaign title alone
-   would give a brand working with six creators on one brief six identical
-   ones, and collapsing them would lose the only thing that tells them apart.
+   A row per PERSON, named by the OTHER one: a creator's inbox says "Maison
+   Kola", a brand's says "Ama K.". It used to be a row per CONTRACT, which
+   gave a creator on their third job with the same brand three inboxes with
+   the same name on them — the relationship is worth more each time it
+   repeats, and the shape was chopping it up in response. The contracts are
+   now an attribute of the row.
+
+   contract_ids holds every contract between the two, NEWEST FIRST, and
+   contract_count is how many: "we have done four jobs together" is a fact
+   about a relationship worth showing, and a client that wants to link to one
+   specific job still can.
+
+   contract_id, campaign_id and campaign_title describe the NEWEST shared
+   contract only. They are kept spelled out because the header wants to name
+   the job the two of them are currently on, and because a client written
+   against the per-contract shape keeps rendering — which is also why
+   ContractsMenu falls back to contract_id when contract_ids is empty.
 
    counterparty_name is null when the other side has written no profile — the
    same rule identity follows everywhere else, and for the same reason: the
@@ -191,17 +204,22 @@ export type ContractDetail = Contract & { body: string };
    to the other side of a deal. counterparty_avatar_url is only ever set for a
    creator; a business has a company name and no avatar in this system.
 
+   unread_count is across the WHOLE relationship rather than one job: an
+   unanswered question is unanswered whichever contract it was asked under.
+
    last_message_at arrives naive UTC like every other datetime here, so it
    goes through parseApiDate before it is turned into "il y a 2 h". */
 export type MessageThread = {
-  campaign_id: string;
-  campaign_title: string | null;
-  /* The contract that opened this thread — and the answer to "why am I
-     allowed in here". */
-  contract_id: string;
   counterparty_user_id: string;
   counterparty_name: string | null;
   counterparty_avatar_url: string | null;
+  /* Every contract between the two, newest first, and how many there are. */
+  contract_ids: string[];
+  contract_count: number;
+  /* The newest shared contract and its campaign — the job they are on now. */
+  contract_id: string;
+  campaign_id: string;
+  campaign_title: string | null;
   last_message: string | null;
   last_message_at: string | null;
   unread_count: number;
@@ -210,7 +228,13 @@ export type MessageThread = {
 /* One message in a thread. read_at is a timestamp rather than a flag because
    in a dispute the useful fact is when a specific message was seen, not how
    many are outstanding — and it is null until the recipient opens the thread,
-   which is the only thing that stamps it. */
+   which is the only thing that stamps it.
+
+   campaign_id stays on every row, including messages sent to a PERSON through
+   the counterparty endpoint (the server stamps those with the most recent
+   shared contract's campaign). It is provenance — which job a message was
+   about, which is what a dispute reads — and never an authorisation: the
+   contract is what decides who may see what. */
 export type Message = {
   id: string;
   campaign_id: string;
@@ -231,6 +255,63 @@ export type Escrow = {
   currency: string;
   commission_amount: number | null;
   status: string;
+};
+
+/* One line of a creator's statement (GET /payments/earnings). Mirror of
+   EarningPaymentOut in backend/app/modules/payments/schemas.py.
+
+   gross, commission and net all three, side by side. Net is the number that
+   matters — it is what reaches the wallet — but showing it alone would make
+   the platform's cut invisible, and a fee somebody cannot see is a fee they
+   assume was a mistake. The three columns are how a creator checks our
+   arithmetic against their own.
+
+   counterparty_name is the buyer's company name, null while they have written
+   no profile: the users row holds nothing else but a phone number, and a
+   phone number is never handed to the other side of a deal.
+
+   date is when the payment settled if it settled and when it was funded if it
+   has not — one column, because a statement line has one date on it. Naive
+   UTC like every other datetime from this API, so it goes through
+   parseApiDate. Null only on rows predating the columns it is read from. */
+export type EarningPayment = {
+  escrow_id: string;
+  contract_id: string;
+  campaign_title: string | null;
+  counterparty_name: string | null;
+  gross: number;
+  commission: number;
+  net: number;
+  currency: string;
+  status: string;
+  date: string | null;
+};
+
+/* The creator's money in three states (GET /payments/earnings).
+
+   EACH TOTAL IS A MAP OF CURRENCY TO AMOUNT AND NEVER A SINGLE NUMBER, which
+   is the type doing the work the product rule needs: there is no field here a
+   client could render as "total earnings" across two markets, because XOF and
+   GHS are not addends and a figure spanning both would be meaningless on the
+   screen a creator trusts most.
+
+   disputed is its own field and NOT part of pending. Pending is money already
+   paid into escrow that releases on delivery — a promise with a date on it.
+   Disputed money has no date and may go back to the buyer when an admin
+   decides. Merging them would mean "expect this" where the truth is "argue
+   for this".
+
+   Every figure is net of commission: the platform's cut comes off at release,
+   so a gross total is one that never reaches a wallet.
+
+   A business calling this endpoint gets empty maps and an empty list, on
+   purpose — buyer-side SPEND is a different question with the opposite sign
+   and wants its own endpoint. */
+export type Earnings = {
+  earned: Record<string, number>;
+  pending: Record<string, number>;
+  disputed: Record<string, number>;
+  payments: EarningPayment[];
 };
 
 /* What POST /profiles/{userId}/media answers with (MediaOut). The id is what

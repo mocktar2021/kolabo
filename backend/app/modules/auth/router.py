@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.modules.auth import schemas, service
+from app.modules.auth import account, schemas, service
 from app.modules.auth.deps import get_current_user_id
 
 router = APIRouter()
@@ -46,6 +46,36 @@ def my_referral(
     return service.get_my_referral(db, user_id)
 
 
+@router.get("/me", response_model=schemas.MeOut)
+def get_me(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """The caller's own account: id, phone, role, country, verified, joined.
+
+    Never anyone else's — the subject comes from the bearer token and there is
+    no id parameter to walk. The password hash is not on the response and
+    there is no field it could arrive in.
+    """
+    return account.get_me(db, user_id)
+
+
+@router.patch("/me", response_model=schemas.MeOut)
+def update_me(
+    payload: schemas.AccountPatch,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """Change the login phone, the password, or both.
+
+    current_password is required for either. The phone IS the login identity,
+    so moving it must cost the password: a stolen bearer token would otherwise
+    be enough to point the account at somebody else's handset and reset it
+    from there. A number already in use answers 409.
+    """
+    return account.update_me(db, user_id, payload)
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_account(
     payload: schemas.DeleteAccountRequest,
@@ -70,13 +100,23 @@ def delete_account(
 def request_password_reset(
     payload: schemas.PasswordResetRequest, db: Session = Depends(get_db)
 ):
-    """Request a password reset. Rate limited to 3 per hour. See KOL-14."""
-    return service.request_password_reset(db, payload)
+    """Ask for a reset code by SMS. Always 202, always the same body.
+
+    The answer is identical for a registered phone and an unknown one. Two
+    answers would make this a free "is this number on Kolabo?" lookup for
+    anyone with a list of numbers. Rate limited so an SMS bill cannot be run
+    up on us. See KOL-14.
+    """
+    return account.request_password_reset(db, payload)
 
 
 @router.post("/password-reset/confirm", response_model=schemas.MessageResponse)
 def confirm_password_reset(
     payload: schemas.PasswordResetConfirm, db: Session = Depends(get_db)
 ):
-    """Confirm a password reset with a valid, unexpired token. See KOL-14."""
-    return service.confirm_password_reset(db, payload)
+    """Spend a reset code and set the new password. Single use. See KOL-14.
+
+    The code is resolved together with the phone it was sent to, and every
+    way of failing answers the same 400.
+    """
+    return account.confirm_password_reset(db, payload)

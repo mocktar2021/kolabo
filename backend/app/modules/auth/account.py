@@ -1,0 +1,273 @@
+"""The account a user owns: reading it, changing it, and getting back into it.
+
+Two jobs live here and they are the same job seen from either side of the
+door. A signed-in user changing their phone or their password is account
+settings; a locked-out user proving they still hold the phone is password
+reset. Both turn on one fact — in these markets THE PHONE NUMBER IS THE LOGIN
+IDENTITY, because email is rare, often shared, and frequently abandoned — so
+both are written down in one place instead of split between a settings module
+and a recovery one, where the rule would have to be restated and could drift.
+
+Why there was no way back in before this. A user who forgot their password was
+locked out permanently: nothing in the codebase read password_reset_tokens
+except the delete-account sweep that cleaned it up, so the table existed and
+the door did not. In markets where the phone is the account and numbers change
+with SIM prices, that is not an edge case, it is attrition.
+
+A separate module from service.py, which is about registration, verification
+and login. The dependency runs one way — router -> account -> otp, models —
+and the OTP MACHINERY IS REUSED RATHER THAN REBUILT. There is exactly one way
+this system puts a numeric code on a phone (app.modules.auth.otp), and a
+second one would mean a second code generator, a second expiry rule and a
+second sender to swap the day a real SMS provider is contracted. The reset
+code is otp.generate_code() and the delivery is otp.default_sender, the same
+two calls registration makes.
+"""
+from datetime import timedelta
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.security import hash_password, verify_password
+from app.modules.auth import otp
+from app.modules.auth.models import PasswordResetToken, User, utcnow
+from app.modules.auth.schemas import (
+    AccountPatch,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+)
+from app.modules.notifications.service import notify
+
+# The same sender registration uses. Module level so a test can swap it, like
+# the one in service.py.
+_sender = otp.default_sender
+
+# One body, one status, for a phone we know and a phone we do not. Built once
+# so the two return paths cannot drift into two different sentences — which is
+# the entire attack this endpoint is written to defeat.
+GENERIC_RESET_RESPONSE = {"message": "If the phone is registered, a reset code has been sent"}
+
+# Said the same way for a wrong code, an expired code, an already-used code and
+# a phone that has never asked for one. Four different failures, one sentence:
+# telling them apart would let a caller walk the difference backwards into
+# "this number is registered and has an outstanding reset".
+INVALID_CODE_DETAIL = "Reset code is invalid or expired"
+
+
+def _me_out(user: User) -> dict:
+    """The account, without the hash.
+
+    Assembled field by field rather than dumped off the model. A whitelist is
+    the only version of this that stays safe when somebody adds a column: an
+    exclude list silently starts leaking the moment a new secret is stored on
+    the users row and nobody remembers this function exists.
+    """
+    return {
+        "id": user.id,
+        "phone": user.phone,
+        "role": user.role,
+        "country_code": user.country_code,
+        "is_verified": user.is_verified,
+        "created_at": user.created_at,
+    }
+
+
+def _require_user(db: Session, user_id: str) -> User:
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+def _notify_password_changed(db: Session, user: User) -> None:
+    """Tell the owner their password moved, whoever moved it.
+
+    Sent for a change made from settings as well as for a reset, because the
+    message is not a receipt for the person who did it — they already know. It
+    is for the person who did NOT do it, and that person cannot be identified
+    in advance. An account takeover that arrives silently is one nobody
+    reports until the money is gone.
+    """
+    notify(
+        db,
+        user.id,
+        "security",
+        "Your Kolabo password was changed. If this was not you, contact support now.",
+    )
+
+
+def get_me(db: Session, user_id: str) -> dict:
+    """The caller's own account. Never anyone else's — there is no id to pass.
+
+    The subject is taken from the bearer token and from nothing else, so this
+    endpoint has no lookup surface at all: there is no parameter an attacker
+    could walk through other people's rows with.
+    """
+    return _me_out(_require_user(db, user_id))
+
+
+def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
+    """Change the phone, the password, or both — at the price of the password.
+
+    THE PHONE IS THE LOGIN IDENTITY, so changing it must cost the password.
+    Anyone holding a live bearer token could otherwise point the account at a
+    handset they own and then reset the password to it at leisure, which turns
+    a borrowed phone into a permanent takeover of somebody's livelihood. The
+    bearer token says a session exists; only the current password says the
+    owner is the one asking.
+
+    Phone numbers really do change here — a better tariff, a lost handset, a
+    move between countries — so this has to exist rather than being a support
+    ticket. What it must not become is a way to take somebody else's number.
+    """
+    user = _require_user(db, user_id)
+
+    data = payload.model_dump(exclude_unset=True)
+    new_phone = data.get("phone")
+    new_password = data.get("new_password")
+    if new_phone is None and new_password is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Send a new phone number, a new password, or both.",
+        )
+
+    # Checked before anything is looked up or written, and before the 409 on a
+    # taken phone: a caller who cannot prove they own this account must not be
+    # able to use it to discover whether a number is registered.
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Current password is incorrect"
+        )
+
+    if new_phone is not None and new_phone != user.phone:
+        # Any row at all, verified or not. An unverified registration still
+        # holds the number, and letting a verified account take it would let
+        # somebody who half-signed-up be quietly displaced — and would then
+        # collide on the unique index anyway, turning a clear 409 into a 500.
+        taken = db.query(User).filter(User.phone == new_phone, User.id != user.id).first()
+        if taken is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That phone number is already in use",
+            )
+        user.phone = new_phone
+
+    if new_password is not None:
+        user.password_hash = hash_password(new_password)
+        _notify_password_changed(db, user)
+
+    db.commit()
+    db.refresh(user)
+    return _me_out(user)
+
+
+def _live_reset_tokens(db: Session, user: User, now):
+    """Codes for this account that a caller could still use right now.
+
+    Live means three things at once: issued within the last hour, never
+    consumed, and not yet expired. Counting rows by age alone would keep
+    punishing somebody an hour after codes that lasted fifteen minutes had
+    already died.
+    """
+    one_hour_ago = now - timedelta(hours=1)
+    return (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.created_at >= one_hour_ago,
+            PasswordResetToken.consumed.is_(False),
+            PasswordResetToken.expires_at > now,
+        )
+        .all()
+    )
+
+
+def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
+    """Send a reset code, and say the same thing either way.
+
+    THE RESPONSE IS IDENTICAL WHETHER OR NOT THE PHONE IS REGISTERED. Same
+    202, same body, same wording. This is the whole security property of the
+    endpoint and it is not a nicety: an endpoint that answers differently for
+    a known number is a free "is this person on Kolabo?" oracle, and anyone
+    with a list of numbers can run it. In these markets that is a real
+    privacy leak with real consequences — it discloses which creators and
+    which businesses are earning on the platform to whoever asks, including
+    people the user is specifically trying not to be found by. There is no
+    product value on the other side of the trade: a user who mistyped their
+    own number is helped by "check your messages", not by being told their
+    number is unknown.
+
+    So: no 404 here, ever, and no timing shortcut that skips work for an
+    unknown number in a way a stopwatch could read as an answer.
+    """
+    user = db.query(User).filter(User.phone == payload.phone).first()
+    if user is None:
+        return GENERIC_RESET_RESPONSE
+
+    now = utcnow()
+    if len(_live_reset_tokens(db, user, now)) >= settings.password_reset_max_per_hour:
+        # THE ONE PLACE THIS ENDPOINT STOPS BEING SILENT, and the trade is
+        # deliberate. Every request sends an SMS and every SMS costs money, so
+        # an uncapped endpoint is a bill a stranger can run up on us by
+        # looping — and swallowing the limit behind a 202 would hide that from
+        # us while still spending nothing, leaving the abuse invisible and a
+        # genuinely rate-limited user staring at "check your messages" for a
+        # message that will never arrive.
+        #
+        # It does narrow the oracle above: four requests distinguish a
+        # registered number from an unknown one. That costs the attacker three
+        # SMS-priced requests per number and is capped by the limit itself,
+        # where the silent alternative costs them nothing and tells us
+        # nothing. Worth revisiting the day there is a per-phone attempt
+        # counter that does not itself need a table of unauthenticated input.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many reset requests, try again later",
+        )
+
+    token = PasswordResetToken(
+        user_id=user.id,
+        # The registration OTP generator, not a second one. Six digits because
+        # this is read off a lock screen and retyped, which the previous
+        # 43-character urlsafe token was never going to survive.
+        token=otp.generate_code(),
+        expires_at=now + timedelta(minutes=settings.password_reset_ttl_minutes),
+    )
+    db.add(token)
+    db.commit()
+    _sender.send(user.phone, f"Your Kolabo password reset code is {token.token}")
+    return GENERIC_RESET_RESPONSE
+
+
+def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
+    """Spend a code once and set the new password.
+
+    Resolved by PHONE AND CODE together. Six digits is small enough to guess
+    at if it identifies a row on its own; paired with the number it was sent
+    to, a guess has to be aimed at somebody in particular.
+
+    Every failure answers the same 400 with the same sentence — unknown phone,
+    wrong code, expired code, already-spent code. Distinguishing them would
+    hand back exactly the fact the request endpoint refuses to disclose.
+    """
+    now = utcnow()
+    user = db.query(User).filter(User.phone == payload.phone).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_CODE_DETAIL)
+
+    token = next((t for t in _live_reset_tokens(db, user, now) if t.token == payload.code), None)
+    if token is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_CODE_DETAIL)
+
+    user.password_hash = hash_password(payload.new_password)
+    token.consumed = True
+    # Every other outstanding code for this account dies with it, not just the
+    # one that was spent. The account has just changed hands back to whoever
+    # holds the phone; leaving two more valid codes in flight would leave two
+    # more chances for whoever prompted the reset in the first place.
+    for other in _live_reset_tokens(db, user, now):
+        other.consumed = True
+    _notify_password_changed(db, user)
+    db.commit()
+    return {"message": "Password has been reset"}

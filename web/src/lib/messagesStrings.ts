@@ -19,6 +19,18 @@ const fr = {
   you: "Vous",
   unknownParty: "Interlocuteur",
   openConversation: "Ouvrir la conversation",
+  /* Une ligne, une PERSONNE. Le nombre de contrats est un fait sur la
+     relation — « on a fait quatre jobs ensemble » — et pas un compteur
+     technique : c'est précisément ce que l'ancienne liste, qui répétait le
+     même nom quatre fois, rendait illisible. */
+  contractsCount: "{{n}} contrats",
+  contracts: "Contrats",
+  /* Numérotés depuis le plus ancien, donc un nouveau contrat ne renumérote
+     jamais les précédents. Le payload ne porte le titre de campagne que du
+     plus récent, alors les autres sont nommés par leur rang plutôt que par un
+     titre qu'il faudrait aller chercher contrat par contrat. */
+  contractN: "Contrat {{n}}",
+  contractCurrent: "en cours",
   justNow: "à l'instant",
   minutesAgo: "il y a {{n}} min",
   hoursAgo: "il y a {{n}} h",
@@ -41,6 +53,10 @@ const en = {
   you: "You",
   unknownParty: "Counterparty",
   openConversation: "Open the conversation",
+  contractsCount: "{{n}} contracts",
+  contracts: "Contracts",
+  contractN: "Contract {{n}}",
+  contractCurrent: "current",
   justNow: "just now",
   minutesAgo: "{{n}} min ago",
   hoursAgo: "{{n}} h ago",

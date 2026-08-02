@@ -22,6 +22,23 @@ class Settings(BaseSettings):
     # of frozen money. A setting rather than a constant because the right
     # number is a thing the pilot will tell us, not a thing we know.
     dispute_response_hours: int = 72
+    # How long a password reset code stays usable.
+    #
+    # Short on purpose, and shorter than the registration OTP's ten minutes is
+    # not the point — what this window really bounds is how long a borrowed or
+    # briefly unattended handset is an account takeover. The code arrives by
+    # SMS on the phone that IS the login identity, so the SMS itself is the
+    # credential, and a credential sitting readable on a lock screen should
+    # stop working quickly. A setting rather than a constant because support
+    # will tell us whether fifteen minutes is enough for a real person on a
+    # slow network.
+    password_reset_ttl_minutes: int = 15
+    # How many live (unconsumed, unexpired) reset codes one phone may hold
+    # within an hour. Every request sends an SMS and every SMS costs money, so
+    # an uncapped endpoint is a bill that anyone on the internet can run up on
+    # us by looping over a phone number. It also caps how many valid codes are
+    # in flight for one account at once.
+    password_reset_max_per_hour: int = 3
     # Comma separated list of origins allowed to call the API from a browser
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.

@@ -201,12 +201,17 @@ function AppNav() {
      same question a third time: a creator has nothing to put in one and the
      checkout endpoint answers them 403, so the indicator is hidden rather
      than linking to a page that could only refuse them — which is exactly
-     what BrandOnly does for the route itself. Agencies buy the way
+     what BrandOnly does for the route itself. Earnings are the same question
+     a fourth time: /payments/earnings answers a business empty totals on
+     purpose, because what a buyer wants there is spend, which is a different
+     question and a view that does not exist yet. Agencies buy the way
      businesses do, hence isBusinessLike.
 
      Messages are the exception that proves it: a contract has two parties and
      the thread belongs to both, so that entry is not asked the question at
-     all. Disputes are the same exception for the same reason. */
+     all. Disputes are the same exception for the same reason, and so is the
+     account: every account has a login number and a password whichever side
+     of the market it sits on. */
   const isBrand = isBusinessLike(getStoredRole());
   return (
     <div className="nav-links">
@@ -215,10 +220,16 @@ function AppNav() {
       {isBrand && <Link className="btn btn-ghost" to="/campaigns">{t("nav.campaigns")}</Link>}
       {!isBrand && <Link className="btn btn-ghost" to="/invitations">{t("nav.invitations")}</Link>}
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
+      {!isBrand && <Link className="btn btn-ghost" to="/earnings">{t("nav.earnings")}</Link>}
       <MessagesIndicator />
       <DisputesIndicator />
       {isBrand && <CartIndicator />}
       <Link className="btn btn-ghost" to="/profile">{t("nav.profile")}</Link>
+      {/* The profile is how the market sees you; the account is how you sign
+          in. They were the same page until the account settings existed, and
+          the delete-account block sitting at the bottom of a profile form was
+          the clearest sign they should not be. */}
+      <Link className="btn btn-ghost" to="/account">{t("nav.account")}</Link>
       <button className="btn btn-ghost" onClick={() => { logout(); navigate("/"); }}>{t("nav.logout")}</button>
     </div>
   );

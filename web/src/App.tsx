@@ -8,6 +8,8 @@ import Register from "./pages/Register";
 import VerifyOtp from "./pages/VerifyOtp";
 import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
+import AccountPage from "./pages/Account";
+import EarningsPage from "./pages/Earnings";
 import Discover from "./pages/Discover";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignList from "./pages/CampaignList";
@@ -46,7 +48,18 @@ function BrandOnly({ children }: { children: ReactNode }) {
    the proposals on its own campaign — that is where the answers to its
    invitations actually arrive — so it goes back to the dashboard rather than
    sitting on a page that is empty by construction. Agencies buy the way
-   businesses do, hence isBusinessLike. */
+   businesses do, hence isBusinessLike.
+
+   Earnings are guarded by the same wrapper for the same reason, and it is
+   worth spelling out: GET /payments/earnings answers a business with empty
+   totals and an empty list ON PURPOSE. What a buyer wants there is SPEND,
+   which is a different question with the opposite sign — commission is not
+   deducted from it, refunds belong in it, and "pending" means money already
+   gone from their wallet rather than money coming into it. Answering both
+   from one endpoint would make every field mean two things, so buyer-side
+   spend is a separate view that does not exist yet. Until it does, a business
+   goes back to the dashboard rather than to a page that is zero by
+   construction. */
 function CreatorOnly({ children }: { children: ReactNode }) {
   if (isBusinessLike(getStoredRole())) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
@@ -69,6 +82,12 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/profile" element={<ProfileSetup />} />
+          {/* Neither wrapper, and deliberately. Every account signs in with a
+              phone number, has a password, is notified about things and may
+              want to leave; the two sides of the market differ in what they
+              DO on Kolabo, not in what an account is. */}
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/earnings" element={<CreatorOnly><EarningsPage /></CreatorOnly>} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/campaigns" element={<CampaignList />} />
           <Route path="/campaigns/new" element={<BrandOnly><CampaignNew /></BrandOnly>} />

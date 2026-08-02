@@ -44,6 +44,20 @@ PROPOSAL_REJECTED = "rejected"
 # buyer needs to tell those apart to know whether re-offering makes any sense.
 PROPOSAL_DECLINED = "declined"
 
+# Taken back by whoever offered it, before the other side answered. Used for
+# both an invitation the buyer retracted and a proposal the creator pulled
+# (campaigns.withdrawals).
+#
+# One more status rather than reusing declined or rejected, and the reason is
+# whose record it lands on. Declined and rejected both mean SOMEBODY SAID NO,
+# and they are read that way: a creator's history full of declines reads as a
+# creator who turns work down, and a campaign full of rejections reads as a
+# buyer nobody could satisfy. A withdrawal is neither. Nobody refused
+# anything; the offer was pulled before there was an answer to give, and
+# recording that as a refusal would put a decision on somebody's record that
+# they never made and cannot appeal.
+WITHDRAWN = "withdrawn"
+
 # Which side of the table a proposal version came from. A negotiation is two
 # parties alternating, and without this a chain of five versions looks like one
 # creator changing their mind five times.

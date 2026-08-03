@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { ListFilter, type FilterOption } from "../components/ListFilter";
 import type { Contract } from "../lib/types";
 
 export default function ContractsList() {
@@ -12,6 +13,9 @@ export default function ContractsList() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* "" is all. Signed vs pending-signature is the split most people want here,
+     and it falls out of filtering on contract.status. Filtered in memory. */
+  const [statusFilter, setStatusFilter] = useState("");
 
   useEffect(() => {
     api<Contract[]>("/contracts/mine", { token })
@@ -22,6 +26,15 @@ export default function ContractsList() {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
+  /* Chips from the statuses actually present (pending_signatures / signed /
+     cancelled, whichever exist), labelled with the same key the row's pill
+     uses. */
+  const statusOptions: FilterOption[] = Array.from(new Set(contracts.map((c) => c.status))).map((s) => ({
+    value: s,
+    label: t(`contract.status_${s}`, s)
+  }));
+  const shown = statusFilter ? contracts.filter((c) => c.status === statusFilter) : contracts;
+
   return (
     <Layout>
       <div className="container page">
@@ -30,14 +43,20 @@ export default function ContractsList() {
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
+        {!loading && contracts.length > 0 && (
+          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+        )}
+
         <div style={{ marginTop: 18 }}>
           {loading ? (
             <p className="muted">{t("discover.loading")}</p>
           ) : contracts.length === 0 ? (
             <div className="card"><p className="muted" style={{ margin: 0 }}>{t("contract.listEmpty")}</p></div>
+          ) : shown.length === 0 ? (
+            <div className="card"><p className="muted" style={{ margin: 0 }}>{t("filt.none")}</p></div>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
-              {contracts.map((c) => (
+              {shown.map((c) => (
                 <Link key={c.id} to={`/contracts/${c.id}`} className="card" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <strong style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>{c.rate_amount} {c.rate_currency}</strong>

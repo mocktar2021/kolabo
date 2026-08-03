@@ -256,6 +256,52 @@ def test_a_closed_negotiation_cannot_be_answered(client):
     assert r.status_code == 400
 
 
+def test_a_signed_negotiation_takes_no_new_version_from_the_creator(client):
+    """The submit-side mirror of test_a_closed_negotiation_cannot_be_answered,
+    which only pinned the business reply. Once a contract is written from the
+    chain the campaign stays published, so this guard is the only thing between
+    a creator and a fresh 'counter' posted onto a signed contract — which would
+    let the terms drift out from under it. A direct-order counter takes the
+    identical submit path, so this covers that hole too."""
+    biz, inf, _, cid, first = _negotiation(client, "+22990001032", "+22990001033")
+    assert client.post(f"/contracts/from-proposal/{first['id']}", headers=biz).status_code == 201
+    r = _submit(client, cid, inf, rate=12000, days=5)
+    assert r.status_code == 400
+    # And nothing was written: the chain still ends at the accepted version.
+    from app.modules.campaigns.models import Proposal
+    db = client.session_factory()
+    versions = sorted(p.version for p in db.query(Proposal).filter(Proposal.campaign_id == cid).all())
+    db.close()
+    assert versions == [1]
+
+
+def test_a_withdrawn_chain_can_still_be_re_bid(client):
+    """The other edge of the same guard: withdrawn is NOT a terminal refusal,
+    so a creator who pulled their offer may bid again. If the guard used
+    reply's blanket '!= submitted' this would be wrongly refused."""
+    biz, inf, _, cid, first = _negotiation(client, "+22990001036", "+22990001037")
+    assert client.post(f"/campaigns/proposals/{first['id']}/withdraw", headers=inf).status_code == 200
+    again = _submit(client, cid, inf, rate=11000, days=6)
+    assert again.status_code == 201
+    assert again.json()["version"] == 2
+
+
+def test_a_draft_brief_takes_no_proposals(client):
+    """A brief nobody has published is not open to bids. Covers the
+    campaign-status guard, which had no test of its own."""
+    _, biz = _user(client, "+22990001034", "business")
+    _, inf = _user(client, "+22990001035", "influencer")
+    cid = client.post("/campaigns/", json={
+        "title": "Just an idea",
+        "budget_amount": 50000,
+        "budget_currency": "XOF",
+        "deliverables": [{"platform": "instagram", "type": "post", "quantity": 1}],
+        "deadline": "2026-09-01",
+        "publish": False,
+    }, headers=biz).json()["id"]
+    assert _submit(client, cid, inf).status_code == 400
+
+
 def test_reply_requires_auth(client):
     _, _, _, cid, first = _negotiation(client, "+22990001030", "+22990001031")
     r = client.post(f"/campaigns/{cid}/proposals/{first['id']}/reply", json={"note": "hello"})

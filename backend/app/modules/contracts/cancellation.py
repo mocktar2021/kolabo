@@ -116,6 +116,8 @@ def cancel_contract(db: Session, contract_id: str, user_id: str) -> dict:
         other,
         "contract_cancelled",
         "A contract you had not finished signing was cancelled by the other party.",
+        link=f"/contracts/{contract.id}",
+        params={"key": "contract_cancelled"},
     )
     db.commit()
     db.refresh(contract)

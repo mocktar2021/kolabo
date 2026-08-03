@@ -92,8 +92,10 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
     db.add(escrow)
     db.flush()
     _event(db, escrow, business_user_id, "funded")
-    notify(db, escrow.influencer_user_id, "payment", "Funds are held in escrow for your collaboration")
-    notify(db, escrow.business_user_id, "payment", "Your payment is held in escrow")
+    notify(db, escrow.influencer_user_id, "payment", "Funds are held in escrow for your collaboration",
+           link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_funded_creator"})
+    notify(db, escrow.business_user_id, "payment", "Your payment is held in escrow",
+           link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_funded_brand"})
     db.commit()
     db.refresh(escrow)
     return _out(escrow)
@@ -134,8 +136,10 @@ def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     escrow.status = models.RELEASED
     escrow.resolved_at = models.utcnow()
     _event(db, escrow, actor_id, "released")
-    notify(db, escrow.influencer_user_id, "payment", "Escrow released, your payout is on the way")
-    notify(db, escrow.business_user_id, "payment", "Escrow released to the influencer")
+    notify(db, escrow.influencer_user_id, "payment", "Escrow released, your payout is on the way",
+           link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_released_creator"})
+    notify(db, escrow.business_user_id, "payment", "Escrow released to the influencer",
+           link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_released_brand"})
     # Last, and only once the release itself is settled in the session: this is
     # the single point every UNDISPUTED release passes through — business
     # confirmation and auto release after timeout — so the reward hangs off

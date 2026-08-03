@@ -132,6 +132,8 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
         "payment",
         f"Your dispute was decided: {payout_amount} {escrow.currency} is on its way "
         f"to you and {refunded} {escrow.currency} was refunded to the brand.",
+        link=f"/disputes/{dispute.id}",
+        params={"key": "dispute_resolved_creator", "payout": payout_amount, "refunded": refunded, "currency": escrow.currency},
     )
     notify(
         db,
@@ -139,6 +141,8 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
         "payment",
         f"Your dispute was decided: {refunded} {escrow.currency} is being refunded "
         f"to you and {released} {escrow.currency} was released to the creator.",
+        link=f"/disputes/{dispute.id}",
+        params={"key": "dispute_resolved_brand", "refunded": refunded, "released": released, "currency": escrow.currency},
     )
 
     db.add(

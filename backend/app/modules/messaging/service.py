@@ -154,7 +154,9 @@ def send_message(db: Session, campaign_id: str, sender_id: str, to_user_id: str,
         campaign_id=campaign_id, sender_user_id=sender_id, recipient_user_id=to_user_id, body=body
     )
     db.add(message)
-    notify(db, to_user_id, "message", f"New message about the campaign {campaign.title}")
+    notify(db, to_user_id, "message", f"New message about the campaign {campaign.title}",
+           link=f"/messages?campaign={campaign_id}&with={sender_id}",
+           params={"key": "message_campaign", "campaign": campaign.title})
     db.commit()
     db.refresh(message)
     return _out(message)

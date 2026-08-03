@@ -41,8 +41,24 @@ def _muted_types(db: Session, user_id: str) -> list[str]:
     return list(pref.muted_types) if pref else []
 
 
-def notify(db: Session, user_id: str, type: str, message: str) -> None:
-    db.add(Notification(user_id=user_id, type=type, message=message))
+def notify(
+    db: Session,
+    user_id: str,
+    type: str,
+    message: str,
+    *,
+    link: str | None = None,
+    params: dict | None = None,
+) -> None:
+    """Record an in-app notification and email it (subject to muting).
+
+    link and params are keyword-only and both optional, so a call site that has
+    not been migrated yet still writes a valid row — it just carries no deep
+    link and no localised body, and the client falls back to routeForType and
+    to `message`. message stays the source of truth for the EMAIL, which has no
+    client to render params and no stored language to render them in.
+    """
+    db.add(Notification(user_id=user_id, type=type, message=message, link=link, params=params))
     should_email = type in CRITICAL_TYPES or type not in _muted_types(db, user_id)
     if should_email:
         user = db.query(User).filter(User.id == user_id).first()
@@ -87,6 +103,8 @@ def list_notifications(
             "id": n.id,
             "type": n.type,
             "message": n.message,
+            "link": n.link,
+            "params": n.params,
             "is_read": n.is_read,
             "created_at": n.created_at,
         }

@@ -5,8 +5,9 @@ import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import {
   PANEL_LIMIT,
+  notificationBody,
   relativeParts,
-  routeForType,
+  targetFor,
   type AppNotification,
   type MarkAllRead,
   type UnreadCount
@@ -104,9 +105,9 @@ export function NotificationsBell() {
     };
   }, [open]);
 
-  /* Opening one row: it is read, and then it goes wherever its TYPE honestly
-     leads — which is a screen and never a specific row, because the payload
-     carries no id to open. routeForType argues that at length.
+  /* Opening one row: it is read, and then it goes wherever its link or TYPE
+     leads — the backend's deep link when the row carries one, the type→screen
+     fallback otherwise. targetFor argues that at length.
 
      The badge and the row are updated before the request rather than after
      it. Marking read is idempotent server-side and the worst case is a badge
@@ -119,7 +120,7 @@ export function NotificationsBell() {
       setUnread((n) => Math.max(0, n - 1));
       api(`/notifications/${row.id}/read`, { method: "POST", token }).catch(() => undefined);
     }
-    const to = routeForType(row.type, isBrand);
+    const to = targetFor(row, isBrand);
     if (to) navigate(to);
   }
 
@@ -181,7 +182,7 @@ export function NotificationsBell() {
           ) : (
             rows.map((row) => {
               const when = relativeParts(row.created_at);
-              const routable = routeForType(row.type, isBrand) !== null;
+              const routable = targetFor(row, isBrand) !== null;
               return (
                 <button
                   key={row.id}
@@ -208,7 +209,7 @@ export function NotificationsBell() {
                       }} />
                     <span style={{ minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 13.5, fontWeight: row.is_read ? 400 : 600, whiteSpace: "normal" }}>
-                        {row.message}
+                        {notificationBody(row, t)}
                       </span>
                       <span className="muted" style={{ display: "block", fontSize: 11.5, marginTop: 2 }}>
                         {t(when.key, { n: when.n })}

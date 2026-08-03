@@ -822,6 +822,30 @@ def submit_proposal(
     note = _checked_note(payload.note)
 
     latest = latest_in_chain(db, campaign_id, influencer_user_id)
+    # A settled negotiation takes no new versions. The campaign-status guard
+    # above only catches a CANCELLED brief; a brief whose deal is DONE stays
+    # published, because generate_from_proposal marks the accepted version and
+    # never touches the campaign. Without this a creator could counter a signed
+    # contract into drifting out from under itself, or a bidder the brand
+    # already rejected could re-open the chain — the submit side of the hole
+    # reply_to_proposal closes on the business side.
+    #
+    # Only the three TERMINAL resolutions are closed. withdrawn and superseded
+    # are re-biddable on purpose: a creator who pulled their offer, or whose
+    # version was superseded, is meant to be able to bid again (board.apply
+    # only refuses while the latest is still submitted). So this is NOT
+    # reply_to_proposal's blanket "!= submitted", which would wrongly block
+    # them too.
+    if latest is not None and latest.status in (
+        models.PROPOSAL_ACCEPTED,
+        models.PROPOSAL_REJECTED,
+        models.PROPOSAL_DECLINED,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This negotiation is closed and cannot be answered",
+        )
+
     next_version = 1
     if latest is not None:
         # Numbered off the whole chain, business replies included. Two rows

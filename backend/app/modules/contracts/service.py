@@ -13,11 +13,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.identity import creator_identities
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
 from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import models
 from app.modules.notifications.service import notify
+from app.modules.profiles.models import BusinessProfile
 
 # Language per country. Kept local to avoid coupling to optional country_config
 # fields; Cameroon defaults to French for the contract body for now.
@@ -180,10 +182,68 @@ def get_contract_by_proposal(db: Session, proposal_id: str, user_id: str) -> dic
 
 
 def list_my_contracts(db: Session, user_id: str) -> list[dict]:
+    """Every contract the caller is a party to, newest first, each carrying the
+    campaign it is for and the OTHER party by name.
+
+    A card that shows only a rate and a timeline makes somebody open each
+    contract to remember which job it was. So the list resolves, in batch, the
+    campaign title and the counterparty the same way every other list names a
+    person: a creator by display name and photo (core.identity), a business by
+    its company name and no photo, and null rather than a phone number when the
+    other side has written no profile yet.
+
+    THE COUNTERPARTY IS WHICHEVER PARTY THE CALLER IS NOT, derived per row
+    rather than from the caller's role. A user has one role, so a business
+    always reads creators here and a creator always reads businesses — but
+    deriving it from the row means the two can never fall out of step.
+
+    Batched, not per row: the titles are one query, the creator identities two
+    (core.identity), the company names one. A page of contracts is a handful of
+    campaigns and a handful of counterparties, and this keeps it that way
+    however long the list grows.
+    """
     rows = (
         db.query(models.Contract)
         .filter(or_(models.Contract.business_user_id == user_id, models.Contract.influencer_user_id == user_id))
         .order_by(models.Contract.created_at.desc())
         .all()
     )
-    return [_out(c) for c in rows]
+    if not rows:
+        return []
+
+    campaign_titles = dict(
+        db.query(campaigns.Campaign.id, campaigns.Campaign.title)
+        .filter(campaigns.Campaign.id.in_({c.campaign_id for c in rows}))
+        .all()
+    )
+    # Split the counterparties by which kind of name they need. When the caller
+    # is the business the other party is a creator, with an identity; when the
+    # caller is the creator it is a business, with a company name and no avatar.
+    creator_ids = {c.influencer_user_id for c in rows if c.business_user_id == user_id}
+    business_ids = {c.business_user_id for c in rows if c.business_user_id != user_id}
+    identities = creator_identities(db, creator_ids)
+    company_names = (
+        dict(
+            db.query(BusinessProfile.user_id, BusinessProfile.company_name)
+            .filter(BusinessProfile.user_id.in_(business_ids))
+            .all()
+        )
+        if business_ids
+        else {}
+    )
+
+    result = []
+    for c in rows:
+        item = _out(c)
+        item["campaign_title"] = campaign_titles.get(c.campaign_id)
+        item["created_at"] = c.created_at
+        if c.business_user_id == user_id:
+            identity = identities.get(c.influencer_user_id) or {}
+            item["counterparty_name"] = identity.get("display_name")
+            item["counterparty_avatar_url"] = identity.get("avatar_url")
+        else:
+            # A business has a company name and no avatar in this system.
+            item["counterparty_name"] = company_names.get(c.business_user_id)
+            item["counterparty_avatar_url"] = None
+        result.append(item)
+    return result

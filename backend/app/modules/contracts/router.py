@@ -19,12 +19,16 @@ def generate_from_proposal(
     return service.generate_from_proposal(db, business_user_id, proposal_id)
 
 
-@router.get("/mine", response_model=list[schemas.ContractOut])
+@router.get("/mine", response_model=list[schemas.ContractListItem])
 def my_contracts(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """List contracts the current user is a party to (business or influencer)."""
+    """List contracts the current user is a party to (business or influencer).
+
+    Each row carries the campaign title and the other party's name so the card
+    reads without opening it; see service.list_my_contracts.
+    """
     return service.list_my_contracts(db, user_id)
 
 

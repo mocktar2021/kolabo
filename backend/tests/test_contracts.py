@@ -180,3 +180,26 @@ def test_list_my_contracts_for_both_parties(client):
     assert [c["id"] for c in inf_list] == [created["id"]]
     # A non-party sees none.
     assert client.get("/contracts/mine", headers=_headers("stranger")).json() == []
+
+
+def test_list_my_contracts_carries_campaign_and_counterparty(client):
+    """The card reads without opening the contract: the campaign it is for, and
+    the OTHER party. No profiles exist in this setup, so the counterparty has
+    no name yet — the row still carries the keys, as null, rather than dropping
+    them or falling back to a user id or a phone number."""
+    biz, inf, camp, prop = _setup(client)
+    client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+
+    biz_row = client.get("/contracts/mine", headers=_headers(biz)).json()[0]
+    assert biz_row["campaign_title"] == "Launch push"
+    assert biz_row["counterparty_name"] is None
+    assert biz_row["counterparty_avatar_url"] is None
+    assert biz_row["created_at"]
+
+    # The creator's own view names the business as the counterparty (null here,
+    # no profile) and never carries an avatar for it — a business has a company
+    # name and no photo in this system.
+    inf_row = client.get("/contracts/mine", headers=_headers(inf)).json()[0]
+    assert inf_row["campaign_title"] == "Launch push"
+    assert inf_row["counterparty_name"] is None
+    assert inf_row["counterparty_avatar_url"] is None

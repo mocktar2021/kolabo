@@ -10,12 +10,14 @@ import {
   NO_FILTER,
   NO_OPTIONS,
   applyLocalFilter,
+  earningRowMatches,
   earningsTotals,
   filtersLocally,
   hasOptions,
   isFiltered,
   optionsFrom,
   serverQuery,
+  type EarningKind,
   type StatementFilter,
   type StatementOptions
 } from "../lib/statement";
@@ -61,9 +63,44 @@ function amount(value: number, currency: string, locale: string): string {
   return `${value.toLocaleString(locale)} ${currency}`;
 }
 
-function Tile({ label, hint, value }: { label: string; hint: string; value: string }) {
+/* A total for one category of money, in one currency. When onClick is given
+   the tile becomes a toggle that narrows the statement below to exactly the
+   rows behind this number, and active is the pressed state. The value never
+   changes on press: a tile is a category total, not "the total of the current
+   view". */
+function Tile({ label, hint, value, active, onClick }: {
+  label: string;
+  hint: string;
+  value: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const interactive = !!onClick;
   return (
-    <div className="card" style={{ margin: 0 }}>
+    <div
+      className="card"
+      onClick={onClick}
+      role={interactive ? "button" : undefined}
+      aria-pressed={interactive ? active : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick!();
+              }
+            }
+          : undefined
+      }
+      style={{
+        margin: 0,
+        cursor: interactive ? "pointer" : "default",
+        outline: active ? "2px solid var(--teal-600)" : undefined,
+        outlineOffset: active ? "-2px" : undefined,
+        background: active ? "var(--surface-2)" : undefined
+      }}
+    >
       <div className="muted" style={{ fontSize: 12.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
       <div style={{ fontFamily: "var(--font-display)", fontSize: 24, marginTop: 4 }}>{value}</div>
       <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{hint}</div>
@@ -113,6 +150,10 @@ export default function EarningsPage() {
   const [options, setOptions] = useState<StatementOptions>(NO_OPTIONS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* Which tile is pressed, if any. Carries the currency as well as the kind,
+     because the tiles are grouped per currency and never summed across them:
+     drilling into one drills into that market's rows. null is all. */
+  const [pick, setPick] = useState<{ kind: EarningKind; currency: string } | null>(null);
 
   /* Only the period reaches the server. The campaign and the client are
      matched here, because the statement row carries their NAMES and not their
@@ -168,6 +209,15 @@ export default function EarningsPage() {
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   const filtering = isFiltered(filter);
+  /* The rows the table shows: the statement-filtered set, narrowed once more
+     to the pressed tile's kind AND currency, by the same predicate the totals
+     are built from (earningRowMatches mirrors earningsTotals). */
+  const shown = pick
+    ? payments.filter((p) => p.currency === pick.currency && earningRowMatches(p, pick.kind))
+    : payments;
+  const kindLabel = (kind: EarningKind) => t(`earn.${kind}`);
+  const toggle = (kind: EarningKind, currency: string) =>
+    setPick((cur) => (cur && cur.kind === kind && cur.currency === currency ? null : { kind, currency }));
   /* Genuinely empty, as opposed to filtered down to nothing. The two need
      different sentences: one says there is no money here yet, the other says
      this filter matches none of it — and only the second leaves somebody
@@ -227,11 +277,17 @@ export default function EarningsPage() {
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                   <Tile label={t("earn.earned")} hint={t("earn.earnedHint")}
-                    value={amount(totals.earned[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.earned[currency] ?? 0, currency, i18n.language)}
+                    active={pick?.kind === "earned" && pick?.currency === currency}
+                    onClick={() => toggle("earned", currency)} />
                   <Tile label={t("earn.pending")} hint={t("earn.pendingHint")}
-                    value={amount(totals.pending[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.pending[currency] ?? 0, currency, i18n.language)}
+                    active={pick?.kind === "pending" && pick?.currency === currency}
+                    onClick={() => toggle("pending", currency)} />
                   <Tile label={t("earn.disputed")} hint={t("earn.disputedHint")}
-                    value={amount(totals.disputed[currency] ?? 0, currency, i18n.language)} />
+                    value={amount(totals.disputed[currency] ?? 0, currency, i18n.language)}
+                    active={pick?.kind === "disputed" && pick?.currency === currency}
+                    onClick={() => toggle("disputed", currency)} />
                 </div>
               </section>
             ))}
@@ -247,8 +303,21 @@ export default function EarningsPage() {
 
             <div className="card" style={{ marginTop: 18, overflowX: "auto" }}>
               <h3 style={{ marginTop: 0 }}>{t("earn.statement")}</h3>
-              {payments.length === 0 ? (
-                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{filtering ? t("filt.none") : t("earn.empty")}</p>
+              {/* Which tile the table is drilled into, and the way back out. */}
+              {pick && (
+                <p className="muted" style={{ fontSize: 13, margin: "-4px 0 10px" }}>
+                  {t("filt.showing", { label: kindLabel(pick.kind), currency: pick.currency })}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setPick(null)}
+                    style={{ background: "none", border: "none", padding: 0, color: "var(--teal-600)", cursor: "pointer", fontSize: 13, fontWeight: 600, textDecoration: "underline" }}
+                  >
+                    {t("filt.showAll")}
+                  </button>
+                </p>
+              )}
+              {shown.length === 0 ? (
+                <p className="muted" style={{ margin: 0, fontSize: 14 }}>{filtering || pick ? t("filt.none") : t("earn.empty")}</p>
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
                   <thead>
@@ -262,7 +331,7 @@ export default function EarningsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {payments.map((row) => (
+                    {shown.map((row) => (
                       <tr key={row.escrow_id} style={{ borderTop: "1px solid var(--line)" }}>
                         <td style={{ padding: "8px", whiteSpace: "nowrap" }}>
                           {/* The active language, not the browser's: somebody

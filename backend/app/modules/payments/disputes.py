@@ -353,6 +353,8 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
         f"A dispute was opened on your escrow ({reason}). You have "
         f"{settings.dispute_response_hours} hours to answer or resolve it before "
         "it goes to the Kolabo team.",
+        link=f"/disputes/{dispute.id}",
+        params={"key": "dispute_opened_other", "hours": settings.dispute_response_hours},
     )
     notify(
         db,
@@ -360,6 +362,8 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
         "dispute",
         "Your dispute was opened and the escrow is frozen. The other party has "
         f"{settings.dispute_response_hours} hours to answer.",
+        link=f"/disputes/{dispute.id}",
+        params={"key": "dispute_opened_self", "hours": settings.dispute_response_hours},
     )
     db.commit()
     db.refresh(dispute)
@@ -367,10 +371,10 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
     return dispute_out(db, dispute, escrow)
 
 
-def _escalate(db: Session, dispute: models.Dispute, escrow: models.Escrow, why: str) -> None:
+def _escalate(db: Session, dispute: models.Dispute, escrow: models.Escrow, why: str, key: str) -> None:
     dispute.status = models.AWAITING_ADMIN
     for user_id in parties(escrow):
-        notify(db, user_id, "dispute", why)
+        notify(db, user_id, "dispute", why, link=f"/disputes/{dispute.id}", params={"key": key})
 
 
 def _maybe_escalate_after_message(
@@ -405,6 +409,7 @@ def _maybe_escalate_after_message(
             escrow,
             "Both parties have answered the dispute, so it has gone to the "
             "Kolabo team for a decision.",
+            "dispute_escalated_both",
         )
 
 
@@ -446,6 +451,8 @@ def post_message(db: Session, actor_user_id: str, dispute_id: str, payload) -> d
         other_party(escrow, actor_user_id),
         "dispute",
         "The other party replied on your disputed escrow.",
+        link=f"/disputes/{dispute.id}",
+        params={"key": "dispute_reply"},
     )
     _maybe_escalate_after_message(db, dispute, escrow)
     db.commit()
@@ -518,6 +525,8 @@ def withdraw_dispute(db: Session, actor_user_id: str, dispute_id: str) -> dict:
             "dispute",
             "The dispute was withdrawn. The escrow is held again and back on its "
             "normal release schedule.",
+            link=f"/disputes/{dispute.id}",
+            params={"key": "dispute_withdrawn"},
         )
     db.commit()
     db.refresh(dispute)
@@ -562,6 +571,7 @@ def escalate_stale_disputes(db: Session, now=None) -> int:
             escrow,
             "The response window on your disputed escrow has closed. The Kolabo "
             "team will now review it and decide.",
+            "dispute_escalated_stale",
         )
     db.commit()
     return len(stale)

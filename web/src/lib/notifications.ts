@@ -15,19 +15,18 @@ import { parseApiDate } from "./orders";
    lives in cart.tsx: the bell and the notifications page are its only
    readers, and both of them are this module's callers.
 
-   WHAT IS NOT ON IT IS THE INTERESTING PART, because it decides what a click
-   can do. There is no entity id. The table
-   (backend/app/modules/notifications/models.py) carries id, user_id, type,
-   message, is_read and created_at — no campaign_id, no contract_id, no
-   dispute_id, no JSON payload column. `message` is prose written for a human
-   ("A contract is ready to sign for Rentree 2026"), and fishing a title out
-   of it to guess which row it means would be inventing a link the data
-   cannot support. See routeForType below for what is left, which is honest
-   and is less. */
+   `message` is the English prose the backend also emails, and the FALLBACK
+   shown when `params` is null — an old row, or a type not yet migrated. `link`
+   is where a click goes, built by the backend at emit time (where it knows the
+   recipient's side); null falls back to routeForType. `params` carries a
+   {key, ...values}: the client renders the localised body from the key's FR/EN
+   template (notificationStrings.ts) with the values interpolated. */
 export type AppNotification = {
   id: string;
   type: string;
   message: string;
+  link: string | null;
+  params: Record<string, unknown> | null;
   is_read: boolean;
   /* Naive UTC like every other datetime from this API ("2026-07-31T09:12:00",
      no suffix), so it goes through parseApiDate before it becomes "il y a
@@ -47,7 +46,35 @@ export const PANEL_LIMIT = 8;
    MAX_LIMIT of 200 — this is a list somebody reads, not an export. */
 export const PAGE_SIZE = 20;
 
-/* Where a notification can honestly be opened, or null.
+/* The localised body of one notification.
+
+   When params carries a message key the client renders the FR/EN template for
+   it (notif.body.<key> in notificationStrings.ts) with the params as
+   interpolation values. Otherwise — an old row, or a type whose call site has
+   not been migrated to params yet — it shows the stored English `message`
+   verbatim. defaultValue keeps that same fallback even if a key somehow has no
+   template, so a notification is never blank. */
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+export function notificationBody(n: AppNotification, t: Translate): string {
+  const key = n.params && typeof n.params.key === "string" ? (n.params.key as string) : null;
+  if (!key) return n.message;
+  return t(`notif.body.${key}`, { ...n.params, defaultValue: n.message });
+}
+
+/* Where a notification opens.
+
+   The backend's `link` wins: it was built at emit time, which is the only
+   place the recipient's side is known — the same event links a brand to its
+   /campaigns/{id} and a creator to /invitations. When there is no link (an old
+   row, or a type not yet carrying one) it falls back to routeForType, the
+   type→screen map below. Null means the row just marks itself read. */
+export function targetFor(n: AppNotification, isBrand: boolean): string | null {
+  return n.link ?? routeForType(n.type, isBrand);
+}
+
+/* Where a notification can honestly be opened by TYPE alone, or null — the
+   fallback used for rows the backend did not give a link.
 
    THIS ROUTES BY TYPE AND NEVER BY MESSAGE. The type is a fixed vocabulary
    the backend writes ("message", "payment", "dispute", "contract_ready",
@@ -55,12 +82,6 @@ export const PAGE_SIZE = 20;
    and it is real data on the row. The message is a sentence for a human, and
    any rule that read it would break the first time somebody reworded a
    string — silently, and into a wrong destination.
-
-   SO THE DESTINATION IS A SCREEN AND NOT A ROW. Without an entity id there is
-   no way to open THE contract or THE dispute the notification is about, only
-   the list it is on. That is a smaller promise than a notification usually
-   makes, and it is the one the payload supports; the alternative is a link
-   that is right most of the time, which is the worst kind.
 
    Unknown types return null and the row simply marks itself read. A new
    notification type shipped on the backend must never send a reader to a

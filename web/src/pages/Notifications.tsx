@@ -6,8 +6,9 @@ import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import {
   PAGE_SIZE,
+  notificationBody,
   relativeParts,
-  routeForType,
+  targetFor,
   type AppNotification,
   type MarkAllRead
 } from "../lib/notifications";
@@ -56,7 +57,7 @@ export default function NotificationsPage() {
       setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, is_read: true } : r)));
       api(`/notifications/${row.id}/read`, { method: "POST", token }).catch(() => undefined);
     }
-    const to = routeForType(row.type, isBrand);
+    const to = targetFor(row, isBrand);
     if (to) navigate(to);
   }
 
@@ -85,10 +86,10 @@ export default function NotificationsPage() {
           </button>
         </div>
         <p className="muted" style={{ marginTop: 6 }}>{t("notif.sub")}</p>
-        {/* Said before the list rather than discovered by clicking: a
-            notification has no id of the thing it is about, so a click opens
-            the screen and not the row. A reader who expected the exact
-            contract deserves to know why they got the list. */}
+        {/* Said before the list rather than discovered by clicking: a click
+            opens the item the notification is about when the row carries a
+            link, and the matching screen otherwise. A reader who lands on a
+            list instead of the exact record deserves to know why. */}
         <p className="muted" style={{ fontSize: 13.5 }}>{t("notif.routeNote")}</p>
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
@@ -104,7 +105,7 @@ export default function NotificationsPage() {
           <div className="card" style={{ marginTop: 18, padding: 0, overflow: "hidden" }}>
             {rows.map((row, index) => {
               const when = relativeParts(row.created_at);
-              const routable = routeForType(row.type, isBrand) !== null;
+              const routable = targetFor(row, isBrand) !== null;
               return (
                 <button
                   key={row.id}
@@ -126,7 +127,7 @@ export default function NotificationsPage() {
                       }} />
                     <span style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ display: "block", fontSize: 14, fontWeight: row.is_read ? 400 : 600 }}>
-                        {row.message}
+                        {notificationBody(row, t)}
                       </span>
                       <span className="muted" style={{ display: "block", fontSize: 12, marginTop: 3 }}>
                         {t(when.key, { n: when.n })}

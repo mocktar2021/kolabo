@@ -14,6 +14,7 @@ import "./lib/accountStrings";
 import "./lib/earningsStrings";
 import "./lib/spendStrings";
 import "./lib/filterStrings";
+import "./lib/listFilterStrings";
 import "./lib/undoStrings";
 import "./lib/navMenuStrings";
 /* After marketingStrings, which owns the landing.* group this one adds the

@@ -7,7 +7,14 @@ from pydantic import BaseModel
 class NotificationOut(BaseModel):
     id: str
     type: str
+    # The English prose: the email body, and the client's fallback for any row
+    # written before params existed.
     message: str
+    # Where clicking goes (null → the client falls back to routeForType(type)),
+    # and the localised-body source: {"key": ..., ...interpolation}. Null params
+    # means the client renders `message` verbatim.
+    link: str | None = None
+    params: dict | None = None
     is_read: bool
     # A bell menu is read newest first and every row in it is dated — "2h"
     # beside a line is most of what tells a reader whether it still matters.

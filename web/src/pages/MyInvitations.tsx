@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { directOrderOf, orderTimeLeft } from "../lib/orders";
 import { PLATFORM_LABELS } from "../lib/platforms";
+import { ListFilter, type FilterOption } from "../components/ListFilter";
 import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. Enforced
@@ -483,7 +484,10 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
             )}
           </div>
         </div>
-        <span className="muted" style={{ fontSize: 13 }}>{inv.status}</span>
+        {/* Translated rather than the raw enum: "withdrawn" on a French
+            screen is the kind of leak the invitation list should not have. The
+            same keys the filter chips use. */}
+        <span className="muted" style={{ fontSize: 13 }}>{t(`lf.inv_${inv.status}`, inv.status)}</span>
       </div>
 
       {/* A brief is priced against a budget and a deadline. An order has
@@ -542,6 +546,9 @@ export default function MyInvitations() {
   const [invitations, setInvitations] = useState<InvitationWithCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* "" is all. Narrows on the invitation status the creator sees on each
+     card. Filtered in memory. */
+  const [statusFilter, setStatusFilter] = useState("");
 
   function load() {
     api<InvitationWithCampaign[]>("/campaigns/invitations/mine", { token })
@@ -554,6 +561,14 @@ export default function MyInvitations() {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
+  /* Chips from the statuses actually present, labelled with the lf.inv_* keys
+     the card now uses too. */
+  const statusOptions: FilterOption[] = Array.from(new Set(invitations.map((i) => i.status))).map((s) => ({
+    value: s,
+    label: t(`lf.inv_${s}`, s)
+  }));
+  const shown = statusFilter ? invitations.filter((i) => i.status === statusFilter) : invitations;
+
   return (
     <Layout>
       <div className="container page" style={{ maxWidth: 760 }}>
@@ -562,14 +577,20 @@ export default function MyInvitations() {
 
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
+        {!loading && invitations.length > 0 && (
+          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+        )}
+
         <div style={{ marginTop: 18 }}>
           {loading ? (
             <p className="muted">{t("discover.loading")}</p>
           ) : invitations.length === 0 ? (
             <div className="card"><p className="muted" style={{ margin: 0 }}>{t("invitation.empty")}</p></div>
+          ) : shown.length === 0 ? (
+            <div className="card"><p className="muted" style={{ margin: 0 }}>{t("filt.none")}</p></div>
           ) : (
             <div style={{ display: "grid", gap: 16 }}>
-              {invitations.map((inv) => (
+              {shown.map((inv) => (
                 <InvitationCard key={inv.id} inv={inv} onDone={load} />
               ))}
             </div>

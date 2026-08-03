@@ -335,6 +335,8 @@ def send_to(db: Session, sender_id: str, to_user_id: str, body: str) -> dict:
         to_user_id,
         "message",
         f"New message about the campaign {title}" if title else "You have a new message",
+        link=f"/messages?campaign={newest.campaign_id}&with={sender_id}",
+        params=({"key": "message_campaign", "campaign": title} if title else {"key": "message_generic"}),
     )
     db.commit()
     db.refresh(message)

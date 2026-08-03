@@ -216,3 +216,31 @@ export function spendTotals(rows: SpendPayment[]): {
   }
   return { spent, pending, disputed, refunded };
 }
+
+/* Which tile a statement row belongs to, mirroring the bucket logic in
+   spendTotals / earningsTotals exactly so the drill-down and the totals can
+   never disagree about what a row is. Used to narrow the statement TABLE when
+   a buyer or creator clicks one of the tiles above it: the tile stays a
+   category total, and clicking it shows the rows behind that total.
+
+   A split row (released, with refunded_amount > 0) matches BOTH "spent" and
+   "refunded", exactly as it lands in both buckets above — the released half is
+   spend, the returned half is a refund, and it is honest for the one row to
+   show under either tile. */
+export type SpendKind = "spent" | "pending" | "disputed" | "refunded";
+export type EarningKind = "earned" | "pending" | "disputed";
+
+export function spendRowMatches(row: SpendPayment, kind: SpendKind): boolean {
+  if (kind === "spent") return row.status === "released";
+  if (kind === "refunded") return row.status === "refunded" || row.refunded_amount > 0;
+  if (kind === "disputed") return row.status === "disputed";
+  // pending: what the other three do not claim, i.e. held.
+  return row.status !== "released" && row.status !== "refunded" && row.status !== "disputed";
+}
+
+export function earningRowMatches(row: EarningPayment, kind: EarningKind): boolean {
+  if (kind === "earned") return row.status === "released";
+  if (kind === "disputed") return row.status === "disputed";
+  // pending: not released and not disputed.
+  return row.status !== "released" && row.status !== "disputed";
+}

@@ -25,7 +25,12 @@ const fr = {
   totals: "Totaux filtrés",
   totalsHint: "Les montants ci-dessus ne comptent que les lignes affichées.",
 
-  none: "Aucune ligne ne correspond à ce filtre."
+  none: "Aucune ligne ne correspond à ce filtre.",
+
+  /* Affiché au-dessus du relevé quand une tuile est sélectionnée : le relevé
+     ne montre plus que la catégorie choisie, dans sa devise. */
+  showing: "Affiché : {{label}} · {{currency}}",
+  showAll: "Tout afficher"
 };
 
 const en = {
@@ -40,7 +45,10 @@ const en = {
   totals: "Filtered totals",
   totalsHint: "The figures above count only the rows shown.",
 
-  none: "No line matches this filter."
+  none: "No line matches this filter.",
+
+  showing: "Showing: {{label}} · {{currency}}",
+  showAll: "Show all"
 };
 
 i18n.addResourceBundle("fr", "translation", { filt: fr }, true, true);

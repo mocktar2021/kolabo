@@ -121,7 +121,8 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
     db.add(contract)
     db.flush()
     db.add(models.ContractEvent(contract_id=contract.id, actor_user_id=business_user_id, event="generated"))
-    notify(db, influencer.id, "contract_ready", f"A contract is ready to sign for {campaign.title}")
+    notify(db, influencer.id, "contract_ready", f"A contract is ready to sign for {campaign.title}",
+           link=f"/contracts/{contract.id}", params={"key": "contract_ready", "campaign": campaign.title})
     db.commit()
     db.refresh(contract)
     return _out(contract)
@@ -164,8 +165,10 @@ def sign_contract(db: Session, contract_id: str, user_id: str, signature: str) -
     if contract.business_signed_at is not None and contract.influencer_signed_at is not None:
         contract.status = models.SIGNED
         db.add(models.ContractEvent(contract_id=contract.id, actor_user_id=user_id, event="fully_signed"))
-        notify(db, contract.business_user_id, "contract_signed", "Your contract is fully signed")
-        notify(db, contract.influencer_user_id, "contract_signed", "Your contract is fully signed")
+        notify(db, contract.business_user_id, "contract_signed", "Your contract is fully signed",
+               link=f"/contracts/{contract.id}", params={"key": "contract_signed"})
+        notify(db, contract.influencer_user_id, "contract_signed", "Your contract is fully signed",
+               link=f"/contracts/{contract.id}", params={"key": "contract_signed"})
 
     db.commit()
     db.refresh(contract)

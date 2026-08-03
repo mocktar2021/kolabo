@@ -47,13 +47,21 @@ function RaiseDisputeForm({
 }: {
   escrowId: string;
   busy: boolean;
-  onSubmit: (body: { reason: DisputeReason; statement: string; media_ids: string[] }) => void;
+  onSubmit: (body: { reason: DisputeReason; statement: string; media_ids: string[] }) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
   const [reason, setReason] = useState<DisputeReason>("not_delivered");
   const [statement, setStatement] = useState("");
   const [evidence, setEvidence] = useState<UploadedMedia[]>([]);
+  /* The dispute form's OWN error, rendered right here. The submit can be
+     refused for reasons the button cannot pre-check — most often the contact
+     guard, since a dispute statement is exactly where somebody writes "he
+     never posted it, call me on 97 00 00 00". That 400 used to land in the
+     page-level error banner at the very top of a long contract page, far
+     above this form, so from the writer's seat clicking Ouvrir le litige did
+     nothing visible. Shown inline, like the cancel error above it. */
+  const [error, setError] = useState<string | null>(null);
 
   const length = statement.trim().length;
   const tooShort = length < MIN_STATEMENT_CHARS;
@@ -101,17 +109,24 @@ function RaiseDisputeForm({
           that afterwards has frozen a payout they were about to receive. */}
       <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>{t("dispute.consequence")}</p>
 
+      {error && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>{error}</div>}
+
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button
           className="btn btn-primary"
           disabled={busy || tooShort || tooLong}
-          onClick={() =>
-            onSubmit({
-              reason,
-              statement: statement.trim(),
-              media_ids: evidence.map((e) => e.id)
-            })
-          }
+          onClick={async () => {
+            setError(null);
+            try {
+              await onSubmit({
+                reason,
+                statement: statement.trim(),
+                media_ids: evidence.map((e) => e.id)
+              });
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "Error");
+            }
+          }}
         >
           {t("dispute.submit")}
         </button>
@@ -401,12 +416,22 @@ export default function ContractPage() {
                             escrowId={escrow.id}
                             busy={busy}
                             onCancel={() => setRaising(false)}
-                            onSubmit={(body) =>
-                              act(async () => {
+                            onSubmit={async (body) => {
+                              /* Deliberately NOT through act(): act() catches
+                                 the failure into the page-level banner at the
+                                 top of the page, off-screen from this form.
+                                 Letting it throw lets RaiseDisputeForm show the
+                                 reason inline; the form is closed and the page
+                                 reloaded only when the dispute actually opens. */
+                              setBusy(true);
+                              try {
                                 await api(`/payments/escrow/${escrow.id}/dispute`, { method: "POST", token, body });
                                 setRaising(false);
-                              })
-                            }
+                                await load();
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
                           />
                         )}
                       </>

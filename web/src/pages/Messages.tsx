@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
 import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
 import type { Message, MessageThread } from "../lib/types";
@@ -80,11 +81,11 @@ export default function MessagesPage() {
     try {
       setThreads(await api<MessageThread[]>("/messaging/threads", { token }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, t]);
 
   /* Opening a thread IS reading it: the endpoint stamps the caller's incoming
      messages read as it serves them, which is why there is no separate
@@ -108,13 +109,16 @@ export default function MessagesPage() {
         setMessages(rows);
         await loadThreads();
       } catch (e) {
-        // A 403 here means every contract with this person is gone, which the
-        // server explains in its own words. Shown as-is.
+        // A 403 here means every contract with this person is gone. Messaging
+        // is not converted to error codes yet, so that one still arrives as
+        // English prose and errorText passes it through unchanged; the contact
+        // guard's refusal, which IS converted, arrives in the reader's own
+        // language.
         setMessages([]);
-        setError(e instanceof Error ? e.message : "Error");
+        setError(errorText(e, t));
       }
     },
-    [token, loadThreads]
+    [token, loadThreads, t]
   );
 
   useEffect(() => {
@@ -166,7 +170,7 @@ export default function MessagesPage() {
       // that turns out never to have been sent.
       await openThread(active);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }

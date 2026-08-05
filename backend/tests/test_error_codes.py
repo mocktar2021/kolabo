@@ -27,6 +27,7 @@ import pytest
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
+from app.core import contact_guard
 from app.core.errors import AppError, app_error_handler
 
 APP = Path(__file__).resolve().parents[1] / "app"
@@ -35,6 +36,7 @@ APP = Path(__file__).resolve().parents[1] / "app"
 # is converted — that is the whole ratchet. Removing an entry to make a build
 # go green is undoing the migration, not fixing the test.
 CONVERTED = [
+    "core/contact_guard.py",
     "modules/deliverables/service.py",
     "modules/payments/service.py",
     "modules/payments/disputes.py",
@@ -76,6 +78,55 @@ def test_every_code_is_a_plain_literal(relative):
     source = (APP / relative).read_text(encoding="utf-8")
     assert CODE_ANY.search(source) is None, f"{relative} builds a code instead of writing one"
     assert CODE_ARG.findall(source), f"{relative} is listed as converted but emits no codes"
+
+
+# --------------------------------------------------------------------------
+# The contact guard's surface
+# --------------------------------------------------------------------------
+
+CALL_SITE = re.compile(r'check_no_contact_details\(\s*[^,]+,\s*"([^"]*)"\s*\)')
+
+
+def _python_files():
+    return sorted(p for p in APP.rglob("*.py") if "__pycache__" not in p.parts)
+
+
+def test_every_surface_is_one_of_the_declared_ones():
+    """`surface` is a token the CLIENT translates, not a word the backend picks.
+
+    It is interpolated into the refusal — "send the statement again" — and the
+    French sentence gets its noun from apiError.surface_<token>. So an
+    invented surface is not a missing sentence that falls back to English, it
+    is a HOLE IN THE MIDDLE of a French one, and nothing catches it: a surface
+    is not a code, so the frontend's code-coverage test never sees it.
+
+    Hence the closed set, checked from both ends. This is the backend end.
+    web/src/lib/errorMessages.test.ts is the other, asserting each of these
+    has a French and an English noun.
+    """
+    unknown = []
+    for path in _python_files():
+        source = path.read_text(encoding="utf-8")
+        for match in CALL_SITE.finditer(source):
+            if match.group(1) not in contact_guard.SURFACES:
+                line = source[: match.start()].count(chr(10)) + 1
+                unknown.append(f"{path.relative_to(APP)}:{line} passes {match.group(1)!r}")
+    assert unknown == [], (
+        "Add the surface to contact_guard.SURFACES and give it a noun in both "
+        "languages (web/src/lib/errorMessages.ts), or reuse one:\n" + "\n".join(unknown)
+    )
+
+
+def test_the_declared_surfaces_are_all_used():
+    """A surface nobody passes is a translation nobody reads. Not a failure
+    worth blocking a build over in the other direction — a body can be written
+    ahead of its caller — but a set that only ever grows is a set that rots."""
+    used = {
+        m.group(1)
+        for path in _python_files()
+        for m in CALL_SITE.finditer(path.read_text(encoding="utf-8"))
+    }
+    assert set(contact_guard.SURFACES) == used
 
 
 def test_the_whole_app_still_imports():

@@ -100,7 +100,9 @@ conversation to it.
 """
 import re
 
-from fastapi import HTTPException, status
+from fastapi import status
+
+from app.core.errors import AppError
 
 # The kinds. Short, stable strings: they are what find_contact_details returns
 # and what the tests assert on. The prose a person reads lives in _WHAT_WAS_FOUND
@@ -118,6 +120,23 @@ _WHAT_WAS_FOUND = {
 # Reported in a fixed order rather than in the order they happen to be found,
 # so the same text always produces the same sentence.
 _REPORT_ORDER = (EMAIL, PHONE, HANDLE)
+
+# WHAT IS BEING REFUSED, as a closed set of tokens.
+#
+# `surface` is interpolated into the refusal ("Take it out and send the
+# statement again"), so it has to be a word, and until now any caller could
+# invent one. That was fine while the sentence was English-only. It stopped
+# being fine when the client started composing this refusal in French: an
+# unknown surface is a hole in the middle of a French sentence that nothing
+# catches, because a surface is not a code and the code-coverage test cannot
+# see it.
+#
+# So the set is closed, written out as literals, and checked from both ends:
+# backend/tests/test_error_codes.py asserts every call site passes one of
+# these, and web/src/lib/errorMessages.test.ts asserts every one of them has a
+# French and an English noun. Adding a fifth surface means adding it here and
+# in both languages, and the build says so if you forget.
+SURFACES = ("message", "statement", "proposal note")
 
 
 # --------------------------------------------------------------------------
@@ -178,7 +197,7 @@ _CURRENCY_WINDOW = 12
 # between two unrelated numbers would otherwise splice them into one long run.
 # Deliberately not "/" either, which is what keeps 02/08/2026 from ever being a
 # candidate in the first place.
-_SEPARATORS = r"  \t.\-()"
+_SEPARATORS = r"  \t.\-()"
 _DIGIT_RUN = re.compile(r"\+?\d[\d" + _SEPARATORS + r"]{5,}\d")
 _GROUP_SPLIT = re.compile(r"[" + _SEPARATORS + r"]+")
 
@@ -403,13 +422,24 @@ def check_no_contact_details(text: str | None, surface: str) -> None:
 
     400 rather than 422: this is a rule about what a field may contain, not
     about its type or shape, and a client can act on the sentence. `surface` is
-    the noun the message will use for the thing being refused — "message",
-    "proposal note", "statement" — so one wording serves every call site and
-    they cannot drift apart.
+    the noun the message will use for the thing being refused, and it must be
+    one of SURFACES above — so one wording serves every call site, they cannot
+    drift apart, and the client has a French noun to put in its own sentence.
     """
     kinds = find_contact_details(text)
     if kinds:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contact_details_found",
             detail=contact_details_detail(kinds, surface),
+            # The KINDS and the SURFACE, not the finished sentence. Both are
+            # stable tokens the client turns into its own nouns and joins with
+            # its own "and" — French does not put a list together the way
+            # English does, and a sentence assembled here could only ever be
+            # assembled in one language.
+            #
+            # This is the first refusal whose values are not numbers, and it is
+            # why errorMessages.ts grew a per-code prepare step: a value that
+            # is itself a word needs translating before it is interpolated.
+            values={"kinds": kinds, "surface": surface},
         )

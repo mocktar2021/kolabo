@@ -32,7 +32,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /* web/src/lib/ -> repo root -> the backend package. */
-export const MODULES_DIR = fileURLToPath(new URL("../../../backend/app/modules", import.meta.url));
+export const APP_DIR = fileURLToPath(new URL("../../../backend/app", import.meta.url));
+export const MODULES_DIR = join(APP_DIR, "modules");
+
+/* One named backend file, for the checks that are about a specific module
+   rather than a sweep — the contact guard's SURFACES, say, which lives in
+   app/core and is not a code the pattern scan would ever find. */
+export function readAppFile(relative: string): string {
+  return readFileSync(join(APP_DIR, relative), "utf8");
+}
 
 /* A notification body key: `{"key": "escrow_funded_creator"}` written at the
    call site, or `..._key="order_cart"` passed as a keyword argument (which

@@ -209,7 +209,7 @@ export const error_fr = {
   /* Seulement pour un refus qui n'a pas de code à lui — voir cart._resolve_item.
      Le cas normal renvoie le code du refus d'origine, avec cart_index dans les
      valeurs pour que la page surligne la bonne ligne. */
-  cart_item_refused: "L'article {{index}} de votre panier a été refusé.",
+  cart_item_refused: "L'article {{cart_index}} de votre panier a été refusé.",
 
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
@@ -403,7 +403,7 @@ export const error_en = {
   cart_empty: "A checkout needs at least one item.",
   cart_too_many_items: "A cart holds at most {{max}} items. Check out in smaller baskets.",
   cart_mixed_currencies: "This creator's items are priced in {{currencies}}. An order carries one escrow and an escrow carries one currency, so order each currency separately.",
-  cart_item_refused: "Item {{index}} in your basket was refused.",
+  cart_item_refused: "Item {{cart_index}} in your basket was refused.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

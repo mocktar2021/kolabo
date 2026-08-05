@@ -19,9 +19,10 @@ COMMISSION IS CHARGED ON THE RELEASED PART ONLY. Refunded money never earned a
 fee: the platform's cut is a share of a transaction that happened, and the
 refunded half is the part that did not.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
 from app.modules.auth.models import User
 from app.modules.notifications.service import notify
@@ -31,19 +32,31 @@ from app.modules.payments import service as payments_service
 
 def _checked_amounts(escrow: models.Escrow, released: int, refunded: int) -> None:
     if released < 0 or refunded < 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_amount_negative",
             detail="Neither amount can be negative.",
         )
     total = released + refunded
     if total != escrow.amount:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_amounts_must_balance",
             detail=(
                 f"released_amount ({released}) and refunded_amount ({refunded}) "
                 f"add up to {total}, but the escrow holds {escrow.amount} "
                 f"{escrow.currency}. Money must not be invented or destroyed."
             ),
+            # Four numbers and a currency, because the admin settling this is
+            # looking at a split that does not add up and the useful thing to
+            # show them is the arithmetic, not the rule.
+            values={
+                "released": released,
+                "refunded": refunded,
+                "total": total,
+                "amount": escrow.amount,
+                "currency": escrow.currency,
+            },
         )
 
 
@@ -56,8 +69,10 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
     """
     escrow = disputes.load_escrow(db, escrow_id)
     if escrow.status != models.DISPUTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Escrow is not under dispute"
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_escrow_not_disputed",
+            detail="Escrow is not under dispute",
         )
     # The OPEN one, specifically. An escrow can carry several dispute rows
     # over its life now that escrow_id is indexed rather than unique — one
@@ -72,8 +87,9 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
         # record. Settling it anyway would write two amounts against a claim
         # nobody can read — the audit trail would say money moved and never
         # say why.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_frozen_without_case",
             detail="This escrow is frozen with no open dispute attached. Report it before settling.",
         )
 

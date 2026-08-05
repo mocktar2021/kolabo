@@ -66,9 +66,6 @@ def _add_packages(client, uid, n=3):
         assert r.status_code == 201, r.text
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
 def test_influencer_profile_completion_and_searchable(client):
     uid = _make_user(client)
     # Partial profile is not searchable and under 100 percent.
@@ -241,49 +238,50 @@ def test_public_profile_shows_pending_accounts_with_status(client):
     assert pub["social_accounts"][0]["follower_count"] == 4200
 
 
-def test_admin_queue_requires_admin_header(client):
+def test_admin_queue_requires_an_admin(client):
     r = client.get("/admin/verification-queue")
     assert r.status_code == 401
 
 
-def test_admin_can_approve_document_and_decision_is_logged(client):
+def test_admin_can_approve_document_and_decision_is_logged(client, admin_headers, admin_user_id):
     uid = _make_user(client, phone="+22990000006", role="business")
     client.post(
         f"/profiles/{uid}/verification-documents",
         data={"doc_type": "business_registration"},
         files={"file": ("reg.pdf", b"bytes", "application/pdf")},
     )
-    queue = client.get("/admin/verification-queue", headers=ADMIN).json()
+    queue = client.get("/admin/verification-queue", headers=admin_headers).json()
     assert len(queue["documents"]) == 1
     doc_id = queue["documents"][0]["id"]
-    r = client.post(f"/admin/verification-documents/{doc_id}/decision", json={"decision": "approved"}, headers=ADMIN)
+    r = client.post(f"/admin/verification-documents/{doc_id}/decision", json={"decision": "approved"}, headers=admin_headers)
     assert r.status_code == 200
     assert r.json()["status"] == "approved"
-    assert r.json()["reviewer_id"] == "admin-1"
+    # The reviewer is the account that decided, not a header value.
+    assert r.json()["reviewer_id"] == admin_user_id
     # Decision is recorded in the audit log.
     from app.modules.admin.models import AdminActionLog
     db = client.session_factory()
     log = db.query(AdminActionLog).first()
     db.close()
-    assert log.admin_id == "admin-1"
+    assert log.admin_id == admin_user_id
     assert log.target_id == doc_id
 
 
-def test_document_rejection_requires_reason(client):
+def test_document_rejection_requires_reason(client, admin_headers):
     uid = _make_user(client, phone="+22990000007", role="business")
     client.post(
         f"/profiles/{uid}/verification-documents",
         data={"doc_type": "identity"},
         files={"file": ("id.png", b"bytes", "image/png")},
     )
-    queue = client.get("/admin/verification-queue", headers=ADMIN).json()
+    queue = client.get("/admin/verification-queue", headers=admin_headers).json()
     doc_id = queue["documents"][0]["id"]
-    r = client.post(f"/admin/verification-documents/{doc_id}/decision", json={"decision": "rejected"}, headers=ADMIN)
+    r = client.post(f"/admin/verification-documents/{doc_id}/decision", json={"decision": "rejected"}, headers=admin_headers)
     assert r.status_code == 400
     r = client.post(
         f"/admin/verification-documents/{doc_id}/decision",
         json={"decision": "rejected", "reason": "Document unreadable"},
-        headers=ADMIN,
+        headers=admin_headers,
     )
     assert r.status_code == 200
     assert r.json()["status"] == "rejected"

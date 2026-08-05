@@ -102,6 +102,11 @@ export function routeForType(type: string, isBrand: boolean): string | null {
   // contract_ready, contract_signed, contract_cancelled. Both parties have a
   // contracts list and it is unguarded, so no role question arises.
   if (type.startsWith("contract")) return "/contracts";
+  // Work submitted, and the brand's answer to it. The deliverables panel lives
+  // ON the contract, so the backend always sends a link to the exact one and
+  // this is only the fallback — same unguarded list, same absence of a role
+  // question.
+  if (type === "deliverable") return "/contracts";
   // campaign_invitation and campaign_cancelled are only ever sent to invited
   // creators; a business receiving one would be a backend bug, not a route to
   // build for.

@@ -12,6 +12,17 @@
    when their prose differs. That is what lets these sentences be rewritten in
    either language without touching Python.
 
+   AND NOT THE MODULE EITHER. Most codes carry a module prefix, which is handy
+   for reading but is not what makes them correct — so when a rule turned out
+   to be enforced in more than one place, the prefix came off rather than the
+   rule being duplicated. `deliverable_not_on_platform`, `price_below_floor`
+   and `package_not_found` are checked by both profiles and campaigns;
+   `campaign_not_yours` by both campaigns and contracts; `auth_user_not_found`
+   is raised from profiles and campaigns as well as auth. Each of those was
+   briefly two codes with two identical sentences in two languages, which is
+   four things to keep in step instead of two — the exact drift this file
+   exists to prevent, reintroduced by the naming.
+
    Codes are migrated one backend module at a time — 200-odd refusals do not
    move in one commit — so most of the API still answers with English prose and
    no code at all. errorText falls back to that prose, which is exactly what
@@ -57,7 +68,6 @@ export const error_fr = {
 
   contract_proposal_not_found: "Proposition introuvable.",
   contract_campaign_not_found: "Campagne introuvable.",
-  contract_not_your_campaign: "Cette campagne n'est pas la vôtre.",
   contract_already_exists: "Un contrat existe déjà pour cette proposition.",
   contract_proposal_not_submitted: "Seule une proposition en cours peut être acceptée.",
   contract_not_found: "Contrat introuvable.",
@@ -120,13 +130,53 @@ export const error_fr = {
   /* {{type}} et {{platform}} sont des valeurs machine, mais le client les
      affiche déjà traduites dans ses propres listes ; c'est la phrase autour
      d'elles qui avait besoin d'être traduite. */
-  profile_deliverable_not_on_platform: "« {{type}} » n'existe pas sur {{platform}}. Possibilités : {{allowed}}",
-  profile_price_below_floor: "Le prix minimum en {{currency}} est de {{floor}}.",
+  deliverable_not_on_platform: "« {{type}} » n'existe pas sur {{platform}}. Possibilités : {{allowed}}",
+  price_below_floor: "Le prix minimum en {{currency}} est de {{floor}}.",
   profile_duration_pair: "La durée et son unité vont ensemble : indiquez les deux, ou aucun des deux.",
-  profile_package_not_found: "Pack introuvable.",
+  package_not_found: "Pack introuvable.",
   profile_package_not_yours: "Ce pack n'est pas le vôtre.",
   profile_portfolio_item_not_found: "Élément de portfolio introuvable.",
   profile_portfolio_not_yours: "Ce portfolio n'est pas le vôtre.",
+
+  /* Campaigns: writing a brief, inviting, bidding, negotiating, taking an
+     offer back. The un-prefixed codes above and below — deliverable_not_on_-
+     platform, price_below_floor, package_not_found, campaign_not_yours — are
+     rules that turned out to be enforced in more than one module, so they
+     carry no module name. See the note in the header. */
+  campaign_not_found: "Campagne introuvable.",
+  campaign_not_yours: "Cette campagne n'est pas la vôtre.",
+  campaign_author_only: "Seules les entreprises et les agences peuvent créer une campagne.",
+  campaign_status_unknown: "Le statut doit être l'un des suivants : {{statuses}}",
+  campaign_platform_unsupported: "{{platform}} n'est pas une plateforme prise en charge. Possibilités : {{allowed}}",
+  campaign_quantity_range: "La quantité doit être un nombre entier entre {{min}} et {{max}}.",
+  campaign_publish_incomplete: "Un budget, des livrables et une date limite sont nécessaires pour publier.",
+  campaign_publish_before_inviting: "Publiez la campagne avant d'inviter des créateurs.",
+  campaign_influencer_not_found: "Créateur introuvable.",
+  campaign_influencer_not_verified: "Ce créateur n'est pas encore vérifié et ne peut pas être invité.",
+  campaign_not_open: "Cette campagne n'accepte pas de propositions.",
+
+  order_terms_both: "Envoyez soit un pack, soit des conditions personnalisées, pas les deux. Conditions reçues : {{supplied}}",
+  order_terms_missing: "Une commande demande soit un pack, soit une offre personnalisée complète ({{fields}}).",
+  order_terms_incomplete: "Cette offre personnalisée est incomplète. Il manque : {{missing}}",
+  order_to_self: "Vous ne pouvez pas vous envoyer une offre à vous-même.",
+  order_target_not_creator: "Une offre ne peut être envoyée qu'à un créateur.",
+  order_package_inactive: "Ce pack n'est pas disponible pour le moment.",
+  order_own_package: "Vous ne pouvez pas commander votre propre pack.",
+  order_quantity_range: "La quantité de livrables doit être un nombre entier entre {{min}} et {{max}}.",
+  order_rate_invalid: "Le tarif doit être un montant entier positif.",
+  order_timeline_range: "Le délai doit être un nombre entier de jours entre {{min}} et {{max}}.",
+
+  proposal_not_found: "Proposition introuvable.",
+  proposal_not_yours: "Cette proposition n'est pas la vôtre.",
+  proposal_not_live: "Cette proposition n'est plus l'offre en cours : il n'y a plus rien à retirer.",
+  proposal_closed: "Cette proposition est close et ne peut plus recevoir de réponse.",
+  proposal_negotiation_closed: "Cette négociation est close et ne peut plus recevoir de réponse.",
+  proposal_has_contract: "Un contrat existe déjà pour cette proposition. C'est le contrat qu'il faut annuler.",
+  proposal_is_direct_order: "Ceci est une commande directe, pas une offre sur un brief. Refusez-la plutôt que de la retirer.",
+
+  invitation_not_found: "Invitation introuvable.",
+  invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
+  invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
 
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
@@ -209,7 +259,6 @@ export const error_en = {
 
   contract_proposal_not_found: "Proposal not found.",
   contract_campaign_not_found: "Campaign not found.",
-  contract_not_your_campaign: "This campaign is not yours.",
   contract_already_exists: "A contract already exists for this proposal.",
   contract_proposal_not_submitted: "Only a live proposal can be accepted.",
   contract_not_found: "Contract not found.",
@@ -255,13 +304,48 @@ export const error_en = {
   profile_image_type_unsupported: "Only JPEG, PNG, WEBP and GIF images are accepted.",
   profile_file_empty: "That file is empty.",
   profile_image_not_found: "Image not found.",
-  profile_deliverable_not_on_platform: "\"{{type}}\" is not available on {{platform}}. Allowed: {{allowed}}",
-  profile_price_below_floor: "The minimum price in {{currency}} is {{floor}}.",
+  deliverable_not_on_platform: "\"{{type}}\" is not available on {{platform}}. Allowed: {{allowed}}",
+  price_below_floor: "The minimum price in {{currency}} is {{floor}}.",
   profile_duration_pair: "A duration and its unit go together: give both, or neither.",
-  profile_package_not_found: "Package not found.",
+  package_not_found: "Package not found.",
   profile_package_not_yours: "That package is not yours.",
   profile_portfolio_item_not_found: "Portfolio item not found.",
   profile_portfolio_not_yours: "That portfolio is not yours.",
+
+  campaign_not_found: "Campaign not found.",
+  campaign_not_yours: "This campaign is not yours.",
+  campaign_author_only: "Only businesses and agencies can create a campaign.",
+  campaign_status_unknown: "The status must be one of: {{statuses}}",
+  campaign_platform_unsupported: "{{platform}} is not a supported platform. Allowed: {{allowed}}",
+  campaign_quantity_range: "The quantity must be a whole number between {{min}} and {{max}}.",
+  campaign_publish_incomplete: "A budget, deliverables and a deadline are required to publish.",
+  campaign_publish_before_inviting: "Publish the campaign before inviting creators.",
+  campaign_influencer_not_found: "Creator not found.",
+  campaign_influencer_not_verified: "This creator is not verified yet and cannot be invited.",
+  campaign_not_open: "This campaign is not open for proposals.",
+
+  order_terms_both: "Send either a package or custom terms, not both. Custom terms received: {{supplied}}",
+  order_terms_missing: "An order needs either a package or a full custom offer ({{fields}}).",
+  order_terms_incomplete: "That custom offer is incomplete. Missing: {{missing}}",
+  order_to_self: "You cannot send an offer to yourself.",
+  order_target_not_creator: "An offer can only be sent to a creator.",
+  order_package_inactive: "That package is not available at the moment.",
+  order_own_package: "You cannot order your own package.",
+  order_quantity_range: "The deliverable quantity must be a whole number between {{min}} and {{max}}.",
+  order_rate_invalid: "The rate must be a whole positive amount.",
+  order_timeline_range: "The timeline must be a whole number of days between {{min}} and {{max}}.",
+
+  proposal_not_found: "Proposal not found.",
+  proposal_not_yours: "That proposal is not yours.",
+  proposal_not_live: "That proposal is not the live offer any more, so there is nothing left to withdraw.",
+  proposal_closed: "That proposal is closed and cannot be answered.",
+  proposal_negotiation_closed: "That negotiation is closed and cannot be answered.",
+  proposal_has_contract: "A contract already exists for this proposal. It is the contract that has to be cancelled.",
+  proposal_is_direct_order: "This is a direct order, not a bid on a brief. Decline it rather than withdrawing it.",
+
+  invitation_not_found: "Invitation not found.",
+  invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
+  invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

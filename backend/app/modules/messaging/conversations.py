@@ -55,10 +55,11 @@ and the gate helpers both of them use. The dependency runs one way — router ->
 conversations -> service — and there is still exactly one answer to "may these
 two people talk", which is what service._contract_between asks.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.contact_guard import check_no_contact_details
 from app.core.identity import creator_identities
 from app.modules.campaigns import models as campaigns
@@ -108,7 +109,11 @@ def contracts_between(db: Session, user_id: str, other_user_id: str) -> list:
 def _require_contracts(db: Session, user_id: str, other_user_id: str) -> list:
     shared = contracts_between(db, user_id, other_user_id)
     if not shared:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=GATE_DETAIL)
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="message_gate",
+            detail=GATE_DETAIL,
+        )
     return shared
 
 
@@ -300,8 +305,10 @@ def send_to(db: Session, sender_id: str, to_user_id: str, body: str) -> dict:
     wrong answer for no answer at all on every message sent from here.
     """
     if sender_id == to_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a different recipient"
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="message_self",
+            detail="Choose a different recipient"
         )
 
     shared = _require_contracts(db, sender_id, to_user_id)

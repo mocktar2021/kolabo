@@ -214,8 +214,10 @@ def test_the_refund_is_the_whole_amount_and_takes_no_commission(client):
     assert escrow.commission_amount is None
     payouts = pay_service.payment_provider.payouts
     assert len(payouts) == 1
-    # Paid back to the BUYER, in full.
-    assert payouts[0][1] == 10000
+    # Paid back to the BUYER, in full. Keyed, like the mock records it and
+    # like test_payments.py reads it — the shape is a dict, not a tuple.
+    assert payouts[0]["amount"] == 10000
+    assert payouts[0]["currency"] == "XOF"
 
 
 def test_a_refunded_escrow_is_not_swept_again(client):

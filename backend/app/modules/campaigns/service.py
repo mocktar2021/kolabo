@@ -95,6 +95,19 @@ MY_CAMPAIGN_STATUSES = (models.DRAFT, models.PUBLISHED, models.CANCELLED)
 UNNAMED_CREATOR = "A creator"
 UNNAMED_BUYER = "A business"
 
+# An absent name picks a DIFFERENT body key rather than interpolating the
+# English placeholder above, because a name interpolated into a French
+# sentence stays in the language it was written in: "A creator a postulé à
+# votre brief" is worse than either language on its own. admin.decide_social
+# does the same for a rejection that has no reason.
+#
+# Written out at each call site as a pair of literal dicts rather than built
+# by a helper, and that is deliberate: web/src/lib/notificationBodies.test.ts
+# reads THIS FILE to check every key it emits has a French and an English
+# body, and a key assembled from an f-string is a key that test cannot see.
+# The stored `message` keeps the English placeholder — the stored message is
+# English by definition, it is what goes out by email.
+
 # How long a creator has to accept or decline a direct order.
 #
 # The window exists because the buyer is waiting on an answer they have
@@ -389,7 +402,18 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
         campaign_id=campaign_id, influencer_user_id=influencer_user_id, status=models.INVITED
     )
     db.add(invitation)
-    notify(db, influencer_user_id, "campaign_invitation", f"You were invited to the campaign {campaign.title}")
+    notify(
+        db,
+        influencer_user_id,
+        "campaign_invitation",
+        f"You were invited to the campaign {campaign.title}",
+        # NO LINK, and it is not an omission. A creator answers an invitation
+        # on /invitations, which is a flat list with no id in the URL and no
+        # anchor to scroll to, and routeForType already sends this type there.
+        # A link that only repeats the fallback is a second copy of the same
+        # fact to keep correct.
+        params={"key": "invitation_received", "campaign": campaign.title},
+    )
     db.commit()
     db.refresh(invitation)
     # The row the client just created renders as a person straight away,
@@ -409,6 +433,7 @@ def _place_order(
     timeline_days: int,
     note: str | None,
     notice: str,
+    notice_key: str,
     commit: bool = True,
 ) -> dict:
     """Build the order itself: a hidden campaign, one invitation, one offer.
@@ -510,7 +535,23 @@ def _place_order(
     )
     db.add(proposal)
 
-    notify(db, creator_user_id, "direct_order", notice)
+    notify(
+        db,
+        creator_user_id,
+        "direct_order",
+        notice,
+        # No link, for the same reason as an invitation: the creator answers an
+        # order from /invitations, which takes no id, and routeForType goes
+        # there already.
+        #
+        # The KEY comes from the caller and the VALUES do not. The three ways
+        # to place an order say three different sentences — a custom offer, a
+        # package bought at its published price, a basket — but every one of
+        # them names the order and the window, and both are already arguments
+        # here. Threading two values through three call sites to say the same
+        # thing three times is how they drift apart.
+        params={"key": notice_key, "title": title, "hours": ORDER_ACCEPT_WINDOW_HOURS},
+    )
     if commit:
         db.commit()
         db.refresh(campaign)
@@ -726,6 +767,7 @@ def create_negotiated_order(db: Session, business_user_id: str, payload: schemas
             f"A brand sent you a custom offer: {terms['title']}. You have "
             f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
         ),
+        notice_key="order_custom_offer",
     )
 
 
@@ -757,6 +799,7 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
             f"A brand ordered your package {terms['title']}. You have "
             f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
         ),
+        notice_key="order_package",
     )
 
 
@@ -880,13 +923,28 @@ def submit_proposal(
     # the notification spends it. It is the same single lookup the response
     # needs either way, moved rather than added.
     identity = creator_identities(db, [influencer_user_id]).get(influencer_user_id) or blank_identity()
-    actor = identity["display_name"] or UNNAMED_CREATOR
+    named = identity["display_name"]
+    actor = named or UNNAMED_CREATOR
+    # THE BRIEF, not /campaigns. Both of these are read and answered in one
+    # place — the proposal list on the campaign page — and the buyer may have
+    # several briefs open. For an application the link does not merely beat
+    # the fallback, it replaces nothing at all: routeForType has no entry for
+    # "brief_application", so until now an application was a row that opened
+    # nowhere. campaign.id is already real here (the campaign was read from
+    # the database), so no flush is needed to build the path.
+    where = f"/campaigns/{campaign.id}"
     if is_application:
         notify(
             db,
             campaign.business_user_id,
             "brief_application",
             f"{actor} applied to your open brief {campaign.title}",
+            link=where,
+            params=(
+                {"key": "brief_application", "name": named, "campaign": campaign.title}
+                if named
+                else {"key": "brief_application_anon", "campaign": campaign.title}
+            ),
         )
     else:
         notify(
@@ -894,6 +952,12 @@ def submit_proposal(
             campaign.business_user_id,
             "proposal_submitted",
             f"{actor} sent a proposal for {campaign.title}",
+            link=where,
+            params=(
+                {"key": "proposal_submitted", "name": named, "campaign": campaign.title}
+                if named
+                else {"key": "proposal_submitted_anon", "campaign": campaign.title}
+            ),
         )
     db.commit()
     db.refresh(proposal)
@@ -978,7 +1042,20 @@ def reply_to_proposal(
     # that needs an answer. A creator with several live briefs cannot triage
     # a bell where every row says the same sentence.
     countered = payload.rate_amount is not None or payload.timeline_days is not None
-    buyer = _company_name(db, business_user_id) or UNNAMED_BUYER
+    company = _company_name(db, business_user_id)
+    buyer = company or UNNAMED_BUYER
+    if countered:
+        reply_params = (
+            {"key": "proposal_countered", "name": company, "campaign": campaign.title}
+            if company
+            else {"key": "proposal_countered_anon", "campaign": campaign.title}
+        )
+    else:
+        reply_params = (
+            {"key": "proposal_replied", "name": company, "campaign": campaign.title}
+            if company
+            else {"key": "proposal_replied_anon", "campaign": campaign.title}
+        )
     notify(
         db,
         latest.influencer_user_id,
@@ -988,6 +1065,13 @@ def reply_to_proposal(
             if countered
             else f"{buyer} replied to your proposal for {campaign.title}"
         ),
+        # No link: a creator reads a negotiation inside /invitations, which
+        # takes no id and has no per-card anchor, and routeForType sends any
+        # proposal_* type there already. The asymmetry is real and worth
+        # naming — the brand gets a link to the full thread, the creator gets
+        # a list showing only the live version — but it is a screen that does
+        # not exist yet, not a link this line is withholding.
+        params=reply_params,
     )
     db.commit()
     db.refresh(reply)

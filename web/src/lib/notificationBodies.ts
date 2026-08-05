@@ -45,6 +45,24 @@ export const body_fr = {
   invitation_withdrawn: "L'invitation à {{campaign}} a été retirée par l'entreprise.",
   proposal_withdrawn: "Un créateur a retiré sa proposition pour {{campaign}}.",
 
+  invitation_received: "Vous avez été invité(e) à la campagne {{campaign}}.",
+  order_custom_offer: "Une marque vous a envoyé une offre personnalisée : {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
+  order_package: "Une marque a commandé votre pack {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
+  order_cart: "Une marque vous a commandé {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
+  /* Each of these has an _anon twin for the case where the person has no
+     display name or the company has no name. The backend picks the twin
+     rather than interpolating its English placeholder ("A creator"), which
+     would otherwise sit in the middle of a French sentence — see
+     campaigns.service._named. */
+  brief_application: "{{name}} a postulé à votre brief ouvert {{campaign}}.",
+  brief_application_anon: "Un créateur a postulé à votre brief ouvert {{campaign}}.",
+  proposal_submitted: "{{name}} a envoyé une proposition pour {{campaign}}.",
+  proposal_submitted_anon: "Un créateur a envoyé une proposition pour {{campaign}}.",
+  proposal_countered: "{{name}} a fait une contre-proposition pour {{campaign}}.",
+  proposal_countered_anon: "Une entreprise a fait une contre-proposition pour {{campaign}}.",
+  proposal_replied: "{{name}} a répondu à votre proposition pour {{campaign}}.",
+  proposal_replied_anon: "Une entreprise a répondu à votre proposition pour {{campaign}}.",
+
   /* {{document}} is the stored doc_type with its underscores removed
      ("business registration"), so it arrives in English. Naming WHICH document
      matters more than the seam does — a creator with two in the queue cannot
@@ -91,6 +109,23 @@ export const body_en = {
   campaign_cancelled: "The campaign {{campaign}} was cancelled by the business.",
   invitation_withdrawn: "The invitation to {{campaign}} was withdrawn by the business.",
   proposal_withdrawn: "A creator withdrew their proposal for {{campaign}}.",
+
+  invitation_received: "You were invited to the campaign {{campaign}}.",
+  order_custom_offer: "A brand sent you a custom offer: {{title}}. You have {{hours}} hours to accept or decline.",
+  order_package: "A brand ordered your package {{title}}. You have {{hours}} hours to accept or decline.",
+  order_cart: "A brand ordered {{title}} from you. You have {{hours}} hours to accept or decline.",
+  /* The _anon twins exist for the French side's benefit (see the note there),
+     but they are written out in English too rather than reusing one template
+     with an English default, so the two maps stay key-for-key identical and
+     the parity test keeps meaning something. */
+  brief_application: "{{name}} applied to your open brief {{campaign}}.",
+  brief_application_anon: "A creator applied to your open brief {{campaign}}.",
+  proposal_submitted: "{{name}} sent a proposal for {{campaign}}.",
+  proposal_submitted_anon: "A creator sent a proposal for {{campaign}}.",
+  proposal_countered: "{{name}} countered your proposal for {{campaign}}.",
+  proposal_countered_anon: "A business countered your proposal for {{campaign}}.",
+  proposal_replied: "{{name}} replied to your proposal for {{campaign}}.",
+  proposal_replied_anon: "A business replied to your proposal for {{campaign}}.",
 
   /* See the note on the French side: {{document}} is the stored doc_type with
      its underscores removed, so it is the same English words in both. */

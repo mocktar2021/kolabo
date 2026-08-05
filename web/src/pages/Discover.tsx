@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorCard } from "../components/CreatorCard";
 import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { COUNTRIES } from "../lib/countries";
@@ -39,11 +40,11 @@ export default function Discover() {
       const data = await api<SearchResult[]>(`/discovery/search?${qs.toString()}`);
       setResults(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setLoading(false);
     }
-  }, [category, country, platform, minFollowers, q]);
+  }, [category, country, platform, minFollowers, q, t]);
 
   useEffect(() => {
     search();
@@ -68,7 +69,7 @@ export default function Discover() {
         setFavorites((prev) => new Set(prev).add(id));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     }
   }
 

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import init_db
+from app.core.errors import AppError, app_error_handler
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
 from app.modules.campaigns.router import router as campaigns_router
@@ -42,6 +43,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# A refusal that names itself, so the client can say it in the reader's own
+# language. Registered for AppError only: Starlette walks the raised
+# exception's MRO and takes the first handler it finds, so an AppError lands
+# here while every un-migrated `raise HTTPException` keeps going to FastAPI's
+# own handler and keeps its current response byte for byte. That is what lets
+# the 200-odd refusals in this codebase move over one module at a time. See
+# app/core/errors.py.
+app.add_exception_handler(AppError, app_error_handler)
 
 
 @app.get("/health")

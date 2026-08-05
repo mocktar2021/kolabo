@@ -77,7 +77,29 @@ export const error_fr = {
   /* Shown to an admin settling a split that does not add up. The arithmetic is
      the useful part, not the rule — hence five values rather than a sentence
      about conservation of money. */
-  dispute_amounts_must_balance: "{{released}} libérés et {{refunded}} remboursés font {{total}}, mais le séquestre contient {{amount}} {{currency}}. L'argent ne doit être ni créé ni détruit."
+  dispute_amounts_must_balance: "{{released}} libérés et {{refunded}} remboursés font {{total}}, mais le séquestre contient {{amount}} {{currency}}. L'argent ne doit être ni créé ni détruit.",
+
+  /* The contact guard's refusal, and the only body whose values are words
+     rather than numbers. {{what}} and {{surface}} are composed by
+     contactDetails() below from the tokens the backend sends, because French
+     does not build a list the way English does and a sentence assembled in
+     Python could only ever be assembled in one language. */
+  contact_details_found: "Ce {{surface}} semble contenir {{what}}. Kolabo garde la conversation, le contrat et l'argent au même endroit : un accord conclu ailleurs n'a ni contrat ni séquestre derrière lui, donc aucune des deux parties n'a de recours si ça tourne mal. Retirez-le et renvoyez votre {{surface}} — rien n'a été enregistré et rien n'a été modifié.",
+  kind_email: "une adresse e-mail",
+  kind_phone: "un numéro de téléphone",
+  kind_handle: "un identifiant de messagerie",
+  /* Grammatical gender is why these are nouns with their article attached and
+     why the sentence above says "Ce {{surface}}" rather than agreeing with
+     each one: "cette déclaration" would need the template to change with the
+     value. Kept masculine and neutral instead — correct for "message" and
+     "livrable", and readable for the others. */
+  surface_message: "message",
+  surface_statement: "texte",
+  surface_proposal_note: "commentaire de proposition",
+  surface_brief_description: "descriptif de brief",
+  /* The last separator in a list of two or three. Everything before it is a
+     comma in both languages; only the final join differs. */
+  list_and: "et"
 };
 
 export const error_en = {
@@ -128,7 +150,17 @@ export const error_en = {
   dispute_evidence_not_found: "Evidence image not found.",
   dispute_evidence_not_yours: "You can only attach images you uploaded.",
   dispute_amount_negative: "Neither amount can be negative.",
-  dispute_amounts_must_balance: "{{released}} released and {{refunded}} refunded add up to {{total}}, but the escrow holds {{amount}} {{currency}}. Money must not be invented or destroyed."
+  dispute_amounts_must_balance: "{{released}} released and {{refunded}} refunded add up to {{total}}, but the escrow holds {{amount}} {{currency}}. Money must not be invented or destroyed.",
+
+  contact_details_found: "This {{surface}} looks like it contains {{what}}. Kolabo keeps the conversation, the contract and the money in one place: a deal agreed elsewhere has no contract and no escrow behind it, so neither side has any recourse if it goes wrong. Take it out and send the {{surface}} again — nothing was saved and nothing was edited.",
+  kind_email: "an email address",
+  kind_phone: "a phone number",
+  kind_handle: "a messaging app handle",
+  surface_message: "message",
+  surface_statement: "statement",
+  surface_proposal_note: "proposal note",
+  surface_brief_description: "brief description",
+  list_and: "and"
 };
 
 /* i18next's t, narrowed to what this file needs. Taken as an argument rather
@@ -146,6 +178,42 @@ type MaybeApiError = { code?: unknown; values?: unknown; message?: unknown };
    translation in either language could ever equal by accident, and something
    that is obviously wrong if it ever does reach a screen. */
 const MISS = "::apiError-miss::";
+
+/* Values that are WORDS, not numbers, and so need translating before they are
+   interpolated.
+
+   Every other code sends a ceiling or an amount, which goes straight into the
+   template. The contact guard sends a list of kinds and a surface — tokens
+   naming a concept, not values — and a French sentence needs French nouns and
+   a French "et" in the right place. Composing that in Python was impossible
+   (the backend does not know the reader's language) and composing it inside
+   the template is impossible too (a template interpolates, it does not join).
+   So one small step in between, keyed by code.
+
+   PREPARE is a map rather than a branch so the next code that needs this adds
+   an entry instead of an `if`. If a code has no entry its values are passed
+   through untouched, which is the case for all of them but this one. */
+function contactDetails(values: Record<string, unknown>, t: Translate): Record<string, unknown> {
+  const kinds = Array.isArray(values.kinds) ? values.kinds.map(String) : [];
+  /* An unknown kind falls back to the token. It would be a backend that grew a
+     fourth kind without telling anyone, and a stray English word beats a hole
+     in the sentence. */
+  const names = kinds.map((k) => t(`apiError.kind_${k}`, { defaultValue: k }));
+  const last = names.pop() ?? "";
+  const what = names.length ? `${names.join(", ")} ${t("apiError.list_and")} ${last}` : last;
+
+  /* "proposal note" -> surface_proposal_note. The backend keeps the spaced
+     form because it is also the noun in its own English sentence; normalising
+     here is cheaper than carrying two spellings of the same token. */
+  const raw = typeof values.surface === "string" ? values.surface : "";
+  const surface = t(`apiError.surface_${raw.trim().replace(/\s+/g, "_")}`, { defaultValue: raw });
+
+  return { what, surface };
+}
+
+const PREPARE: Record<string, (values: Record<string, unknown>, t: Translate) => Record<string, unknown>> = {
+  contact_details_found: contactDetails
+};
 
 /* The sentence to show a human for a failed request.
 
@@ -175,7 +243,9 @@ export function errorText(err: unknown, t: Translate): string {
        with any translation, so an unknown code always falls through to the
        backend's English below, which is the whole reason this migration can
        be gradual. */
-    const text = t(`apiError.${e.code}`, { ...values, defaultValue: MISS });
+    const prepare = PREPARE[e.code];
+    const ready = prepare ? prepare(values, t) : values;
+    const text = t(`apiError.${e.code}`, { ...ready, defaultValue: MISS });
     if (text !== MISS && text) return text;
   }
 

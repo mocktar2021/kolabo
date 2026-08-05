@@ -24,12 +24,28 @@
    Reading .py from a frontend test is unusual and deliberate. The alternative
    — a backend test that greps the TypeScript — puts the same coupling in the
    other direction, and this direction is the one where the missing half is
-   the frontend's own data. The regex is deliberately narrow: `"key": "name"`
-   with a quoted literal value, which across backend/app/modules matches
-   notify() params and nothing else (primary_key=, ForeignKey(, sort(key= and
-   the prose in the comments all fail it). A key built dynamically would slip
-   past it — none exist today, and a call site that needs one should add its
-   key to a list here by hand rather than teach this regex to be clever. */
+   the frontend's own data.
+
+   WHAT THE REGEX SEES, and what it cannot. Two forms, both requiring a quoted
+   literal: `"key": "name"` (a params dict written at the call site) and
+   `..._key="name"` (a key passed as a keyword argument, which
+   campaigns.service._place_order does because its three callers say three
+   different sentences about the same order). Across backend/app/modules those
+   two match notify() keys and nothing else — primary_key=, ForeignKey(,
+   sort(key= and the prose in the comments all fail them, because none has a
+   quoted string immediately after.
+
+   What it CANNOT see is a key that is assembled rather than written: a
+   variable, an f-string, a helper that appends a suffix. That is a real limit
+   and the reason the backend spells its anonymous-name variants out as pairs
+   of literal dicts instead of building `f"{key}_anon"` — see the note above
+   UNNAMED_CREATOR in campaigns/service.py. A call site that genuinely needs a
+   computed key should add it to a hand-kept list here and say why, rather
+   than teach this regex to be clever.
+
+   If a stray literal ever matches, the failure names the key and the file it
+   came from: fix it by translating the key or by narrowing the pattern, not
+   by deleting the assertion. */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,7 +77,7 @@ function emittedKeys(): Map<string, string[]> {
   const found = new Map<string, string[]>();
   for (const file of pythonFiles(MODULES_DIR)) {
     const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/"key":\s*"([a-z0-9_]+)"/g)) {
+    for (const match of source.matchAll(/(?:"key":\s*|\b[a-z_]*key=)"([a-z0-9_]+)"/g)) {
       const where = found.get(match[1]) ?? [];
       where.push(file.slice(MODULES_DIR.length + 1));
       found.set(match[1], where);

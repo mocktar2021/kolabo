@@ -188,6 +188,7 @@ def checkout(db: Session, business_user_id: str, payload: schemas.CartCheckoutIn
                 f"A brand ordered {merged['title']} from you. You have "
                 f"{service.ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
             ),
+            notice_key="order_cart",
             commit=False,
         )
         placed["creator_user_id"] = creator_user_id

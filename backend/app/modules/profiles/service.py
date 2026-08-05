@@ -10,12 +10,13 @@ instant-hire model and the shareable creator page.
 """
 from datetime import date
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.country_config import COUNTRY_CONFIG, default_language
 from app.core.crypto import encrypt_bytes
+from app.core.errors import AppError
 from app.core.platforms import PLATFORM_DELIVERABLES, PLATFORMS_WITH_AUDIENCE, is_valid_pair
 from app.core.pricing import MIN_LIVE_PACKAGES, min_price
 from app.modules.auth.models import User
@@ -60,7 +61,13 @@ def resolve_bio(profile: models.InfluencerProfile, language: str | None = None) 
 def _require_user(db: Session, user_id: str) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            # auth's code, not a profiles one. It is the same rule — no such
+            # user — and a code names the rule, not the module it fired in.
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     return user
 
 
@@ -76,9 +83,11 @@ def _require_adult(birth_date: date) -> None:
         (today.month, today.day) < (birth_date.month, birth_date.day)
     )
     if age < MINIMUM_CREATOR_AGE:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_under_age",
             detail="You must be at least 18 to create a creator profile.",
+            values={"min": MINIMUM_CREATOR_AGE},
         )
 
 
@@ -168,7 +177,11 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
 def get_influencer_profile(db: Session, user_id: str) -> dict:
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_not_found",
+            detail="Profile not found",
+        )
     return _influencer_out(db, profile)
 
 
@@ -203,16 +216,32 @@ def get_business_profile(db: Session, user_id: str) -> dict:
     """
     profile = db.query(models.BusinessProfile).filter(models.BusinessProfile.user_id == user_id).first()
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_not_found",
+            detail="Profile not found",
+        )
     return _business_out(profile)
 
 
 def upload_verification_document(db: Session, user_id: str, doc_type: str, filename: str, content: bytes) -> dict:
     _require_user(db, user_id)
     if doc_type not in DOC_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"doc_type must be one of {sorted(DOC_TYPES)}")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_doc_type_unknown",
+            detail=f"doc_type must be one of {sorted(DOC_TYPES)}",
+            # Machine values the client posts back, untranslated for the same
+            # reason as every other such list: a French rendering would be a
+            # list no endpoint accepts.
+            values={"types": ", ".join(sorted(DOC_TYPES))},
+        )
     if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty document")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_document_empty",
+            detail="Empty document",
+        )
     doc = models.VerificationDocument(
         user_id=user_id,
         doc_type=doc_type,
@@ -229,11 +258,23 @@ def upload_verification_document(db: Session, user_id: str, doc_type: str, filen
 def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAccountConnect) -> dict:
     _require_user(db, user_id)
     if payload.platform not in schemas.SOCIAL_PLATFORMS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported platform")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_platform_unsupported",
+            detail="Unsupported platform",
+        )
     if payload.method not in schemas.SOCIAL_METHODS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="method must be oauth or manual")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_social_method_unknown",
+            detail="method must be oauth or manual",
+        )
     if payload.method == "manual" and not payload.proof_url:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Manual connection requires a proof_url")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_proof_url_required",
+            detail="Manual connection requires a proof_url",
+        )
 
     # WhatsApp Status, Discord and UGC expose no public follower metric, so any
     # number supplied for them is unverifiable. Drop it rather than show a buyer
@@ -323,18 +364,24 @@ def generate_bio(db: Session, user_id: str, payload: schemas.BioGenerateIn) -> d
     user = _require_user(db, user_id)
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_not_found",
+            detail="Profile not found",
+        )
 
     if not getattr(bio_generator, "available", False):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        raise AppError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="profile_bio_ai_unavailable",
             detail="Bio generation is not configured. Write your bio yourself for now.",
         )
 
     remaining = settings.bio_generation_limit - (profile.bio_generations or 0)
     if remaining <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        raise AppError(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            code="profile_bio_limit_reached",
             detail="You have reached the limit for generated bios. Edit the text yourself instead.",
         )
 
@@ -348,15 +395,17 @@ def generate_bio(db: Session, user_id: str, payload: schemas.BioGenerateIn) -> d
         "platforms": [a["platform"] for a in accounts],
     }
     if not bio_ai.has_enough_facts(facts):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_bio_needs_categories",
             detail="Choose at least one content category first, so the bio describes you and not a generic creator.",
         )
 
     text = bio_generator.generate(facts, payload.language)
     if not text:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+        raise AppError(
+            status.HTTP_502_BAD_GATEWAY,
+            code="profile_bio_failed",
             detail="Could not draft a bio right now. Try again, or write your own.",
         )
 
@@ -393,9 +442,17 @@ def _require_own_social_account(db: Session, user_id: str, account_id: str) -> m
     nothing more than a stranger guessing random ids would."""
     account = db.query(models.SocialAccount).filter(models.SocialAccount.id == account_id).first()
     if account is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Social account not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_social_not_found",
+            detail="Social account not found",
+        )
     if account.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your social account")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="profile_social_not_yours",
+            detail="Not your social account",
+        )
     return account
 
 
@@ -463,9 +520,17 @@ def onboarding_status(db: Session, user_id: str) -> dict:
 def save_media(db: Session, user_id: str, content_type: str, data: bytes) -> dict:
     _require_user(db, user_id)
     if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only JPEG, PNG, WEBP, or GIF images are allowed")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_image_type_unsupported",
+            detail="Only JPEG, PNG, WEBP, or GIF images are allowed",
+        )
     if not data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_file_empty",
+            detail="Empty file",
+        )
     asset = models.MediaAsset(owner_user_id=user_id, content_type=content_type, data=data)
     db.add(asset)
     db.commit()
@@ -476,7 +541,11 @@ def save_media(db: Session, user_id: str, content_type: str, data: bytes) -> dic
 def get_media(db: Session, media_id: str) -> models.MediaAsset:
     asset = db.query(models.MediaAsset).filter(models.MediaAsset.id == media_id).first()
     if asset is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_image_not_found",
+            detail="Image not found",
+        )
     return asset
 
 
@@ -509,9 +578,14 @@ def list_packages(db: Session, user_id: str, active_only: bool = False) -> list[
 def _validate_pair(platform: str, deliverable_type: str) -> None:
     if not is_valid_pair(platform, deliverable_type):
         allowed = ", ".join(PLATFORM_DELIVERABLES.get(platform, [])) or "none"
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_deliverable_not_on_platform",
             detail=f"{deliverable_type} is not available on {platform}. Allowed: {allowed}",
+            # The platform and the deliverable type are machine values the
+            # client chose from a list it already renders in the reader's
+            # language; the sentence around them is what needed translating.
+            values={"type": deliverable_type, "platform": platform, "allowed": allowed},
         )
 
 
@@ -523,9 +597,11 @@ def _validate_price_floor(price_amount: int, currency: str) -> None:
     """
     floor = min_price(currency)
     if floor is not None and price_amount < floor:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_price_below_floor",
             detail=f"Minimum price for {currency} is {floor}.",
+            values={"currency": currency, "floor": floor},
         )
 
 
@@ -534,8 +610,9 @@ def _validate_duration(duration_value: int | None, duration_unit: str | None) ->
     nothing are both meaningless chips, so one without the other is rejected
     outright rather than silently dropped."""
     if (duration_value is None) != (duration_unit is None):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="profile_duration_pair",
             detail="duration_value and duration_unit go together.",
         )
 
@@ -571,9 +648,17 @@ def create_package(db: Session, user_id: str, payload: schemas.PackageIn) -> dic
 def update_package(db: Session, package_id: str, user_id: str, payload: schemas.PackageIn) -> dict:
     pkg = db.query(models.Package).filter(models.Package.id == package_id).first()
     if pkg is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_package_not_found",
+            detail="Package not found",
+        )
     if pkg.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="profile_package_not_yours",
+            detail="Not your package",
+        )
     _validate_pair(payload.platform, payload.deliverable_type)
     _validate_duration(payload.duration_value, payload.duration_unit)
     currency = payload.currency.upper()
@@ -597,9 +682,17 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
 def delete_package(db: Session, package_id: str, user_id: str) -> None:
     pkg = db.query(models.Package).filter(models.Package.id == package_id).first()
     if pkg is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_package_not_found",
+            detail="Package not found",
+        )
     if pkg.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your package")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="profile_package_not_yours",
+            detail="Not your package",
+        )
     db.delete(pkg)
     db.commit()
 
@@ -624,7 +717,11 @@ def add_portfolio_item(db: Session, user_id: str, media_id: str) -> dict:
     _require_user(db, user_id)
     asset = db.query(models.MediaAsset).filter(models.MediaAsset.id == media_id).first()
     if asset is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_image_not_found",
+            detail="Image not found",
+        )
     count = db.query(models.PortfolioItem).filter(models.PortfolioItem.user_id == user_id).count()
     item = models.PortfolioItem(user_id=user_id, media_id=media_id, position=count)
     db.add(item)
@@ -636,9 +733,17 @@ def add_portfolio_item(db: Session, user_id: str, media_id: str) -> dict:
 def remove_portfolio_item(db: Session, item_id: str, user_id: str) -> None:
     item = db.query(models.PortfolioItem).filter(models.PortfolioItem.id == item_id).first()
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio item not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_portfolio_item_not_found",
+            detail="Portfolio item not found",
+        )
     if item.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your portfolio")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="profile_portfolio_not_yours",
+            detail="Not your portfolio",
+        )
     db.delete(item)
     db.commit()
 
@@ -648,7 +753,11 @@ def remove_portfolio_item(db: Session, item_id: str, user_id: str) -> None:
 def get_public_profile(db: Session, user_id: str, language: str | None = None) -> dict:
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_not_found",
+            detail="Profile not found",
+        )
 
     from app.modules.trust_safety import models as trust_safety
     from app.modules.trust_safety.service import user_reviews

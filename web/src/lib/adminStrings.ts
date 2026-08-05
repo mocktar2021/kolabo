@@ -7,14 +7,6 @@ const fr = {
   disputesTitle: "File des litiges",
   disputesSub:
     "Les cas dont la fenêtre de réponse est close viennent en premier, du plus ancien au plus récent.",
-  /* The placeholder credential. The wording says what it is rather than
-     dressing it up as a login — an operator who thinks this is authentication
-     will treat the id as a secret, and it is not one. */
-  idLabel: "Identifiant administrateur",
-  idHint:
-    "Provisoire : l'authentification administrateur n'existe pas encore, l'identifiant est envoyé tel quel à l'API.",
-  idSave: "Enregistrer",
-  idMissing: "Renseignez un identifiant administrateur pour charger la file.",
   empty: "Aucun litige à traiter.",
   brand: "Marque",
   creator: "Créateur",
@@ -48,11 +40,6 @@ const fr = {
 const en = {
   disputesTitle: "Dispute queue",
   disputesSub: "Cases whose response window has closed come first, oldest first.",
-  idLabel: "Admin id",
-  idHint:
-    "Temporary: admin authentication does not exist yet, the id is sent to the API as typed.",
-  idSave: "Save",
-  idMissing: "Enter an admin id to load the queue.",
   empty: "Nothing in the queue.",
   brand: "Brand",
   creator: "Creator",

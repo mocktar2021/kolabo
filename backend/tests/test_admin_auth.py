@@ -19,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core import config as config_module
 from app.core.db import Base, get_db, import_all_models
+from app.core.errors import AppError, app_error_handler
 from app.core.security import create_access_token
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.admins import sync_admins
@@ -43,6 +44,12 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The REAL error handler, because one of these tests asserts on the `code`
+    # in the body and AppError subclasses HTTPException — without this,
+    # FastAPI's default renders {"detail": ...} alone and the assertion fails
+    # on a missing key rather than on a wrong answer. Same reason and same
+    # registration as backend/tests/test_error_codes.py.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(admin_router, prefix="/admin")
     app.dependency_overrides[get_db] = override_get_db
     c = TestClient(app)

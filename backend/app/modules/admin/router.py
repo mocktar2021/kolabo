@@ -73,9 +73,10 @@ def run_scheduled_jobs(db: Session = Depends(get_db), admin_id: str = Depends(ge
     function that nothing called. A rule that never runs is not a rule; it is
     a comment.
 
-    So: one endpoint, behind the same X-Admin-Id placeholder as the rest of
-    this router, that an operator or an external cron can hit. `curl -XPOST
-    -H 'X-Admin-Id: ...' .../admin/jobs/run` is a scheduler, for a pilot.
+    So: one endpoint, behind the same admin login as the rest of this router,
+    that an operator or an external cron can hit. `curl -XPOST -H
+    'Authorization: Bearer <admin token>' .../admin/jobs/run` is a scheduler,
+    for a pilot.
 
     IDEMPOTENT BY CONSTRUCTION, which is what makes that safe. Every job
     filters on the state it is about to change — a lapsed order is no longer

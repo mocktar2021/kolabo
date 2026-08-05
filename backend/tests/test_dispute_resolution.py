@@ -52,8 +52,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
 STATEMENT = "Only two of the three posts went up before the campaign ended."
 
 
@@ -90,11 +88,11 @@ def _disputed(client, amount=10000, suffix="1"):
     return biz_id, inf_id, escrow, dispute
 
 
-def _resolve(client, escrow_id, released, refunded, note="Two of three delivered."):
+def _resolve(client, admin_headers, escrow_id, released, refunded, note="Two of three delivered."):
     return client.post(
         f"/payments/escrow/{escrow_id}/resolve",
         json={"released_amount": released, "refunded_amount": refunded, "note": note},
-        headers=ADMIN,
+        headers=admin_headers,
     )
 
 
@@ -128,16 +126,17 @@ def _credits(client):
 # --- The split ----------------------------------------------------------
 
 
-def test_a_split_releases_part_and_refunds_the_rest(client):
+def test_a_split_releases_part_and_refunds_the_rest(client, admin_headers, admin_user_id):
     """Real disputes are partial. A binary outcome forces a wrong answer on
     one of the two people."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    r = _resolve(client, escrow["id"], released=6000, refunded=4000)
+    r = _resolve(client, admin_headers, escrow["id"], released=6000, refunded=4000)
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "resolved"
     assert (body["released_amount"], body["refunded_amount"]) == (6000, 4000)
-    assert body["resolved_by"] == "admin-1"
+    # The account that decided, not a string somebody typed into a header.
+    assert body["resolved_by"] == admin_user_id
     # 15 percent of the released 6000 is 900, so the creator receives 5100 and
     # the brand gets its 4000 back untouched.
     amounts = [p["amount"] for p in _payouts(client)]
@@ -145,62 +144,62 @@ def test_a_split_releases_part_and_refunds_the_rest(client):
     assert body["escrow"]["commission_amount"] == 900
 
 
-def test_commission_is_charged_only_on_the_released_part(client):
+def test_commission_is_charged_only_on_the_released_part(client, admin_headers):
     """Refunded money never earned a fee."""
     biz, inf, escrow, dispute = _disputed(client, amount=20000)
-    body = _resolve(client, escrow["id"], released=5000, refunded=15000).json()
+    body = _resolve(client, admin_headers, escrow["id"], released=5000, refunded=15000).json()
     # 15 percent of 5000, not of 20000: 750 rather than 3000.
     assert body["escrow"]["commission_amount"] == 750
     assert _payouts(client)[0]["amount"] == 4250
 
 
-def test_amounts_that_do_not_add_up_are_refused(client):
+def test_amounts_that_do_not_add_up_are_refused(client, admin_headers):
     """A rounding gap here is a real loss that only surfaces at
     reconciliation, so it is refused at the door."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    short = _resolve(client, escrow["id"], released=6000, refunded=3000)
+    short = _resolve(client, admin_headers, escrow["id"], released=6000, refunded=3000)
     assert short.status_code == 400
     assert "10000" in short.json()["detail"] and "9000" in short.json()["detail"]
-    assert _resolve(client, escrow["id"], released=6000, refunded=5000).status_code == 400
+    assert _resolve(client, admin_headers, escrow["id"], released=6000, refunded=5000).status_code == 400
     # Nothing moved and the escrow is still frozen for a real decision.
     assert _payouts(client) == []
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "disputed"
 
 
-def test_a_full_refund_leaves_the_escrow_refunded(client):
+def test_a_full_refund_leaves_the_escrow_refunded(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    body = _resolve(client, escrow["id"], released=0, refunded=10000).json()
+    body = _resolve(client, admin_headers, escrow["id"], released=0, refunded=10000).json()
     assert body["escrow"]["status"] == "refunded"
     assert body["escrow"]["commission_amount"] == 0
     assert [p["amount"] for p in _payouts(client)] == [10000]
 
 
-def test_a_full_release_leaves_the_escrow_released(client):
+def test_a_full_release_leaves_the_escrow_released(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    body = _resolve(client, escrow["id"], released=10000, refunded=0).json()
+    body = _resolve(client, admin_headers, escrow["id"], released=10000, refunded=0).json()
     assert body["escrow"]["status"] == "released"
     assert body["escrow"]["commission_amount"] == 1500
     assert [p["amount"] for p in _payouts(client)] == [8500]
 
 
-def test_any_money_reaching_the_creator_means_released(client):
+def test_any_money_reaching_the_creator_means_released(client, admin_headers):
     """\"Refunded\" has to mean the buyer got their money back, and a buyer who
     got 90 percent of it did not."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    assert _resolve(client, escrow["id"], released=1000, refunded=9000).json()["escrow"]["status"] == "released"
+    assert _resolve(client, admin_headers, escrow["id"], released=1000, refunded=9000).json()["escrow"]["status"] == "released"
 
 
-def test_resolving_is_logged_and_closed_to_everyone_but_an_admin(client):
+def test_resolving_is_logged_and_closed_to_everyone_but_an_admin(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    # Admin identity is the X-Admin-Id placeholder, so a caller without it is
-    # not an admin — party bearer tokens buy nothing here.
-    no_header = client.post(
+    # An admin is a flag on an account now, so a party's own bearer token — a
+    # perfectly valid login — still buys nothing here.
+    as_a_party = client.post(
         f"/payments/escrow/{escrow['id']}/resolve",
         json={"released_amount": 10000, "refunded_amount": 0},
         headers=_headers(biz),
     )
-    assert no_header.status_code in (401, 403)
-    _resolve(client, escrow["id"], released=6000, refunded=4000, note="Two of three.")
+    assert as_a_party.status_code in (401, 403)
+    _resolve(client, admin_headers, escrow["id"], released=6000, refunded=4000, note="Two of three.")
     db = client.session_factory()
     log = db.query(AdminActionLog).filter(AdminActionLog.target_id == escrow["id"]).first()
     db.close()
@@ -209,37 +208,37 @@ def test_resolving_is_logged_and_closed_to_everyone_but_an_admin(client):
     assert log.reason == "Two of three."
 
 
-def test_a_resolved_dispute_cannot_be_resolved_again(client):
+def test_a_resolved_dispute_cannot_be_resolved_again(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
-    assert _resolve(client, escrow["id"], released=10000, refunded=0).status_code == 200
-    assert _resolve(client, escrow["id"], released=0, refunded=10000).status_code == 400
+    assert _resolve(client, admin_headers, escrow["id"], released=10000, refunded=0).status_code == 200
+    assert _resolve(client, admin_headers, escrow["id"], released=0, refunded=10000).status_code == 400
 
 
 # --- The referral hook --------------------------------------------------
 
 
-def test_a_split_that_paid_the_creator_counts_as_a_completed_order(client):
+def test_a_split_that_paid_the_creator_counts_as_a_completed_order(client, admin_headers):
     """The reward pays for transactions that cleared escrow, and a partial
     payment is still a job somebody did and got paid for."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
     _referred_by(client, inf)
-    _resolve(client, escrow["id"], released=6000, refunded=4000)
+    _resolve(client, admin_headers, escrow["id"], released=6000, refunded=4000)
     assert {c.kind for c in _credits(client)} == {"referee", "referrer"}
 
 
-def test_a_fully_refunded_dispute_credits_nobody(client):
+def test_a_fully_refunded_dispute_credits_nobody(client, admin_headers):
     """A full refund is the transaction being unwound. Crediting it would make
     \"dispute, then refund\" a free way to mint credit."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
     _referred_by(client, inf)
-    _resolve(client, escrow["id"], released=0, refunded=10000)
+    _resolve(client, admin_headers, escrow["id"], released=0, refunded=10000)
     assert _credits(client) == []
 
 
 # --- The queue ----------------------------------------------------------
 
 
-def test_the_queue_puts_waiting_cases_first_then_oldest_first(client):
+def test_the_queue_puts_waiting_cases_first_then_oldest_first(client, admin_headers):
     biz1, inf1, escrow1, first = _disputed(client, suffix="1")
     biz2, inf2, escrow2, second = _disputed(client, suffix="2")
     _, _, _, fresh = _disputed(client, suffix="3")
@@ -251,14 +250,14 @@ def test_the_queue_puts_waiting_cases_first_then_oldest_first(client):
         d.respond_by = pay_models.utcnow().replace(year=2020)
     db.commit()
     db.close()
-    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 2
+    assert client.post("/payments/disputes/escalate", headers=admin_headers).json()["escalated"] == 2
 
-    queue = client.get("/admin/disputes", headers=ADMIN).json()
+    queue = client.get("/admin/disputes", headers=admin_headers).json()
     assert [row["id"] for row in queue] == [first["id"], second["id"], fresh["id"]]
     assert [row["status"] for row in queue][:2] == ["awaiting_admin", "awaiting_admin"]
 
 
-def test_the_queue_carries_what_it_takes_to_triage(client):
+def test_the_queue_carries_what_it_takes_to_triage(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client, amount=25000)
     db = client.session_factory()
     db.add(profiles.BusinessProfile(user_id=biz, company_name="Sika Foods"))
@@ -271,7 +270,7 @@ def test_the_queue_carries_what_it_takes_to_triage(client):
         headers=_headers(biz),
     )
 
-    row = client.get("/admin/disputes", headers=ADMIN).json()[0]
+    row = client.get("/admin/disputes", headers=admin_headers).json()[0]
     assert (row["amount"], row["currency"]) == (25000, "XOF")
     assert row["reason"] == "late"
     assert row["business_name"] == "Sika Foods"
@@ -279,11 +278,11 @@ def test_the_queue_carries_what_it_takes_to_triage(client):
     assert row["message_count"] == 1
 
 
-def test_a_resolved_dispute_leaves_the_queue(client):
+def test_a_resolved_dispute_leaves_the_queue(client, admin_headers):
     biz, inf, escrow, dispute = _disputed(client)
-    assert len(client.get("/admin/disputes", headers=ADMIN).json()) == 1
-    _resolve(client, escrow["id"], released=10000, refunded=0)
-    assert client.get("/admin/disputes", headers=ADMIN).json() == []
+    assert len(client.get("/admin/disputes", headers=admin_headers).json()) == 1
+    _resolve(client, admin_headers, escrow["id"], released=10000, refunded=0)
+    assert client.get("/admin/disputes", headers=admin_headers).json() == []
 
 
 def test_the_queue_needs_an_admin(client):

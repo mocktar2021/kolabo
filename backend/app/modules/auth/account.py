@@ -164,6 +164,11 @@ def _notify_password_changed(db: Session, user: User) -> None:
         user.id,
         "security",
         "Your Kolabo password was changed. If this was not you, contact support now.",
+        # One key for both callers (settings change and reset), because the
+        # message is deliberately the same either way: it is written for the
+        # person who did NOT do it, and they cannot tell which path was used.
+        link="/account",
+        params={"key": "password_changed"},
     )
 
 

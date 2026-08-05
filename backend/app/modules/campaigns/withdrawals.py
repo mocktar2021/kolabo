@@ -130,6 +130,8 @@ def withdraw_invitation(
         invitation.influencer_user_id,
         "campaign_invitation",
         f"The invitation to {campaign.title} was withdrawn by the business.",
+        link="/invitations",
+        params={"key": "invitation_withdrawn", "campaign": campaign.title},
     )
     db.commit()
     db.refresh(invitation)
@@ -216,6 +218,10 @@ def withdraw_proposal(db: Session, proposal_id: str, influencer_user_id: str) ->
         campaign.business_user_id,
         "proposal_submitted",
         f"A creator withdrew their proposal for {campaign.title}.",
+        # The brief, where the proposal list is — not /campaigns, which would
+        # make the brand find the right one again.
+        link=f"/campaigns/{campaign.id}",
+        params={"key": "proposal_withdrawn", "campaign": campaign.title},
     )
     db.commit()
     db.refresh(proposal)

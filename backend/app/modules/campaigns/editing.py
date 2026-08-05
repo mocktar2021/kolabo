@@ -264,6 +264,11 @@ def cancel_campaign(db: Session, campaign_id: str, business_user_id: str) -> dic
             invitation.influencer_user_id,
             "campaign_cancelled",
             f"The campaign {campaign.title} was cancelled by the business.",
+            # The creator's invitations list. The brief itself is a brand-side
+            # screen, and /campaigns/{id} would be a 403 for the person being
+            # told about it.
+            link="/invitations",
+            params={"key": "campaign_cancelled", "campaign": campaign.title},
         )
     db.commit()
     db.refresh(campaign)

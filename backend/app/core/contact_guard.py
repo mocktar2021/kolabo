@@ -197,7 +197,7 @@ _CURRENCY_WINDOW = 12
 # between two unrelated numbers would otherwise splice them into one long run.
 # Deliberately not "/" either, which is what keeps 02/08/2026 from ever being a
 # candidate in the first place.
-_SEPARATORS = r"  \t.\-()"
+_SEPARATORS = r"  \t.\-()"
 _DIGIT_RUN = re.compile(r"\+?\d[\d" + _SEPARATORS + r"]{5,}\d")
 _GROUP_SPLIT = re.compile(r"[" + _SEPARATORS + r"]+")
 

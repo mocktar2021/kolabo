@@ -25,10 +25,11 @@ two calls registration makes.
 """
 from datetime import timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
 from app.modules.auth import otp
 from app.modules.auth.models import PasswordResetToken, User, utcnow
@@ -146,7 +147,11 @@ def _me_out(db: Session, user: User) -> dict:
 def _require_user(db: Session, user_id: str) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     return user
 
 
@@ -203,8 +208,9 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     new_phone = data.get("phone")
     new_password = data.get("new_password")
     if new_phone is None and new_password is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_account_nothing_to_change",
             detail="Send a new phone number, a new password, or both.",
         )
 
@@ -212,8 +218,10 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     # taken phone: a caller who cannot prove they own this account must not be
     # able to use it to discover whether a number is registered.
     if not verify_password(payload.current_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Current password is incorrect"
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="auth_password_incorrect",
+            detail="Current password is incorrect",
         )
 
     if new_phone is not None and new_phone != user.phone:
@@ -223,8 +231,9 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
         # collide on the unique index anyway, turning a clear 409 into a 500.
         taken = db.query(User).filter(User.phone == new_phone, User.id != user.id).first()
         if taken is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                code="auth_phone_taken",
                 detail="That phone number is already in use",
             )
         user.phone = new_phone
@@ -297,8 +306,9 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
         # where the silent alternative costs them nothing and tells us
         # nothing. Worth revisiting the day there is a per-phone attempt
         # counter that does not itself need a table of unauthenticated input.
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        raise AppError(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            code="auth_reset_too_many",
             detail="Too many reset requests, try again later",
         )
 
@@ -330,11 +340,23 @@ def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
     now = utcnow()
     user = db.query(User).filter(User.phone == payload.phone).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_CODE_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            # One code for "no such code" and for "expired", exactly as the
+            # one shared English sentence already refuses to distinguish them.
+            code="auth_reset_code_invalid",
+            detail=INVALID_CODE_DETAIL,
+        )
 
     token = next((t for t in _live_reset_tokens(db, user, now) if t.token == payload.code), None)
     if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_CODE_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            # One code for "no such code" and for "expired", exactly as the
+            # one shared English sentence already refuses to distinguish them.
+            code="auth_reset_code_invalid",
+            detail=INVALID_CODE_DETAIL,
+        )
 
     user.password_hash = hash_password(payload.new_password)
     token.consumed = True

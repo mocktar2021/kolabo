@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 
 /* Mirrors MIN_PASSWORD_LENGTH in backend/app/modules/auth/schemas.py. Checked
@@ -30,35 +31,6 @@ type AccountOut = {
 };
 
 type Tab = "details" | "payment" | "notifications" | "account";
-
-/* Errors mapped by STATUS CODE and never by matching the detail string. The
-   API's sentences are written in English for the API and can be reworded at
-   any time; a French UI that matched on their text would go silent the day
-   they are. The same rule the campaign actions and the delete block follow.
-
-   The three codes PATCH /auth/me can answer that this screen has a sentence
-   for:
-
-     409  the new phone belongs to another account — the only thing that code
-          means on this endpoint.
-     403  the current password is wrong. Not 400 and not 401: account.py
-          raises HTTP_403_FORBIDDEN for a failed verify_password, exactly as
-          DELETE /auth/me does, and the delete block below has always mapped
-          it that way.
-     401  neither of those. It means the bearer token itself is gone or
-          expired, which is a different problem, and saying "wrong password"
-          to somebody whose session lapsed would send them hunting for a
-          mistake they did not make.
-
-   400 is left to the fallback on purpose: on this endpoint it means "you sent
-   neither a phone nor a password", which both forms below already prevent, so
-   inventing a French sentence for it would be inventing a state. */
-function accountErrorKey(status: number): string | null {
-  if (status === 409) return "account.errPhoneTaken";
-  if (status === 403) return "account.errWrongPassword";
-  if (status === 401) return "account.errSession";
-  return null;
-}
 
 /* Changing the number you sign in with.
 
@@ -97,8 +69,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
       setCurrentPassword("");
       setDone(true);
     } catch (err) {
-      const key = err instanceof ApiError ? accountErrorKey(err.status) : null;
-      setError(key ? t(key) : err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -167,8 +138,7 @@ function PasswordForm() {
       setConfirm("");
       setDone(true);
     } catch (err) {
-      const key = err instanceof ApiError ? accountErrorKey(err.status) : null;
-      setError(key ? t(key) : err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -265,9 +235,11 @@ function NotificationsPanel() {
 
 /* Account deletion, behind an inline confirm (no window.confirm: destroying
    an account deserves friction, and a native dialog cannot be translated or
-   say what deletion actually costs). Errors are mapped from the status code,
-   never parsed from the English detail: 403 wrong password, 409 transaction
-   history.
+   say what deletion actually costs). Its two refusals — a wrong password and
+   an account with transaction history — arrive as auth_password_incorrect and
+   auth_account_has_history, so errorText names which one it was. This screen
+   used to pick a sentence from the status code, which said the same thing in
+   more lines and could only ever manage one message per status.
 
    MOVED HERE FROM ProfileSetup. Closing an account is not a step in filling
    one in — it sat at the bottom of the profile form purely because that was
@@ -295,9 +267,7 @@ function DangerZone() {
       logout();
       navigate("/");
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setError(t("danger.wrongPassword"));
-      else if (err instanceof ApiError && err.status === 409) setError(t("danger.hasHistory"));
-      else setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
       setBusy(false);
     }
   }

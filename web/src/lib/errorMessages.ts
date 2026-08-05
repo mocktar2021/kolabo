@@ -73,6 +73,33 @@ export const error_fr = {
   contract_cancel_signed: "Ce contrat est signé par les deux parties. Elles s'y sont engagées, et ce n'est pas quelque chose qu'une seule peut annuler.",
   contract_cancel_funded: "Ce contrat a de l'argent bloqué en séquestre. Y mettre fin, c'est décider qui doit quoi : cela passe par le litige et le remboursement, pas par une annulation.",
 
+  /* Auth. These are the first refusals a person ever sees — signing up,
+     logging in, entering a code — so they are also the ones most likely to be
+     read by somebody who has not yet decided whether this product works. */
+  auth_user_not_found: "Utilisateur introuvable.",
+  auth_referral_code_failed: "Impossible de générer un code de parrainage. Réessayez.",
+  /* {{roles}} is a list of machine values, left untranslated for the same
+     reason as dispute_reason_unknown: a French rendering would be a list no
+     endpoint accepts. */
+  auth_role_unknown: "Le rôle doit être l'un des suivants : {{roles}}",
+  auth_country_unavailable: "Kolabo n'est pas encore disponible dans ce pays.",
+  auth_phone_taken: "Ce numéro est déjà utilisé par un autre compte.",
+  auth_no_pending_verification: "Aucune vérification en attente pour ce numéro.",
+  auth_code_expired: "Ce code de vérification a expiré. Demandez-en un nouveau.",
+  auth_code_invalid: "Code de vérification invalide.",
+  /* Vague on purpose, dans les deux langues : distinguer « ce numéro n'existe
+     pas » de « mot de passe incorrect » permettrait de savoir qui a un compte
+     ici. Voir le commentaire du côté backend. */
+  auth_bad_credentials: "Numéro ou mot de passe incorrect.",
+  auth_not_verified: "Ce compte n'est pas encore vérifié. Confirmez le code envoyé par SMS.",
+  auth_password_incorrect: "Mot de passe actuel incorrect.",
+  auth_account_has_history: "Ce compte a un historique de transactions et ne peut pas être fermé ici. Contactez le support.",
+  auth_token_missing: "Vous n'êtes plus connecté(e). Reconnectez-vous.",
+  auth_token_invalid: "Votre session a expiré. Reconnectez-vous.",
+  auth_account_nothing_to_change: "Indiquez un nouveau numéro, un nouveau mot de passe, ou les deux.",
+  auth_reset_too_many: "Trop de demandes de réinitialisation. Réessayez plus tard.",
+  auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
+
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
   dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
@@ -165,6 +192,24 @@ export const error_en = {
   contract_already_cancelled: "This contract is already cancelled.",
   contract_cancel_signed: "This contract is fully signed. Both parties agreed to it, and it is not something either side can cancel alone.",
   contract_cancel_funded: "This contract has money in escrow. Ending it is a question about who is owed what, which is the dispute and refund path, not a cancellation.",
+
+  auth_user_not_found: "User not found.",
+  auth_referral_code_failed: "A referral code could not be generated. Please try again.",
+  auth_role_unknown: "The role must be one of: {{roles}}",
+  auth_country_unavailable: "Kolabo is not available in this country yet.",
+  auth_phone_taken: "That number is already used by another account.",
+  auth_no_pending_verification: "There is no pending verification for this number.",
+  auth_code_expired: "That verification code has expired. Request a new one.",
+  auth_code_invalid: "Invalid verification code.",
+  auth_bad_credentials: "Wrong number or password.",
+  auth_not_verified: "This account is not verified yet. Confirm the code sent by SMS.",
+  auth_password_incorrect: "Current password is incorrect.",
+  auth_account_has_history: "This account has transaction history and cannot be closed here. Contact support.",
+  auth_token_missing: "You are not signed in any more. Please sign in again.",
+  auth_token_invalid: "Your session has expired. Please sign in again.",
+  auth_account_nothing_to_change: "Send a new phone number, a new password, or both.",
+  auth_reset_too_many: "Too many reset requests. Try again later.",
+  auth_reset_code_invalid: "That reset code is invalid or expired.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

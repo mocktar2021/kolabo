@@ -19,10 +19,11 @@ lives in app.modules.auth.referrals.
 import secrets
 from datetime import timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.country_config import get_enabled_countries
+from app.core.errors import AppError
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -100,7 +101,11 @@ def get_my_referral(db: Session, user_id: str) -> dict:
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     if user.referral_code is None:
         # A 32^8 code space makes a collision practically impossible; the
         # retry loop is cheap insurance against the astronomically unlikely.
@@ -112,8 +117,9 @@ def get_my_referral(db: Session, user_id: str) -> dict:
                 db.commit()
                 break
         else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            raise AppError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code="auth_referral_code_failed",
                 detail="Could not generate a referral code, try again",
             )
 
@@ -175,20 +181,31 @@ def get_my_referral(db: Session, user_id: str) -> dict:
 
 def register(db: Session, payload: RegisterRequest) -> dict:
     if payload.role not in ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_role_unknown",
             detail=f"Role must be one of {sorted(ROLES)}",
+            # The machine values a client posts back, not prose. Translating
+            # them would produce a list no endpoint accepts — a client that
+            # reaches this has a bug, not a language problem.
+            values={"roles": ", ".join(sorted(ROLES))},
         )
     if payload.country_code not in get_enabled_countries():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_country_unavailable",
             detail="Country is not available yet",
         )
 
     existing = db.query(User).filter(User.phone == payload.phone).first()
     if existing is not None and existing.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            # The same rule the account screen enforces when somebody changes
+            # their number, so the same code — see auth/account.py. One
+            # sentence covers both because the fact is the same one: that
+            # number belongs to an account already.
+            code="auth_phone_taken",
             detail="Phone number is already registered",
         )
 
@@ -221,8 +238,9 @@ def register(db: Session, payload: RegisterRequest) -> dict:
 def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
     user = db.query(User).filter(User.phone == payload.phone).first()
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_no_pending_verification",
             detail="No pending verification for this phone",
         )
 
@@ -233,13 +251,15 @@ def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
         .first()
     )
     if challenge is None or challenge.expires_at < utcnow():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_code_expired",
             detail="Verification code has expired, request a new one",
         )
     if challenge.code != payload.code:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            code="auth_code_invalid",
             detail="Invalid verification code",
         )
 
@@ -255,13 +275,19 @@ def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
 def login(db: Session, payload: LoginRequest) -> dict:
     user = db.query(User).filter(User.phone == payload.phone).first()
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            # Deliberately one code for two different failures — no such
+            # account, and wrong password. Splitting them would let anybody
+            # enumerate which numbers are registered here, which is the whole
+            # reason the English sentence is vague too.
+            code="auth_bad_credentials",
             detail="Invalid phone or password",
         )
     if not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="auth_not_verified",
             detail="Account is not verified yet",
         )
     # Same contract as verify_otp: every token grant says which role the
@@ -280,12 +306,22 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     # The bearer token proves possession of a session; the password proves
     # possession of the account. Destruction requires the stronger proof, so
     # a stolen token alone cannot erase someone's livelihood.
     if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password is incorrect")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            # Shared with the account screen: in both places the rule is that
+            # the CURRENT password supplied does not match.
+            code="auth_password_incorrect",
+            detail="Password is incorrect",
+        )
 
     # Imported here rather than at module level, like the trust_safety import
     # in the profiles service: auth is imported by every module, so top-level
@@ -320,8 +356,9 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
         is not None
     )
     if has_contract or has_escrow:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="auth_account_has_history",
             detail="Account has transaction history; contact support to close it.",
         )
 

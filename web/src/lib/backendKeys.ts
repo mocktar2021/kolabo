@@ -23,10 +23,13 @@
    are built to keep it visible instead: AppError takes `code` keyword-only,
    the notification call sites write their anonymous-name variants out as pairs
    of literal dicts rather than building `f"{key}_anon"`, and a backend test
-   (backend/tests/test_error_codes.py) fails a converted module that computes
-   a code. If a call site ever genuinely needs one, add it to a hand-kept list
-   in the test that needs it and say why — do not teach these patterns to be
-   clever. */
+   (backend/tests/test_error_codes.py) PARSES each converted module and fails
+   any AppError whose code is not a string literal. That AST walk is what makes
+   the ERROR_CODE pattern below trustworthy rather than hopeful: this file can
+   only find codes that were written down, and something else has to guarantee
+   they all are. If a call site ever genuinely needs a computed one, add it to
+   a hand-kept list in the test that needs it and say why — do not teach these
+   patterns to be clever. */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -29,6 +29,7 @@ ordering one at a time — or to WhatsApp.
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.campaigns import schemas, service
 
 MIN_CART_ITEMS = 1
@@ -41,7 +42,7 @@ MAX_CART_ITEMS = 20
 
 
 def _resolve_item(db: Session, business_user_id: str, item, index: int) -> dict:
-    """One line of the basket, checked the same way a single order is.
+    r"""One line of the basket, checked the same way a single order is.
 
     Every rule a lone order runs — the package exists and is active, the
     creator exists and is a creator, the platform/deliverable pair is real,
@@ -58,16 +59,46 @@ def _resolve_item(db: Session, business_user_id: str, item, index: int) -> dict:
     actionable. That does mean a missing package answers 400 here where the
     single-order endpoint answers 404 — deliberate: the request as a whole is
     malformed, and nothing about the checkout URL is missing.
+
+    THE INDEX NOW TRAVELS AS DATA, and the refusal keeps its own code.
+
+    It used to travel only inside the English sentence, and the cart page read
+    it back out with a regular expression over that sentence
+    (`/^Item (\d+):/`) so it could highlight the offending row. That worked
+    and was a trap: rewording this line — in either language — would have
+    silently stopped the highlight working, with nothing failing anywhere. So
+    `cart_index` goes into `values`, where the page can read it as a number.
+
+    Re-raising the SAME exception rather than wrapping it in a new one is what
+    keeps the reader's sentence specific. A wrapper would need a code of its
+    own, and "an item in your basket was refused" is strictly less useful than
+    "you cannot order your own package" — which is what the resolver already
+    said, in the reader's language, and which the page can now put beside the
+    exact line it is about. The English `detail` keeps its "Item N:" prefix,
+    because that one is read in logs and by API consumers who have no page to
+    highlight anything on.
     """
     try:
         service.check_order_form(item)
         if item.package_id is not None:
             return service.resolve_package_terms(db, business_user_id, item.package_id, item.note)
         return service.resolve_negotiated_terms(db, business_user_id, item)
+    except AppError as exc:
+        exc.status_code = status.HTTP_400_BAD_REQUEST
+        exc.detail = f"Item {index}: {exc.detail}"
+        exc.values = {**exc.values, "cart_index": index}
+        raise
     except HTTPException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        # A resolver that has not been converted yet: there is no code to
+        # carry, so this is the one case that needs a wrapper of its own. Both
+        # resolvers above are converted today, which makes this branch dead —
+        # kept because "dead until somebody adds a third resolver" is exactly
+        # when a missing branch turns into a 500.
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="cart_item_refused",
             detail=f"Item {index}: {exc.detail}",
+            values={"index": index},
         ) from exc
 
 
@@ -100,13 +131,18 @@ def _one_currency(creator_user_id: str, lines: list[dict]) -> str:
     """
     currencies = {line["currency"] for line in lines}
     if len(currencies) > 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="cart_mixed_currencies",
             detail=(
                 f"The items for creator {creator_user_id} are priced in "
                 f"{', '.join(sorted(currencies))}. An order carries one escrow and an "
                 "escrow carries one currency, so order each currency separately."
             ),
+            # The creator id is in the English for a support agent reading a
+            # log; the sentence a buyer reads names the CURRENCIES, which is
+            # the thing they can act on. A user id on screen is noise.
+            values={"currencies": ", ".join(sorted(currencies))},
         )
     return currencies.pop()
 
@@ -144,14 +180,17 @@ def checkout(db: Session, business_user_id: str, payload: schemas.CartCheckoutIn
     # OrderIn spells out: a 400 naming the rule tells a client what to do, a
     # 422 field-error tells it that "items" is wrong.
     if len(items) < MIN_CART_ITEMS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="cart_empty",
             detail="A checkout needs at least one item.",
         )
     if len(items) > MAX_CART_ITEMS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="cart_too_many_items",
             detail=f"A cart holds at most {MAX_CART_ITEMS} items. Check out in smaller baskets.",
+            values={"max": MAX_CART_ITEMS},
         )
 
     # The buyer's role is a fact about the caller, not about any line, so it

@@ -35,9 +35,10 @@ one way — router -> editing -> service — and contracts are read through
 contracts.models (models only, never contracts.service, which imports
 campaigns.service and would close the circle).
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.campaigns import models, schemas, service
 from app.modules.contracts import models as contracts
 from app.modules.notifications.service import notify
@@ -71,7 +72,11 @@ def _reject_direct(campaign: models.Campaign) -> None:
     is the creator's decline, or the 48 hour window closing.
     """
     if campaign.is_direct:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=DIRECT_ORDER_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_is_direct_order",
+            detail=DIRECT_ORDER_DETAIL,
+        )
 
 
 def _proposal_count(db: Session, campaign_id: str) -> int:
@@ -124,8 +129,9 @@ def update_campaign(
         # Cancelling is how a campaign ends. Editing one afterwards would let
         # the terms of a closed brief drift away from what the people who bid
         # on it were shown.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_cancelled_immutable",
             detail="This campaign is cancelled and cannot be edited.",
         )
 
@@ -140,8 +146,10 @@ def update_campaign(
     if "title" in data and data["title"] is None:
         # The column is NOT NULL. Refused with a sentence rather than left to
         # fail on the insert.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="A campaign needs a title."
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_needs_title",
+            detail="A campaign needs a title."
         )
 
     if "description" in data:
@@ -165,8 +173,10 @@ def update_campaign(
                 # whole forms, and failing a PATCH that asked for nothing
                 # would make the title uneditable in every UI that does.
                 continue
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="campaign_field_locked",
+                values={"field": field},
                 detail=(
                     f"{field} cannot be changed: a creator has already priced against it. "
                     "Cancel this campaign and publish the new terms as a new brief."
@@ -210,7 +220,11 @@ def delete_campaign(db: Session, campaign_id: str, business_user_id: str) -> dic
         or invitations
         or _contract(db, campaign_id) is not None
     ):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=ACTIVITY_DETAIL)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="campaign_has_activity",
+            detail=ACTIVITY_DETAIL,
+        )
 
     # The invitation rows go with it. In practice this set is empty — the
     # guard above refuses a campaign that has any, and inviting requires a
@@ -243,14 +257,19 @@ def cancel_campaign(db: Session, campaign_id: str, business_user_id: str) -> dic
         # the dispute and refund path is for, and it has the rules. Cancelling
         # here would leave a live contract hanging off a dead campaign and no
         # record of who decided the work was over.
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=CONTRACT_DETAIL)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="campaign_has_contract",
+            detail=CONTRACT_DETAIL,
+        )
 
     if campaign.status == models.CANCELLED:
         # Refused rather than treated as a no-op: cancelling twice would send
         # every invited creator a second "this is off" for something that was
         # already off.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_already_cancelled",
             detail="This campaign is already cancelled.",
         )
 

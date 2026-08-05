@@ -69,9 +69,10 @@ that notification and nothing else.
 """
 from datetime import date
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.auth.models import User
 from app.modules.campaigns import models, schemas, service
 from app.modules.profiles.models import BusinessProfile, InfluencerProfile
@@ -190,10 +191,16 @@ def _require_creator(db: Session, user_id: str) -> User:
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     if user.role != service.AUTHOR_EXCLUDED_ROLE:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=NOT_A_CREATOR_DETAIL
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="board_not_a_creator",
+            detail=NOT_A_CREATOR_DETAIL
         )
     return user
 
@@ -480,16 +487,26 @@ def apply_to_campaign(
         db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     )
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_not_found",
+            detail="Campaign not found",
+        )
     # Checked before is_open, because a direct order is never open and "this
     # brief is not open" would be a true sentence that explains nothing about
     # what the caller actually found.
     if campaign.is_direct:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=DIRECT_ORDER_DETAIL
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="board_direct_order",
+            detail=DIRECT_ORDER_DETAIL
         )
     if not campaign.is_open:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NOT_OPEN_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="board_not_open",
+            detail=NOT_OPEN_DETAIL,
+        )
 
     latest = service.latest_in_chain(db, campaign_id, influencer_user_id)
     if latest is not None and latest.status == models.SUBMITTED:
@@ -499,8 +516,10 @@ def apply_to_campaign(
         # changing the offer under them without either side meaning to. A
         # creator who genuinely wants different terms revises the chain
         # through the proposals endpoint, where the intent is explicit.
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=ALREADY_APPLIED_DETAIL
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="board_already_applied",
+            detail=ALREADY_APPLIED_DETAIL
         )
 
     return service.submit_proposal(

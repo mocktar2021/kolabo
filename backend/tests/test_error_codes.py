@@ -51,6 +51,10 @@ CONVERTED = [
     "modules/campaigns/service.py",
     "modules/campaigns/withdrawals.py",
     "modules/campaigns/negotiated.py",
+    "modules/campaigns/orders.py",
+    "modules/campaigns/editing.py",
+    "modules/campaigns/board.py",
+    "modules/campaigns/cart.py",
 ]
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)

@@ -60,11 +60,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-# Same placeholder admin identity the payments tests use; admin auth is still
-# an X-Admin-Id header everywhere.
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
 def _setup(client, price=25000, currency="XOF", active=True, quantity=2):
     """A brand, a creator, and one package on the creator's profile."""
     db = client.session_factory()
@@ -371,14 +366,14 @@ def test_an_answered_order_cannot_be_answered_again(client):
 # --------------------------------------------------------------------------
 
 
-def test_the_sweep_expires_a_stale_order_and_leaves_a_fresh_one_alone(client):
+def test_the_sweep_expires_a_stale_order_and_leaves_a_fresh_one_alone(client, admin_headers):
     biz, creator, pkg = _setup(client)
     other_creator, other_pkg = _second_package(client)
     stale = _order(client, biz, pkg).json()
     fresh = _order(client, biz, other_pkg).json()
     _age_out(client, stale["proposal_id"])
 
-    r = client.post("/campaigns/orders/expire", headers=ADMIN)
+    r = client.post("/campaigns/orders/expire", headers=admin_headers)
     assert r.status_code == 200
     assert r.json() == {"expired": 1}
 
@@ -393,7 +388,7 @@ def test_the_sweep_expires_a_stale_order_and_leaves_a_fresh_one_alone(client):
     assert any("expired" in n.message for n in _rows(client, Notification, user_id=biz))
 
 
-def test_the_sweep_never_touches_a_brief_proposal(client):
+def test_the_sweep_never_touches_a_brief_proposal(client, admin_headers):
     """No expires_at means no expiry, however long the proposal sits there."""
     biz, creator, pkg = _setup(client)
     brief = _publish_brief(client, biz).json()
@@ -403,7 +398,7 @@ def test_the_sweep_never_touches_a_brief_proposal(client):
         headers=_headers(creator),
     ).json()
 
-    assert client.post("/campaigns/orders/expire", headers=ADMIN).json() == {"expired": 0}
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 0}
     assert _rows(client, campaigns.Proposal, id=proposal["id"])[0].status == campaigns.SUBMITTED
     assert _rows(client, campaigns.Campaign, id=brief["id"])[0].status == campaigns.PUBLISHED
 

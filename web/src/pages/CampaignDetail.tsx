@@ -6,6 +6,7 @@ import { CreatorChip } from "../components/CreatorChip";
 import { DeliverableRows } from "../components/DeliverableRows";
 import { TargetingFields, targetingBody, targetingOf, type Targeting } from "../components/TargetingFields";
 import { ApiError, api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
 import type { CampaignDetail, Contract, Deliverable, Favorite, Proposal } from "../lib/types";
@@ -152,12 +153,14 @@ function CampaignEditor({ campaign, locked, onSaved, onClose }: {
       await api(`/campaigns/${campaign.id}`, { method: "PATCH", token, body: patch });
       onSaved();
     } catch (e) {
-      /* Rendered verbatim. editing.py answers 400 NAMING the field that is
-         locked and telling the buyer what to do instead (cancel and publish
-         the new terms as a new brief). Restating any of that here would be a
-         second copy of a rule that lives there, and the copy is the one that
-         drifts. */
-      setError(e instanceof Error ? e.message : "Error");
+      /* Whatever the server said, through errorText. editing.py answers 400
+         NAMING the field that is locked and telling the buyer what to do
+         instead (cancel and publish the new terms as a new brief), and that
+         refusal carries no code yet — so its own English sentence is what
+         shows, and a translated one takes over the day editing.py sends a
+         code. Restating any of that here would be a second copy of a rule
+         that lives there, and the copy is the one that drifts. */
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -253,7 +256,7 @@ function ReplyForm({ campaignId, latest, onSent }: { campaignId: string; latest:
       });
       onSent();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -435,11 +438,11 @@ export default function CampaignDetailPage() {
       const data = await api<CampaignDetail>(`/campaigns/${id}`, { token });
       setCampaign(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [id, token]);
+  }, [id, token, t]);
 
   useEffect(() => {
     load();
@@ -456,7 +459,7 @@ export default function CampaignDetailPage() {
       await api(`/campaigns/${campaign.id}/publish`, { method: "POST", token });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -470,7 +473,7 @@ export default function CampaignDetailPage() {
       await api(`/campaigns/${campaign.id}/invitations`, { method: "POST", token, body: { influencer_id: influencerId } });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -493,16 +496,13 @@ export default function CampaignDetailPage() {
       setWithdrawingInvitation(null);
       await load();
     } catch (e) {
-      /* Mapped by STATUS CODE, like every other refusal on this page. The
-         only 400 this endpoint answers covers both of its cases — the
-         invitation is no longer open, or the creator has already priced the
-         brief — and for the buyer both mean the same thing: there is
-         something to answer rather than something to retract. */
-      setInvitationError(
-        e instanceof ApiError && e.status === 400
-          ? t("undo.invitationRefused")
-          : e instanceof Error ? e.message : "Error"
-      );
+      /* Off the CODE the refusal carries rather than its status, which is
+         finer than the 400 the two cases share: withdrawals.py sends
+         `invitation_not_open` when the invitation has already moved on, and
+         `invitation_priced` when the creator has priced the brief. The
+         second is the one worth naming — there is an offer on the table to
+         answer, which is somewhere to go rather than a dead end. */
+      setInvitationError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -530,7 +530,7 @@ export default function CampaignDetailPage() {
       setActionError(
         e instanceof ApiError && e.status === 409
           ? t("campaign.cancelHasContract")
-          : e instanceof Error ? e.message : "Error"
+          : errorText(e, t)
       );
     } finally {
       setBusy(false);
@@ -555,7 +555,7 @@ export default function CampaignDetailPage() {
       setActionError(
         e instanceof ApiError && e.status === 409
           ? t("campaign.deleteHasActivity")
-          : e instanceof Error ? e.message : "Error"
+          : errorText(e, t)
       );
       setBusy(false);
     }
@@ -568,7 +568,7 @@ export default function CampaignDetailPage() {
       const contract = await api<Contract>(`/contracts/from-proposal/${proposalId}`, { method: "POST", token });
       navigate(`/contracts/${contract.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -581,7 +581,7 @@ export default function CampaignDetailPage() {
       const contract = await api<Contract>(`/contracts/by-proposal/${proposalId}`, { token });
       navigate(`/contracts/${contract.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }

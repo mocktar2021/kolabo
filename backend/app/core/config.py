@@ -15,7 +15,25 @@ class Settings(BaseSettings):
     commission_bps: int = 1500
     # Days a held escrow waits before it auto releases if the business does
     # not confirm delivery.
+    #
+    # STILL THE FUNDING-TIME DEFAULT, and no longer the number that decides an
+    # auto release on its own. due_release_at is stamped with it when the
+    # escrow is funded, and then RE-STAMPED from review_window_days the moment
+    # the creator submits work. It survives as the value a funded-but-never-
+    # delivered escrow carries — a deadline the sweep will not act on, because
+    # nothing has been submitted against it.
     auto_release_days: int = 7
+    # Days the business has to review submitted work before the escrow releases
+    # itself.
+    #
+    # Shorter than auto_release_days on purpose. The old seven days had to
+    # cover the whole job — agree, shoot, post, review — because the clock
+    # started at funding. This one starts when the work is actually in front of
+    # the brand, so it only has to cover LOOKING at it, and a creator who
+    # delivered should not wait a week on a brand that never clicks. Short
+    # enough to keep payouts moving, long enough that a weekend does not run
+    # it out. Reset on every resubmission, so revised work earns a fresh look.
+    review_window_days: int = 4
     # Hours the other party has to answer a dispute before it reaches the
     # admin queue. Long enough that somebody in another timezone with a day
     # job can actually reply; short enough that a real refusal is not a month

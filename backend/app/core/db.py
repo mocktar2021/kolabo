@@ -45,6 +45,7 @@ def import_all_models() -> None:
     from app.modules.contracts import models as contract_models  # noqa: F401
     from app.modules.messaging import models as messaging_models  # noqa: F401
     from app.modules.payments import models as payment_models  # noqa: F401
+    from app.modules.deliverables import models as deliverable_models  # noqa: F401
     from app.modules.trust_safety import models as trust_safety_models  # noqa: F401
     from app.modules.config import models as config_models  # noqa: F401
 

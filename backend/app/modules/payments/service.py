@@ -18,12 +18,18 @@ import logging
 from datetime import timedelta
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.modules.auth.models import User
 from app.modules.auth.referrals import award_for_completed_order
 from app.modules.contracts import models as contracts
+# MODELS ONLY, never deliverables.service — that module imports THIS one, and
+# taking its service here would close the circle. Its models import nothing but
+# Base, so this direction is safe. contracts/cancellation.py reads payments the
+# same way for the same reason.
+from app.modules.deliverables import models as deliverables
 from app.modules.notifications.service import notify
 from app.modules.payments import models, provider
 
@@ -164,10 +170,46 @@ def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:
 
 
 def run_due_auto_releases(db: Session, now=None) -> int:
+    """Pay out escrows whose review window closed with the brand saying nothing.
+
+    AUTO-RELEASE NOW MEANS "REVIEWED BY SILENCE", AND ONLY THAT. It used to
+    mean something much weaker, because due_release_at was set at FUNDING
+    (held_at + auto_release_days) and nothing here asked whether the creator
+    had delivered: an escrow funded and then forgotten paid itself out seven
+    days later whether or not any work existed. The brand's protection was a
+    clock that started before there was anything to look at.
+
+    So the sweep now takes escrows with an OPEN submission on their contract.
+    That single filter carries three rules at once, because a submission
+    leaves the open set the moment it is answered:
+
+      * NOTHING SUBMITTED -> never auto-releases. Un-delivered money waits.
+        A brand whose creator has gone quiet has the dispute path, which is
+        where a claim on frozen money belongs.
+      * CHANGES REQUESTED -> the clock stops. Work the brand has rejected must
+        not quietly auto-pay while the creator is redoing it; the next
+        submission opens a fresh window (deliverables.service.submit).
+      * WITHDRAWN -> the clock stops, for the plainest version of the same
+        reason: there is nothing in front of the brand to review.
+
+    A submission that IS open and past its window still releases, which is the
+    point — a creator who delivered is not held hostage by a brand that never
+    clicks anything.
+    """
     now = now or models.utcnow()
+    # The contracts with work actually awaiting an answer. A subquery rather
+    # than a join, so the escrow rows come back unduplicated even if a
+    # contract somehow carried more than one open submission.
+    awaiting_review = select(deliverables.DeliverableSubmission.contract_id).where(
+        deliverables.DeliverableSubmission.status.in_(deliverables.OPEN_STATUSES)
+    )
     due = (
         db.query(models.Escrow)
-        .filter(models.Escrow.status == models.HELD, models.Escrow.due_release_at <= now)
+        .filter(
+            models.Escrow.status == models.HELD,
+            models.Escrow.due_release_at <= now,
+            models.Escrow.contract_id.in_(awaiting_review),
+        )
         .all()
     )
     for escrow in due:

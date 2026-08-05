@@ -30,6 +30,11 @@ import "./lib/socialStrings";
 /* And this one adds contract.status_cancelled / status_void to the contract.*
    group i18n.ts owns — the two statuses its block never got keys for. */
 import "./lib/statusStrings";
+/* The deliverables panel on the contract page. Owns the deliv.* group
+   outright, so unlike the three above it has no ordering constraint against
+   i18n.ts — it sits with the other feature bundles for the reason they all
+   exist, which is to keep the 40 KB i18n.ts about core app copy. */
+import "./lib/deliverableStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

@@ -68,9 +68,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
 def _parties(client):
     """A brand and a creator. No package: that is the whole point here."""
     db = client.session_factory()
@@ -303,7 +300,7 @@ def test_a_half_filled_custom_offer_is_rejected_naming_what_is_missing(client):
 # --------------------------------------------------------------------------
 
 
-def test_the_creator_counters_a_negotiated_order_and_the_clock_is_preserved(client):
+def test_the_creator_counters_a_negotiated_order_and_the_clock_is_preserved(client, admin_headers):
     """There is no creator-side counter endpoint by design — reply is
     business-only, and the creator's counter is simply the next version in the
     chain. It has to stay on the order's clock: an order that quietly stops
@@ -334,7 +331,7 @@ def test_the_creator_counters_a_negotiated_order_and_the_clock_is_preserved(clie
     p = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == counter["id"]).first()
     p.expires_at = campaigns.utcnow() - timedelta(hours=1)
     db.commit(); db.close()
-    assert client.post("/campaigns/orders/expire", headers=ADMIN).json() == {"expired": 1}
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 1}
 
 
 def test_the_business_can_counter_back_on_a_negotiated_order(client):

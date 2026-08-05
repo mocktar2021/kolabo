@@ -33,29 +33,19 @@ from app.core.errors import AppError, app_error_handler
 
 APP = Path(__file__).resolve().parents[1] / "app"
 
-# Modules whose every refusal now carries a code. ADD TO THIS LIST as each one
-# is converted — that is the whole ratchet. Removing an entry to make a build
-# go green is undoing the migration, not fixing the test.
-CONVERTED = [
-    "core/contact_guard.py",
-    "modules/deliverables/service.py",
-    "modules/payments/service.py",
-    "modules/payments/disputes.py",
-    "modules/payments/resolution.py",
-    "modules/contracts/service.py",
-    "modules/contracts/cancellation.py",
-    "modules/auth/service.py",
-    "modules/auth/deps.py",
-    "modules/auth/account.py",
-    "modules/profiles/service.py",
-    "modules/campaigns/service.py",
-    "modules/campaigns/withdrawals.py",
-    "modules/campaigns/negotiated.py",
-    "modules/campaigns/orders.py",
-    "modules/campaigns/editing.py",
-    "modules/campaigns/board.py",
-    "modules/campaigns/cart.py",
-]
+# ------------------------------------------------------------------ #
+# THE LIST IS GONE, and that is the point of this commit.
+#
+# For six PRs this held the modules converted so far, and asserted only those
+# were clean — a ratchet, so the migration could not slide backwards while it
+# was half done. It is not half done any more: every `raise HTTPException` in
+# `app/` now carries a code, so the honest assertion is about the whole tree
+# rather than a list somebody has to remember to extend.
+#
+# A file that genuinely needs a bare HTTPException goes in ALLOWED below, with
+# a reason. It is empty, and a pull request that adds to it is asking for a
+# conversation, which is exactly the friction it should have.
+ALLOWED: set[str] = set()
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)
 
@@ -86,21 +76,29 @@ def _app_error_calls(source: str) -> list[ast.Call]:
     ]
 
 
-@pytest.mark.parametrize("relative", CONVERTED)
-def test_a_converted_module_has_no_bare_refusals(relative):
-    source = (APP / relative).read_text(encoding="utf-8")
-    lines = [
-        f"{relative}:{source[:m.start()].count(chr(10)) + 1}"
-        for m in BARE_RAISE.finditer(source)
-    ]
-    assert lines == [], (
-        "These refusals lost their code — a converted module must raise AppError:\n"
-        + "\n".join(lines)
+def test_no_refusal_anywhere_is_missing_its_code():
+    """Every "no" this API says names itself.
+
+    216 raises across 25 files began this migration; this is the line that
+    says it finished. A new endpoint that reaches for HTTPException out of
+    habit fails here, naming the file and the line, rather than shipping an
+    English-only sentence into a French screen.
+    """
+    offenders = []
+    for path in _python_files():
+        relative = str(path.relative_to(APP))
+        if relative in ALLOWED:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for m in BARE_RAISE.finditer(source):
+            offenders.append(f"{relative}:{source[:m.start()].count(chr(10)) + 1}")
+    assert offenders == [], (
+        "Raise AppError with a code instead, and give the code a French and an "
+        "English sentence in web/src/lib/errorMessages.ts:\n" + "\n".join(offenders)
     )
 
 
-@pytest.mark.parametrize("relative", CONVERTED)
-def test_every_code_is_a_plain_literal(relative):
+def test_every_code_is_a_plain_literal():
     """No f-strings, no variables, no helper that assembles one.
 
     A code built at runtime cannot be read out of the source, which means
@@ -110,17 +108,18 @@ def test_every_code_is_a_plain_literal(relative):
     `code=` spelling; this forces the value beside it to be readable too, and
     is what makes the frontend's regex trustworthy rather than hopeful.
     """
-    source = (APP / relative).read_text(encoding="utf-8")
-    calls = _app_error_calls(source)
-    assert calls, f"{relative} is listed as converted but raises no AppError"
-
     unreadable = []
-    for call in calls:
-        keyword = next((k for k in call.keywords if k.arg == "code"), None)
-        if keyword is None:
-            unreadable.append(f"{relative}:{call.lineno} passes no code=")
-        elif not (isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str)):
-            unreadable.append(f"{relative}:{call.lineno} builds its code instead of writing one")
+    total = 0
+    for path in _python_files():
+        relative = str(path.relative_to(APP))
+        for call in _app_error_calls(path.read_text(encoding="utf-8")):
+            total += 1
+            keyword = next((k for k in call.keywords if k.arg == "code"), None)
+            if keyword is None:
+                unreadable.append(f"{relative}:{call.lineno} passes no code=")
+            elif not (isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str)):
+                unreadable.append(f"{relative}:{call.lineno} builds its code instead of writing one")
+    assert total > 200, f"only {total} AppError calls found — has app/ moved?"
     assert unreadable == [], "\n".join(unreadable)
 
 
@@ -171,6 +170,95 @@ def test_the_declared_surfaces_are_all_used():
         for m in CALL_SITE.finditer(path.read_text(encoding="utf-8"))
     }
     assert set(contact_guard.SURFACES) == used
+
+
+PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
+TEMPLATE = re.compile(r'^  ([a-z][a-z0-9_]*): "((?:[^"\\]|\\.)*)",?$', re.MULTILINE)
+
+MESSAGES_TS = Path(__file__).resolve().parents[2] / "web" / "src" / "lib" / "errorMessages.ts"
+
+# Codes whose interpolation values are BUILT ON THE CLIENT rather than sent by
+# the backend, so the check below cannot match them up and should not try.
+# Today that is the contact guard: it sends `kinds` and `surface` as tokens,
+# and errorMessages.ts composes {{what}} and {{surface}} from them (see the
+# PREPARE map there). One entry, and it has to earn its place.
+CLIENT_COMPOSED = {"contact_details_found"}
+
+
+def _templates() -> dict[str, set[str]]:
+    """Every code in errorMessages.ts, mapped to the placeholders it asks for.
+
+    Reading TypeScript from a Python test is the mirror image of what
+    web/src/lib/errorMessages.test.ts does to these sources, and for the same
+    reason: the seam has one side in each language, so one of them has to look
+    across it.
+    """
+    source = MESSAGES_TS.read_text(encoding="utf-8")
+    wanted: dict[str, set[str]] = {}
+    for code, template in TEMPLATE.findall(source):
+        wanted.setdefault(code, set()).update(PLACEHOLDER.findall(template))
+    return wanted
+
+
+def _values_sent() -> dict[str, set[str]]:
+    """Every code the backend raises, mapped to the value keys it sends with it.
+
+    The UNION across call sites, not the intersection: two sites raising the
+    same code may legitimately send different extras, and a placeholder is
+    satisfied if some site provides it. A stricter rule would be a better
+    test, and would also fail on `escrow_not_found`, which several call sites
+    raise with nothing at all.
+    """
+    sent: dict[str, set[str]] = {}
+    for path in _python_files():
+        for call in _app_error_calls(path.read_text(encoding="utf-8")):
+            code = next((k.value.value for k in call.keywords
+                         if k.arg == "code" and isinstance(k.value, ast.Constant)), None)
+            if code is None:
+                continue
+            keys = sent.setdefault(code, set())
+            values = next((k.value for k in call.keywords if k.arg == "values"), None)
+            if isinstance(values, ast.Dict):
+                keys.update(k.value for k in values.keys
+                            if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    return sent
+
+
+def test_every_placeholder_has_a_value_behind_it():
+    """A {{placeholder}} nobody fills is a hole in a sentence.
+
+    THIS IS THE CHECK THAT WAS MISSING. `campaigns/cart.py` briefly sent
+    `values={"index": ...}` down one branch while its sentence interpolated
+    `{{cart_index}}`; both sides were internally consistent and neither test
+    suite could see the mismatch, because one asserted the code had a
+    translation and the other asserted the translation had a code. Nothing
+    asserted the sentence could actually be rendered. It was caught by
+    reading the diff, which is not a mechanism.
+
+    Only codes the backend actually raises are checked — a body written ahead
+    of its call site is fine and deliberate, and has no values to compare
+    against yet.
+    """
+    templates = _templates()
+    sent = _values_sent()
+    holes = []
+    for code, keys in sent.items():
+        if code in CLIENT_COMPOSED:
+            continue
+        missing = templates.get(code, set()) - keys
+        if missing:
+            holes.append(f"{code} interpolates {sorted(missing)} but no call site sends it")
+    assert holes == [], "\n".join(holes)
+
+
+def test_the_templates_were_actually_found():
+    """A regex that silently matched nothing would make the test above pass
+    over an empty set — the same failure the frontend suite guards against by
+    asserting it can see the backend at all."""
+    templates = _templates()
+    assert len(templates) > 100, f"only {len(templates)} templates parsed out of {MESSAGES_TS}"
+    assert "deliverable_note_too_long" in templates
+    assert templates["deliverable_note_too_long"] == {"max"}
 
 
 def test_the_whole_app_still_imports():

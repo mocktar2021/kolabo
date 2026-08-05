@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { Layout } from "../components/Layout";
 import { EvidencePicker } from "../components/EvidencePicker";
+import { DeliverablesPanel } from "../components/DeliverablesPanel";
 import { useAuth } from "../lib/auth";
 import {
   DISPUTE_REASONS,
@@ -460,6 +461,27 @@ export default function ContractPage() {
                   </>
                 )}
               </div>
+            )}
+
+            {/* Below the money card, because it is read in that order: what
+                was agreed, what was paid in, and then what was actually
+                delivered against it. Only once the contract binds both
+                parties — there is nothing to deliver against terms nobody has
+                signed, and the panel says so itself when the escrow is still
+                unfunded.
+
+                onChanged is `load` because approving a submission RELEASES the
+                escrow: the status chip and the whole payment card above are
+                then describing money that has just moved, and would otherwise
+                keep saying "held" until the next navigation. */}
+            {contract.fully_signed && (
+              <DeliverablesPanel
+                contractId={contract.id}
+                isBusiness={isBusiness}
+                hasEscrow={!!escrow}
+                escrowHeld={escrow?.status === "held"}
+                onChanged={load}
+              />
             )}
           </>
         )}

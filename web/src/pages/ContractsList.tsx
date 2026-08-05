@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api, mediaSrc } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
 import { ListFilter, type FilterOption } from "../components/ListFilter";
@@ -42,9 +43,9 @@ export default function ContractsList() {
   useEffect(() => {
     api<ContractListItem[]>("/contracts/mine", { token })
       .then(setContracts)
-      .catch((e) => setError(e instanceof Error ? e.message : "Error"))
+      .catch((e) => setError(errorText(e, t)))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, t]);
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 

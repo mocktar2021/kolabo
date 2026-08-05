@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { directOrderOf, orderTimeLeft } from "../lib/orders";
@@ -50,7 +51,7 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
       setDone(true);
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -144,7 +145,7 @@ function CounterForm({ campaignId, live, isOrder, onSent }: {
       });
       onSent();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -279,9 +280,11 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
       const contract = await api<Contract>(`/campaigns/orders/${live.id}/accept`, { method: "POST", token });
       navigate(`/contracts/${contract.id}`);
     } catch (e) {
-      // Covers the late click: "This order has expired." arrives as a 400 and
-      // is shown as the server wrote it.
-      setError(e instanceof Error ? e.message : "Error");
+      // Covers the late click. "This order has expired." arrives as a 400
+      // carrying no code yet, so errorText falls back to the server's own
+      // sentence — and starts showing a translated one the day orders.py
+      // sends a code for it.
+      setError(errorText(e, t));
       setBusy(false);
     }
   }
@@ -295,7 +298,7 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
       // status and the proposal status all move together server-side.
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -320,15 +323,13 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
       await api(`/campaigns/proposals/${live.id}/withdraw`, { method: "POST", token });
       onDone();
     } catch (e) {
-      /* By STATUS CODE. The 400 covers every way this can be refused — not
-         the live version any more, or a contract already generated from it —
-         and the French sentence names the second case because that is the one
-         with somewhere else to go. */
-      setError(
-        e instanceof ApiError && e.status === 400
-          ? t("undo.proposalRefused")
-          : e instanceof Error ? e.message : "Error"
-      );
+      /* By CODE, which separates what the shared 400 ran together:
+         `proposal_not_live` when the offer has already been superseded,
+         `proposal_has_contract` when a contract was generated from it, and
+         `proposal_is_direct_order` when the row belongs on the decline path
+         instead. Each of the three sends the creator somewhere different, so
+         each gets its own sentence. */
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -553,11 +554,11 @@ export default function MyInvitations() {
   function load() {
     api<InvitationWithCampaign[]>("/campaigns/invitations/mine", { token })
       .then(setInvitations)
-      .catch((e) => setError(e instanceof Error ? e.message : "Error"))
+      .catch((e) => setError(errorText(e, t)))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [token]);
+  useEffect(load, [token, t]);
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 

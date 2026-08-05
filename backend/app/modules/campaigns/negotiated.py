@@ -12,8 +12,9 @@ Placing the order is campaigns.service's job, and keeping this module free of
 it is what keeps the import running one way (service -> negotiated) instead of
 in a circle.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 
+from app.core.errors import AppError
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.core.pricing import min_price
 
@@ -67,14 +68,18 @@ def validate_offer(offer) -> None:
     the message.
     """
     if offer.platform not in PLATFORM_DELIVERABLES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_platform_unsupported",
+            values={"platform": offer.platform, "allowed": ", ".join(sorted(PLATFORM_DELIVERABLES))},
             detail=f"{offer.platform} is not a supported platform. Allowed: {', '.join(sorted(PLATFORM_DELIVERABLES))}",
         )
     if not is_valid_pair(offer.platform, offer.deliverable_type):
         allowed = ", ".join(PLATFORM_DELIVERABLES.get(offer.platform, [])) or "none"
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_not_on_platform",
+            values={"type": offer.deliverable_type, "platform": offer.platform, "allowed": allowed},
             detail=f"{offer.deliverable_type} is not available on {offer.platform}. Allowed: {allowed}",
         )
 
@@ -84,8 +89,10 @@ def validate_offer(offer) -> None:
     if not isinstance(quantity, int) or isinstance(quantity, bool) or not (
         MIN_OFFER_QUANTITY <= quantity <= MAX_OFFER_QUANTITY
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_quantity_range",
+            values={"min": MIN_OFFER_QUANTITY, "max": MAX_OFFER_QUANTITY},
             detail=(
                 "Deliverable quantity must be a whole number between "
                 f"{MIN_OFFER_QUANTITY} and {MAX_OFFER_QUANTITY}"
@@ -93,8 +100,9 @@ def validate_offer(offer) -> None:
         )
 
     if not isinstance(offer.rate_amount, int) or isinstance(offer.rate_amount, bool) or offer.rate_amount < 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_rate_invalid",
             detail="The rate must be a whole positive amount in minor units.",
         )
     currency = offer.currency.upper()
@@ -107,8 +115,10 @@ def validate_offer(offer) -> None:
         # that lands underneath it is the same listing wearing a different
         # hat, so it gets the same answer, in the same words the packages
         # module uses.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="price_below_floor",
+            values={"currency": currency, "floor": floor},
             detail=f"Minimum price for {currency} is {floor}.",
         )
 
@@ -116,8 +126,10 @@ def validate_offer(offer) -> None:
     if not isinstance(timeline_days, int) or isinstance(timeline_days, bool) or not (
         MIN_OFFER_TIMELINE_DAYS <= timeline_days <= MAX_OFFER_TIMELINE_DAYS
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_timeline_range",
+            values={"min": MIN_OFFER_TIMELINE_DAYS, "max": MAX_OFFER_TIMELINE_DAYS},
             detail=(
                 "Timeline must be a whole number of days between "
                 f"{MIN_OFFER_TIMELINE_DAYS} and {MAX_OFFER_TIMELINE_DAYS}"

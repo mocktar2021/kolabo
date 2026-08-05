@@ -580,7 +580,7 @@ def _validate_pair(platform: str, deliverable_type: str) -> None:
         allowed = ", ".join(PLATFORM_DELIVERABLES.get(platform, [])) or "none"
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
-            code="profile_deliverable_not_on_platform",
+            code="deliverable_not_on_platform",
             detail=f"{deliverable_type} is not available on {platform}. Allowed: {allowed}",
             # The platform and the deliverable type are machine values the
             # client chose from a list it already renders in the reader's
@@ -599,7 +599,7 @@ def _validate_price_floor(price_amount: int, currency: str) -> None:
     if floor is not None and price_amount < floor:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
-            code="profile_price_below_floor",
+            code="price_below_floor",
             detail=f"Minimum price for {currency} is {floor}.",
             values={"currency": currency, "floor": floor},
         )
@@ -650,7 +650,7 @@ def update_package(db: Session, package_id: str, user_id: str, payload: schemas.
     if pkg is None:
         raise AppError(
             status.HTTP_404_NOT_FOUND,
-            code="profile_package_not_found",
+            code="package_not_found",
             detail="Package not found",
         )
     if pkg.user_id != user_id:
@@ -684,7 +684,7 @@ def delete_package(db: Session, package_id: str, user_id: str) -> None:
     if pkg is None:
         raise AppError(
             status.HTTP_404_NOT_FOUND,
-            code="profile_package_not_found",
+            code="package_not_found",
             detail="Package not found",
         )
     if pkg.user_id != user_id:

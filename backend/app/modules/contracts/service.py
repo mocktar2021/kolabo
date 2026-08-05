@@ -94,7 +94,11 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
     if campaign.business_user_id != business_user_id:
         raise AppError(
             status.HTTP_403_FORBIDDEN,
-            code="contract_not_your_campaign",
+            # campaigns' code, not a contract one: the rule is that this
+            # campaign is not yours, and it is enforced identically in
+            # campaigns/service.py. Two codes for one rule is two sentences to
+            # keep in step in two languages.
+            code="campaign_not_yours",
             detail="Not your campaign",
         )
 

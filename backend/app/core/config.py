@@ -34,6 +34,16 @@ class Settings(BaseSettings):
     # enough to keep payouts moving, long enough that a weekend does not run
     # it out. Reset on every resubmission, so revised work earns a fresh look.
     review_window_days: int = 4
+    # Days between "your delivery date has passed" and the escrow being
+    # refunded to the brand, when the creator has submitted NOTHING at all.
+    #
+    # The pause exists because a refund ends the job. A creator who is three
+    # days late and about to post is not the same person as one who has
+    # vanished, and the platform cannot tell them apart — so it says so out
+    # loud and gives the late one a window to act in. Five days is long enough
+    # to cover a bad week and short enough that a brand's money is not stuck
+    # for a month. See payments.service.run_non_delivery_refunds.
+    non_delivery_grace_days: int = 5
     # Hours the other party has to answer a dispute before it reaches the
     # admin queue. Long enough that somebody in another timezone with a day
     # job can actually reply; short enough that a real refusal is not a month

@@ -14,7 +14,18 @@
    that somebody said no; withdrawing records that an offer was taken off the
    table before anyone answered. Putting a refusal on a record that never made
    one is the kind of small dishonesty that makes a reputation system
-   worthless. */
+   worthless.
+
+   THE REFUSAL SENTENCES ARE LEAVING THIS FILE, one module at a time. They were
+   chosen by HTTP status — a page caught a 400 and picked a key — which caps a
+   screen at one localised message per status and forces one sentence to cover
+   several rules. contractFunded and contractRefused are already gone: the
+   contracts module now sends a code per rule, so apiError.contract_* says
+   which of "already cancelled", "already signed" and "money in escrow" it
+   actually was. invitationRefused and proposalRefused are still here and go
+   the same way when campaigns is converted. What stays for good is the copy
+   below that is not a refusal: the buttons, the explanations and the
+   confirmations, which are the product's own words rather than the API's. */
 import i18n from "../i18n";
 
 const fr = {
@@ -42,10 +53,9 @@ const fr = {
   contractCancel: "Annuler le contrat",
   contractConfirm: "Annuler ce contrat ? L'autre partie en sera informée et le contrat passera au statut « annulé ». Il n'y a rien à rembourser — aucun argent n'a été bloqué — mais l'accord est terminé : pour retravailler ensemble, il faudra repartir d'une nouvelle proposition.",
   contractYes: "Annuler le contrat",
-  contractNo: "Le garder",
-  /* Le 409, et la seule chose qu'il peut vouloir dire ici. */
-  contractFunded: "Ce contrat est financé. Passez par le litige.",
-  contractRefused: "Ce contrat ne peut plus être annulé : il est déjà signé par les deux parties, ou déjà annulé."
+  contractNo: "Le garder"
+  /* Le refus lui-même vit désormais dans apiError.contract_* : voir
+     lib/errorMessages.ts et le commentaire en tête de ce fichier. */
 };
 
 const en = {
@@ -66,9 +76,7 @@ const en = {
   contractCancel: "Cancel the contract",
   contractConfirm: "Cancel this contract? The other party is told and the contract moves to \"cancelled\". There is nothing to refund — no money was ever held — but the agreement is over: working together again means starting from a new proposal.",
   contractYes: "Cancel the contract",
-  contractNo: "Keep it",
-  contractFunded: "This contract is funded. Use the dispute path.",
-  contractRefused: "This contract can no longer be cancelled: it is already signed by both parties, or already cancelled."
+  contractNo: "Keep it"
 };
 
 i18n.addResourceBundle("fr", "translation", { undo: fr }, true, true);

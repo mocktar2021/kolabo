@@ -237,13 +237,12 @@ export default function ContractPage() {
       setConfirmingCancel(false);
       await load();
     } catch (e) {
-      setCancelError(
-        e instanceof ApiError && e.status === 409
-          ? t("undo.contractFunded")
-          : e instanceof ApiError && e.status === 400
-            ? t("undo.contractRefused")
-            : errorText(e, t)
-      );
+      /* The status mapping this replaces could only ever say one thing per
+         status, so its 400 branch had to cover BOTH "already cancelled" and
+         "already signed by both parties" in one sentence — two situations
+         that call for completely different next steps. Now that contracts
+         carry codes, errorText tells them apart. */
+      setCancelError(errorText(e, t));
     } finally {
       setBusy(false);
     }

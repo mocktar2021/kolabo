@@ -55,6 +55,24 @@ export const error_fr = {
   escrow_not_held: "Le séquestre n'est pas bloqué.",
   escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
 
+  contract_proposal_not_found: "Proposition introuvable.",
+  contract_campaign_not_found: "Campagne introuvable.",
+  contract_not_your_campaign: "Cette campagne n'est pas la vôtre.",
+  contract_already_exists: "Un contrat existe déjà pour cette proposition.",
+  contract_proposal_not_submitted: "Seule une proposition en cours peut être acceptée.",
+  contract_not_found: "Contrat introuvable.",
+  contract_none_for_proposal: "Aucun contrat pour cette proposition.",
+  contract_not_a_party: "Vous n'êtes pas partie à ce contrat.",
+  contract_signed_immutable: "Ce contrat est entièrement signé : il ne peut plus être modifié.",
+  contract_you_already_signed: "Vous avez déjà signé.",
+  /* Ces trois-là remplacent undo.contractFunded / undo.contractRefused, qui
+     étaient choisis d'après le code HTTP : le 400 servait à la fois pour un
+     contrat déjà annulé et pour un contrat signé, deux situations qui
+     n'appellent pas la même suite. */
+  contract_already_cancelled: "Ce contrat est déjà annulé.",
+  contract_cancel_signed: "Ce contrat est signé par les deux parties. Elles s'y sont engagées, et ce n'est pas quelque chose qu'une seule peut annuler.",
+  contract_cancel_funded: "Ce contrat a de l'argent bloqué en séquestre. Y mettre fin, c'est décider qui doit quoi : cela passe par le litige et le remboursement, pas par une annulation.",
+
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
   dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
@@ -133,6 +151,20 @@ export const error_en = {
   escrow_not_a_party: "You are not a party to this escrow.",
   escrow_not_held: "This escrow is not held.",
   escrow_release_business_only: "Only the business can confirm delivery.",
+
+  contract_proposal_not_found: "Proposal not found.",
+  contract_campaign_not_found: "Campaign not found.",
+  contract_not_your_campaign: "This campaign is not yours.",
+  contract_already_exists: "A contract already exists for this proposal.",
+  contract_proposal_not_submitted: "Only a live proposal can be accepted.",
+  contract_not_found: "Contract not found.",
+  contract_none_for_proposal: "No contract for this proposal.",
+  contract_not_a_party: "You are not a party to this contract.",
+  contract_signed_immutable: "This contract is fully signed and can no longer be changed.",
+  contract_you_already_signed: "You have already signed.",
+  contract_already_cancelled: "This contract is already cancelled.",
+  contract_cancel_signed: "This contract is fully signed. Both parties agreed to it, and it is not something either side can cancel alone.",
+  contract_cancel_funded: "This contract has money in escrow. Ending it is a question about who is owed what, which is the dispute and refund path, not a cancellation.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

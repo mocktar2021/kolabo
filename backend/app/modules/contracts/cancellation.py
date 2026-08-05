@@ -42,9 +42,10 @@ read through payments.models (MODELS ONLY, never payments.service, which
 imports contracts.models and would close the circle). campaigns.editing reads
 contracts the same way for the same reason.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.contracts import models
 from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
@@ -69,22 +70,34 @@ def cancel_contract(db: Session, contract_id: str, user_id: str) -> dict:
     """
     contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            # The same rule contracts.service enforces, so the same code.
+            code="contract_not_found",
+            detail="Contract not found",
+        )
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract"
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="contract_not_a_party",
+            detail="Not a party to this contract",
         )
 
     if contract.status == models.CANCELLED:
         # Refused rather than treated as a no-op, so a double click does not
         # send the other party a second "this is off" for something that was
         # already off — the same call cancel_campaign makes.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_already_cancelled",
             detail="This contract is already cancelled.",
         )
     if contract.status == models.SIGNED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=SIGNED_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_cancel_signed",
+            detail=SIGNED_DETAIL,
+        )
 
     escrow = (
         db.query(payments.Escrow)
@@ -97,7 +110,11 @@ def cancel_contract(db: Session, contract_id: str, user_id: str) -> dict:
         # different questions, and this is the one about money: if funding
         # ever loosens, the guard that must not have been an assumption is
         # this one.
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=FUNDED_DETAIL)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="contract_cancel_funded",
+            detail=FUNDED_DETAIL,
+        )
 
     contract.status = models.CANCELLED
     db.add(

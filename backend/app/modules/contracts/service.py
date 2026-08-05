@@ -9,10 +9,11 @@ signatures are required before the contract is fully signed (which is what
 Epic G will check before unlocking payment), and once signed the contract is
 immutable. A ContractEvent audit row is written for every lifecycle event.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
@@ -78,12 +79,24 @@ def _out(contract: models.Contract) -> dict:
 def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str) -> dict:
     proposal = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == proposal_id).first()
     if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="contract_proposal_not_found",
+            detail="Proposal not found",
+        )
     campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == proposal.campaign_id).first()
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="contract_campaign_not_found",
+            detail="Campaign not found",
+        )
     if campaign.business_user_id != business_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your campaign")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="contract_not_your_campaign",
+            detail="Not your campaign",
+        )
 
     # A proposal id names a negotiation, not a frozen offer. Since the business
     # can now counter, the chain moves on — sometimes by the business's own
@@ -98,9 +111,17 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
         .first()
     )
     if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A contract already exists for this proposal")
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="contract_already_exists",
+            detail="A contract already exists for this proposal",
+        )
     if latest.status != campaigns.SUBMITTED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only a submitted proposal can be accepted")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_proposal_not_submitted",
+            detail="Only a submitted proposal can be accepted",
+        )
 
     business = db.query(User).filter(User.id == business_user_id).first()
     influencer = db.query(User).filter(User.id == latest.influencer_user_id).first()
@@ -135,9 +156,17 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
 def get_contract(db: Session, contract_id: str, user_id: str) -> dict:
     contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="contract_not_found",
+            detail="Contract not found",
+        )
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="contract_not_a_party",
+            detail="Not a party to this contract",
+        )
     out = _out(contract)
     out["body"] = contract.body
     return out
@@ -146,22 +175,48 @@ def get_contract(db: Session, contract_id: str, user_id: str) -> dict:
 def sign_contract(db: Session, contract_id: str, user_id: str, signature: str) -> dict:
     contract = db.query(models.Contract).filter(models.Contract.id == contract_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="contract_not_found",
+            detail="Contract not found",
+        )
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="contract_not_a_party",
+            detail="Not a party to this contract",
+        )
     if contract.status == models.SIGNED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contract is fully signed and immutable")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_signed_immutable",
+            detail="Contract is fully signed and immutable",
+        )
 
     now = models.utcnow()
     if user_id == contract.business_user_id:
         if contract.business_signed_at is not None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already signed")
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                # One code for both sides. It is the same rule — you sign once —
+                # and which half of the contract the caller is on is not
+                # something the sentence says or needs to.
+                code="contract_you_already_signed",
+                detail="You have already signed",
+            )
         contract.business_signature = signature
         contract.business_signed_at = now
         db.add(models.ContractEvent(contract_id=contract.id, actor_user_id=user_id, event="signed_business"))
     else:
         if contract.influencer_signed_at is not None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already signed")
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                # One code for both sides. It is the same rule — you sign once —
+                # and which half of the contract the caller is on is not
+                # something the sentence says or needs to.
+                code="contract_you_already_signed",
+                detail="You have already signed",
+            )
         contract.influencer_signature = signature
         contract.influencer_signed_at = now
         db.add(models.ContractEvent(contract_id=contract.id, actor_user_id=user_id, event="signed_influencer"))
@@ -182,9 +237,17 @@ def sign_contract(db: Session, contract_id: str, user_id: str, signature: str) -
 def get_contract_by_proposal(db: Session, proposal_id: str, user_id: str) -> dict:
     contract = db.query(models.Contract).filter(models.Contract.proposal_id == proposal_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No contract for this proposal")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="contract_none_for_proposal",
+            detail="No contract for this proposal",
+        )
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="contract_not_a_party",
+            detail="Not a party to this contract",
+        )
     return _out(contract)
 
 

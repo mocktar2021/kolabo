@@ -41,6 +41,8 @@ CONVERTED = [
     "modules/payments/service.py",
     "modules/payments/disputes.py",
     "modules/payments/resolution.py",
+    "modules/contracts/service.py",
+    "modules/contracts/cancellation.py",
 ]
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)

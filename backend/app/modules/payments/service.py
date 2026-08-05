@@ -172,6 +172,46 @@ def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     _award_referral_credits(db, escrow)
 
 
+def _refund(db: Session, escrow: models.Escrow, actor_id: str) -> None:
+    """Give the whole amount back. The mirror of _release, and NO COMMISSION.
+
+    The platform's fee is a share of a collaboration that happened. Nothing
+    happened here, so taking a cut of a refund would be charging a brand for
+    the privilege of not receiving anything — which is both wrong and the
+    fastest way to make a buyer never fund an escrow again.
+
+    Whole amounts only. A split belongs to payments.resolution, where an admin
+    has read a dispute and decided who is owed what; this path has no such
+    judgement behind it and must not pretend to one. If some of the work
+    arrived, this is not the function for it — see run_non_delivery_refunds
+    for why an escrow with any submission against it never reaches here.
+    """
+    business = db.query(User).filter(User.id == escrow.business_user_id).first()
+    refund_ref = payment_provider.payout(business.phone, escrow.amount, escrow.currency)
+    escrow.provider_payout_ref = refund_ref
+    escrow.status = models.REFUNDED
+    escrow.resolved_at = models.utcnow()
+    _event(db, escrow, actor_id, "refunded")
+    notify(
+        db,
+        escrow.business_user_id,
+        "payment",
+        "Nothing was delivered, so your escrow has been refunded in full.",
+        link=f"/contracts/{escrow.contract_id}",
+        params={"key": "escrow_refunded_brand"},
+    )
+    notify(
+        db,
+        escrow.influencer_user_id,
+        "payment",
+        "The delivery window closed with nothing submitted, so the escrow was refunded.",
+        link=f"/contracts/{escrow.contract_id}",
+        params={"key": "escrow_refunded_creator"},
+    )
+    # No referral credit. _award_referral_credits hangs off a COMPLETED order,
+    # and this is the opposite of one.
+
+
 def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:
     escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
     if escrow is None:
@@ -245,6 +285,124 @@ def run_due_auto_releases(db: Session, now=None) -> int:
         _release(db, escrow, "system_auto_release")
     db.commit()
     return len(due)
+
+
+def _undelivered_escrows(db: Session):
+    """Held escrows on contracts that have NEVER had a submission against them.
+
+    NEVER, in any status — not "no open submission", which is what the
+    auto-release sweep asks. The difference is the whole boundary between the
+    two jobs and it is deliberate:
+
+      * A contract with no submission row at all is a NON-DELIVERY. Nobody has
+        offered anything, so there is nothing to review, nothing to dispute
+        about the work, and the only honest ending is the brand's money going
+        back.
+      * A contract with ANY submission row — open, approved, changes
+        requested, even withdrawn — has had work offered on it. What happens
+        next is a question about that work: the brand reviews it, or one of
+        them opens a dispute. It is not this job's business, and a creator who
+        submitted and then withdrew must not have their escrow refunded out
+        from under them by a clock.
+
+    That also makes the two sweeps disjoint by construction rather than by
+    both of them remembering to check. An escrow is in exactly one of the two
+    sets, and the set it is in cannot change back.
+    """
+    ever_submitted = select(deliverables.DeliverableSubmission.contract_id)
+    return (
+        db.query(models.Escrow, contracts.Contract)
+        .join(contracts.Contract, contracts.Contract.id == models.Escrow.contract_id)
+        .filter(
+            models.Escrow.status == models.HELD,
+            models.Escrow.contract_id.not_in(ever_submitted),
+        )
+    )
+
+
+def run_non_delivery_refunds(db: Session, now=None) -> dict:
+    """Warn, then refund, an escrow nobody ever delivered against.
+
+    THIS IS THE HOLE THE AUTO-RELEASE FIX OPENED. Anchoring auto-release to a
+    submission was right — money must not pay itself out for work that does
+    not exist — but it left the opposite case with no ending at all: a brand
+    funds an escrow, the creator goes quiet, and the money sits held forever.
+    Nothing refunded it, nothing chased it, and neither party was told
+    anything. "Forever" is not a state a payment system may have.
+
+    THE DEADLINE IS THE CREATOR'S OWN PROMISE. contract.timeline_days is what
+    they quoted and what the brand accepted, so the delivery date is
+    held_at + timeline_days: the clock starts at funding because that is when
+    the creator may actually begin — deliverables.submit refuses work on an
+    unfunded contract. Derived rather than stored, because both halves are
+    immutable once signed, and deriving it means escrows funded BEFORE this
+    shipped are covered too. Those are exactly the ones stuck today.
+
+    TWO STAGES, because refunding without warning is how you turn a late
+    creator into a dispute. At the deadline both parties are told and the
+    escrow is stamped; only after non_delivery_grace_days more does the money
+    move. A creator who submits anything in between leaves the set entirely
+    and no refund happens — see _undelivered_escrows.
+
+    Disputed escrows are never touched: the filter is HELD only, so a frozen
+    escrow belongs to the dispute path from the moment it freezes.
+    """
+    now = now or models.utcnow()
+    warned = 0
+    refunded = 0
+
+    for escrow, contract in _undelivered_escrows(db).filter(
+        models.Escrow.non_delivery_warned_at.is_(None)
+    ):
+        if escrow.held_at + timedelta(days=contract.timeline_days) <= now:
+            escrow.non_delivery_warned_at = now
+            _event(db, escrow, "system_non_delivery", "delivery_overdue")
+            notify(
+                db,
+                escrow.influencer_user_id,
+                "payment",
+                (
+                    "The delivery date on this contract has passed with nothing submitted. "
+                    f"The escrow is refunded to the brand in {settings.non_delivery_grace_days} "
+                    "days unless you submit your work."
+                ),
+                link=f"/contracts/{escrow.contract_id}",
+                params={"key": "delivery_overdue_creator", "days": settings.non_delivery_grace_days},
+            )
+            notify(
+                db,
+                escrow.business_user_id,
+                "payment",
+                (
+                    "The delivery date on this contract has passed with nothing submitted. "
+                    f"Your escrow is refunded automatically in {settings.non_delivery_grace_days} "
+                    "days if nothing arrives."
+                ),
+                link=f"/contracts/{escrow.contract_id}",
+                params={"key": "delivery_overdue_brand", "days": settings.non_delivery_grace_days},
+            )
+            warned += 1
+
+    # Read AFTER the warning pass and with its own cutoff, so an escrow warned
+    # in this same run cannot also be refunded by it: the grace period has to
+    # be time somebody could actually have used, not a formality a single
+    # sweep satisfies on its own.
+    #
+    # That holds whether or not the session autoflushes. Unflushed, the rows
+    # just warned still read as NULL and fail the IS NOT NULL filter; flushed,
+    # they carry `now` and fail the cutoff. Two different reasons, same
+    # answer — worth knowing, because a test that turns autoflush on or off
+    # would otherwise look like it was testing this.
+    cutoff = now - timedelta(days=settings.non_delivery_grace_days)
+    for escrow, _contract in _undelivered_escrows(db).filter(
+        models.Escrow.non_delivery_warned_at.is_not(None),
+        models.Escrow.non_delivery_warned_at <= cutoff,
+    ):
+        _refund(db, escrow, "system_non_delivery")
+        refunded += 1
+
+    db.commit()
+    return {"warned": warned, "refunded": refunded}
 
 
 def get_escrow(db: Session, user_id: str, escrow_id: str) -> dict:

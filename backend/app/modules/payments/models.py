@@ -73,6 +73,13 @@ class Escrow(Base):
     status: Mapped[str] = mapped_column(String, default=HELD, nullable=False)
     held_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     due_release_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # When both parties were told the delivery date had passed with nothing
+    # submitted. Null means not yet, which is the state every escrow starts in
+    # and most stay in. The DEADLINE itself is not stored — it is held_at plus
+    # the contract's timeline_days, both immutable once signed, which is what
+    # lets the sweep cover escrows funded before it existed. See
+    # payments.service.run_non_delivery_refunds.
+    non_delivery_warned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 

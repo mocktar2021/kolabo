@@ -20,6 +20,13 @@ export const body_fr = {
   escrow_funded_brand: "Votre paiement est bloqué en séquestre.",
   escrow_released_creator: "Séquestre libéré, votre paiement est en route.",
   escrow_released_brand: "Séquestre libéré au créateur.",
+  /* Non-delivery: the delivery date passed with nothing submitted. Two
+     stages, so both parties hear the warning before any money moves — see
+     payments.service.run_non_delivery_refunds. */
+  delivery_overdue_creator: "La date de livraison est passée et rien n'a été soumis. Le séquestre sera remboursé à la marque dans {{days}} jours si vous n'envoyez pas votre livrable.",
+  delivery_overdue_brand: "La date de livraison est passée et rien n'a été soumis. Votre séquestre vous sera remboursé automatiquement dans {{days}} jours si rien n'arrive.",
+  escrow_refunded_brand: "Rien n'a été livré : votre séquestre vous a été intégralement remboursé.",
+  escrow_refunded_creator: "Le délai de livraison s'est écoulé sans aucun envoi : le séquestre a été remboursé à la marque.",
   dispute_opened_other: "Un litige a été ouvert sur votre séquestre. Vous avez {{hours}} h pour répondre ou le résoudre avant qu'il ne soit transmis à l'équipe Kolabo.",
   dispute_opened_self: "Votre litige a été ouvert et le séquestre est gelé. L'autre partie a {{hours}} h pour répondre.",
   dispute_escalated_both: "Les deux parties ont répondu ; le litige a été transmis à l'équipe Kolabo pour décision.",
@@ -85,6 +92,10 @@ export const body_en = {
   escrow_funded_brand: "Your payment is held in escrow.",
   escrow_released_creator: "Escrow released, your payout is on the way.",
   escrow_released_brand: "Escrow released to the creator.",
+  delivery_overdue_creator: "The delivery date has passed with nothing submitted. The escrow is refunded to the brand in {{days}} days unless you submit your work.",
+  delivery_overdue_brand: "The delivery date has passed with nothing submitted. Your escrow is refunded to you automatically in {{days}} days if nothing arrives.",
+  escrow_refunded_brand: "Nothing was delivered, so your escrow has been refunded to you in full.",
+  escrow_refunded_creator: "The delivery window closed with nothing submitted, so the escrow was refunded to the brand.",
   dispute_opened_other: "A dispute was opened on your escrow. You have {{hours}} hours to answer or resolve it before it goes to the Kolabo team.",
   dispute_opened_self: "Your dispute was opened and the escrow is frozen. The other party has {{hours}} hours to answer.",
   dispute_escalated_both: "Both parties have answered the dispute, so it has gone to the Kolabo team for a decision.",

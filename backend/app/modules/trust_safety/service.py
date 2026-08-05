@@ -193,6 +193,16 @@ def resolve_report(db: Session, admin_id: str, report_id: str, decision: str) ->
         report.reporter_user_id,
         "report",
         f"Your report about a {report.target_type} has been reviewed and the case is closed.",
+        # NO LINK: there is no screen where somebody reads their own reports.
+        # A row that marks itself read is the honest shape until there is.
+        #
+        # THE LOCALISED BODY DROPS THE TARGET TYPE, deliberately. target_type
+        # is a database enum ("user", "campaign"), and interpolating it into
+        # French prose would put an English word mid-sentence. The reporter
+        # knows what they reported; the stored `message` keeps it for the
+        # email. What must NOT appear either way is the DECISION — see this
+        # function's docstring.
+        params={"key": "report_reviewed"},
     )
     db.commit()
     return {

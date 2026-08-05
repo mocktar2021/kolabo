@@ -69,14 +69,32 @@ def decide_document(db: Session, admin_id: str, doc_id: str, decision: str, reas
     # sentence — "business_registration" in a notification reads like a leak
     # of an internal name.
     doc_name = doc.doc_type.replace("_", " ")
+    approved = decision == "approved"
+    # NO LINK, and that is the honest answer rather than an oversight: the web
+    # app has no verification screen to send anybody to yet (nothing under
+    # web/src references the verification-documents endpoints). A link to
+    # /account would land the reader somewhere that says nothing about their
+    # document, which is worse than a row that simply marks itself read. When
+    # the screen exists, this is the line that gets a link.
     notify(
         db,
         doc.user_id,
         "verification",
         (
             f"Your {doc_name} document was approved."
-            if decision == "approved"
+            if approved
             else f"Your {doc_name} document was rejected: {reason}"
+        ),
+        params=(
+            {"key": "verification_document_approved", "document": doc_name}
+            if approved
+            # reason is never None here: the guard at the top of this function
+            # refuses a rejection without one.
+            else {
+                "key": "verification_document_rejected",
+                "document": doc_name,
+                "reason": reason,
+            }
         ),
     )
     db.commit()
@@ -101,11 +119,24 @@ def decide_social(db: Session, admin_id: str, social_id: str, decision: str, rea
     # Unlike a document rejection, a reason is optional here, so it is
     # appended only when there is one rather than printing "None".
     subject = f"Your {account.platform} account @{account.handle}"
+    shared = {"platform": account.platform, "handle": account.handle}
     if decision == "approved":
         message = f"{subject} was verified."
+        params = {"key": "social_verified", **shared}
     else:
         message = f"{subject} was rejected" + (f": {reason}" if reason else ".")
-    notify(db, account.user_id, "verification", message)
+        # Two keys rather than one with an empty {{reason}}: an optional value
+        # interpolated when absent leaves "rejected : " with a dangling colon,
+        # which reads as a bug in the message rather than as an absent reason.
+        params = (
+            {"key": "social_rejected_reason", "reason": reason, **shared}
+            if reason
+            else {"key": "social_rejected", **shared}
+        )
+    # Unlike a verification document, this one HAS a screen: social accounts
+    # are managed on ProfileSetup (/profile), where the verified badge the
+    # decision just changed is on show.
+    notify(db, account.user_id, "verification", message, link="/profile", params=params)
     db.commit()
     return {"id": account.id, "status": account.status, "reviewer_id": account.reviewer_id}
 

@@ -132,6 +132,11 @@ def accept_direct_order(db: Session, influencer_user_id: str, proposal_id: str) 
         campaign.business_user_id,
         "direct_order",
         f"Your order {campaign.title} was accepted. The contract is ready to sign.",
+        # Straight to the contract, which is the thing the buyer now has to do
+        # something about. routeForType would only manage /campaigns, and the
+        # contract id is right here from the call above.
+        link=f"/contracts/{contract['id']}",
+        params={"key": "order_accepted", "campaign": campaign.title},
     )
     db.commit()
     return contract
@@ -169,6 +174,8 @@ def decline_direct_order(db: Session, influencer_user_id: str, proposal_id: str)
         campaign.business_user_id,
         "direct_order",
         f"Your order {campaign.title} was declined. You were not charged.",
+        link=f"/campaigns/{campaign.id}",
+        params={"key": "order_declined", "campaign": campaign.title},
     )
     db.commit()
     db.refresh(proposal)
@@ -218,12 +225,18 @@ def expire_stale_orders(db: Session, now=None) -> int:
             proposal.influencer_user_id,
             "direct_order",
             f"The order {campaign.title} expired because it was not answered in time.",
+            # The creator's own list, where the lapsed order now sits. A
+            # brand's /campaigns/{id} is not theirs to open.
+            link="/invitations",
+            params={"key": "order_expired_creator", "campaign": campaign.title},
         )
         notify(
             db,
             campaign.business_user_id,
             "direct_order",
             f"Your order {campaign.title} expired unanswered. You were not charged.",
+            link=f"/campaigns/{campaign.id}",
+            params={"key": "order_expired_brand", "campaign": campaign.title},
         )
     db.commit()
     return len(stale)

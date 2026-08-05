@@ -23,10 +23,11 @@ the other side.
 """
 from datetime import timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models
@@ -34,6 +35,17 @@ from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
 from app.modules.payments import service as payments_service
 from app.modules.profiles.models import MediaAsset
+
+# EVERY REFUSAL IN THIS MODULE CARRIES A CODE (app.core.errors.AppError), which
+# makes this the first module converted off bare HTTPException. Deliverables
+# went first because its refusals are the ones a creator is most likely to hit
+# while money is already in escrow — "the brand has not answered yet", "this
+# escrow is no longer held" — and reading those in a language you do not speak,
+# about your own unpaid work, is the worst version of the problem.
+#
+# The English `detail` is unchanged in every case below. It is not a leftover:
+# it is the fallback for a client that has not learned the code, and it is what
+# a log shows. What is new is only the code beside it.
 
 # Proof is a handful of screenshots, not an album. The same ceiling disputes
 # put on evidence, and for the same reason: it keeps one request from pulling a
@@ -88,9 +100,14 @@ def _checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     if not ids:
         return []
     if len(ids) > MAX_ATTACHMENTS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_attachments_max",
             detail=f"At most {MAX_ATTACHMENTS} files can be attached.",
+            # The ceiling travels as a number so the translated sentence can
+            # put it wherever that language puts it, rather than either
+            # language hard-coding a 10 that then drifts from the constant.
+            values={"max": MAX_ATTACHMENTS},
         )
     found = {
         asset.id: asset for asset in db.query(MediaAsset).filter(MediaAsset.id.in_(ids)).all()
@@ -98,12 +115,15 @@ def _checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     for media_id in ids:
         asset = found.get(media_id)
         if asset is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found"
+            raise AppError(
+                status.HTTP_404_NOT_FOUND,
+                code="deliverable_attachment_not_found",
+                detail="Attachment not found",
             )
         if asset.owner_user_id != owner_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                code="deliverable_attachment_not_yours",
                 detail="You can only attach files you uploaded",
             )
     return ids
@@ -112,14 +132,20 @@ def _checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
 def _load_contract(db: Session, contract_id: str) -> contracts.Contract:
     contract = db.query(contracts.Contract).filter(contracts.Contract.id == contract_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="deliverable_contract_not_found",
+            detail="Contract not found",
+        )
     return contract
 
 
 def _require_party(contract: contracts.Contract, user_id: str) -> None:
     if user_id not in (contract.business_user_id, contract.influencer_user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this contract"
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="deliverable_not_a_party",
+            detail="Not a party to this contract",
         )
 
 
@@ -223,47 +249,64 @@ def submit(db: Session, actor_user_id: str, payload) -> dict:
     if actor_user_id != contract.influencer_user_id:
         # 403 rather than 400: they are a party, they simply have no standing
         # to deliver — the brand is the buyer, not the supplier.
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="deliverable_submit_creator_only",
             detail="Only the creator on this contract can submit work.",
         )
     if contract.status != contracts.SIGNED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_contract_not_signed",
             detail="Work can only be submitted on a fully signed contract.",
         )
 
     escrow = _escrow_for(db, contract.id)
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NOT_FUNDED_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_escrow_not_funded",
+            detail=NOT_FUNDED_DETAIL,
+        )
     if escrow.status != payments.HELD:
         # Released, refunded or frozen in a dispute. None of the three is a
         # state in which a new hand-in means anything, and answering 200 would
         # tell a creator their work was filed against money that has already
         # moved.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_escrow_not_held",
             detail="This escrow is no longer held, so work cannot be submitted against it.",
         )
 
     # Checked before the payload is validated, so a double submit is told the
     # real obstacle rather than being asked to fix a link it already sent.
     if open_submission_for_contract(db, contract.id) is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OPEN_ALREADY_DETAIL)
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="deliverable_submission_open_already",
+            detail=OPEN_ALREADY_DETAIL,
+        )
 
     link_url = (payload.link_url or "").strip() or None
     note = (payload.note or "").strip() or None
     if note is not None and len(note) > MAX_NOTE_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_note_too_long",
             detail=f"A note is at most {MAX_NOTE_CHARS} characters.",
+            values={"max": MAX_NOTE_CHARS},
         )
     media_ids = _checked_media(db, actor_user_id, payload.media_ids)
     if link_url is None and not media_ids:
         # A submission that points at nothing is not a submission. Refused
         # rather than stored, because the brand's next action on it releases
         # money.
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=EMPTY_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_submission_empty",
+            detail=EMPTY_DETAIL,
+        )
 
     submission = models.DeliverableSubmission(
         contract_id=contract.id,
@@ -328,7 +371,11 @@ def _load_submission(db: Session, submission_id: str):
         .first()
     )
     if submission is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="deliverable_submission_not_found",
+            detail="Submission not found",
+        )
     return submission, _load_contract(db, submission.contract_id)
 
 
@@ -336,13 +383,15 @@ def _require_reviewable(submission, actor_user_id: str, contract: contracts.Cont
     """The brand, on an attempt nobody has answered yet."""
     _require_party(contract, actor_user_id)
     if actor_user_id != contract.business_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="deliverable_review_business_only",
             detail="Only the business on this contract can review submitted work.",
         )
     if submission.status != models.SUBMITTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_already_answered",
             detail="This submission has already been answered.",
         )
 
@@ -366,13 +415,18 @@ def approve(db: Session, actor_user_id: str, submission_id: str) -> dict:
 
     escrow = _escrow_for(db, contract.id)
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=NOT_FUNDED_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_escrow_not_funded",
+            detail=NOT_FUNDED_DETAIL,
+        )
     if escrow.status != payments.HELD:
         # Most likely a dispute froze it between the submission and this
         # click, or the sweep auto-released it. Either way the money is no
         # longer this button's to move.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_release_escrow_not_held",
             detail="This escrow is not held, so it cannot be released.",
         )
 
@@ -405,14 +459,17 @@ def request_changes(db: Session, actor_user_id: str, submission_id: str, payload
 
     note = (payload.note or "").strip()
     if not note:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_changes_need_note",
             detail="Say what needs to change, so the creator can fix it.",
         )
     if len(note) > MAX_NOTE_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_note_too_long",
             detail=f"A note is at most {MAX_NOTE_CHARS} characters.",
+            values={"max": MAX_NOTE_CHARS},
         )
 
     submission.status = models.CHANGES_REQUESTED
@@ -448,13 +505,15 @@ def withdraw(db: Session, actor_user_id: str, submission_id: str) -> dict:
     submission, contract = _load_submission(db, submission_id)
     _require_party(contract, actor_user_id)
     if submission.submitted_by_user_id != actor_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="deliverable_withdraw_own_only",
             detail="Only the creator who submitted this work can withdraw it",
         )
     if submission.status != models.SUBMITTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_already_answered",
             detail="This submission has already been answered.",
         )
     submission.status = models.WITHDRAWN

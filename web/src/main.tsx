@@ -35,6 +35,11 @@ import "./lib/statusStrings";
    i18n.ts — it sits with the other feature bundles for the reason they all
    exist, which is to keep the 40 KB i18n.ts about core app copy. */
 import "./lib/deliverableStrings";
+/* What the API says when it refuses. Owns the apiError.* group outright, so
+   no ordering constraint against i18n.ts either — but unlike every bundle
+   above it belongs to no single feature: any page that calls the API can
+   reach a sentence in it. See lib/errorMessages.ts. */
+import "./lib/errorStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

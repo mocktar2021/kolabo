@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, mediaSrc } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { EvidencePicker } from "./EvidencePicker";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
@@ -125,11 +126,17 @@ export function DeliverablesPanel({
       );
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      /* Every refusal this panel can reach now carries a code, so it reads in
+         the reader's language rather than the API's — deliverables is the
+         first module converted off bare HTTPException (app/core/errors.py).
+         The line this replaces also fell back to the bare literal "Error",
+         which was itself untranslated; errorText's last resort is a real
+         sentence in both languages. */
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [contractId, token]);
+  }, [contractId, token, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -144,7 +151,7 @@ export function DeliverablesPanel({
       await load();
       await onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }

@@ -11,9 +11,31 @@ export function mediaSrc(path: string | null | undefined): string | undefined {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /* The stable name of the RULE that refused, when the backend sent one:
+     "deliverable_already_answered", not a status and not a sentence. It is
+     what lib/errorMessages.ts turns into French — see there for the fallback
+     order, and backend/app/core/errors.py for where it comes from.
+
+     Null for every refusal not yet migrated (most of them, today) and for
+     anything that failed before the API answered at all. A null code is not
+     an error condition: `message` still carries the backend's English, which
+     is what the app showed before codes existed. */
+  code: string | null;
+  /* Interpolation values for that sentence — a ceiling, a count, a currency.
+     They travel as data so a number is not baked into two languages that then
+     drift apart from each other and from the constant. */
+  values: Record<string, unknown> | null;
+
+  constructor(
+    status: number,
+    message: string,
+    code: string | null = null,
+    values: Record<string, unknown> | null = null
+  ) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.values = values;
   }
 }
 
@@ -35,8 +57,19 @@ type Options = {
 };
 
 function parseError(status: number, data: unknown, fallback: string): ApiError {
-  const detail = (data && typeof data === "object" && ((data as Record<string, unknown>).detail || (data as Record<string, unknown>).message)) || fallback;
-  return new ApiError(status, typeof detail === "string" ? detail : fallback);
+  const record = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  const detail = (record && (record.detail || record.message)) || fallback;
+  /* `detail` is still read exactly as it always was, including the
+     typeof-string guard that quietly swallows FastAPI's 422 validation array.
+     code and values are read ALONGSIDE it, never instead of it: an endpoint
+     that has not been migrated returns no code, and this produces the same
+     ApiError it produced before any of this existed. */
+  const code = record && typeof record.code === "string" ? record.code : null;
+  const values =
+    record && record.values && typeof record.values === "object"
+      ? (record.values as Record<string, unknown>)
+      : null;
+  return new ApiError(status, typeof detail === "string" ? detail : fallback, code, values);
 }
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {

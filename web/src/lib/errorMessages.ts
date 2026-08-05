@@ -1,0 +1,123 @@
+/* What the API's refusals say, in French and in English.
+
+   The backend answers a refusal with an English `detail` sentence and a stable
+   `code` beside it (backend/app/core/errors.py). This file holds one sentence
+   per code per language, and errorText() below picks the right one. Same
+   arrangement as notificationBodies.ts, and for the same reason: no imports at
+   all, so errorMessages.test.ts can read both maps and check them against the
+   codes the backend actually emits without booting i18next.
+
+   A CODE NAMES THE RULE, NOT THE SENTENCE. Rewording the English must never
+   change the code, and two call sites enforcing the same rule share one even
+   when their prose differs. That is what lets these sentences be rewritten in
+   either language without touching Python.
+
+   Codes are migrated one backend module at a time — 200-odd refusals do not
+   move in one commit — so most of the API still answers with English prose and
+   no code at all. errorText falls back to that prose, which is exactly what
+   the app showed before any of this existed. Nothing gets worse on the way. */
+
+/* The sentence shown when there is nothing else: a code we do not know, no
+   code at all, and no English either (a network failure, a CORS refusal, a
+   response that was not JSON). Also replaces the bare "Error" literal that
+   pages used to fall back to, which was itself untranslated. */
+export const GENERIC_KEY = "apiError.generic";
+
+export const error_fr = {
+  generic: "Une erreur est survenue. Réessayez dans un instant.",
+
+  deliverable_attachments_max: "Vous pouvez joindre au maximum {{max}} fichiers.",
+  deliverable_attachment_not_found: "Pièce jointe introuvable.",
+  deliverable_attachment_not_yours: "Vous ne pouvez joindre que des fichiers que vous avez importés.",
+  deliverable_contract_not_found: "Contrat introuvable.",
+  deliverable_not_a_party: "Vous n'êtes pas partie à ce contrat.",
+  deliverable_submit_creator_only: "Seul le créateur de ce contrat peut envoyer un livrable.",
+  deliverable_contract_not_signed: "Un livrable ne peut être envoyé que sur un contrat entièrement signé.",
+  deliverable_escrow_not_funded: "Aucun fonds n'est encore bloqué en séquestre sur ce contrat : il n'y a donc rien à livrer. Le livrable s'envoie une fois que la marque a payé.",
+  deliverable_escrow_not_held: "Le séquestre n'est plus bloqué : aucun livrable ne peut être envoyé.",
+  deliverable_submission_open_already: "Vous avez déjà envoyé un livrable sur ce contrat et la marque n'a pas encore répondu. Attendez sa réponse ou retirez d'abord votre envoi.",
+  deliverable_note_too_long: "Une note fait au plus {{max}} caractères.",
+  deliverable_submission_empty: "Un envoi doit contenir le lien de la publication, un fichier, ou les deux. Envoyez ce que la marque doit regarder.",
+  deliverable_submission_not_found: "Envoi introuvable.",
+  deliverable_review_business_only: "Seule l'entreprise de ce contrat peut valider un livrable.",
+  deliverable_already_answered: "Cet envoi a déjà reçu une réponse.",
+  deliverable_release_escrow_not_held: "Le séquestre n'est pas bloqué : il ne peut pas être libéré.",
+  deliverable_changes_need_note: "Dites ce qui doit changer, pour que le créateur puisse corriger.",
+  deliverable_withdraw_own_only: "Seul le créateur qui a envoyé ce livrable peut le retirer."
+};
+
+export const error_en = {
+  generic: "Something went wrong. Try again in a moment.",
+
+  deliverable_attachments_max: "At most {{max}} files can be attached.",
+  deliverable_attachment_not_found: "Attachment not found.",
+  deliverable_attachment_not_yours: "You can only attach files you uploaded.",
+  deliverable_contract_not_found: "Contract not found.",
+  deliverable_not_a_party: "You are not a party to this contract.",
+  deliverable_submit_creator_only: "Only the creator on this contract can submit work.",
+  deliverable_contract_not_signed: "Work can only be submitted on a fully signed contract.",
+  deliverable_escrow_not_funded: "This contract has no money in escrow yet, so there is nothing to deliver against. Work is submitted once the brand has funded it.",
+  deliverable_escrow_not_held: "This escrow is no longer held, so work cannot be submitted against it.",
+  deliverable_submission_open_already: "You have already submitted work on this contract and the brand has not answered yet. Wait for their review, or withdraw the submission first.",
+  deliverable_note_too_long: "A note is at most {{max}} characters.",
+  deliverable_submission_empty: "A submission needs the link to the published post, a file, or both. Send what the brand is meant to look at.",
+  deliverable_submission_not_found: "Submission not found.",
+  deliverable_review_business_only: "Only the business on this contract can review submitted work.",
+  deliverable_already_answered: "This submission has already been answered.",
+  deliverable_release_escrow_not_held: "This escrow is not held, so it cannot be released.",
+  deliverable_changes_need_note: "Say what needs to change, so the creator can fix it.",
+  deliverable_withdraw_own_only: "Only the creator who submitted this work can withdraw it."
+};
+
+/* i18next's t, narrowed to what this file needs. Taken as an argument rather
+   than imported so this module keeps its no-imports property. */
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+/* Anything thrown by lib/api.ts, or by fetch, or by a component. Read
+   structurally rather than with `instanceof ApiError` — importing ApiError
+   would be an import, and a caller that hands us a plain Error (or a string,
+   or null) still deserves an answer rather than a crash. */
+type MaybeApiError = { code?: unknown; values?: unknown; message?: unknown };
+
+/* Handed to i18next as the defaultValue so a missing key is unmistakable.
+   Deliberately not a sentence and not empty: it has to be something no
+   translation in either language could ever equal by accident, and something
+   that is obviously wrong if it ever does reach a screen. */
+const MISS = "::apiError-miss::";
+
+/* The sentence to show a human for a failed request.
+
+   Order of preference, and the reasoning for each step:
+
+     1. the localised sentence for the code, if the backend sent one and this
+        file knows it;
+     2. the backend's English `detail`, if there is one. Worse than French for
+        a French reader, but it is SPECIFIC — "you have already submitted work
+        and the brand has not answered" beats "something went wrong" even in
+        the wrong language, because it says what to do next;
+     3. the generic sentence, for a network failure or a response that was not
+        JSON, where there is nothing specific to say.
+
+   Step 2 is why this migration can be gradual and why it is safe: an
+   un-migrated endpoint behaves exactly as it did before this file existed. */
+export function errorText(err: unknown, t: Translate): string {
+  const e = (err ?? {}) as MaybeApiError;
+
+  if (typeof e.code === "string" && e.code) {
+    const values = e.values && typeof e.values === "object" ? (e.values as Record<string, unknown>) : {};
+    /* A sentinel rather than "" or the English text, because this has to
+       distinguish "no sentence for that code" from "a sentence that happens
+       to be falsy", and because i18next returns the KEY ITSELF on a miss —
+       without a defaultValue an unknown code puts the literal string
+       "apiError.deliverable_whatever" on a user's screen. MISS cannot collide
+       with any translation, so an unknown code always falls through to the
+       backend's English below, which is the whole reason this migration can
+       be gradual. */
+    const text = t(`apiError.${e.code}`, { ...values, defaultValue: MISS });
+    if (text !== MISS && text) return text;
+  }
+
+  if (typeof e.message === "string" && e.message) return e.message;
+
+  return t(GENERIC_KEY);
+}

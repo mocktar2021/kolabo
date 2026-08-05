@@ -80,9 +80,10 @@ type Translate = (key: string, opts?: Record<string, unknown>) => string;
 type MaybeApiError = { code?: unknown; values?: unknown; message?: unknown };
 
 /* Handed to i18next as the defaultValue so a missing key is unmistakable.
-   Written with an escape and starting with a NUL, so no translation anybody
-   writes can ever equal it by accident. */
-const MISS = "\u0000no-such-code";
+   Deliberately not a sentence and not empty: it has to be something no
+   translation in either language could ever equal by accident, and something
+   that is obviously wrong if it ever does reach a screen. */
+const MISS = "::apiError-miss::";
 
 /* The sentence to show a human for a failed request.
 

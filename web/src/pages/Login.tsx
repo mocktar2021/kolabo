@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { ApiError, api, type TokenResponse } from "../lib/api";
+import { api, type TokenResponse } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 
 /* Mirrors MIN_PASSWORD_LENGTH in backend/app/modules/auth/schemas.py. The
@@ -62,11 +63,7 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
          swallowing the limit behind a 202 would leave a genuinely
          rate-limited user waiting for a message that is never coming.
          Mapped by status code like everything else here. */
-      setError(
-        err instanceof ApiError && err.status === 429
-          ? t("reset.errTooMany")
-          : err instanceof Error ? err.message : "Error"
-      );
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -87,11 +84,7 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
       // One sentence for all four ways this fails, mirroring the single 400
       // the server answers them with. Telling them apart client-side would
       // hand back the fact the request step refuses to disclose.
-      setError(
-        err instanceof ApiError && err.status === 400
-          ? t("reset.errInvalidCode")
-          : err instanceof Error ? err.message : "Error"
-      );
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -178,7 +171,7 @@ export default function Login() {
       login(res.access_token, res.role);
       navigate("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

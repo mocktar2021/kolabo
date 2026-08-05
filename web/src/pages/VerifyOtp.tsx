@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api, type TokenResponse } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { isBusinessLike, useAuth } from "../lib/auth";
 
 export default function VerifyOtp() {
@@ -28,7 +29,7 @@ export default function VerifyOtp() {
       // (businesses and agencies) go to the dashboard.
       navigate(isBusinessLike(res.role) ? "/dashboard" : "/onboarding");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

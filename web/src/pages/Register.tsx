@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api, type RegisterResponse } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { COUNTRIES } from "../lib/countries";
 
 const ROLES = ["influencer", "business", "agency"] as const;
@@ -49,7 +50,7 @@ export default function Register() {
       localStorage.setItem("kolabo_role", role);
       navigate(`/verify?phone=${encodeURIComponent(phone)}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

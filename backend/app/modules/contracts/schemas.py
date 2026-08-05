@@ -34,6 +34,12 @@ class ContractListItem(ContractOut):
     counterparty_name: str | None
     counterparty_avatar_url: str | None
     created_at: datetime
+    # held / released / refunded / disputed, or null when nothing has been
+    # funded against this contract yet. It is here because a contract's own
+    # status stops at "signed" and never says whether the job is FINISHED —
+    # only the money does. See list_my_contracts, and the Active/Completed
+    # split in web/src/lib/lifecycle.ts that reads it.
+    escrow_status: str | None = None
 
 
 class ContractDetailOut(ContractOut):

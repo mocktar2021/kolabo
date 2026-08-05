@@ -52,8 +52,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
 # Raising a dispute now costs a reason and a statement. The cases below only
 # need A dispute, not a particular one; what the payload is FOR is tested in
 # test_disputes.py.
@@ -207,7 +205,7 @@ def test_only_business_can_release(client):
     assert client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(inf)).status_code == 403
 
 
-def test_auto_release_after_timeout(client):
+def test_auto_release_after_timeout(client, admin_headers):
     """Delivered work the brand never got round to reviewing still pays.
 
     The creator did their part; a brand that clicks nothing must not be able
@@ -219,12 +217,12 @@ def test_auto_release_after_timeout(client):
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
     _submitted(client, cid, inf)
     _age_release_deadline(client, escrow["id"])
-    r = client.post("/payments/escrow/auto-release", headers=ADMIN)
+    r = client.post("/payments/escrow/auto-release", headers=admin_headers)
     assert r.json()["released"] == 1
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "released"
 
 
-def test_nothing_submitted_never_auto_releases(client):
+def test_nothing_submitted_never_auto_releases(client, admin_headers):
     """The hole the deliverables work closed, guarded from the money side.
 
     due_release_at was stamped at FUNDING, and the sweep asked nothing about
@@ -236,11 +234,11 @@ def test_nothing_submitted_never_auto_releases(client):
     biz, inf, cid = _signed_contract(client)
     escrow = _fund(client, biz, cid)
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "held"
 
 
-def test_a_frozen_escrow_cannot_be_released_by_the_business(client):
+def test_a_frozen_escrow_cannot_be_released_by_the_business(client, admin_headers):
     """Freezing it is what raising a dispute is for. The split that ends it is
     tested in test_dispute_resolution.py."""
     biz, inf, cid = _signed_contract(client, amount=20000)
@@ -262,7 +260,7 @@ def test_a_frozen_escrow_cannot_be_released_by_the_business(client):
     # proving nothing about disputes at all.
     _submitted(client, cid, inf)
     _age_release_deadline(client, eid)
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
 
 
 def test_fund_requires_auth(client):
@@ -342,7 +340,7 @@ def test_release_for_unreferred_users_credits_nobody(client):
     assert _credits(client) == []
 
 
-def test_auto_release_also_awards_the_referral(client):
+def test_auto_release_also_awards_the_referral(client, admin_headers):
     """Order completion is the trigger, not the button: the timeout path is a
     completed order too."""
     biz, inf, cid = _signed_contract(client)
@@ -350,7 +348,7 @@ def test_auto_release_also_awards_the_referral(client):
     escrow = _fund(client, biz, cid)
     _submitted(client, cid, inf)
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 1
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 1
     assert {c.kind for c in _credits(client)} == {"referee", "referrer"}
 
 

@@ -34,7 +34,6 @@ from app.modules.payments.router import router as payments_router
 from app.modules.profiles import models as profiles
 
 LINK = "https://instagram.com/p/abc123"
-ADMIN = {"X-Admin-Id": "admin-1"}
 
 
 @pytest.fixture()
@@ -371,26 +370,26 @@ def test_a_third_party_cannot_read_the_history(client):
 # --- The auto-release sweep --------------------------------------------
 
 
-def test_the_sweep_ignores_an_escrow_with_nothing_submitted(client):
+def test_the_sweep_ignores_an_escrow_with_nothing_submitted(client, admin_headers):
     """THE HOLE THIS PR CLOSES. A funded contract nobody delivered on used to
     pay itself out once the funding-anchored deadline passed."""
     biz, inf, _, cid, escrow = _funded(client)
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
     assert _escrow_row(client, escrow["id"]).status == pay_models.HELD
 
 
-def test_the_sweep_releases_work_the_brand_never_reviewed(client):
+def test_the_sweep_releases_work_the_brand_never_reviewed(client, admin_headers):
     """A creator who delivered is not held hostage by a brand that never
     clicks anything."""
     biz, inf, _, cid, escrow = _funded(client)
     _submit(client, inf, cid)
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 1
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 1
     assert _escrow_row(client, escrow["id"]).status == pay_models.RELEASED
 
 
-def test_the_sweep_stops_for_work_the_brand_sent_back(client):
+def test_the_sweep_stops_for_work_the_brand_sent_back(client, admin_headers):
     """Work the brand rejected must not quietly auto-pay while the creator is
     redoing it."""
     biz, inf, _, cid, escrow = _funded(client)
@@ -401,20 +400,20 @@ def test_the_sweep_stops_for_work_the_brand_sent_back(client):
         headers=_headers(biz),
     )
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
     assert _escrow_row(client, escrow["id"]).status == pay_models.HELD
 
     # Resubmitting opens a fresh window, and the sweep counts it again.
     _submit(client, inf, cid)
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 1
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 1
 
 
-def test_the_sweep_stops_for_a_withdrawn_submission(client):
+def test_the_sweep_stops_for_a_withdrawn_submission(client, admin_headers):
     """Nothing is in front of the brand to review."""
     biz, inf, _, cid, escrow = _funded(client)
     sub = _submit(client, inf, cid).json()
     client.post(f"/deliverables/{sub['id']}/withdraw", headers=_headers(inf))
     _age_release_deadline(client, escrow["id"])
-    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
     assert _escrow_row(client, escrow["id"]).status == pay_models.HELD

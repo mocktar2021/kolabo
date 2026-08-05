@@ -5,7 +5,7 @@ import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
 import { DeliverableRows } from "../components/DeliverableRows";
 import { TargetingFields, targetingBody, targetingOf, type Targeting } from "../components/TargetingFields";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
@@ -521,17 +521,13 @@ export default function CampaignDetailPage() {
       setConfirming(null);
       await load();
     } catch (e) {
-      /* Mapped by STATUS CODE, never by reading the detail. The server
-         sentence is written in English for the API and can be reworded at any
-         time; a French UI that matched on its text would go silent the day it
-         is. On cancel a 409 means exactly one thing and can only mean one
-         thing: a contract exists on this campaign, and unwinding a signed
-         agreement is the dispute and refund path. */
-      setActionError(
-        e instanceof ApiError && e.status === 409
-          ? t("campaign.cancelHasContract")
-          : errorText(e, t)
-      );
+      /* Mapped by the CODE the refusal carries. editing.py now sends
+         `campaign_has_contract` on cancel, which says what the 409 could only
+         imply: a contract exists on this campaign, and unwinding a signed
+         agreement is the dispute and refund path. The status is no longer
+         read here — a code names the rule, where a number names a class of
+         rules and leaves the page guessing which one it met. */
+      setActionError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -548,15 +544,12 @@ export default function CampaignDetailPage() {
       await api(`/campaigns/${campaign.id}`, { method: "DELETE", token });
       navigate("/campaigns");
     } catch (e) {
-      /* Same rule as cancel: the 409 is read off the status code. Here it
-         means the campaign has activity — a proposal, an invitation or a
-         contract — and the buyer is told to cancel instead, because deleting
-         would take the other side's half of the record with it. */
-      setActionError(
-        e instanceof ApiError && e.status === 409
-          ? t("campaign.deleteHasActivity")
-          : errorText(e, t)
-      );
+      /* Same rule as cancel, off the code rather than the status:
+         `campaign_has_activity` means the campaign has a proposal, an
+         invitation or a contract on it, and the buyer is told to cancel
+         instead, because deleting would take the other side's half of the
+         record with it. */
+      setActionError(errorText(e, t));
       setBusy(false);
     }
   }

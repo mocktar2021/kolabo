@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
@@ -133,8 +134,8 @@ export default function Onboarding() {
         setAvatarMediaId(p.avatar_media_id ?? null);
         setAvatarUrl(p.avatar_url ?? null);
       })
-      .catch((err) => { if (!(err instanceof ApiError && err.status === 404)) setError(err.message); });
-  }, [userId]);
+      .catch((err) => { if (!(err instanceof ApiError && err.status === 404)) setError(errorText(err, t)); });
+  }, [userId, t]);
 
   const loadAll = useCallback(() => {
     if (!userId) return;
@@ -170,7 +171,7 @@ export default function Onboarding() {
       setModal(null);
       loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -191,7 +192,7 @@ export default function Onboarding() {
       setAvatarMediaId(media.id);
       setAvatarUrl(media.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -208,7 +209,8 @@ export default function Onboarding() {
           display_name: displayName || null, headline: headline || null,
           location: joinLocation(locCity, locCountry),
           avatar_media_id: avatarMediaId,
-          // The API enforces 18+; its 400 message lands in the banner above.
+          // The API enforces 18+; the sentence errorText picks for its
+          // refusal code lands in the banner above.
           birth_date: birthDate || null,
           bio: bio || null, categories, rate_card: {},
           follower_count: followers ? Number(followers) : null
@@ -217,7 +219,7 @@ export default function Onboarding() {
       loadAll();
       setStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -228,9 +230,9 @@ export default function Onboarding() {
     setBusy(true);
     setError(null);
     try {
-      // The backend re-checks the price floor and the duration pairing and
-      // answers 400/422 if the form checks are ever bypassed; that message
-      // lands in the error banner above.
+      // The backend re-checks the price floor and the duration pairing if
+      // the form checks are ever bypassed; its refusal carries a code, and
+      // the sentence errorText picks for it lands in the banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST", token,
         body: {
@@ -245,7 +247,7 @@ export default function Onboarding() {
       setPkg({ ...pkg, title: "", price: "", description: "", quantity: "1", durationValue: "", durationUnit: "" });
       loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

@@ -47,6 +47,7 @@ CONVERTED = [
     "modules/auth/service.py",
     "modules/auth/deps.py",
     "modules/auth/account.py",
+    "modules/profiles/service.py",
 ]
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)

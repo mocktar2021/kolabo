@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
@@ -52,7 +53,7 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
         await api(`/profiles/${userId}/portfolio`, { method: "POST", token, body: { media_id: media.id } });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -149,7 +150,7 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
       setAccounts((prev) => prev.map((a) => (a.id === id ? updated : a)));
       setEditingId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -174,7 +175,7 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
       setNewHandle("");
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -342,9 +343,9 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
     setBusy(true);
     setError(null);
     try {
-      // The backend re-checks the price floor and the duration pairing and
-      // answers 400/422 if the form checks are ever bypassed; that message
-      // lands in the error banner above.
+      // The backend re-checks the price floor and the duration pairing if
+      // the form checks are ever bypassed; its refusal carries a code, and
+      // the sentence errorText picks for it lands in the banner above.
       await api(`/profiles/${userId}/packages`, {
         method: "POST",
         token,
@@ -363,7 +364,7 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
       setForm({ ...emptyPkg, platform: form.platform, deliverable_type: form.deliverable_type, currency: form.currency });
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -534,10 +535,10 @@ export default function ProfileSetup() {
       })
       .catch((err) => {
         if (!(err instanceof ApiError && err.status === 404)) {
-          setError(err instanceof Error ? err.message : "Error");
+          setError(errorText(err, t));
         }
       });
-  }, [userId]);
+  }, [userId, t]);
 
   // Load the existing business profile to prefill the form. The GET endpoint
   // arrived with this branch; before it, saving worked but every visit came up
@@ -553,10 +554,10 @@ export default function ProfileSetup() {
       })
       .catch((err) => {
         if (!(err instanceof ApiError && err.status === 404)) {
-          setError(err instanceof Error ? err.message : "Error");
+          setError(errorText(err, t));
         }
       });
-  }, [userId, kind]);
+  }, [userId, kind, t]);
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
@@ -578,7 +579,7 @@ export default function ProfileSetup() {
       setAvatarMediaId(media.id);
       setAvatarUrl(media.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -602,8 +603,9 @@ export default function ProfileSetup() {
             categories,
             rate_card: rate ? { post: Number(rate) } : {},
             follower_count: followers ? Number(followers) : null,
-            // birth_date goes null when cleared; the API enforces 18+ and its
-            // 400 message lands in the error banner above.
+            // birth_date goes null when cleared; the API enforces 18+ and the
+            // sentence errorText picks for its refusal code lands in the
+            // error banner above.
             birth_date: birthDate || null,
             gender: gender || null,
             languages,
@@ -623,7 +625,7 @@ export default function ProfileSetup() {
       }
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     # us by looping over a phone number. It also caps how many valid codes are
     # in flight for one account at once.
     password_reset_max_per_hour: int = 3
+    # Comma separated phone numbers of the people who may use the admin
+    # surface. THIS IS THE ADMIN LIST, and the database is made to agree with
+    # it on every boot — listed numbers are granted, unlisted holders are
+    # revoked. See app.modules.auth.admins for why deployment config rather
+    # than a flag somebody sets through the UI.
+    #
+    # Empty by default, and empty means NOBODY. A deployment that forgot to
+    # configure this locks the admin surface instead of opening it.
+    admin_phones: str = ""
     # Comma separated list of origins allowed to call the API from a browser
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.

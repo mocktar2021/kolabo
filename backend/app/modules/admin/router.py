@@ -1,33 +1,58 @@
 """Admin operations (Epic B verification queue, Epic I dashboard and config).
 
-Admin authentication and role based access control are not built yet, so admin
-identity is taken from an X-Admin-Id header for now. This is a deliberate
-placeholder to be replaced by real admin auth in a later epic; it is enough to
-attribute and log decisions during the manual pilot.
+Admin identity is a real login: a bearer token belonging to a user whose
+is_admin is set, which app.modules.auth.admins keeps in step with a configured
+list of phone numbers on every boot. It replaced an X-Admin-Id header that
+accepted any non-empty string — a placeholder that was fine until it stood in
+front of moving money.
+
+Role based access control beyond the single is_admin flag is still not built.
+There is one kind of admin and they can do everything on this router.
 """
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Body, Depends, status
 from sqlalchemy.orm import Session
 
-from app.core.errors import AppError
 from app.core.db import get_db
+from app.core.errors import AppError
 from app.modules.admin import disputes, service
+from app.modules.auth.deps import get_current_user_id
+from app.modules.auth.models import User
 from app.modules.campaigns import orders as campaign_orders
-from app.modules.payments import disputes as payments_disputes
-from app.modules.payments import service as payments_service
 from app.modules.config import service as config_service
 from app.modules.config.schemas import CountryConfigIn, CountryConfigOut, EnabledIn
+from app.modules.payments import disputes as payments_disputes
+from app.modules.payments import service as payments_service
 
 router = APIRouter()
 
 
-def get_current_admin(x_admin_id: str | None = Header(default=None)) -> str:
-    if not x_admin_id:
+def get_current_admin(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> str:
+    """The caller, proved to be an admin, or a refusal.
+
+    This used to read an X-Admin-Id header and return whatever was in it. That
+    was not authentication — it was a string anybody could type, in front of
+    an endpoint that splits a disputed escrow. See app.modules.auth.admins for
+    what replaced it and why the admin list lives in deployment config.
+
+    401 vs 403 is the ordinary distinction and both halves matter here. A
+    missing or invalid token is get_current_user_id's answer (401: we do not
+    know who you are). A valid token belonging to somebody who is not an admin
+    is 403 — we know exactly who you are, and the answer is still no.
+
+    Returns the USER ID, so AdminActionLog.admin_id and Dispute.resolved_by
+    now name an account somebody logged into rather than a header value.
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None or not user.is_admin:
         raise AppError(
-            status.HTTP_401_UNAUTHORIZED,
-            code="admin_id_missing",
-            detail="Missing X-Admin-Id header",
+            status.HTTP_403_FORBIDDEN,
+            code="admin_not_authorised",
+            detail="This account is not an administrator",
         )
-    return x_admin_id
+    return user.id
 
 
 @router.get("/dashboard")

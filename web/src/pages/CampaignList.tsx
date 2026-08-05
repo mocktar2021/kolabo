@@ -5,6 +5,8 @@ import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { ListFilter, type FilterOption } from "../components/ListFilter";
+import { ListTabs, type Tab } from "../components/ListTabs";
+import { campaignIsCompleted, partitionByCompletion, type CompletableContract } from "../lib/lifecycle";
 import type { Campaign } from "../lib/types";
 
 function StatusPill({ status }: { status: string }) {
@@ -21,8 +23,20 @@ export default function CampaignList() {
   const { t } = useTranslation();
   const { token, isAuthenticated } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  /* The caller's contracts, fetched ONLY to work out which campaigns are
+     finished. A campaign has no completed status of its own — what ends it is
+     the work underneath it ending — and that work lives on the contracts. See
+     lib/lifecycle.ts.
+
+     A second request rather than a second field on the campaign, because the
+     campaign endpoint would have to answer "are all your contracts settled"
+     for every row, and the client already has a reason to hold this list.
+     Both are whole-set fetches at pilot volume, which is the same call
+     ListFilter's docstring makes about filtering in memory. */
+  const [contracts, setContracts] = useState<CompletableContract[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("active");
   /* "" is all. Filtered in memory below — /campaigns/mine returns the whole
      set and it is short at pilot volume. */
   const [statusFilter, setStatusFilter] = useState("");
@@ -39,17 +53,37 @@ export default function CampaignList() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => {
+    /* Failing here is not worth an error state. It costs the Completed shelf
+       its accuracy — every campaign reads as active — and leaves the rest of
+       the page working, which is a far better outcome than a list of
+       campaigns replaced by an error about contracts. */
+    api<CompletableContract[]>("/contracts/mine", { token })
+      .then(setContracts)
+      .catch(() => setContracts([]));
+  }, [token]);
+
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  /* Chips are built from the statuses actually present, so no chip ever
-     matches an empty set (draft / published / cancelled, whichever exist).
-     The label reuses the same key the row's pill renders, so a status is
-     worded one way across the screen. */
-  const statusOptions: FilterOption[] = Array.from(new Set(campaigns.map((c) => c.status))).map((s) => ({
+  const { active, completed } = partitionByCompletion(campaigns, (c) =>
+    campaignIsCompleted(c, contracts)
+  );
+  const inTab = tab === "completed" ? completed : active;
+
+  /* Chips are built from the statuses present IN THIS TAB, so no chip ever
+     matches an empty set (draft / published / cancelled, whichever exist
+     here). The label reuses the same key the row's pill renders, so a status
+     is worded one way across the screen. */
+  const statusOptions: FilterOption[] = Array.from(new Set(inTab.map((c) => c.status))).map((s) => ({
     value: s,
     label: t(`campaign.status_${s}`, s)
   }));
-  const shown = statusFilter ? campaigns.filter((c) => c.status === statusFilter) : campaigns;
+  const shown = statusFilter ? inTab.filter((c) => c.status === statusFilter) : inTab;
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    setStatusFilter("");
+  }
 
   return (
     <Layout>
@@ -62,7 +96,15 @@ export default function CampaignList() {
         {error && <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>}
 
         {!loading && campaigns.length > 0 && (
-          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+          <>
+            <ListTabs
+              active={tab}
+              activeCount={active.length}
+              completedCount={completed.length}
+              onChange={selectTab}
+            />
+            <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+          </>
         )}
 
         <div style={{ marginTop: 18 }}>
@@ -71,7 +113,13 @@ export default function CampaignList() {
           ) : campaigns.length === 0 ? (
             <div className="card"><p className="muted" style={{ margin: 0 }}>{t("campaign.listEmpty")}</p></div>
           ) : shown.length === 0 ? (
-            <div className="card"><p className="muted" style={{ margin: 0 }}>{t("filt.none")}</p></div>
+            <div className="card">
+              <p className="muted" style={{ margin: 0 }}>
+                {inTab.length === 0
+                  ? t(tab === "completed" ? "lf.noneCompleted" : "lf.noneActive")
+                  : t("filt.none")}
+              </p>
+            </div>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
               {shown.map((c) => (

@@ -19,6 +19,10 @@ from app.modules.campaigns import models as campaigns
 from app.modules.campaigns import service as campaigns_service
 from app.modules.contracts import models
 from app.modules.notifications.service import notify
+# MODELS ONLY. payments.service imports contracts.models, so reaching for its
+# service here would close the circle; its models import nothing but Base.
+# contracts/cancellation.py reads the escrow the same way for the same reason.
+from app.modules.payments import models as payments
 from app.modules.profiles.models import BusinessProfile
 
 # Language per country. Kept local to avoid coupling to optional country_config
@@ -200,10 +204,18 @@ def list_my_contracts(db: Session, user_id: str) -> list[dict]:
     always reads creators here and a creator always reads businesses — but
     deriving it from the row means the two can never fall out of step.
 
-    Batched, not per row: the titles are one query, the creator identities two
-    (core.identity), the company names one. A page of contracts is a handful of
-    campaigns and a handful of counterparties, and this keeps it that way
-    however long the list grows.
+    IT ALSO CARRIES THE ESCROW STATUS, because that is the only thing that
+    says whether a contract is FINISHED. A contract's own status never becomes
+    "completed" — it stops at signed — so a list that showed only that had no
+    way to separate the three jobs somebody is still working on from the
+    thirty they finished last quarter. Released or refunded is an ending;
+    held or disputed is not; null means nobody has funded it yet. The web app
+    splits Active from Completed on exactly that (web/src/lib/lifecycle.ts).
+
+    Batched, not per row: the titles are one query, the escrow statuses one,
+    the creator identities two (core.identity), the company names one. A page
+    of contracts is a handful of campaigns and a handful of counterparties,
+    and this keeps it that way however long the list grows.
     """
     rows = (
         db.query(models.Contract)
@@ -217,6 +229,13 @@ def list_my_contracts(db: Session, user_id: str) -> list[dict]:
     campaign_titles = dict(
         db.query(campaigns.Campaign.id, campaigns.Campaign.title)
         .filter(campaigns.Campaign.id.in_({c.campaign_id for c in rows}))
+        .all()
+    )
+    # escrows.contract_id is UNIQUE, so this is at most one row per contract
+    # and the dict cannot lose one.
+    escrow_statuses = dict(
+        db.query(payments.Escrow.contract_id, payments.Escrow.status)
+        .filter(payments.Escrow.contract_id.in_({c.id for c in rows}))
         .all()
     )
     # Split the counterparties by which kind of name they need. When the caller
@@ -240,6 +259,9 @@ def list_my_contracts(db: Session, user_id: str) -> list[dict]:
         item = _out(c)
         item["campaign_title"] = campaign_titles.get(c.campaign_id)
         item["created_at"] = c.created_at
+        # None when the contract has never been funded, which is a live state
+        # and not an ending — the brand simply has not paid in yet.
+        item["escrow_status"] = escrow_statuses.get(c.id)
         if c.business_user_id == user_id:
             identity = identities.get(c.influencer_user_id) or {}
             item["counterparty_name"] = identity.get("display_name")

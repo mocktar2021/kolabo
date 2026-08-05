@@ -49,10 +49,11 @@ calls the same gate and the same contact guard. Both are kept: the
 per-campaign pair is what the web app calls and is still the precise way to
 reach one job's thread.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.contact_guard import check_no_contact_details
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
@@ -102,7 +103,11 @@ def _contract_between(db: Session, campaign_id: str, user_id: str, other_user_id
 def _require_contract(db: Session, campaign_id: str, user_id: str, other_user_id: str):
     contract = _contract_between(db, campaign_id, user_id, other_user_id)
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=GATE_DETAIL)
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="message_gate",
+            detail=GATE_DETAIL,
+        )
     return contract
 
 
@@ -121,10 +126,16 @@ def _out(m: Message) -> dict:
 def send_message(db: Session, campaign_id: str, sender_id: str, to_user_id: str, body: str) -> dict:
     campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == campaign_id).first()
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_not_found",
+            detail="Campaign not found",
+        )
     if sender_id == to_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a different recipient"
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="message_self",
+            detail="Choose a different recipient"
         )
 
     # The only authorisation there is. It answers who the parties are as well

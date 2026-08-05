@@ -32,3 +32,7 @@ jobs:
           node-version: "20"
       - run: npm install
       - run: npm run build
+      # After the build, so a type error is reported as a type error rather
+      # than as a wall of failing tests. Vitest reads the project's own Vite
+      # config, so there is no second toolchain to keep in step with this one.
+      - run: npm run test

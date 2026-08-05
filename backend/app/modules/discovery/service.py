@@ -17,10 +17,11 @@ restating any of them: two definitions of "who is live" would mean a creator
 visible in one surface and missing from the other, which is a bug nobody
 reports because each screen looks fine on its own.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.core.platforms import SOCIAL_PLATFORMS
 from app.core.pricing import MIN_LIVE_PACKAGES
@@ -267,7 +268,11 @@ def _favorite_out(influencer_user_id: str, identity: dict, country_code: str | N
 
 def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) -> dict:
     if db.query(User).filter(User.id == influencer_user_id).first() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_influencer_not_found",
+            detail="Influencer not found",
+        )
     existing = (
         db.query(Favorite)
         .filter(Favorite.business_user_id == business_user_id, Favorite.influencer_user_id == influencer_user_id)

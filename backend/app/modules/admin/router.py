@@ -8,6 +8,7 @@ attribute and log decisions during the manual pilot.
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.db import get_db
 from app.modules.admin import disputes, service
 from app.modules.config import service as config_service
@@ -18,7 +19,11 @@ router = APIRouter()
 
 def get_current_admin(x_admin_id: str | None = Header(default=None)) -> str:
     if not x_admin_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Admin-Id header")
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            code="admin_id_missing",
+            detail="Missing X-Admin-Id header",
+        )
     return x_admin_id
 
 

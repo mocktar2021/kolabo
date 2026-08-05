@@ -7,9 +7,10 @@ both parties have submitted, so neither can be swayed by the other's rating.
 KOL-32: a user can report suspicious behavior. A report becomes an open case in
 the admin queue tagged with a reason code, for an admin to investigate.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
 from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
@@ -45,12 +46,21 @@ def _review_out(review: models.Review) -> dict:
 def submit_review(db: Session, reviewer_id: str, escrow_id: str, stars: int, comment: str | None) -> dict:
     escrow = db.query(payments.Escrow).filter(payments.Escrow.id == escrow_id).first()
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collaboration not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="review_collaboration_not_found",
+            detail="Collaboration not found",
+        )
     if reviewer_id not in (escrow.business_user_id, escrow.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a party to this collaboration")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="review_not_a_party",
+            detail="You are not a party to this collaboration",
+        )
     if escrow.status != payments.RELEASED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="review_not_completed",
             detail="You can review only after the collaboration is completed and paid",
         )
 
@@ -60,7 +70,11 @@ def submit_review(db: Session, reviewer_id: str, escrow_id: str, stars: int, com
         .first()
     )
     if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already reviewed this collaboration")
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="review_already_submitted",
+            detail="You have already reviewed this collaboration",
+        )
 
     reviewee_id = (
         escrow.influencer_user_id if reviewer_id == escrow.business_user_id else escrow.business_user_id
@@ -111,9 +125,17 @@ def create_report(
     db: Session, reporter_id: str, target_type: str, target_id: str, reason_code: str, details: str | None
 ) -> dict:
     if target_type not in TARGET_TYPES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown target type")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_target_type_unknown",
+            detail="Unknown target type",
+        )
     if reason_code not in REASON_CODES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown reason code")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_reason_unknown",
+            detail="Unknown reason code",
+        )
 
     report = models.Report(
         reporter_user_id=reporter_id,
@@ -169,12 +191,24 @@ def resolve_report(db: Session, admin_id: str, report_id: str, decision: str) ->
     So reviewed and dismissed produce the same sentence. That is the point.
     """
     if decision not in DECISIONS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Decision must be reviewed or dismissed")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_decision_unknown",
+            detail="Decision must be reviewed or dismissed",
+        )
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if report is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="report_not_found",
+            detail="Report not found",
+        )
     if report.status != models.OPEN:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Report is already resolved")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_already_resolved",
+            detail="Report is already resolved",
+        )
 
     report.status = decision
     report.reviewer_id = admin_id

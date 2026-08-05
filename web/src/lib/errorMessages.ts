@@ -211,6 +211,36 @@ export const error_fr = {
      valeurs pour que la page surligne la bonne ligne. */
   cart_item_refused: "L'article {{cart_index}} de votre panier a été refusé.",
 
+  /* The tail: moderation, the admin queue, messaging, notification settings,
+     country config, discovery. Small modules, and the last of them. */
+  admin_id_missing: "Identifiant administrateur manquant.",
+  admin_decision_unknown: "La décision doit être « approuvé » ou « refusé ».",
+  admin_rejection_needs_reason: "Un refus demande un motif.",
+  admin_document_not_found: "Document introuvable.",
+
+  /* Not escrow_not_found, though it is the same row being looked up. The
+     person here is reviewing a finished job, and "séquestre introuvable" is
+     not the word they would use for it — the rule is shared, the reader's
+     noun is not. Where those two pull apart, the reader wins. */
+  review_collaboration_not_found: "Collaboration introuvable.",
+  review_not_a_party: "Vous n'avez pas participé à cette collaboration.",
+  review_not_completed: "Vous pourrez laisser un avis une fois la collaboration terminée et payée.",
+  review_already_submitted: "Vous avez déjà laissé un avis sur cette collaboration.",
+
+  report_target_type_unknown: "Type de signalement inconnu.",
+  report_reason_unknown: "Motif de signalement inconnu.",
+  report_decision_unknown: "La décision doit être « examiné » ou « rejeté ».",
+  report_not_found: "Signalement introuvable.",
+  report_already_resolved: "Ce signalement est déjà traité.",
+
+  message_gate: "La messagerie s'ouvre en même temps que le contrat. Il n'y a pas de contrat entre vous et cette personne sur cette campagne.",
+  message_self: "Choisissez un autre destinataire.",
+
+  notification_not_found: "Notification introuvable.",
+  notification_critical_locked: "Les notifications critiques (paiement, litige) ne peuvent pas être désactivées.",
+
+  country_not_configured: "Ce pays n'est pas configuré.",
+
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
   dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
@@ -404,6 +434,30 @@ export const error_en = {
   cart_too_many_items: "A cart holds at most {{max}} items. Check out in smaller baskets.",
   cart_mixed_currencies: "This creator's items are priced in {{currencies}}. An order carries one escrow and an escrow carries one currency, so order each currency separately.",
   cart_item_refused: "Item {{cart_index}} in your basket was refused.",
+
+  admin_id_missing: "Admin identifier missing.",
+  admin_decision_unknown: "The decision must be \"approved\" or \"rejected\".",
+  admin_rejection_needs_reason: "A rejection needs a reason.",
+  admin_document_not_found: "Document not found.",
+
+  review_collaboration_not_found: "Collaboration not found.",
+  review_not_a_party: "You were not part of this collaboration.",
+  review_not_completed: "You can leave a review once the collaboration is completed and paid.",
+  review_already_submitted: "You have already reviewed this collaboration.",
+
+  report_target_type_unknown: "Unknown report target type.",
+  report_reason_unknown: "Unknown report reason.",
+  report_decision_unknown: "The decision must be \"reviewed\" or \"dismissed\".",
+  report_not_found: "Report not found.",
+  report_already_resolved: "That report has already been dealt with.",
+
+  message_gate: "Messaging opens when a contract does. There is no contract between you and this person on this campaign.",
+  message_self: "Choose a different recipient.",
+
+  notification_not_found: "Notification not found.",
+  notification_critical_locked: "Critical notifications (payment, dispute) cannot be turned off.",
+
+  country_not_configured: "That country is not configured.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

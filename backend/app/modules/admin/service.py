@@ -8,9 +8,10 @@ is waiting to be allowed to trade had no way to learn the answer except by
 opening the app on the off chance; a rejection, which needs them to DO
 something, was the case that silence hurt most.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog, utcnow
 from app.modules.notifications.service import notify
 from app.modules.profiles import models as profiles
@@ -49,12 +50,24 @@ def _log(db: Session, admin_id: str, action: str, target_type: str, target_id: s
 
 def decide_document(db: Session, admin_id: str, doc_id: str, decision: str, reason: str | None) -> dict:
     if decision not in DECISIONS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="decision must be approved or rejected")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="admin_decision_unknown",
+            detail="decision must be approved or rejected",
+        )
     if decision == "rejected" and not reason:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A rejection requires a reason")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="admin_rejection_needs_reason",
+            detail="A rejection requires a reason",
+        )
     doc = db.query(profiles.VerificationDocument).filter(profiles.VerificationDocument.id == doc_id).first()
     if doc is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="admin_document_not_found",
+            detail="Document not found",
+        )
     doc.status = profiles.APPROVED if decision == "approved" else profiles.REJECTED
     doc.rejection_reason = reason if decision == "rejected" else None
     doc.reviewer_id = admin_id
@@ -103,10 +116,18 @@ def decide_document(db: Session, admin_id: str, doc_id: str, decision: str, reas
 
 def decide_social(db: Session, admin_id: str, social_id: str, decision: str, reason: str | None) -> dict:
     if decision not in DECISIONS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="decision must be approved or rejected")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="admin_decision_unknown",
+            detail="decision must be approved or rejected",
+        )
     account = db.query(profiles.SocialAccount).filter(profiles.SocialAccount.id == social_id).first()
     if account is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Social account not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_social_not_found",
+            detail="Social account not found",
+        )
     account.status = profiles.VERIFIED if decision == "approved" else profiles.REJECTED
     account.reviewer_id = admin_id
     account.reviewed_at = utcnow()

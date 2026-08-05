@@ -14,9 +14,10 @@ here takes the user id the caller's token resolved to and filters on it, and
 there is deliberately no read-one-by-id endpoint for an id to be walked
 through.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.auth.models import User
 from app.modules.notifications import email
 from app.modules.notifications.models import Notification, NotificationPreference
@@ -137,7 +138,11 @@ def mark_read(db: Session, user_id: str, notification_id: str) -> dict:
     """
     n = db.query(Notification).filter(Notification.id == notification_id).first()
     if n is None or n.user_id != user_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="notification_not_found",
+            detail="Notification not found",
+        )
     n.is_read = True
     db.commit()
     return {"id": n.id, "is_read": True}
@@ -167,8 +172,9 @@ def mark_all_read(db: Session, user_id: str) -> dict:
 
 def set_email_subscription(db: Session, user_id: str, type: str, enabled: bool) -> dict:
     if type in CRITICAL_TYPES and not enabled:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="notification_critical_locked",
             detail="Critical notifications (payment, dispute) cannot be turned off",
         )
     pref = db.query(NotificationPreference).filter(NotificationPreference.user_id == user_id).first()

@@ -4,9 +4,10 @@ An admin can list countries, add a new one, edit it, and enable or disable it,
 all as data. Adding or turning on a market is a config write, not a deploy.
 Every write is attributed to an admin in the AdminActionLog.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
 from app.modules.config import models
 
@@ -57,7 +58,11 @@ def list_countries(db: Session, enabled_only: bool = False) -> list[dict]:
 def get_country(db: Session, code: str) -> dict:
     c = db.query(models.CountryConfig).filter(models.CountryConfig.code == code).first()
     if c is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not configured")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="country_not_configured",
+            detail="Country not configured",
+        )
     return _out(c)
 
 
@@ -84,7 +89,11 @@ def set_enabled(db: Session, admin_id: str, code: str, enabled: bool) -> dict:
     code = code.upper()
     c = db.query(models.CountryConfig).filter(models.CountryConfig.code == code).first()
     if c is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Country not configured")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="country_not_configured",
+            detail="Country not configured",
+        )
     c.enabled = enabled
     action = "country_enabled" if enabled else "country_disabled"
     db.add(AdminActionLog(admin_id=admin_id, action=action, target_type="country_config", target_id=code, reason=None))

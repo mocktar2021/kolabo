@@ -98,7 +98,10 @@ def _resolve_item(db: Session, business_user_id: str, item, index: int) -> dict:
             status.HTTP_400_BAD_REQUEST,
             code="cart_item_refused",
             detail=f"Item {index}: {exc.detail}",
-            values={"index": index},
+            # cart_index, the same spelling the branch above uses. Two names
+            # for the position would mean the page highlights a row on the
+            # common path and silently stops on the rare one.
+            values={"cart_index": index},
         ) from exc
 
 

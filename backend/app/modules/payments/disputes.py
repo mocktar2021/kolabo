@@ -29,11 +29,12 @@ cycle.
 """
 from datetime import timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.contact_guard import check_no_contact_details
 from app.modules.notifications.service import notify
 from app.modules.payments import models
@@ -70,14 +71,24 @@ def _media_url(media_id: str) -> str:
 def load_escrow(db: Session, escrow_id: str) -> models.Escrow:
     escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            # The same rule as payments.service enforces, so the same code.
+            # A code names the rule, not the sentence or the call site.
+            code="escrow_not_found",
+            detail="Escrow not found",
+        )
     return escrow
 
 
 def load_dispute(db: Session, dispute_id: str) -> tuple[models.Dispute, models.Escrow]:
     dispute = db.query(models.Dispute).filter(models.Dispute.id == dispute_id).first()
     if dispute is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispute not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="dispute_not_found",
+            detail="Dispute not found",
+        )
     return dispute, load_escrow(db, dispute.escrow_id)
 
 
@@ -114,16 +125,24 @@ def other_party(escrow: models.Escrow, user_id: str) -> str:
 
 def require_party(escrow: models.Escrow, user_id: str) -> None:
     if user_id not in parties(escrow):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow"
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="escrow_not_a_party",
+            detail="Not a party to this escrow",
         )
 
 
 def _checked_reason(reason: str) -> str:
     if reason not in models.DISPUTE_REASONS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_reason_unknown",
             detail=f"reason must be one of: {', '.join(models.DISPUTE_REASONS)}",
+            # The list is not translated and should not be: these are the
+            # machine values the client sends back, and a French rendering of
+            # them would be a different list that no endpoint accepts. A
+            # client hitting this has a bug, not a language problem.
+            values={"reasons": ", ".join(models.DISPUTE_REASONS)},
         )
     return reason
 
@@ -131,14 +150,18 @@ def _checked_reason(reason: str) -> str:
 def _checked_statement(statement: str | None) -> str:
     text = (statement or "").strip()
     if len(text) < MIN_STATEMENT_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_statement_too_short",
             detail=f"Say what went wrong in at least {MIN_STATEMENT_CHARS} characters.",
+            values={"min": MIN_STATEMENT_CHARS},
         )
     if len(text) > MAX_STATEMENT_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_statement_too_long",
             detail=f"A statement is at most {MAX_STATEMENT_CHARS} characters.",
+            values={"max": MAX_STATEMENT_CHARS},
         )
     # The contact guard lives with the length checks rather than in
     # raise_dispute, so that the statement is held to every rule it has in one
@@ -157,13 +180,17 @@ def _checked_body(body: str | None) -> str:
     """
     text = (body or "").strip()
     if not text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="A message needs a body."
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_message_empty",
+            detail="A message needs a body.",
         )
     if len(text) > MAX_STATEMENT_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_message_too_long",
             detail=f"A message is at most {MAX_STATEMENT_CHARS} characters.",
+            values={"max": MAX_STATEMENT_CHARS},
         )
     # The same rule as the statement, and it matters more here: this is the
     # turn where somebody says "let's just sort this out between us, call
@@ -189,9 +216,11 @@ def checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     if not ids:
         return []
     if len(ids) > MAX_EVIDENCE_IMAGES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_evidence_max",
             detail=f"At most {MAX_EVIDENCE_IMAGES} images can be attached.",
+            values={"max": MAX_EVIDENCE_IMAGES},
         )
     found = {
         asset.id: asset
@@ -200,12 +229,15 @@ def checked_media(db: Session, owner_user_id: str, media_ids) -> list[str]:
     for media_id in ids:
         asset = found.get(media_id)
         if asset is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Evidence image not found"
+            raise AppError(
+                status.HTTP_404_NOT_FOUND,
+                code="dispute_evidence_not_found",
+                detail="Evidence image not found",
             )
         if asset.owner_user_id != owner_user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                code="dispute_evidence_not_yours",
                 detail="You can only attach images you uploaded",
             )
     return ids
@@ -312,13 +344,15 @@ def raise_dispute(db: Session, actor_user_id: str, escrow_id: str, payload) -> d
     # Name the real obstacle.
     existing = open_dispute_for_escrow(db, escrow.id)
     if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="dispute_already_open",
             detail="This escrow already has an open dispute",
         )
     if escrow.status != models.HELD:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_escrow_not_held",
             detail="Only a held escrow can be disputed",
         )
 
@@ -425,8 +459,9 @@ def post_message(db: Session, actor_user_id: str, dispute_id: str, payload) -> d
     dispute, escrow = load_dispute(db, dispute_id)
     require_party(escrow, actor_user_id)
     if dispute.status not in OPEN_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_closed",
             detail="This dispute is closed",
         )
 
@@ -499,13 +534,16 @@ def withdraw_dispute(db: Session, actor_user_id: str, dispute_id: str) -> dict:
     """
     dispute, escrow = load_dispute(db, dispute_id)
     if dispute.opened_by_user_id != actor_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="dispute_withdraw_own_only",
             detail="Only the party who raised the dispute can withdraw it",
         )
     if dispute.status not in OPEN_STATUSES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="This dispute is closed"
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="dispute_closed",
+            detail="This dispute is closed",
         )
 
     now = models.utcnow()

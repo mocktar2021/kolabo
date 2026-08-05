@@ -43,7 +43,41 @@ export const error_fr = {
   deliverable_already_answered: "Cet envoi a déjà reçu une réponse.",
   deliverable_release_escrow_not_held: "Le séquestre n'est pas bloqué : il ne peut pas être libéré.",
   deliverable_changes_need_note: "Dites ce qui doit changer, pour que le créateur puisse corriger.",
-  deliverable_withdraw_own_only: "Seul le créateur qui a envoyé ce livrable peut le retirer."
+  deliverable_withdraw_own_only: "Seul le créateur qui a envoyé ce livrable peut le retirer.",
+
+  escrow_contract_not_found: "Contrat introuvable.",
+  escrow_not_your_contract: "Ce contrat n'est pas le vôtre.",
+  escrow_contract_not_signed: "Le contrat doit être entièrement signé avant d'être financé.",
+  escrow_already_funded: "Ce contrat est déjà financé.",
+  escrow_not_found: "Séquestre introuvable.",
+  escrow_none_for_contract: "Aucun séquestre pour ce contrat.",
+  escrow_not_a_party: "Vous n'êtes pas partie à ce séquestre.",
+  escrow_not_held: "Le séquestre n'est pas bloqué.",
+  escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
+
+  dispute_not_found: "Litige introuvable.",
+  dispute_closed: "Ce litige est clos.",
+  dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
+  dispute_escrow_not_held: "Seul un séquestre bloqué peut faire l'objet d'un litige.",
+  dispute_escrow_not_disputed: "Ce séquestre n'est pas en litige.",
+  dispute_frozen_without_case: "Ce séquestre est gelé sans litige ouvert. Signalez-le avant de trancher.",
+  dispute_withdraw_own_only: "Seule la partie qui a ouvert le litige peut le retirer.",
+  /* {{reasons}} is a list of machine values the client sends back, not prose:
+     translating them would produce a list no endpoint accepts. A client that
+     hits this has a bug, not a language problem. */
+  dispute_reason_unknown: "Le motif doit être l'un des suivants : {{reasons}}",
+  dispute_statement_too_short: "Expliquez ce qui s'est passé en au moins {{min}} caractères.",
+  dispute_statement_too_long: "Une déclaration fait au plus {{max}} caractères.",
+  dispute_message_empty: "Un message ne peut pas être vide.",
+  dispute_message_too_long: "Un message fait au plus {{max}} caractères.",
+  dispute_evidence_max: "Vous pouvez joindre au maximum {{max}} images.",
+  dispute_evidence_not_found: "Image introuvable.",
+  dispute_evidence_not_yours: "Vous ne pouvez joindre que des images que vous avez importées.",
+  dispute_amount_negative: "Aucun des deux montants ne peut être négatif.",
+  /* Shown to an admin settling a split that does not add up. The arithmetic is
+     the useful part, not the rule — hence five values rather than a sentence
+     about conservation of money. */
+  dispute_amounts_must_balance: "{{released}} libérés et {{refunded}} remboursés font {{total}}, mais le séquestre contient {{amount}} {{currency}}. L'argent ne doit être ni créé ni détruit."
 };
 
 export const error_en = {
@@ -66,7 +100,35 @@ export const error_en = {
   deliverable_already_answered: "This submission has already been answered.",
   deliverable_release_escrow_not_held: "This escrow is not held, so it cannot be released.",
   deliverable_changes_need_note: "Say what needs to change, so the creator can fix it.",
-  deliverable_withdraw_own_only: "Only the creator who submitted this work can withdraw it."
+  deliverable_withdraw_own_only: "Only the creator who submitted this work can withdraw it.",
+
+  escrow_contract_not_found: "Contract not found.",
+  escrow_not_your_contract: "This contract is not yours.",
+  escrow_contract_not_signed: "The contract must be fully signed before it can be funded.",
+  escrow_already_funded: "This contract is already funded.",
+  escrow_not_found: "Escrow not found.",
+  escrow_none_for_contract: "No escrow for this contract.",
+  escrow_not_a_party: "You are not a party to this escrow.",
+  escrow_not_held: "This escrow is not held.",
+  escrow_release_business_only: "Only the business can confirm delivery.",
+
+  dispute_not_found: "Dispute not found.",
+  dispute_closed: "This dispute is closed.",
+  dispute_already_open: "This escrow already has an open dispute.",
+  dispute_escrow_not_held: "Only a held escrow can be disputed.",
+  dispute_escrow_not_disputed: "This escrow is not under dispute.",
+  dispute_frozen_without_case: "This escrow is frozen with no open dispute attached. Report it before settling.",
+  dispute_withdraw_own_only: "Only the party who raised the dispute can withdraw it.",
+  dispute_reason_unknown: "The reason must be one of: {{reasons}}",
+  dispute_statement_too_short: "Say what went wrong in at least {{min}} characters.",
+  dispute_statement_too_long: "A statement is at most {{max}} characters.",
+  dispute_message_empty: "A message cannot be empty.",
+  dispute_message_too_long: "A message is at most {{max}} characters.",
+  dispute_evidence_max: "At most {{max}} images can be attached.",
+  dispute_evidence_not_found: "Evidence image not found.",
+  dispute_evidence_not_yours: "You can only attach images you uploaded.",
+  dispute_amount_negative: "Neither amount can be negative.",
+  dispute_amounts_must_balance: "{{released}} released and {{refunded}} refunded add up to {{total}}, but the escrow holds {{amount}} {{currency}}. Money must not be invented or destroyed."
 };
 
 /* i18next's t, narrowed to what this file needs. Taken as an argument rather

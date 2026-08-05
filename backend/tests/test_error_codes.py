@@ -36,6 +36,9 @@ APP = Path(__file__).resolve().parents[1] / "app"
 # go green is undoing the migration, not fixing the test.
 CONVERTED = [
     "modules/deliverables/service.py",
+    "modules/payments/service.py",
+    "modules/payments/disputes.py",
+    "modules/payments/resolution.py",
 ]
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)

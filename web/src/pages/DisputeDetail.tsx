@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, mediaSrc } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { Layout } from "../components/Layout";
 import { EvidencePicker } from "../components/EvidencePicker";
 import { RespondBy, StatusChip } from "./Disputes";
@@ -65,11 +66,11 @@ export default function DisputeDetailPage() {
         setNames({});
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [id, token]);
+  }, [id, token, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -80,7 +81,7 @@ export default function DisputeDetailPage() {
       await fn();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }

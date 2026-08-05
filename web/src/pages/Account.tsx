@@ -235,9 +235,11 @@ function NotificationsPanel() {
 
 /* Account deletion, behind an inline confirm (no window.confirm: destroying
    an account deserves friction, and a native dialog cannot be translated or
-   say what deletion actually costs). Errors are mapped from the status code,
-   never parsed from the English detail: 403 wrong password, 409 transaction
-   history.
+   say what deletion actually costs). Its two refusals — a wrong password and
+   an account with transaction history — arrive as auth_password_incorrect and
+   auth_account_has_history, so errorText names which one it was. This screen
+   used to pick a sentence from the status code, which said the same thing in
+   more lines and could only ever manage one message per status.
 
    MOVED HERE FROM ProfileSetup. Closing an account is not a step in filling
    one in — it sat at the bottom of the profile form purely because that was

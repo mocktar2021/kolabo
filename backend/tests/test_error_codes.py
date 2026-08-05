@@ -20,6 +20,7 @@ has no French and English sentence. Together: every converted refusal has a
 code, and every code has both languages. Neither test is much use without the
 other.
 """
+import ast
 import re
 from pathlib import Path
 
@@ -43,15 +44,38 @@ CONVERTED = [
     "modules/payments/resolution.py",
     "modules/contracts/service.py",
     "modules/contracts/cancellation.py",
+    "modules/auth/service.py",
+    "modules/auth/deps.py",
+    "modules/auth/account.py",
 ]
 
 BARE_RAISE = re.compile(r"^\s*raise HTTPException\(", re.MULTILINE)
-CODE_ARG = re.compile(r'code="([a-z0-9_]+)"')
-# The `code=` in an AppError call is what the frontend's coverage test greps
-# for; anything that is not a plain lowercase literal is invisible to it. The
-# lookbehind is load-bearing — without it this matches the `code=` inside
-# `status_code=`, and every file in the codebase fails.
-CODE_ANY = re.compile(r"(?<![a-z_])code=(?!\")")
+
+
+def _app_error_calls(source: str) -> list[ast.Call]:
+    """Every AppError(...) call in a module, found by PARSING it.
+
+    This was a regular expression — "is there a `code=` anywhere in this file
+    that is not followed by a quote" — and it was wrong in a way worth
+    recording, because it is the same mistake this whole migration exists to
+    stop people making. auth/service.py builds an OTP challenge with
+    `OtpChallenge(code=code, ...)`, where `code` means a six-digit SMS code and
+    has nothing to do with error codes at all. The regex flagged it, because a
+    regex was answering a question nobody asked: it looked for a SUSPICIOUS
+    STRING anywhere in the file, when the invariant is about AppError calls
+    specifically.
+
+    An AST walk asks the real question and cannot be fooled by a variable that
+    happens to be spelled `code`, by prose in a docstring, or by a `code=` in
+    an unrelated constructor. It costs one import.
+    """
+    return [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "AppError"
+    ]
 
 
 @pytest.mark.parametrize("relative", CONVERTED)
@@ -71,15 +95,25 @@ def test_a_converted_module_has_no_bare_refusals(relative):
 def test_every_code_is_a_plain_literal(relative):
     """No f-strings, no variables, no helper that assembles one.
 
-    A code built at runtime cannot be read out of the source, which means the
-    frontend test cannot check it has a translation, which means it can ship
-    untranslated — the exact hole this pair of tests exists to close. The
-    keyword-only `*` in AppError.__init__ already forces `code=`; this forces
-    the value beside it to be readable too.
+    A code built at runtime cannot be read out of the source, which means
+    web/src/lib/errorMessages.test.ts cannot check it has a translation, which
+    means it can ship untranslated — the exact hole this pair of tests exists
+    to close. The keyword-only `*` in AppError.__init__ already forces the
+    `code=` spelling; this forces the value beside it to be readable too, and
+    is what makes the frontend's regex trustworthy rather than hopeful.
     """
     source = (APP / relative).read_text(encoding="utf-8")
-    assert CODE_ANY.search(source) is None, f"{relative} builds a code instead of writing one"
-    assert CODE_ARG.findall(source), f"{relative} is listed as converted but emits no codes"
+    calls = _app_error_calls(source)
+    assert calls, f"{relative} is listed as converted but raises no AppError"
+
+    unreadable = []
+    for call in calls:
+        keyword = next((k for k in call.keywords if k.arg == "code"), None)
+        if keyword is None:
+            unreadable.append(f"{relative}:{call.lineno} passes no code=")
+        elif not (isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str)):
+            unreadable.append(f"{relative}:{call.lineno} builds its code instead of writing one")
+    assert unreadable == [], "\n".join(unreadable)
 
 
 # --------------------------------------------------------------------------

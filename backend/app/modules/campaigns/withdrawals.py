@@ -39,10 +39,11 @@ them. The dependency runs one way — router -> withdrawals -> service — and
 contracts are read through contracts.models (models only, never
 contracts.service, which imports campaigns.service and would close the circle).
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.modules.campaigns import models, service
 from app.modules.contracts import models as contracts
@@ -105,14 +106,19 @@ def withdraw_invitation(
         .first()
     )
     if invitation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="invitation_not_found",
+            detail="Invitation not found",
+        )
 
     if invitation.status != models.INVITED:
         # Already answered, already withdrawn, or already accepted. Refused
         # rather than treated as a no-op, so a double click does not send the
         # creator a second "this is off" for something that was already off.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="invitation_not_open",
             detail="This invitation is no longer open and cannot be withdrawn.",
         )
 
@@ -122,7 +128,11 @@ def withdraw_invitation(
         # order for free — an order always carries the buyer's own proposal —
         # which is correct: an order is closed by the creator's decline, not
         # by the buyer deleting the invitation out from under it.
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=PRICED_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="invitation_priced",
+            detail=PRICED_DETAIL,
+        )
 
     invitation.status = models.WITHDRAWN
     notify(
@@ -165,26 +175,41 @@ def withdraw_proposal(db: Session, proposal_id: str, influencer_user_id: str) ->
         db.query(models.Proposal).filter(models.Proposal.id == proposal_id).first()
     )
     if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="proposal_not_found",
+            detail="Proposal not found",
+        )
     if proposal.influencer_user_id != influencer_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="This proposal is not yours"
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="proposal_not_yours",
+            detail="This proposal is not yours"
         )
 
     campaign = (
         db.query(models.Campaign).filter(models.Campaign.id == proposal.campaign_id).first()
     )
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_not_found",
+            detail="Campaign not found",
+        )
     if campaign.is_direct:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=DIRECT_ORDER_DETAIL)
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="proposal_is_direct_order",
+            detail=DIRECT_ORDER_DETAIL,
+        )
 
     if proposal.status != models.SUBMITTED:
         # Superseded, accepted, rejected: in every one of those the version
         # named here is no longer the offer on the table, so there is nothing
         # left on it to take back.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="proposal_not_live",
             detail="This proposal is not the live offer and cannot be withdrawn.",
         )
 
@@ -204,8 +229,9 @@ def withdraw_proposal(db: Session, proposal_id: str, influencer_user_id: str) ->
         # terms have left the negotiation and become an agreement. Unwinding
         # that is contracts.cancellation's job, and it has the rules — not
         # least whether escrow has been funded against it.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="proposal_has_contract",
             detail=(
                 "A contract already exists for this proposal. Cancel the contract "
                 "instead: POST /contracts/{contract_id}/cancel."

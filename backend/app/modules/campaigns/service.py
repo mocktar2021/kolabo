@@ -51,9 +51,10 @@ person it is about is one the reader has to open the app to understand.
 """
 from datetime import datetime, time, timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.contact_guard import check_no_contact_details
 from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
@@ -132,9 +133,17 @@ DEFAULT_ORDER_TIMELINE_DAYS = 7
 def _require_campaign_owner(db: Session, campaign_id: str, business_user_id: str) -> models.Campaign:
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_not_found",
+            detail="Campaign not found",
+        )
     if campaign.business_user_id != business_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your campaign")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="campaign_not_yours",
+            detail="Not your campaign",
+        )
     return campaign
 
 
@@ -153,10 +162,15 @@ def _require_campaign_author(db: Session, user_id: str) -> User:
     """
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="auth_user_not_found",
+            detail="User not found",
+        )
     if user.role == AUTHOR_EXCLUDED_ROLE:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="campaign_author_only",
             detail="Only businesses and agencies can create campaigns.",
         )
     return user
@@ -241,8 +255,10 @@ def _checked_campaign_status(value: str | None) -> str | None:
     """
     if value is None or value in MY_CAMPAIGN_STATUSES:
         return value
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
+    raise AppError(
+        status.HTTP_400_BAD_REQUEST,
+        code="campaign_status_unknown",
+        values={"statuses": ", ".join(MY_CAMPAIGN_STATUSES)},
         detail=f"status must be one of: {', '.join(MY_CAMPAIGN_STATUSES)}",
     )
 
@@ -260,14 +276,18 @@ def _validate_deliverables(deliverables: list) -> None:
         platform = d.get("platform")
         deliverable_type = d.get("type")
         if platform not in PLATFORM_DELIVERABLES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="campaign_platform_unsupported",
+                values={"platform": platform, "allowed": ", ".join(sorted(PLATFORM_DELIVERABLES))},
                 detail=f"{platform} is not a supported platform. Allowed: {', '.join(sorted(PLATFORM_DELIVERABLES))}",
             )
         if not is_valid_pair(platform, deliverable_type):
             allowed = ", ".join(PLATFORM_DELIVERABLES.get(platform, [])) or "none"
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="deliverable_not_on_platform",
+                values={"type": deliverable_type, "platform": platform, "allowed": allowed},
                 detail=f"{deliverable_type} is not available on {platform}. Allowed: {allowed}",
             )
         quantity = d.get("quantity")
@@ -276,8 +296,10 @@ def _validate_deliverables(deliverables: list) -> None:
         if not isinstance(quantity, int) or isinstance(quantity, bool) or not (
             1 <= quantity <= MAX_DELIVERABLE_QUANTITY
         ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="campaign_quantity_range",
+                values={"min": 1, "max": MAX_DELIVERABLE_QUANTITY},
                 detail=f"Deliverable quantity must be a whole number between 1 and {MAX_DELIVERABLE_QUANTITY}",
             )
 
@@ -358,8 +380,9 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     )
     if payload.publish:
         if not _publish_ready(campaign):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="campaign_publish_incomplete",
                 detail="Budget, deliverables, and deadline are required to publish",
             )
         campaign.status = models.PUBLISHED
@@ -372,8 +395,9 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
 def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> dict:
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
     if not _publish_ready(campaign):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_publish_incomplete",
             detail="Budget, deliverables, and deadline are required to publish",
         )
     # Re-checked at publish even though create validates too: rows saved
@@ -389,13 +413,22 @@ def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> di
 def invite_influencer(db: Session, campaign_id: str, business_user_id: str, influencer_user_id: str) -> dict:
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
     if campaign.status != models.PUBLISHED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Publish the campaign before inviting")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_publish_before_inviting",
+            detail="Publish the campaign before inviting",
+        )
     influencer = db.query(User).filter(User.id == influencer_user_id).first()
     if influencer is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_influencer_not_found",
+            detail="Influencer not found",
+        )
     if not influencer.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_influencer_not_verified",
             detail="This influencer is not verified yet and cannot be invited",
         )
     invitation = models.CampaignInvitation(
@@ -598,8 +631,10 @@ def check_order_form(payload) -> None:
     supplied = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is not None]
 
     if payload.package_id is not None and supplied:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_terms_both",
+            values={"supplied": ", ".join(supplied)},
             detail=(
                 "Send either package_id or custom terms, not both. "
                 f"Custom terms received: {', '.join(supplied)}"
@@ -608,8 +643,10 @@ def check_order_form(payload) -> None:
     if payload.package_id is not None:
         return
     if not supplied:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_terms_missing",
+            values={"fields": ", ".join(schemas.CUSTOM_OFFER_FIELDS)},
             detail=(
                 "An order needs either package_id or a full custom offer ("
                 f"{', '.join(schemas.CUSTOM_OFFER_FIELDS)})."
@@ -618,8 +655,10 @@ def check_order_form(payload) -> None:
 
     missing = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is None]
     if missing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_terms_incomplete",
+            values={"missing": ", ".join(missing)},
             detail=f"A custom offer is incomplete. Missing: {', '.join(missing)}",
         )
 
@@ -641,20 +680,26 @@ def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
     negotiated.validate_offer(offer)
 
     if offer.creator_user_id == business_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_to_self",
             detail="You cannot send an offer to yourself.",
         )
     creator = db.query(User).filter(User.id == offer.creator_user_id).first()
     if creator is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Influencer not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_influencer_not_found",
+            detail="Influencer not found",
+        )
     if creator.role != AUTHOR_EXCLUDED_ROLE:
         # AUTHOR_EXCLUDED_ROLE is the selling side of the market: the role
         # that may not author a brief is precisely the role that can be sent
         # one. Reused rather than re-stated so a new buyer-side role cannot
         # accidentally become orderable.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_target_not_creator",
             detail="You can only send an offer to a creator.",
         )
 
@@ -692,21 +737,27 @@ def resolve_package_terms(
     """
     package = db.query(Package).filter(Package.id == package_id).first()
     if package is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Package not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="package_not_found",
+            detail="Package not found",
+        )
     if not package.is_active:
         # A creator deactivates a package when they have stopped selling it —
         # out of season, fully booked, price out of date. Honouring the old
         # price would be selling something nobody is offering.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_package_inactive",
             detail="This package is not available at the moment.",
         )
     # Checked before the role guard so the message is the true one. A creator
     # buying their own package would also fail the role check, but "only
     # businesses can order" is not what went wrong.
     if package.user_id == business_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_own_package",
             detail="You cannot order your own package.",
         )
 
@@ -856,9 +907,17 @@ def submit_proposal(
     """
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="campaign_not_found",
+            detail="Campaign not found",
+        )
     if campaign.status != models.PUBLISHED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Campaign is not open for proposals")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_not_open",
+            detail="Campaign is not open for proposals",
+        )
 
     # Before the chain is touched, so a refused note leaves the previous
     # version live rather than superseded by something that was never written.
@@ -884,8 +943,9 @@ def submit_proposal(
         models.PROPOSAL_REJECTED,
         models.PROPOSAL_DECLINED,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="proposal_negotiation_closed",
             detail="This negotiation is closed and cannot be answered",
         )
 
@@ -1001,14 +1061,19 @@ def reply_to_proposal(
         .first()
     )
     if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="proposal_not_found",
+            detail="Proposal not found",
+        )
 
     latest = latest_in_chain(db, campaign_id, proposal.influencer_user_id)
     if latest.status != models.SUBMITTED:
         # Accepted or rejected: the negotiation is over. Reopening it by reply
         # would let terms drift after a contract was written from them.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="proposal_closed",
             detail="This proposal is closed and cannot be answered",
         )
 

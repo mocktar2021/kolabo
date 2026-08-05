@@ -17,6 +17,7 @@ from app.core.rewards import REFERRAL_CREDIT
 from app.core.security import create_access_token
 from app.modules.auth.models import ReferralCredit, User
 from app.modules.contracts import models as contracts
+from app.modules.deliverables import models as deliverables
 from app.modules.payments import provider as provider_module
 from app.modules.payments import service as pay_service
 from app.modules.payments import models as pay_models
@@ -126,6 +127,46 @@ def _fund(client, biz, contract_id):
     return client.post("/payments/escrow/fund", json={"contract_id": contract_id}, headers=_headers(biz)).json()
 
 
+def _submitted(client, contract_id, creator_id):
+    """Work handed in and still awaiting the brand's answer.
+
+    THE SWEEP NEEDS ONE TO EXIST. Auto-release used to be a pure function of
+    the funding date, so an escrow nobody had delivered against paid itself
+    out once the deadline passed. It now only takes escrows with an OPEN
+    submission — see payments.service.run_due_auto_releases — which means the
+    timeout path in these tests has to have something submitted against it,
+    exactly as a real one would.
+
+    Written straight to the table rather than through POST /deliverables: this
+    file mounts only the payments router, and what it is testing is the sweep
+    and the referral hook, not the submission API. test_deliverables.py owns
+    that end.
+    """
+    db = client.session_factory()
+    try:
+        db.add(
+            deliverables.DeliverableSubmission(
+                contract_id=contract_id,
+                submitted_by_user_id=creator_id,
+                link_url="https://instagram.com/p/abc123",
+                status=deliverables.SUBMITTED,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _age_release_deadline(client, escrow_id):
+    db = client.session_factory()
+    try:
+        e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow_id).first()
+        e.due_release_at = pay_models.utcnow().replace(year=2020)
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_fund_requires_signed_contract(client):
     biz, inf, cid = _signed_contract(client, signed=False)
     r = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz))
@@ -167,16 +208,36 @@ def test_only_business_can_release(client):
 
 
 def test_auto_release_after_timeout(client):
+    """Delivered work the brand never got round to reviewing still pays.
+
+    The creator did their part; a brand that clicks nothing must not be able
+    to hold a payout indefinitely. That is what the timeout is FOR, and it is
+    now the only thing it does — see the test below for the case it used to
+    get wrong.
+    """
     biz, inf, cid = _signed_contract(client)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
-    # Force the due date into the past.
-    db = client.session_factory()
-    e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow["id"]).first()
-    e.due_release_at = pay_models.utcnow().replace(year=2020)
-    db.commit(); db.close()
+    _submitted(client, cid, inf)
+    _age_release_deadline(client, escrow["id"])
     r = client.post("/payments/escrow/auto-release", headers=ADMIN)
     assert r.json()["released"] == 1
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "released"
+
+
+def test_nothing_submitted_never_auto_releases(client):
+    """The hole the deliverables work closed, guarded from the money side.
+
+    due_release_at was stamped at FUNDING, and the sweep asked nothing about
+    delivery — so a brand that funded a contract and then heard nothing from
+    the creator had its money paid out to that creator seven days later. The
+    escrow now waits, and the brand's recourse is the dispute path, which is
+    where a claim on frozen money belongs.
+    """
+    biz, inf, cid = _signed_contract(client)
+    escrow = _fund(client, biz, cid)
+    _age_release_deadline(client, escrow["id"])
+    assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
+    assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "held"
 
 
 def test_a_frozen_escrow_cannot_be_released_by_the_business(client):
@@ -193,11 +254,14 @@ def test_a_frozen_escrow_cannot_be_released_by_the_business(client):
     assert r.json()["escrow"]["status"] == "disputed"
     assert client.post(f"/payments/escrow/{eid}/release", headers=_headers(biz)).status_code == 400
     # And no auto release can slip past the freeze either: the sweep only
-    # looks at held escrows.
-    db = client.session_factory()
-    e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == eid).first()
-    e.due_release_at = pay_models.utcnow().replace(year=2020)
-    db.commit(); db.close()
+    # looks at HELD escrows.
+    #
+    # The submission is here so that the freeze is the only thing left
+    # stopping it. Without one the sweep would skip this escrow anyway, for
+    # having nothing delivered against it, and the test would pass while
+    # proving nothing about disputes at all.
+    _submitted(client, cid, inf)
+    _age_release_deadline(client, eid)
     assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 0
 
 
@@ -284,10 +348,8 @@ def test_auto_release_also_awards_the_referral(client):
     biz, inf, cid = _signed_contract(client)
     _referred_by(client, inf)
     escrow = _fund(client, biz, cid)
-    db = client.session_factory()
-    e = db.query(pay_models.Escrow).filter(pay_models.Escrow.id == escrow["id"]).first()
-    e.due_release_at = pay_models.utcnow().replace(year=2020)
-    db.commit(); db.close()
+    _submitted(client, cid, inf)
+    _age_release_deadline(client, escrow["id"])
     assert client.post("/payments/escrow/auto-release", headers=ADMIN).json()["released"] == 1
     assert {c.kind for c in _credits(client)} == {"referee", "referrer"}
 

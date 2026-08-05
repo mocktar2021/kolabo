@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
 import { ApiError, api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { checkoutItem, useCart, UNKNOWN_CREATOR, type CartCheckoutOrder, type CartCheckoutResult, type CartLine } from "../lib/cart";
 import { PLATFORM_LABELS } from "../lib/platforms";
@@ -54,12 +55,12 @@ export default function CartPage() {
   /* Which line the server refused, by ID rather than by position.
 
      It used to be the index, and the index used to be right: the basket was
-     posted whole, so the server's zero-based "Item 3" was the fourth row on
-     screen. With a selection it is the fourth row OF WHAT WAS POSTED, which
-     is a different row as soon as anything is unticked — and highlighting the
-     wrong line is worse than highlighting none, because the buyer then edits
-     an item the server never complained about. The posted list is kept below
-     and the index is resolved through it once, here. */
+     posted whole, so the server's zero-based cart_index 3 was the fourth row
+     on screen. With a selection it is the fourth row OF WHAT WAS POSTED,
+     which is a different row as soon as anything is unticked — and
+     highlighting the wrong line is worse than highlighting none, because the
+     buyer then edits an item the server never complained about. The posted
+     list is kept below and the index is resolved through it once, here. */
   const [rejectedId, setRejectedId] = useState<string | null>(null);
   const [orders, setOrders] = useState<CartCheckoutOrder[] | null>(null);
   /* The lines that became those orders. Kept because they are removed from
@@ -147,16 +148,27 @@ export default function CartPage() {
          create some of a basket, so choosing less means SENDING less. What
          goes up is still ordered whole.
 
-         The position is parsed off the message and is ZERO-BASED: cart.py
-         enumerates the items from zero. It is used only to highlight the row;
-         the server's own sentence is what explains the problem, and it is
-         shown verbatim because it names the rule and what is allowed in the
-         same words the packages module uses. */
-      if (e instanceof ApiError && e.status === 400) {
-        const match = /^Item (\d+):/.exec(e.message);
-        if (match) setRejectedId(posted[Number(match[1])]?.id ?? null);
+         THE POSITION ARRIVES AS DATA, in `values.cart_index`, and is
+         ZERO-BASED: cart.py enumerates the items from zero. It used to be
+         read back out of the English sentence with a regular expression,
+         which meant rewording that sentence would have silently stopped the
+         highlight working with nothing failing anywhere.
+
+         The status is not tested, because it has nothing to add: an index is
+         either on the refusal or it is not, and cart.py puts one on every
+         refusal it re-raises. What IS tested is that the value is a real
+         integer — `Number(null)` is 0, which would confidently highlight the
+         first row of a basket the server never said anything about.
+
+         The refusal keeps the resolver's own code, so the sentence beside the
+         row is the specific one ("you cannot order your own package"), in the
+         reader's language, via errorText. */
+      if (e instanceof ApiError) {
+        const raw = e.values?.cart_index;
+        const index = raw == null ? NaN : Number(raw);
+        if (Number.isInteger(index)) setRejectedId(posted[index]?.id ?? null);
       }
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -286,10 +298,12 @@ export default function CartPage() {
                                 {t("cart.note")} : {line.note}
                               </p>
                             )}
-                            {/* The server's sentence sits on the line it is
-                                about, not only at the top of the page: a
-                                twenty-line basket with one message above it
-                                leaves the buyer counting rows. */}
+                            {/* The refusal sits on the line it is about, not
+                                only at the top of the page: a twenty-line
+                                basket with one message above it leaves the
+                                buyer counting rows. Same sentence in both
+                                places — errorText resolved it once, from the
+                                code the resolver refused with. */}
                             {isRejected && error && (
                               <p style={{ fontSize: 13, margin: "6px 0 0", color: "var(--danger, #c0392b)", fontWeight: 600 }}>
                                 {t("cart.lineRejected")} — {error}

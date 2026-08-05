@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { CATEGORIES } from "../lib/categories";
@@ -151,16 +152,16 @@ function ApplyForm({ brief, onApplied }: { brief: OpenBrief; onApplied: () => vo
       });
       onApplied();
     } catch (err) {
-      /* Mapped by STATUS CODE, never by reading the detail — the server
-         sentence is written in English for the API and can be reworded at any
-         time. A 409 here means exactly one thing: there is already a live
-         proposal from this creator on this brief, and a second application
-         would supersede terms the brand may be reading right now. */
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? t("board.applyConflict")
-          : err instanceof Error ? err.message : "Error"
-      );
+      /* Mapped by the CODE the refusal carries, which board.py now sends:
+         `board_already_applied` says there is already a live proposal from
+         this creator on this brief, and that a second application would
+         supersede terms the brand may be reading right now. That used to be
+         inferred from the 409 alone — the status was the only thing the
+         refusal offered, and reading the English detail instead would have
+         broken the day somebody reworded it. errorText picks the sentence,
+         so a code with no translation yet still falls through to the
+         backend's English rather than to "Error". */
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

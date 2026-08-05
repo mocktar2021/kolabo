@@ -178,6 +178,39 @@ export const error_fr = {
   invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
   invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
 
+  order_not_found: "Commande introuvable.",
+  order_not_direct: "Cette proposition n'est pas une commande directe.",
+  order_not_yours: "Cette commande ne vous est pas adressée.",
+  order_own_counter: "Ceci est votre propre contre-proposition. C'est à la marque de l'accepter.",
+  order_not_open: "Cette commande n'est plus ouverte.",
+  order_expired: "Cette commande a expiré.",
+
+  campaign_is_direct_order: "Une commande directe ne se modifie pas. Ses conditions sont une négociation : faites une contre-proposition, ou laissez le créateur la refuser.",
+  campaign_cancelled_immutable: "Cette campagne est annulée et ne peut plus être modifiée.",
+  campaign_already_cancelled: "Cette campagne est déjà annulée.",
+  campaign_needs_title: "Une campagne a besoin d'un titre.",
+  /* {{field}} est le nom technique du champ ("budget_amount"), donc en
+     anglais au milieu d'une phrase française. Même arbitrage que
+     {{document}} côté notifications : dire LEQUEL des champs est verrouillé
+     compte plus que la couture, tant que les champs n'ont pas leurs propres
+     clés de traduction. */
+  campaign_field_locked: "« {{field}} » ne peut plus être modifié : un créateur a déjà chiffré une proposition dessus. Annulez cette campagne et republiez-la si les conditions doivent changer.",
+  campaign_has_activity: "Cette campagne a de l'activité : annulez-la plutôt que de la supprimer.",
+  campaign_has_contract: "Cette campagne a un contrat. Défaire un accord signé passe par le litige et le remboursement, pas par une annulation.",
+
+  board_not_a_creator: "Seuls les créateurs peuvent parcourir les briefs ouverts. Un brief contient un budget et les projets d'une marque, donc le tableau reste derrière un compte créateur.",
+  board_not_open: "Ce brief n'est pas ouvert aux candidatures. La marque y invite les créateurs directement.",
+  board_direct_order: "Ceci est une commande directe adressée à un seul créateur, pas un brief ouvert : on ne peut pas y candidater.",
+  board_already_applied: "Vous avez déjà une proposition en cours sur ce brief. Modifiez-la en envoyant une nouvelle version plutôt qu'en candidatant à nouveau.",
+
+  cart_empty: "Un paiement demande au moins un article.",
+  cart_too_many_items: "Un panier contient au plus {{max}} articles. Payez en plusieurs fois.",
+  cart_mixed_currencies: "Les articles de ce créateur sont libellés en {{currencies}}. Une commande porte un seul séquestre, et un séquestre une seule devise : commandez chaque devise séparément.",
+  /* Seulement pour un refus qui n'a pas de code à lui — voir cart._resolve_item.
+     Le cas normal renvoie le code du refus d'origine, avec cart_index dans les
+     valeurs pour que la page surligne la bonne ligne. */
+  cart_item_refused: "L'article {{cart_index}} de votre panier a été refusé.",
+
   dispute_not_found: "Litige introuvable.",
   dispute_closed: "Ce litige est clos.",
   dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
@@ -346,6 +379,31 @@ export const error_en = {
   invitation_not_found: "Invitation not found.",
   invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
   invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
+
+  order_not_found: "Order not found.",
+  order_not_direct: "That proposal is not a direct order.",
+  order_not_yours: "That order is not addressed to you.",
+  order_own_counter: "This is your own counter-offer. The brand has to accept it.",
+  order_not_open: "That order is no longer open.",
+  order_expired: "That order has expired.",
+
+  campaign_is_direct_order: "A direct order cannot be edited. Its terms are a negotiation: counter it with a reply, or let the creator decline it.",
+  campaign_cancelled_immutable: "This campaign is cancelled and cannot be edited.",
+  campaign_already_cancelled: "This campaign is already cancelled.",
+  campaign_needs_title: "A campaign needs a title.",
+  campaign_field_locked: "\"{{field}}\" cannot be changed: a creator has already priced a proposal against it. Cancel this campaign and publish a new one if the terms have to change.",
+  campaign_has_activity: "This campaign has activity: cancel it instead of deleting it.",
+  campaign_has_contract: "This campaign has a contract. Unwinding a signed agreement is the dispute and refund path, not a cancellation.",
+
+  board_not_a_creator: "Only creators can browse open briefs. A brief carries a budget and a brand's plans, so the board stays behind a creator login.",
+  board_not_open: "This brief is not open to applications. The brand invites creators to it directly.",
+  board_direct_order: "This is a direct order addressed to one creator, not an open brief, and it cannot be applied to.",
+  board_already_applied: "You already have a live proposal on this brief. Edit it by submitting a new version instead of applying again.",
+
+  cart_empty: "A checkout needs at least one item.",
+  cart_too_many_items: "A cart holds at most {{max}} items. Check out in smaller baskets.",
+  cart_mixed_currencies: "This creator's items are priced in {{currencies}}. An order carries one escrow and an escrow carries one currency, so order each currency separately.",
+  cart_item_refused: "Item {{cart_index}} in your basket was refused.",
 
   dispute_not_found: "Dispute not found.",
   dispute_closed: "This dispute is closed.",

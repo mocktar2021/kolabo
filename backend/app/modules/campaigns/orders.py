@@ -16,9 +16,10 @@ funded only AFTER acceptance, which is why a decline or a lapse needs no
 refund path at all: there is nothing in the system to give back. The 48 hour
 window is safe to enforce for exactly the same reason.
 """
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.modules.campaigns import models
 from app.modules.campaigns import service as campaigns_service
@@ -35,20 +36,33 @@ def _load_order(db: Session, proposal_id: str, influencer_user_id: str):
     """
     proposal = db.query(models.Proposal).filter(models.Proposal.id == proposal_id).first()
     if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="order_not_found",
+            detail="Order not found",
+        )
     campaign = db.query(models.Campaign).filter(models.Campaign.id == proposal.campaign_id).first()
     if campaign is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="order_not_found",
+            detail="Order not found",
+        )
     if not campaign.is_direct:
         # A brief's proposals are accepted by the BUSINESS, through the
         # contracts endpoint. Routing one through here would let a creator
         # sign their own offer.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_not_direct",
             detail="This proposal is not a direct order",
         )
     if proposal.influencer_user_id != influencer_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This order is not yours")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="order_not_yours",
+            detail="This order is not yours",
+        )
     return proposal, campaign
 
 
@@ -66,8 +80,9 @@ def _require_business_offer(proposal) -> None:
     is simply not theirs to accept.
     """
     if proposal.author_role != models.AUTHOR_BUSINESS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_own_counter",
             detail="This is your own counter-offer. The brand has to accept it.",
         )
 
@@ -112,14 +127,19 @@ def accept_direct_order(db: Session, influencer_user_id: str, proposal_id: str) 
     proposal, campaign = _load_order(db, proposal_id, influencer_user_id)
     _require_business_offer(proposal)
     if proposal.status != models.SUBMITTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_not_open",
             detail="This order is no longer open",
         )
     # Checked before anything is written. An expired order is not a slow yes:
     # the buyer has been told it lapsed and may well have ordered elsewhere.
     if proposal.expires_at is not None and proposal.expires_at <= models.utcnow():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order has expired.")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_expired",
+            detail="This order has expired.",
+        )
 
     _set_invitation(db, campaign.id, influencer_user_id, models.ACCEPTED)
     contract = contracts_service.generate_from_proposal(db, campaign.business_user_id, proposal.id)
@@ -161,8 +181,9 @@ def decline_direct_order(db: Session, influencer_user_id: str, proposal_id: str)
     """
     proposal, campaign = _load_order(db, proposal_id, influencer_user_id)
     if proposal.status != models.SUBMITTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_not_open",
             detail="This order is no longer open",
         )
 

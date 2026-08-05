@@ -17,11 +17,12 @@ Mobile Money provider is contracted.
 import logging
 from datetime import timedelta
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.modules.auth.models import User
 from app.modules.auth.referrals import award_for_completed_order
 from app.modules.contracts import models as contracts
@@ -70,13 +71,29 @@ def _event(db: Session, escrow: models.Escrow, actor_id: str, event: str) -> Non
 def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
     contract = db.query(contracts.Contract).filter(contracts.Contract.id == contract_id).first()
     if contract is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="escrow_contract_not_found",
+            detail="Contract not found",
+        )
     if contract.business_user_id != business_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your contract")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="escrow_not_your_contract",
+            detail="Not your contract",
+        )
     if contract.status != contracts.SIGNED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contract must be fully signed before funding")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="escrow_contract_not_signed",
+            detail="Contract must be fully signed before funding",
+        )
     if db.query(models.Escrow).filter(models.Escrow.contract_id == contract_id).first() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This contract is already funded")
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="escrow_already_funded",
+            detail="This contract is already funded",
+        )
 
     business = db.query(User).filter(User.id == business_user_id).first()
     fund_ref = payment_provider.collect(business.phone, contract.rate_amount, contract.rate_currency)
@@ -158,11 +175,23 @@ def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
 def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:
     escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="escrow_not_found",
+            detail="Escrow not found",
+        )
     if escrow.business_user_id != business_user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the business can confirm delivery")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="escrow_release_business_only",
+            detail="Only the business can confirm delivery",
+        )
     if escrow.status != models.HELD:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escrow is not in a held state")
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="escrow_not_held",
+            detail="Escrow is not in a held state",
+        )
     _release(db, escrow, business_user_id)
     db.commit()
     db.refresh(escrow)
@@ -221,16 +250,32 @@ def run_due_auto_releases(db: Session, now=None) -> int:
 def get_escrow(db: Session, user_id: str, escrow_id: str) -> dict:
     escrow = db.query(models.Escrow).filter(models.Escrow.id == escrow_id).first()
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Escrow not found")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="escrow_not_found",
+            detail="Escrow not found",
+        )
     if user_id not in (escrow.business_user_id, escrow.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="escrow_not_a_party",
+            detail="Not a party to this escrow",
+        )
     return _out(escrow)
 
 
 def get_escrow_by_contract(db: Session, user_id: str, contract_id: str) -> dict:
     escrow = db.query(models.Escrow).filter(models.Escrow.contract_id == contract_id).first()
     if escrow is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No escrow for this contract")
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="escrow_none_for_contract",
+            detail="No escrow for this contract",
+        )
     if user_id not in (escrow.business_user_id, escrow.influencer_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a party to this escrow")
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="escrow_not_a_party",
+            detail="Not a party to this escrow",
+        )
     return _out(escrow)

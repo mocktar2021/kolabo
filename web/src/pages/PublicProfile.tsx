@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ShareModal } from "../components/ShareModal";
 import { api, mediaSrc } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { useCart } from "../lib/cart";
@@ -94,9 +95,9 @@ export default function PublicProfilePage() {
         setProfile(p);
         setSelectedId((prev) => prev ?? p.packages.find((x) => x.is_active)?.id ?? null);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Error"))
+      .catch((e) => setError(errorText(e, t)))
       .finally(() => setLoading(false));
-  }, [userId, lang]);
+  }, [userId, lang, t]);
 
   const packages = profile?.packages.filter((p) => p.is_active) ?? [];
   const packagePlatforms = [...new Set(packages.map((p) => p.platform))];
@@ -158,10 +159,12 @@ export default function PublicProfilePage() {
       setOrderedCampaignId(res.campaign_id);
       setOrderOpen(false);
     } catch (e) {
-      // 400 (own package, package deactivated) and 403 (creator ordering) all
-      // carry a server message that names the real problem. Shown as-is,
-      // inline, rather than replaced by a generic failure line.
-      setOrderError(e instanceof Error ? e.message : "Error");
+      // Every refusal here — ordering your own package, a package that was
+      // deactivated, a creator trying to buy — arrives with a code, and
+      // errorText turns that code into the sentence for the reader's
+      // language. Shown inline, rather than replaced by a generic failure
+      // line.
+      setOrderError(errorText(e, t));
     } finally {
       setOrderBusy(false);
     }
@@ -301,13 +304,14 @@ export default function PublicProfilePage() {
       setOrderedCampaignId(res.campaign_id);
       setNegotiateOpen(false);
     } catch (e) {
-      /* Rendered verbatim. campaigns/negotiated.py already names what is
-         wrong and what is allowed — the deliverable that does not exist on
-         that platform, the floor for this currency, the range a quantity or
-         a timeline has to sit in — in the same words the packages module
-         uses. Restating any of it here would be a second copy of those
-         rules, and the copy is the one that drifts. */
-      setOrderError(e instanceof Error ? e.message : "Error");
+      /* Resolved from the refusal's code, never restated here.
+         campaigns/negotiated.py still decides what is wrong and what is
+         allowed — the deliverable that does not exist on that platform, the
+         floor for this currency, the range a quantity or a timeline has to
+         sit in — and errorText turns the code it sends into the sentence
+         for the reader's language. Restating any of it here would be a
+         second copy of those rules, and the copy is the one that drifts. */
+      setOrderError(errorText(e, t));
     } finally {
       setOrderBusy(false);
     }

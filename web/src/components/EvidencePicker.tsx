@@ -23,11 +23,19 @@ import type { UploadedMedia } from "../lib/types";
 export function EvidencePicker({
   items,
   onChange,
-  disabled
+  disabled,
+  label
 }: {
   items: UploadedMedia[];
   onChange: (items: UploadedMedia[]) => void;
   disabled?: boolean;
+  /* Overrides the field label for callers that are not a dispute — the
+     deliverables panel attaches proof of published work through this same
+     uploader, and "Evidence" is the wrong word for it. Optional, so every
+     existing dispute caller keeps its copy unchanged. Only the label varies:
+     the upload path, the ownership guarantee and the cap are the parts worth
+     having exactly once. */
+  label?: string;
 }) {
   const { t } = useTranslation();
   const { token, userId } = useAuth();
@@ -68,7 +76,7 @@ export function EvidencePicker({
 
   return (
     <div>
-      <label className="label">{t("dispute.evidence")}</label>
+      <label className="label">{label ?? t("dispute.evidence")}</label>
       {items.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
           {items.map((item) => (

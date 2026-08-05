@@ -44,7 +44,7 @@ these must pass untouched, and all of them are in the test file:
     45 000 F par post           the same thing said twice in one sentence
     02/08/2026, 02-08-2026      a deadline
     2026-08-15                  the same deadline the other way round
-    CT-2026-000123              a contract reference
+    CT-2026-000123               a contract reference
     REF8829301145               a transfer reference
     250000 abonnés              an audience number
 
@@ -136,7 +136,7 @@ _REPORT_ORDER = (EMAIL, PHONE, HANDLE)
 # these, and web/src/lib/errorMessages.test.ts asserts every one of them has a
 # French and an English noun. Adding a fifth surface means adding it here and
 # in both languages, and the build says so if you forget.
-SURFACES = ("message", "statement", "proposal note")
+SURFACES = ("message", "statement", "proposal note", "brief description")
 
 
 # --------------------------------------------------------------------------

@@ -96,6 +96,7 @@ export const error_fr = {
   surface_message: "message",
   surface_statement: "texte",
   surface_proposal_note: "commentaire de proposition",
+  surface_brief_description: "descriptif de brief",
   /* The last separator in a list of two or three. Everything before it is a
      comma in both languages; only the final join differs. */
   list_and: "et"
@@ -158,6 +159,7 @@ export const error_en = {
   surface_message: "message",
   surface_statement: "statement",
   surface_proposal_note: "proposal note",
+  surface_brief_description: "brief description",
   list_and: "and"
 };
 

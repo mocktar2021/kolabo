@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { Layout } from "../components/Layout";
 import { EvidencePicker } from "../components/EvidencePicker";
 import { DeliverablesPanel } from "../components/DeliverablesPanel";
@@ -125,7 +126,7 @@ function RaiseDisputeForm({
                 media_ids: evidence.map((e) => e.id)
               });
             } catch (e) {
-              setError(e instanceof Error ? e.message : "Error");
+              setError(errorText(e, t));
             }
           }}
         >
@@ -184,11 +185,11 @@ export default function ContractPage() {
       setContract(c);
       if (c.fully_signed) await loadEscrow(c.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [id, token, loadEscrow]);
+  }, [id, token, loadEscrow, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -199,7 +200,7 @@ export default function ContractPage() {
       await fn();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -241,7 +242,7 @@ export default function ContractPage() {
           ? t("undo.contractFunded")
           : e instanceof ApiError && e.status === 400
             ? t("undo.contractRefused")
-            : e instanceof Error ? e.message : "Error"
+            : errorText(e, t)
       );
     } finally {
       setBusy(false);

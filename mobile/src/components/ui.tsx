@@ -182,7 +182,41 @@ export function ChoiceGroup({
   );
 }
 
+/* The multi-select sibling of ChoiceGroup — categories, languages: tap to add
+   or remove, no single-selection constraint. */
+export function MultiChoiceGroup({
+  options,
+  values,
+  onToggle,
+}: {
+  options: Choice[];
+  values: string[];
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <View style={styles.choiceWrap}>
+      {options.map((o) => {
+        const selected = values.includes(o.value);
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onToggle(o.value)}
+            style={[styles.choice, selected && styles.choiceSelected]}
+          >
+            <Text style={[styles.choiceLabel, selected && styles.choiceLabelSelected]}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function SectionTitle({ children }: { children: ReactNode }) {
+  return <Text style={styles.sectionTitle}>{children}</Text>;
+}
+
 const styles = StyleSheet.create({
+  sectionTitle: { fontSize: font.h2, fontWeight: "700", color: colors.ink, marginTop: space(3), marginBottom: space(2) },
   safe: { flex: 1, backgroundColor: colors.surface },
   flex: { flex: 1 },
   scroll: { padding: space(5), paddingBottom: space(10), justifyContent: "center", flexGrow: 1 },

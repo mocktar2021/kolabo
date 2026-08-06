@@ -18,7 +18,7 @@ const fr = {
   // reporting an absence.
   emptyCreator: "Vous n'avez encore rien remis pour ce contrat.",
   emptyBrand: "Le créateur n'a encore rien remis.",
-  emptyBrandHint: "Vous serez prévenu dès qu'un livrable est soumis.",
+  emptyBrandHint: "Vous serez prévenu dès qu'un livrable est soumis. C'est ici que vous le validez et libérez le paiement.",
   notFunded: "Le travail se remet une fois le paiement bloqué en séquestre.",
 
   // The submit form.
@@ -65,7 +65,7 @@ const en = {
 
   emptyCreator: "You have not submitted anything for this contract yet.",
   emptyBrand: "The creator has not submitted anything yet.",
-  emptyBrandHint: "You will be notified as soon as work is submitted.",
+  emptyBrandHint: "You will be notified as soon as work is submitted. You approve it and release the payment here.",
   notFunded: "Work is submitted once the payment is held in escrow.",
 
   submitTitle: "Submit the work",

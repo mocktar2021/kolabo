@@ -83,6 +83,25 @@ class Settings(BaseSettings):
     # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
     # no app review), so setting this turns on YouTube profile auto fill.
     youtube_api_key: str = ""
+    # Meta Graph API credentials for Instagram and Facebook profile auto fill.
+    # Both platforms are read through the same Graph host (graph.facebook.com),
+    # so they share one long-lived access token and one pinned API version.
+    #
+    # meta_graph_token: a long-lived token that can read the fields below. For a
+    #   Facebook Page that is a Page or app token with pages_read_engagement;
+    #   for Instagram Business Discovery it must be tied to the Business account
+    #   in instagram_business_account_id, with instagram_basic and
+    #   pages_show_list. One token carrying all of those drives both features.
+    # instagram_business_account_id: the Instagram Business/Creator account the
+    #   app queries THROUGH. Business Discovery returns another creator's public
+    #   stats by handle, but only when the caller is itself a Business account,
+    #   so this id is required — unset leaves Instagram auto fill off even when
+    #   the token is present, while Facebook still works on the token alone.
+    # meta_graph_version: the pinned Graph API version, overridable as Meta ages
+    #   versions out from under a fixed string.
+    meta_graph_token: str = ""
+    instagram_business_account_id: str = ""
+    meta_graph_version: str = "v19.0"
     # Anthropic API key for AI drafted profile bios. Unset means the feature is
     # reported as unavailable rather than half working.
     anthropic_api_key: str = ""

@@ -232,6 +232,48 @@ def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:
             code="escrow_not_held",
             detail="Escrow is not in a held state",
         )
+    # HARD GATE (Deliverables D2): confirming delivery is APPROVING what the
+    # creator handed in, so it needs a hand-in to approve. Before this, the
+    # button released money while recording nothing about what it paid for —
+    # and if a submission WAS open it left it sitting unanswered against an
+    # escrow that had already paid out, so deliverable state and escrow state
+    # told two different stories. Approval and release are now one act on this
+    # path too, exactly as they are in deliverables.service.approve.
+    #
+    # deliverables.MODELS only, never its service: payments.service is the
+    # bottom of that dependency, and run_due_auto_releases reads the same table
+    # the same way. At most one submission is open per contract (enforced in
+    # deliverables.service.submit), so "the open one" is unambiguous;
+    # newest-first is belt-and-braces.
+    submission = (
+        db.query(deliverables.DeliverableSubmission)
+        .filter(
+            deliverables.DeliverableSubmission.contract_id == escrow.contract_id,
+            deliverables.DeliverableSubmission.status.in_(deliverables.OPEN_STATUSES),
+        )
+        .order_by(deliverables.DeliverableSubmission.created_at.desc())
+        .first()
+    )
+    if submission is None:
+        # No open hand-in: either nothing was ever submitted, or the only
+        # attempts are closed (changes requested, withdrawn). Either way there
+        # is nothing to confirm, and a business does not pay out of the
+        # deliverable flow — the money waits for the creator to deliver.
+        # Legacy and off-platform escrows with no submission resolve through
+        # auto-release, the non-delivery refund, or a dispute, not here.
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="escrow_release_needs_submission",
+            detail=(
+                "There is nothing to confirm yet: the creator has not submitted "
+                "any work against this escrow. Once they submit it, confirming "
+                "delivery approves that submission and releases the payment."
+            ),
+        )
+    # Approval and payout in one transaction — the same pairing approve() makes,
+    # through the same _release, so commission, the payout, the escrow event and
+    # the referral hook stay in exactly one place.
+    deliverables.mark_approved(submission, business_user_id)
     _release(db, escrow, business_user_id)
     db.commit()
     db.refresh(escrow)

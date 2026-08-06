@@ -10,6 +10,7 @@ from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.contracts import models as contracts
+from app.modules.deliverables import models as deliverables
 from app.modules.notifications.models import Notification
 from app.modules.payments import models as pay_models
 from app.modules.payments import provider as provider_module
@@ -94,6 +95,29 @@ def _disputed(client, amount=10000, suffix="1"):
         f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(inf)
     ).json()
     return biz, inf, stranger, escrow, dispute
+
+
+def _submitted(client, contract_id, creator_id):
+    """An open hand-in, written straight to the table.
+
+    The standalone release now approves the open submission before it pays, so
+    a test that releases has to have one — the same reason test_payments.py
+    grows this helper. This file mounts only the payments router and is about
+    disputes, not the submission API, so the row goes in directly.
+    """
+    db = client.session_factory()
+    try:
+        db.add(
+            deliverables.DeliverableSubmission(
+                contract_id=contract_id,
+                submitted_by_user_id=creator_id,
+                link_url="https://instagram.com/p/abc123",
+                status=deliverables.SUBMITTED,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 def _media(client, owner_id):
@@ -215,6 +239,8 @@ def test_a_released_escrow_has_nothing_left_to_freeze(client):
     """The payout has already been made at the provider. Answering 200 would
     tell a creator their money was stopped when it was not."""
     biz, inf, _, escrow = _funded(client)
+    # Releasing now approves an open hand-in, so one has to exist first.
+    _submitted(client, escrow["contract_id"], inf)
     assert client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)).status_code == 200
     r = client.post(
         f"/payments/escrow/{escrow['id']}/dispute", json=_body(), headers=_headers(inf)

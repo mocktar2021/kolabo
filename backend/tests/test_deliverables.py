@@ -417,3 +417,70 @@ def test_the_sweep_stops_for_a_withdrawn_submission(client, admin_headers):
     _age_release_deadline(client, escrow["id"])
     assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 0
     assert _escrow_row(client, escrow["id"]).status == pay_models.HELD
+
+
+# --- The standalone confirm-delivery button (Deliverables D2) -----------
+#
+# POST /payments/escrow/{id}/release used to release the money and record
+# nothing about what it paid for, so escrow state and deliverable state could
+# diverge. It is now the same act as approving the open submission, reached
+# from the money side.
+
+
+def test_standalone_release_approves_the_open_submission(client):
+    """Confirming delivery from the escrow side closes the open hand-in as
+    approved and releases the money in one step: the two states cannot diverge."""
+    biz, inf, _, cid, escrow = _funded(client)
+    sub = _submit(client, inf, cid).json()
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    assert r.status_code == 200
+    assert r.json()["status"] == "released"
+    # The open attempt is now approved, by the business, without a second click.
+    history = client.get(f"/deliverables?contract_id={cid}", headers=_headers(biz)).json()
+    assert [h["status"] for h in history] == ["approved"]
+    assert history[0]["id"] == sub["id"]
+    assert history[0]["reviewed_by_user_id"] == biz
+    # Both sides were told by the release path (escrow_released_*).
+    assert len(_notices(client, inf, type="payment")) >= 1
+    assert len(_notices(client, biz, type="payment")) >= 1
+    # The only deliverable-type notice the brand got was the submission itself —
+    # the release path does not add a second "approved" one.
+    assert [n["params"]["key"] for n in _notices(client, biz)] == ["deliverable_submitted_generic"]
+
+
+def test_standalone_release_is_refused_with_nothing_submitted(client):
+    """A funded escrow nobody has delivered against cannot be released by the
+    button any more: there is nothing to confirm. It waits for the creator, or
+    resolves through auto-release, non-delivery or a dispute."""
+    biz, inf, _, cid, escrow = _funded(client)
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    # A 400 on a freshly funded, undisputed escrow is the D2 gate; the coded
+    # refusal and its translations are guarded in test_error_codes.py /
+    # errorMessages.test.ts. This app does not register the AppError handler.
+    assert r.status_code == 400
+    assert _escrow_row(client, escrow["id"]).status == pay_models.HELD
+
+
+def test_standalone_release_is_refused_when_the_only_attempt_is_closed(client):
+    """Changes-requested is not an open hand-in: the brand asked for a redo, so
+    there is nothing in front of it to confirm until the creator resubmits."""
+    biz, inf, _, cid, escrow = _funded(client)
+    sub = _submit(client, inf, cid).json()
+    client.post(
+        f"/deliverables/{sub['id']}/request-changes",
+        json={"note": "Please reshoot in landscape."},
+        headers=_headers(biz),
+    )
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    assert r.status_code == 400
+    assert _escrow_row(client, escrow["id"]).status == pay_models.HELD
+
+    # Once the creator resubmits, the button works again and approves the new one.
+    resub = _submit(client, inf, cid).json()
+    assert client.post(
+        f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)
+    ).status_code == 200
+    history = client.get(f"/deliverables?contract_id={cid}", headers=_headers(biz)).json()
+    # Newest first: the approved resubmission, then the earlier changes_requested.
+    assert [h["status"] for h in history] == ["approved", "changes_requested"]
+    assert history[0]["id"] == resub["id"]

@@ -9,6 +9,8 @@ import VerifyOtpScreen from "../screens/VerifyOtpScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import CreatorProfileScreen from "../screens/CreatorProfileScreen";
+import ContractsListScreen from "../screens/ContractsListScreen";
+import ContractDetailScreen from "../screens/ContractDetailScreen";
 import type { AppStackParamList, AuthStackParamList } from "./types";
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -30,6 +32,8 @@ function AppNavigator() {
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
       <AppStack.Screen name="Dashboard" component={DashboardScreen} />
       <AppStack.Screen name="CreatorProfile" component={CreatorProfileScreen} />
+      <AppStack.Screen name="Contracts" component={ContractsListScreen} />
+      <AppStack.Screen name="ContractDetail" component={ContractDetailScreen} />
     </AppStack.Navigator>
   );
 }

@@ -38,6 +38,9 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
           <Banner kind="info">{t("dash.comingSoon")}</Banner>
         )}
 
+        <View style={{ marginBottom: space(3) }}>
+          <GhostButton title={t("contract.listTitle")} onPress={() => navigation.navigate("Contracts")} />
+        </View>
         <GhostButton title={t("dash.logout")} onPress={() => void logout()} />
       </Card>
     </Screen>

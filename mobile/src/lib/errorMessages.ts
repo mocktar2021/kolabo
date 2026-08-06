@@ -53,6 +53,46 @@ export const error_fr: Record<string, string> = {
   profile_image_type_unsupported: "Seules les images JPEG, PNG, WEBP ou GIF sont acceptées.",
   profile_file_empty: "Ce fichier est vide.",
   profile_image_not_found: "Image introuvable.",
+
+  contract_not_found: "Contrat introuvable.",
+  contract_not_a_party: "Vous n'êtes pas partie à ce contrat.",
+  contract_signed_immutable: "Ce contrat est entièrement signé : il ne peut plus être modifié.",
+  contract_you_already_signed: "Vous avez déjà signé.",
+  contract_already_cancelled: "Ce contrat est déjà annulé.",
+  contract_cancel_signed: "Ce contrat est signé par les deux parties. Elles s'y sont engagées, et ce n'est pas quelque chose qu'une seule peut annuler.",
+  contract_cancel_funded: "Ce contrat a de l'argent bloqué en séquestre. Y mettre fin, c'est décider qui doit quoi : cela passe par le litige et le remboursement, pas par une annulation.",
+
+  escrow_contract_not_found: "Contrat introuvable.",
+  escrow_not_your_contract: "Ce contrat n'est pas le vôtre.",
+  escrow_contract_not_signed: "Le contrat doit être entièrement signé avant d'être financé.",
+  escrow_already_funded: "Ce contrat est déjà financé.",
+  escrow_not_found: "Séquestre introuvable.",
+  escrow_none_for_contract: "Aucun séquestre pour ce contrat.",
+  escrow_not_a_party: "Vous n'êtes pas partie à ce séquestre.",
+  escrow_not_held: "Le séquestre n'est pas bloqué.",
+  escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
+  escrow_release_needs_submission:
+    "Il n'y a encore rien à confirmer : le créateur n'a pas envoyé de livrable pour ce séquestre. Une fois qu'il l'aura envoyé, confirmer la livraison valide cet envoi et libère le paiement.",
+
+  deliverable_attachments_max: "Vous pouvez joindre au maximum {{max}} fichiers.",
+  deliverable_contract_not_found: "Contrat introuvable.",
+  deliverable_not_a_party: "Vous n'êtes pas partie à ce contrat.",
+  deliverable_submit_creator_only: "Seul le créateur de ce contrat peut envoyer un livrable.",
+  deliverable_contract_not_signed: "Un livrable ne peut être envoyé que sur un contrat entièrement signé.",
+  deliverable_escrow_not_funded:
+    "Aucun fonds n'est encore bloqué en séquestre sur ce contrat : il n'y a donc rien à livrer. Le livrable s'envoie une fois que la marque a payé.",
+  deliverable_escrow_not_held: "Le séquestre n'est plus bloqué : aucun livrable ne peut être envoyé.",
+  deliverable_submission_open_already:
+    "Vous avez déjà envoyé un livrable sur ce contrat et la marque n'a pas encore répondu. Attendez sa réponse ou retirez d'abord votre envoi.",
+  deliverable_note_too_long: "Une note fait au plus {{max}} caractères.",
+  deliverable_submission_empty:
+    "Un envoi doit contenir le lien de la publication, un fichier, ou les deux. Envoyez ce que la marque doit regarder.",
+  deliverable_submission_not_found: "Envoi introuvable.",
+  deliverable_review_business_only: "Seule l'entreprise de ce contrat peut valider un livrable.",
+  deliverable_already_answered: "Cet envoi a déjà reçu une réponse.",
+  deliverable_release_escrow_not_held: "Le séquestre n'est pas bloqué : il ne peut pas être libéré.",
+  deliverable_changes_need_note: "Dites ce qui doit changer, pour que le créateur puisse corriger.",
+  deliverable_withdraw_own_only: "Seul le créateur qui a envoyé ce livrable peut le retirer.",
 };
 
 export const error_en: Record<string, string> = {
@@ -92,6 +132,46 @@ export const error_en: Record<string, string> = {
   profile_image_type_unsupported: "Only JPEG, PNG, WEBP and GIF images are accepted.",
   profile_file_empty: "That file is empty.",
   profile_image_not_found: "Image not found.",
+
+  contract_not_found: "Contract not found.",
+  contract_not_a_party: "You are not a party to this contract.",
+  contract_signed_immutable: "This contract is fully signed and can no longer be changed.",
+  contract_you_already_signed: "You have already signed.",
+  contract_already_cancelled: "This contract is already cancelled.",
+  contract_cancel_signed: "This contract is fully signed. Both parties agreed to it, and it is not something either side can cancel alone.",
+  contract_cancel_funded: "This contract has money in escrow. Ending it is a question about who is owed what, which is the dispute and refund path, not a cancellation.",
+
+  escrow_contract_not_found: "Contract not found.",
+  escrow_not_your_contract: "This contract is not yours.",
+  escrow_contract_not_signed: "The contract must be fully signed before it can be funded.",
+  escrow_already_funded: "This contract is already funded.",
+  escrow_not_found: "Escrow not found.",
+  escrow_none_for_contract: "No escrow for this contract.",
+  escrow_not_a_party: "You are not a party to this escrow.",
+  escrow_not_held: "This escrow is not held.",
+  escrow_release_business_only: "Only the business can confirm delivery.",
+  escrow_release_needs_submission:
+    "There is nothing to confirm yet: the creator has not submitted any work against this escrow. Once they submit it, confirming delivery approves that submission and releases the payment.",
+
+  deliverable_attachments_max: "At most {{max}} files can be attached.",
+  deliverable_contract_not_found: "Contract not found.",
+  deliverable_not_a_party: "You are not a party to this contract.",
+  deliverable_submit_creator_only: "Only the creator on this contract can submit work.",
+  deliverable_contract_not_signed: "Work can only be submitted on a fully signed contract.",
+  deliverable_escrow_not_funded:
+    "This contract has no money in escrow yet, so there is nothing to deliver against. Work is submitted once the brand has funded it.",
+  deliverable_escrow_not_held: "This escrow is no longer held, so work cannot be submitted against it.",
+  deliverable_submission_open_already:
+    "You have already submitted work on this contract and the brand has not answered yet. Wait for their review, or withdraw the submission first.",
+  deliverable_note_too_long: "A note is at most {{max}} characters.",
+  deliverable_submission_empty:
+    "A submission needs the link to the published post, a file, or both. Send what the brand is meant to look at.",
+  deliverable_submission_not_found: "Submission not found.",
+  deliverable_review_business_only: "Only the business on this contract can review submitted work.",
+  deliverable_already_answered: "This submission has already been answered.",
+  deliverable_release_escrow_not_held: "This escrow is not held, so it cannot be released.",
+  deliverable_changes_need_note: "Say what needs to change, so the creator can fix it.",
+  deliverable_withdraw_own_only: "Only the creator who submitted this work can withdraw it.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

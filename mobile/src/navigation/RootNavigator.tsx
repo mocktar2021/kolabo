@@ -11,6 +11,7 @@ import DashboardScreen from "../screens/DashboardScreen";
 import CreatorProfileScreen from "../screens/CreatorProfileScreen";
 import ContractsListScreen from "../screens/ContractsListScreen";
 import ContractDetailScreen from "../screens/ContractDetailScreen";
+import EarningsScreen from "../screens/EarningsScreen";
 import type { AppStackParamList, AuthStackParamList } from "./types";
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -34,6 +35,7 @@ function AppNavigator() {
       <AppStack.Screen name="CreatorProfile" component={CreatorProfileScreen} />
       <AppStack.Screen name="Contracts" component={ContractsListScreen} />
       <AppStack.Screen name="ContractDetail" component={ContractDetailScreen} />
+      <AppStack.Screen name="Earnings" component={EarningsScreen} />
     </AppStack.Navigator>
   );
 }

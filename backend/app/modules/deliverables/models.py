@@ -67,6 +67,30 @@ WITHDRAWN = "withdrawn"
 OPEN_STATUSES = (SUBMITTED,)
 
 
+def mark_approved(submission: "DeliverableSubmission", reviewer_id: str) -> None:
+    """Stamp a hand-in as accepted by the brand: the ONE definition of what
+    approving a submission WRITES — the status, who answered, and when.
+
+    Two acts approve a submission, and they must agree to the letter because
+    both then release the same escrow through payments.service._release: the
+    deliverable-approval endpoint (deliverables.service.approve) and the
+    standalone confirm-delivery button (payments.service.release_escrow). If
+    each set these three fields itself, that would be a second way to approve,
+    and the second way is the one that drifts — the same argument approve()
+    already makes about the release path the two share. Nothing here moves
+    money; this only records the acceptance, and _release does the rest.
+
+    It lives on the model rather than in either service for the reason the
+    module docstring gives: payments.service may import deliverables.MODELS but
+    never its service, so a helper both sides can reach has to sit here. It
+    takes nothing but the row and a reviewer id, so it keeps this module's
+    no-service-imports property intact.
+    """
+    submission.status = APPROVED
+    submission.reviewed_by_user_id = reviewer_id
+    submission.reviewed_at = utcnow()
+
+
 class DeliverableSubmission(Base):
     """One hand-in of completed work against one funded contract."""
 

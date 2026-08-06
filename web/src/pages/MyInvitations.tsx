@@ -6,7 +6,7 @@ import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
-import { directOrderOf, orderTimeLeft } from "../lib/orders";
+import { directOrderOf, orderTimeLeft, parseApiDate } from "../lib/orders";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import { ListFilter, type FilterOption } from "../components/ListFilter";
 import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
@@ -15,6 +15,25 @@ import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
    here too so the limit is hit as a full textarea rather than as a 422 after
    the creator has finished typing. */
 const NOTE_MAX_LENGTH = 2000;
+
+/* "Envoyé il y a 2 h" for one version of a chain, as a key and a number
+   rather than as a finished string — the shape lib/notifications.ts already
+   uses for the bell, so the caller keeps its own `t` and this stays a pure
+   function of the timestamp.
+
+   parseApiDate is what stops the browser reading "2026-07-31T09:12:00" as
+   local time: the same helper the 48 h order clock uses, and for the same
+   reason — left alone it invents or destroys hours depending on where the
+   creator is sitting. Computed on render rather than on a timer; a
+   negotiation round is not worth a ticking clock. */
+function sentParts(iso: string): { key: string; n: number } {
+  const minutes = Math.floor((Date.now() - parseApiDate(iso)) / 60000);
+  if (minutes < 1) return { key: "invitation.sentJustNow", n: 0 };
+  if (minutes < 60) return { key: "invitation.sentMinutesAgo", n: minutes };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { key: "invitation.sentHoursAgo", n: hours };
+  return { key: "invitation.sentDaysAgo", n: Math.floor(hours / 24) };
+}
 
 function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () => void }) {
   const { t } = useTranslation();
@@ -222,9 +241,13 @@ function CounterForm({ campaignId, live, isOrder, onSent }: {
 
      - Counter is the answer available on both kinds of row, and it is simply
        the next version in the chain. */
-function Negotiation({ campaignId, live, isOrder, onDone }: {
+function Negotiation({ campaignId, live, history, isOrder, onDone }: {
   campaignId: string;
   live: Proposal;
+  /* Every version of this chain, oldest first, with the live one last. Empty
+     when the row came from an API that predates proposal_history — see
+     `versions` below, which falls back to the live version alone. */
+  history: Proposal[];
   isOrder: boolean;
   onDone: () => void;
 }) {
@@ -248,6 +271,10 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
   const open = live.status === "submitted";
   // The brand wrote the live version, so the ball is in the creator's court.
   const theirMove = live.author_role === "business";
+  /* The thread to draw. An empty history means the payload came from a
+     backend that does not send one yet, and the honest answer there is the
+     single version we do have rather than a blank panel. */
+  const versions = history.length > 0 ? history : [live];
 
   /* WHEN THE CREATOR MAY PULL THEIR OWN OFFER BACK, and it is narrower than
      it looks:
@@ -350,38 +377,53 @@ function Negotiation({ campaignId, live, isOrder, onDone }: {
         )}
       </div>
 
-      {/* The offer itself, laid out the way CampaignDetail lays out a chain —
-          author, terms, note, version — so the two sides are reading the same
-          exchange in the same shape. */}
-      <div
-        style={{
-          borderLeft: "3px solid var(--indigo)",
-          background: "var(--surface-2)",
-          borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
-          padding: "8px 12px",
-          marginTop: 10
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-          <span style={{ fontWeight: 700 }}>
-            {theirMove ? t("campaign.authorBrand") : t("campaign.authorCreator")}
-          </span>
-          <span className="muted">v{live.version}</span>
-        </div>
-        <div style={{ fontSize: 14.5, fontWeight: 700 }}>
-          {live.rate_amount} {live.rate_currency} · {live.timeline_days} {t("campaign.daysShort")}
-        </div>
-        {live.note && (
-          <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{live.note}</p>
-        )}
-      </div>
+      {/* The whole exchange, oldest first, laid out the way CampaignDetail's
+          ProposalThread lays it out — author, terms, note, version, with the
+          live one marked — so the two sides are reading the same negotiation
+          in the same shape. The live version is last, and the controls below
+          belong to it.
 
-      {/* Said only once there is something missing to explain. The invitations
-          endpoint nests the LIVE version of the chain and nothing else, so
-          from version 2 onwards the creator is reading the current offer with
-          the rounds above it not sent to them at all. Better to say so than to
-          let the round they remember writing look as though it vanished. */}
-      {live.version > 1 && <p className="hint">{t("invitation.historyLatestOnly")}</p>}
+          Every round and not just the last: a counter is an answer to
+          something, and a creator shown the answer without the question was
+          being asked to price a conversation they could not read. */}
+      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+        {versions.map((v) => {
+          const isLive = v.id === live.id;
+          const fromBrand = v.author_role === "business";
+          // Null only on a row written before created_at was serialised.
+          const when = v.created_at ? sentParts(v.created_at) : null;
+          return (
+            <div
+              key={v.id}
+              style={{
+                borderLeft: `3px solid ${isLive ? "var(--indigo)" : "var(--line)"}`,
+                background: isLive ? "var(--surface-2)" : "transparent",
+                borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
+                padding: "8px 12px"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                <span style={{ fontWeight: 700 }}>
+                  {fromBrand ? t("campaign.authorBrand") : t("campaign.authorCreator")}
+                </span>
+                <span className="muted">
+                  {isLive && <span style={{ color: "var(--indigo)", fontWeight: 600, marginRight: 8 }}>{t("campaign.currentOffer")}</span>}
+                  v{v.version}
+                </span>
+              </div>
+              <div style={{ fontSize: 14.5, fontWeight: isLive ? 700 : 500 }}>
+                {v.rate_amount} {v.rate_currency} · {v.timeline_days} {t("campaign.daysShort")}
+              </div>
+              {v.note && (
+                <p className="muted" style={{ fontSize: 13.5, margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{v.note}</p>
+              )}
+              {when && (
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>{t(when.key, { n: when.n })}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* The clock, stated in the unit that is still useful: hours while there
           is a day left, minutes in the last stretch. Orders only — a brief's
@@ -528,7 +570,16 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
            The blank form below is for the other case only: a brief nobody has
            priced yet. Showing it while an offer is on the table is what used
            to hide the brand's counter behind an empty rate box. */
-        <Negotiation campaignId={inv.campaign_id} live={live} isOrder={order !== null} onDone={onDone} />
+        <Negotiation
+          campaignId={inv.campaign_id}
+          live={live}
+          /* ?? [] rather than a bare read: an older backend sends the row
+             without a history at all, and the panel falls back to the live
+             version rather than to nothing. */
+          history={inv.proposal_history ?? []}
+          isOrder={order !== null}
+          onDone={onDone}
+        />
       ) : (
         /* The rule above the line is the brand's; everything below it is the
            creator's answer, so the two are separated visually. */

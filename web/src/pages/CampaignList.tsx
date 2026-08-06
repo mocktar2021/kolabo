@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { ListFilter, type FilterOption } from "../components/ListFilter";
 import { ListTabs, type Tab } from "../components/ListTabs";
@@ -49,9 +50,9 @@ export default function CampaignList() {
   useEffect(() => {
     api<Campaign[]>("/campaigns/mine", { token })
       .then(setCampaigns)
-      .catch((e) => setError(e instanceof Error ? e.message : "Error"))
+      .catch((e) => setError(errorText(e, t)))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => {
     /* Failing here is not worth an error state. It costs the Completed shelf

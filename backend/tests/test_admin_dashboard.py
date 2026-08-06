@@ -35,15 +35,12 @@ def client():
     return c
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
 def test_dashboard_requires_admin(client):
     assert client.get("/admin/dashboard").status_code == 401
 
 
-def test_empty_dashboard_is_all_zeros(client):
-    d = client.get("/admin/dashboard", headers=ADMIN).json()
+def test_empty_dashboard_is_all_zeros(client, admin_headers):
+    d = client.get("/admin/dashboard", headers=admin_headers).json()
     assert d["verification"]["pending_documents"] == 0
     assert d["disputes"]["open"] == 0
     assert d["payouts"]["held"] == 0
@@ -51,7 +48,7 @@ def test_empty_dashboard_is_all_zeros(client):
     assert d["recent_actions"] == []
 
 
-def test_dashboard_counts_across_queues(client):
+def test_dashboard_counts_across_queues(client, admin_headers, admin_user_id):
     db = client.session_factory()
     # One pending verification document.
     db.add(profiles.VerificationDocument(user_id="u1", doc_type="identity", filename="id.png", ciphertext=b"x", status=profiles.PENDING))
@@ -65,11 +62,11 @@ def test_dashboard_counts_across_queues(client):
                       held_at=pay.utcnow(), due_release_at=past))
     # One open report.
     db.add(ts_models.Report(reporter_user_id="r", target_type="user", target_id="u9", reason_code="fraud", status=ts_models.OPEN))
-    # One logged admin action.
-    db.add(AdminActionLog(admin_id="admin-1", action="document_approved", target_type="verification_document", target_id="d1", reason=None))
+    # One logged admin action, attributed to the account that acted.
+    db.add(AdminActionLog(admin_id=admin_user_id, action="document_approved", target_type="verification_document", target_id="d1", reason=None))
     db.commit(); db.close()
 
-    d = client.get("/admin/dashboard", headers=ADMIN).json()
+    d = client.get("/admin/dashboard", headers=admin_headers).json()
     assert d["verification"]["pending_documents"] == 1
     assert d["disputes"]["open"] == 1
     assert d["payouts"]["held"] == 1

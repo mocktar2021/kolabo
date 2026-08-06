@@ -36,6 +36,12 @@ class User(Base):
     country_code: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Admin access, and the ONLY thing that grants it. Kept as a flag rather
+    # than a fourth role so every existing role check keeps working unchanged:
+    # an admin is also an ordinary marketplace user, with a role of their own.
+    # Nothing in the API sets this — app.modules.auth.admins reconciles it
+    # with a configured list of phone numbers on every boot.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Referral: a shareable code (minted lazily, see the auth service) and who
     # brought this user in. What that attribution is worth, and when, is
     # decided in app.modules.auth.referrals.

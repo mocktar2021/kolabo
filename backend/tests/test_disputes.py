@@ -45,8 +45,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
 STATEMENT = "The reel was never posted and the agreed date passed four days ago."
 
 
@@ -301,11 +299,11 @@ def test_both_parties_having_spoken_escalates_immediately(client):
     assert r.json()["dispute_status"] == "awaiting_admin"
 
 
-def test_the_thread_stays_open_once_it_reaches_the_admin_queue(client):
+def test_the_thread_stays_open_once_it_reaches_the_admin_queue(client, admin_headers):
     """An admin reading the case benefits from both sides still explaining."""
     biz, inf, _, escrow, dispute = _disputed(client)
     _age_window(client, dispute["id"])
-    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
+    assert client.post("/payments/disputes/escalate", headers=admin_headers).json()["escalated"] == 1
     r = client.post(
         f"/payments/disputes/{dispute['id']}/messages",
         json={"body": "Adding the delivery receipt for the reviewer."},
@@ -378,7 +376,7 @@ def test_the_open_dispute_still_blocks_a_second_one_after_a_withdrawal(client):
     assert r.status_code == 409
 
 
-def test_an_admin_settles_the_open_case_not_the_withdrawn_one(client):
+def test_an_admin_settles_the_open_case_not_the_withdrawn_one(client, admin_headers):
     """With several rows per escrow, resolution has to name which dispute it
     is closing or it writes the split onto a case that ended weeks ago."""
     biz, inf, _, escrow, first = _disputed(client)
@@ -390,13 +388,13 @@ def test_an_admin_settles_the_open_case_not_the_withdrawn_one(client):
     r = client.post(
         f"/payments/escrow/{escrow['id']}/resolve",
         json={"released_amount": 4000, "refunded_amount": 6000, "note": "Half delivered."},
-        headers=ADMIN,
+        headers=admin_headers,
     )
     assert r.status_code == 200
     assert r.json()["id"] == second["id"]
     assert r.json()["released_amount"] == 4000
     # The withdrawn case is untouched: no split was written onto it.
-    closed = client.get(f"/payments/disputes/{first['id']}", headers=ADMIN).json()
+    closed = client.get(f"/payments/disputes/{first['id']}", headers=admin_headers).json()
     assert closed["status"] == "withdrawn"
     assert closed["released_amount"] is None
 
@@ -429,14 +427,14 @@ def test_a_deadline_still_in_the_future_is_left_alone(client):
 # --- The sweep ----------------------------------------------------------
 
 
-def test_the_sweep_escalates_a_stale_dispute_and_leaves_a_fresh_one(client):
+def test_the_sweep_escalates_a_stale_dispute_and_leaves_a_fresh_one(client, admin_headers):
     biz, inf, _, escrow, stale = _disputed(client, suffix="1")
     _, _, _, _, fresh = _disputed(client, suffix="2")
     _age_window(client, stale["id"])
 
-    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
-    assert client.get(f"/payments/disputes/{stale['id']}", headers=ADMIN).json()["status"] == "awaiting_admin"
-    assert client.get(f"/payments/disputes/{fresh['id']}", headers=ADMIN).json()["status"] == "awaiting_response"
+    assert client.post("/payments/disputes/escalate", headers=admin_headers).json()["escalated"] == 1
+    assert client.get(f"/payments/disputes/{stale['id']}", headers=admin_headers).json()["status"] == "awaiting_admin"
+    assert client.get(f"/payments/disputes/{fresh['id']}", headers=admin_headers).json()["status"] == "awaiting_response"
     # Both parties are told the window closed.
     assert any("window" in m for m in _notices(client, biz))
 
@@ -445,11 +443,11 @@ def test_the_sweep_needs_an_admin(client):
     assert client.post("/payments/disputes/escalate").status_code == 401
 
 
-def test_escalating_twice_moves_nothing_the_second_time(client):
+def test_escalating_twice_moves_nothing_the_second_time(client, admin_headers):
     _, _, _, _, dispute = _disputed(client)
     _age_window(client, dispute["id"])
-    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 1
-    assert client.post("/payments/disputes/escalate", headers=ADMIN).json()["escalated"] == 0
+    assert client.post("/payments/disputes/escalate", headers=admin_headers).json()["escalated"] == 1
+    assert client.post("/payments/disputes/escalate", headers=admin_headers).json()["escalated"] == 0
 
 
 # --- Reading the case ---------------------------------------------------

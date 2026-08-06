@@ -35,11 +35,8 @@ def client():
     return c
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
-def test_seed_populates_seven_markets(client):
-    r = client.get("/admin/countries", headers=ADMIN)
+def test_seed_populates_seven_markets(client, admin_headers):
+    r = client.get("/admin/countries", headers=admin_headers)
     assert r.status_code == 200
     countries = r.json()
     assert len(countries) == 7
@@ -47,57 +44,57 @@ def test_seed_populates_seven_markets(client):
     assert {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"} == codes
 
 
-def test_all_seven_markets_enabled_by_default(client):
+def test_all_seven_markets_enabled_by_default(client, admin_headers):
     # Product decision: registration is open across all seven markets. The
     # enabled flag is kept anyway, because closing a market again must stay a
     # config write — see test_enable_and_disable_market for the mechanism.
-    enabled = client.get("/admin/countries?enabled_only=true", headers=ADMIN).json()
+    enabled = client.get("/admin/countries?enabled_only=true", headers=admin_headers).json()
     assert {c["code"] for c in enabled} == {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"}
 
 
-def test_add_new_country_without_deploy(client):
+def test_add_new_country_without_deploy(client, admin_headers):
     payload = {
         "code": "ke", "name": "Kenya", "currency": "kes",
         "phone_prefix": "+254", "mobile_money_provider": "mpesa", "enabled": True,
     }
-    r = client.post("/admin/countries", json=payload, headers=ADMIN)
+    r = client.post("/admin/countries", json=payload, headers=admin_headers)
     assert r.status_code == 201
     body = r.json()
     # Code and currency are normalized to upper case.
     assert body["code"] == "KE" and body["currency"] == "KES"
     assert body["mobile_money_provider"] == "mpesa"
     # All seven seeded markets are enabled, plus the new one.
-    assert client.get("/admin/countries?enabled_only=true", headers=ADMIN).json().__len__() == 8
+    assert client.get("/admin/countries?enabled_only=true", headers=admin_headers).json().__len__() == 8
 
 
-def test_upsert_edits_existing_country(client):
+def test_upsert_edits_existing_country(client, admin_headers):
     r = client.post(
         "/admin/countries",
         json={"code": "GH", "name": "Ghana", "currency": "GHS", "phone_prefix": "+233", "mobile_money_provider": "mtn_momo"},
-        headers=ADMIN,
+        headers=admin_headers,
     )
     assert r.status_code == 201
-    assert client.get("/admin/countries", headers=ADMIN).json().__len__() == 7  # still 7, updated not added
-    gh = [c for c in client.get("/admin/countries", headers=ADMIN).json() if c["code"] == "GH"][0]
+    assert client.get("/admin/countries", headers=admin_headers).json().__len__() == 7  # still 7, updated not added
+    gh = [c for c in client.get("/admin/countries", headers=admin_headers).json() if c["code"] == "GH"][0]
     assert gh["mobile_money_provider"] == "mtn_momo"
 
 
-def test_enable_and_disable_market(client):
+def test_enable_and_disable_market(client, admin_headers):
     # The rollout gate must keep working now that everything ships enabled:
     # disabling is how a market is closed again without a deploy.
-    assert client.post("/admin/countries/GH/enabled", json={"enabled": False}, headers=ADMIN).json()["enabled"] is False
-    assert client.post("/admin/countries/GH/enabled", json={"enabled": True}, headers=ADMIN).json()["enabled"] is True
+    assert client.post("/admin/countries/GH/enabled", json={"enabled": False}, headers=admin_headers).json()["enabled"] is False
+    assert client.post("/admin/countries/GH/enabled", json={"enabled": True}, headers=admin_headers).json()["enabled"] is True
 
 
-def test_enable_unknown_country_404(client):
-    assert client.post("/admin/countries/ZZ/enabled", json={"enabled": True}, headers=ADMIN).status_code == 404
+def test_enable_unknown_country_404(client, admin_headers):
+    assert client.post("/admin/countries/ZZ/enabled", json={"enabled": True}, headers=admin_headers).status_code == 404
 
 
-def test_config_writes_are_logged(client):
+def test_config_writes_are_logged(client, admin_headers):
     client.post(
         "/admin/countries",
         json={"code": "KE", "name": "Kenya", "currency": "KES", "phone_prefix": "+254"},
-        headers=ADMIN,
+        headers=admin_headers,
     )
     from app.modules.admin.models import AdminActionLog
     db = client.session_factory()

@@ -1,12 +1,13 @@
 """Epic G (KOL-7): Payments and Escrow."""
 from datetime import date
 
-from fastapi import APIRouter, Depends, Header, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
+from app.modules.auth.models import User
 from app.modules.payments import disputes, earnings, resolution, schemas, service, spend
 from app.modules.payments.filters import StatementFilter
 
@@ -14,19 +15,23 @@ router = APIRouter()
 
 
 def get_case_viewer(
-    authorization: str | None = Header(default=None),
-    x_admin_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ) -> tuple[str, bool]:
     """Who is reading this case: one of the two parties, or an admin.
 
-    Admin identity is still the X-Admin-Id placeholder (see admin/router.py)
-    and a party is still a bearer token, so an endpoint that serves both has
-    to accept either credential. No admin holds a user token, and requiring
-    one would mean the person handed the queue cannot open anything in it.
+    Both are the same credential now — a bearer token — so this is one lookup
+    rather than two branches. It used to accept an X-Admin-Id header as the
+    admin half, which meant any string at all was enough to read anybody's
+    dispute thread and every image filed as evidence in it. See
+    app.modules.auth.admins for what replaced that and why.
+
+    An admin who is ALSO a party to the case reads it as an admin, which is
+    the wider of the two views and the right one to give somebody holding both
+    claims.
     """
-    if x_admin_id:
-        return x_admin_id, True
-    return get_current_user_id(authorization), False
+    user = db.query(User).filter(User.id == user_id).first()
+    return user_id, bool(user and user.is_admin)
 
 
 def get_statement_filter(

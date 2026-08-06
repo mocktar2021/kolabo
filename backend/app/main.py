@@ -4,9 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.db import init_db
+from app.core.db import SessionLocal, init_db
 from app.core.errors import AppError, app_error_handler
 from app.modules.admin.router import router as admin_router
+from app.modules.auth.admins import sync_admins
 from app.modules.auth.router import router as auth_router
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.contracts.router import router as contracts_router
@@ -24,6 +25,15 @@ async def lifespan(app: FastAPI):
     # Creates tables from model metadata. Alembic migrations replace this in
     # Epic I (KOL-34).
     init_db()
+    # Then make the admin list in the database agree with the configured one.
+    # On EVERY boot, and it revokes as well as grants: removing somebody's
+    # admin access is deleting their number and redeploying, not remembering
+    # to also go and edit a row. See app.modules.auth.admins.
+    db = SessionLocal()
+    try:
+        sync_admins(db)
+    finally:
+        db.close()
     yield
 
 

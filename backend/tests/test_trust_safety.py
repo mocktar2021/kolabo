@@ -44,9 +44,6 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-ADMIN = {"X-Admin-Id": "admin-1"}
-
-
 def _released_escrow(client, status=pay_models.RELEASED):
     """Create a business, an influencer, and an escrow in the given status."""
     db = client.session_factory()
@@ -139,18 +136,18 @@ def test_report_rejects_unknown_reason(client):
     assert r.status_code == 400
 
 
-def test_report_appears_in_admin_queue_and_resolves(client):
+def test_report_appears_in_admin_queue_and_resolves(client, admin_headers):
     rid = client.post(
         "/trust-safety/reports",
         json={"target_type": "campaign", "target_id": "camp-1", "reason_code": "fraud"},
         headers=_headers("reporter-1"),
     ).json()["id"]
-    queue = client.get("/trust-safety/reports", headers=ADMIN).json()
+    queue = client.get("/trust-safety/reports", headers=admin_headers).json()
     assert any(item["id"] == rid for item in queue)
-    r = client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": "reviewed"}, headers=ADMIN)
+    r = client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": "reviewed"}, headers=admin_headers)
     assert r.json()["status"] == "reviewed"
     # Resolving again fails; case is closed.
-    assert client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": "dismissed"}, headers=ADMIN).status_code == 400
+    assert client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": "dismissed"}, headers=admin_headers).status_code == 400
     # Admin decision is logged.
     from app.modules.admin.models import AdminActionLog
     db = client.session_factory()
@@ -159,7 +156,7 @@ def test_report_appears_in_admin_queue_and_resolves(client):
     assert log is not None and log.action == "report_reviewed"
 
 
-def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client):
+def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client, admin_headers):
     """A report that vanishes into a queue is a report nobody files twice.
 
     But the decision is a fact about somebody else's account: telling the
@@ -175,7 +172,7 @@ def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client)
             json={"target_type": "user", "target_id": target_id, "reason_code": "spam"},
             headers=_headers("reporter-1"),
         ).json()["id"]
-        client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": decision}, headers=ADMIN)
+        client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": decision}, headers=admin_headers)
 
     _resolve("u-1", "reviewed")
     _resolve("u-2", "dismissed")
@@ -199,7 +196,7 @@ def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client)
     assert "u-1" not in message and "u-2" not in message
 
 
-def test_admin_queue_requires_admin_header(client):
+def test_admin_queue_requires_an_admin(client):
     assert client.get("/trust-safety/reports").status_code == 401
 
 

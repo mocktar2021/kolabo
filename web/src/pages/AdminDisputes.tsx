@@ -1,26 +1,24 @@
 /* The dispute queue an admin works from, and the form that ends a case.
 
-   ADMIN IDENTITY IS A PLACEHOLDER. There is no admin login in this app and
-   no other admin screen — this is the first. The API takes admin identity
-   from an X-Admin-Id header, which backend/app/modules/admin/router.py
-   describes as a deliberate stand-in "enough to attribute and log decisions
-   during the manual pilot". So the operator pastes their id and it is kept
-   in localStorage to survive a refresh. It is not a credential, it is not
-   checked, and anybody who reaches this URL with an id can settle disputes.
-   That is the backend's posture today, not something this page introduced,
-   and it is written down here so whoever builds real admin auth knows what
-   to come back and delete: this field, the localStorage key, and the adminId
-   option on the api helper. */
+   ADMIN IDENTITY IS AN ORDINARY LOGIN. An admin signs in the same way every
+   other user does, and this page sends the same bearer token every other
+   screen sends. The API refuses a token whose account is not an admin — 403,
+   surfaced by the error path below — and who is an admin is settled by
+   deployment configuration, not by anything typed into this page. See
+   backend/app/modules/auth/admins.py.
+
+   The placeholder header this screen used to send in place of a token is
+   gone, along with the field that collected it, the browser-storage key it
+   was kept in, and the matching option on the api helper. */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, mediaSrc } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { useAuth } from "../lib/auth";
 import { StatusChip } from "./Disputes";
 import { COMMISSION_BPS, commissionFor } from "../lib/pricing";
 import { parseApiDate } from "../lib/orders";
 import type { DisputeCase, DisputeReason, DisputeStatus } from "../lib/types";
-
-const ADMIN_ID_KEY = "kolabo_admin_id";
 
 /* One row of GET /admin/disputes. Kept local to this page rather than in
    lib/types.ts: the dispute shapes there are read by four screens, this one
@@ -58,8 +56,7 @@ function Evidence({ urls }: { urls: string[] }) {
 
 export default function AdminDisputesPage() {
   const { t } = useTranslation();
-  const [adminId, setAdminId] = useState(() => localStorage.getItem(ADMIN_ID_KEY) || "");
-  const [draftId, setDraftId] = useState(() => localStorage.getItem(ADMIN_ID_KEY) || "");
+  const { token } = useAuth();
   const [rows, setRows] = useState<DisputeQueueRow[]>([]);
   const [openCase, setOpenCase] = useState<DisputeCase | null>(null);
   const [released, setReleased] = useState("");
@@ -70,29 +67,18 @@ export default function AdminDisputesPage() {
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!adminId) {
-      setRows([]);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      setRows(await api<DisputeQueueRow[]>("/admin/disputes", { adminId }));
+      setRows(await api<DisputeQueueRow[]>("/admin/disputes", { token }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
       setLoading(false);
     }
-  }, [adminId]);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
-
-  function saveAdminId() {
-    const value = draftId.trim();
-    localStorage.setItem(ADMIN_ID_KEY, value);
-    setAdminId(value);
-    setOpenCase(null);
-  }
 
   async function openRow(row: DisputeQueueRow) {
     setError(null);
@@ -101,7 +87,7 @@ export default function AdminDisputesPage() {
       // The same endpoint the two parties read, which already accepts an
       // admin credential: one case view, so an admin decides on exactly what
       // the parties can see they said.
-      setOpenCase(await api<DisputeCase>(`/payments/disputes/${row.id}`, { adminId }));
+      setOpenCase(await api<DisputeCase>(`/payments/disputes/${row.id}`, { token }));
       setReleased("");
       setRefunded("");
       setNote("");
@@ -139,25 +125,9 @@ export default function AdminDisputesPage() {
         <h1 style={{ marginBottom: 4 }}>{t("admin.disputesTitle")}</h1>
         <p className="muted" style={{ marginTop: 0 }}>{t("admin.disputesSub")}</p>
 
-        <div className="card">
-          <label className="label" htmlFor="admin-id">{t("admin.idLabel")}</label>
-          <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
-            <input
-              id="admin-id"
-              className="input"
-              value={draftId}
-              onChange={(e) => setDraftId(e.target.value)}
-            />
-            <button className="btn btn-primary" onClick={saveAdminId}>{t("admin.idSave")}</button>
-          </div>
-          <p className="muted" style={{ fontSize: 13, marginBottom: 0 }}>{t("admin.idHint")}</p>
-        </div>
-
         {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
 
-        {!adminId ? (
-          <p className="muted">{t("admin.idMissing")}</p>
-        ) : loading ? (
+        {loading ? (
           <p className="muted">{t("discover.loading")}</p>
         ) : rows.length === 0 ? (
           <p className="muted">{t("admin.empty")}</p>
@@ -302,7 +272,7 @@ export default function AdminDisputesPage() {
                           try {
                             await api(`/payments/escrow/${openCase.escrow_id}/resolve`, {
                               method: "POST",
-                              adminId,
+                              token,
                               body: {
                                 released_amount: releasedNum,
                                 refunded_amount: refundedNum,

@@ -213,7 +213,7 @@ export const error_fr = {
 
   /* The tail: moderation, the admin queue, messaging, notification settings,
      country config, discovery. Small modules, and the last of them. */
-  admin_id_missing: "Identifiant administrateur manquant.",
+  admin_not_authorised: "Ce compte n'est pas administrateur.",
   admin_decision_unknown: "La décision doit être « approuvé » ou « refusé ».",
   admin_rejection_needs_reason: "Un refus demande un motif.",
   admin_document_not_found: "Document introuvable.",
@@ -435,7 +435,7 @@ export const error_en = {
   cart_mixed_currencies: "This creator's items are priced in {{currencies}}. An order carries one escrow and an escrow carries one currency, so order each currency separately.",
   cart_item_refused: "Item {{cart_index}} in your basket was refused.",
 
-  admin_id_missing: "Admin identifier missing.",
+  admin_not_authorised: "This account is not an administrator.",
   admin_decision_unknown: "The decision must be \"approved\" or \"rejected\".",
   admin_rejection_needs_reason: "A rejection needs a reason.",
   admin_document_not_found: "Document not found.",

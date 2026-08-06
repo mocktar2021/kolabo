@@ -137,9 +137,7 @@ const resources = {
         explain: "La suppression est définitive : profil, offres, photos et conversations seront effacés.",
         delete: "Supprimer mon compte",
         confirmPassword: "Confirmez votre mot de passe",
-        deleteForever: "Supprimer définitivement",
-        wrongPassword: "Mot de passe incorrect.",
-        hasHistory: "Votre compte a un historique de transactions. Contactez le support pour le fermer."
+        deleteForever: "Supprimer définitivement"
       },
       discover: {
         title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
@@ -228,13 +226,11 @@ const resources = {
         cancelYes: "Confirmer l'annulation",
         cancelNo: "Retour",
         cancelled: "Cette campagne est annulée.",
-        cancelHasContract: "Un contrat existe déjà. Passez par le litige pour l'annuler.",
         delete: "Supprimer",
         deleteHint: "Seul un brouillon sans proposition ni invitation peut être supprimé.",
         deleteConfirm: "Supprimer définitivement ce brouillon ? Rien n'en sera conservé.",
         deleteYes: "Confirmer la suppression",
         deleteNo: "Retour",
-        deleteHasActivity: "Cette campagne a de l'activité ; annulez-la plutôt.",
         inviteFromFavorites: "Inviter depuis mes favoris", noFavorites: "Aucun créateur favori à inviter.",
         /* Shown wherever a creator is named before they have a profile. "Nom
            d'affichage manquant" is the brand's problem to notice, not a raw
@@ -288,14 +284,10 @@ const resources = {
         orderDeclineConfirm: "Aucun paiement n'a été prélevé ; la marque sera prévenue.",
         orderDeclineYes: "Confirmer le refus", orderDeclineNo: "Annuler",
         /* Reading the exchange, and answering it. The badge says whose move
-           it is — derived from the live version's author_role, never stored.
-           historyLatestOnly is an honest limit and not a design: the
-           invitations endpoint nests the LIVE version only, so earlier rounds
-           are not available to the creator yet. */
+           it is — derived from the live version's author_role, never stored. */
         negotiationTitle: "Négociation",
         turnYours: "À vous de répondre",
         turnBrand: "En attente de la marque",
-        historyLatestOnly: "Seule la dernière version est affichée ici.",
         counter: "Contre-proposer",
         counterSend: "Envoyer la contre-proposition",
         counterHint: "Une contre-proposition reste dans le même délai de 48 h."
@@ -423,9 +415,7 @@ const resources = {
         explain: "Deletion is permanent: your profile, packages, photos, and conversations will be erased.",
         delete: "Delete my account",
         confirmPassword: "Confirm your password",
-        deleteForever: "Delete permanently",
-        wrongPassword: "Incorrect password.",
-        hasHistory: "Your account has transaction history. Contact support to close it."
+        deleteForever: "Delete permanently"
       },
       discover: {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
@@ -514,13 +504,11 @@ const resources = {
         cancelYes: "Confirm cancellation",
         cancelNo: "Back",
         cancelled: "This campaign is cancelled.",
-        cancelHasContract: "A contract already exists. Use the dispute path to unwind it.",
         delete: "Delete",
         deleteHint: "Only a draft with no proposals and no invitations can be deleted.",
         deleteConfirm: "Permanently delete this draft? Nothing will be kept.",
         deleteYes: "Confirm deletion",
         deleteNo: "Back",
-        deleteHasActivity: "This campaign has activity; cancel it instead.",
         inviteFromFavorites: "Invite from my favorites", noFavorites: "No favorited creators to invite.",
         /* Shown wherever a creator is named before they have a profile. A
            missing display name is something the brand should notice, not a
@@ -574,14 +562,10 @@ const resources = {
         orderDeclineConfirm: "No payment has been taken; the brand will be notified.",
         orderDeclineYes: "Confirm decline", orderDeclineNo: "Cancel",
         /* Reading the exchange, and answering it. The badge says whose move
-           it is — derived from the live version's author_role, never stored.
-           historyLatestOnly is an honest limit and not a design: the
-           invitations endpoint nests the LIVE version only, so earlier rounds
-           are not available to the creator yet. */
+           it is — derived from the live version's author_role, never stored. */
         negotiationTitle: "Negotiation",
         turnYours: "Your turn to answer",
         turnBrand: "Waiting on the brand",
-        historyLatestOnly: "Only the latest version is shown here.",
         counter: "Counter-offer",
         counterSend: "Send counter-offer",
         counterHint: "A counter-offer stays within the same 48 h window."

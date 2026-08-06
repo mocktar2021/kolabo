@@ -54,9 +54,6 @@ const frBoard = {
   applyNote: "Un mot sur votre proposition (facultatif)",
   applyNotePlaceholder: "Ce que vous proposez, et pourquoi ce tarif.",
   applySent: "Votre proposition a été envoyée. La marque la verra avec les autres offres de sa campagne.",
-  /* Le 409 du serveur, dit en français. Postuler deux fois remplacerait des
-     conditions que la marque est peut-être en train de lire. */
-  applyConflict: "Vous avez déjà une proposition en cours sur ce brief.",
 
   applied: "Déjà postulé",
   appliedHint: "Vous avez déjà proposé vos conditions ici. Pour les modifier, envoyez une nouvelle version depuis la négociation plutôt que de postuler une seconde fois.",
@@ -118,7 +115,6 @@ const enBoard = {
   applyNote: "A word about your proposal (optional)",
   applyNotePlaceholder: "What you are offering, and why this rate.",
   applySent: "Your proposal has been sent. The brand will see it alongside the other offers on its campaign.",
-  applyConflict: "You already have a live proposal on this brief.",
 
   applied: "Already applied",
   appliedHint: "You have already offered your terms here. To change them, send a new version from the negotiation rather than applying a second time.",

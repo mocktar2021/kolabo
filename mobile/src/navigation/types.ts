@@ -13,6 +13,7 @@ export type AuthStackParamList = {
    slice, which is why this is already its own param list. */
 export type AppStackParamList = {
   Dashboard: undefined;
+  CreatorProfile: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

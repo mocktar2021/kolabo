@@ -56,3 +56,5 @@ npm run typecheck   # tsc --noEmit
 
 CI runs the same typecheck on every PR (the `mobile` job). On-device behaviour
 is verified manually in Expo Go — there is no simulator in CI.
+
+<!-- Auth vertical: Register → OTP → Login → shell, plus password reset. -->

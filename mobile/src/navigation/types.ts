@@ -14,6 +14,8 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   Dashboard: undefined;
   CreatorProfile: undefined;
+  Contracts: undefined;
+  ContractDetail: { id: string };
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

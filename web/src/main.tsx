@@ -30,6 +30,10 @@ import "./lib/socialStrings";
 /* And this one adds contract.status_cancelled / status_void to the contract.*
    group i18n.ts owns — the two statuses its block never got keys for. */
 import "./lib/statusStrings";
+/* And this one adds invitation.sent* to the invitation.* group i18n.ts owns:
+   when each round of a negotiation was sent, for the thread the creator reads
+   on their invitations page. Same ordering constraint, same reason. */
+import "./lib/negotiationStrings";
 /* The deliverables panel on the contract page. Owns the deliv.* group
    outright, so unlike the three above it has no ordering constraint against
    i18n.ts — it sits with the other feature bundles for the reason they all

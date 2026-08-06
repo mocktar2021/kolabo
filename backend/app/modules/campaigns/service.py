@@ -854,6 +854,39 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
     )
 
 
+def chain_versions(db: Session, campaign_id: str, influencer_user_id: str) -> list[models.Proposal]:
+    """Every version exchanged between one creator and one campaign, oldest first.
+
+    THE CREATOR COULD NOT SEE THIS. A brand opening a brief has always got the
+    whole thread — campaign_detail sends every proposal row and the page
+    reassembles them per creator — while the creator's own invitations list
+    carried only the LIVE version. So from version two onwards the person
+    being negotiated with was reading a number with no idea what it was
+    answering: their own last offer, the counter before it, and what actually
+    moved between them were all on the other side of a screen they cannot
+    open. The invitations page even said so out loud, in a hint apologising
+    for it.
+
+    Same cap and same reasoning as the brand's list (MAX_PROPOSAL_VERSIONS,
+    taken from the RECENT end): the last version is the live offer and the
+    only one that can be accepted, so truncating from that end would hide the
+    one row the page exists to act on. Queried newest-first with a limit so
+    the database does the cutting, then flipped to read as a conversation.
+    """
+    versions = (
+        db.query(models.Proposal)
+        .filter(
+            models.Proposal.campaign_id == campaign_id,
+            models.Proposal.influencer_user_id == influencer_user_id,
+        )
+        .order_by(models.Proposal.created_at.desc(), models.Proposal.version.desc())
+        .limit(MAX_PROPOSAL_VERSIONS)
+        .all()
+    )
+    versions.reverse()
+    return versions
+
+
 def latest_in_chain(db: Session, campaign_id: str, influencer_user_id: str) -> models.Proposal | None:
     """The current state of one negotiation.
 
@@ -1184,6 +1217,12 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
         "note": p.note,
         "author_role": p.author_role,
         "expires_at": p.expires_at,
+        # When this version was sent. A chain without timestamps is a list of
+        # numbers; with them it is a conversation, and "they countered four
+        # days ago" is most of what somebody needs to decide whether to chase.
+        # Added for the creator's history and inherited by the brand's list,
+        # which is reading the same rows through the same serialiser.
+        "created_at": p.created_at,
         **(identity or blank_identity()),
     }
 
@@ -1323,11 +1362,13 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
     lets the client render it as an order with a clock rather than as a brief
     to price.
 
-    Each row also carries the live version of its negotiation. For a brief
-    that is context; for an order it is the thing itself — accept and decline
-    are addressed by proposal id, and this is the only creator-facing list an
-    order appears in (campaign detail is owner-only). Without it the creator
-    would see an order they had no way to answer.
+    Each row carries its negotiation TWICE, and the two are not redundant.
+    `proposal` is the live version: for a brief that is context, for an order
+    it is the thing itself — accept and decline are addressed by proposal id,
+    and this is the only creator-facing list an order appears in (campaign
+    detail is owner-only), so without it the creator would see an order they
+    had no way to answer. `proposal_history` is every version, oldest first,
+    which is what the brand has always had and the creator never did.
     """
     invitations = (
         db.query(models.CampaignInvitation)
@@ -1351,6 +1392,22 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
         # Identity is deliberately left blank here. It exists so a BUSINESS
         # can tell one creator from another; every row in this list belongs to
         # the creator reading it, so the lookup would buy nothing.
+        # The whole thread, and the live version separately.
+        #
+        # `proposal` stays exactly what it was — the live version, which is
+        # what accept and decline are addressed to and what every existing
+        # client reads. `proposal_history` is additive: a client that has not
+        # been taught about it behaves as it did, and the one that has can
+        # show the creator the rounds that were previously invisible to them.
+        item["proposal_history"] = [
+            _proposal_out(v) for v in chain_versions(db, campaign.id, influencer_user_id)
+        ]
+        # Still latest_in_chain, deliberately, rather than the last element of
+        # the list above. The two agree — a higher version is always the newer
+        # row — but this field is what accept and decline are addressed to,
+        # and recomputing it a second way for the sake of saving a query is
+        # risk taken for nothing. The history is additive; this line is not
+        # touched.
         latest = latest_in_chain(db, campaign.id, influencer_user_id)
         item["proposal"] = _proposal_out(latest) if latest is not None else None
         result.append(item)

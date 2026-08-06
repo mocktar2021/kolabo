@@ -143,6 +143,12 @@ export type Proposal = CreatorIdentity & {
   note: string | null;
   author_role: ProposalAuthorRole;
   expires_at: string | null;
+  /* When this version was sent. A chain without timestamps is a list of
+     numbers; with them it is a conversation, and "they countered four days
+     ago" is most of what somebody needs to decide whether to chase. Naive UTC
+     like every other datetime from this API, so it goes through
+     parseApiDate. */
+  created_at: string;
 };
 
 /* What POST /campaigns/orders answers with. Deliberately not the whole
@@ -198,13 +204,26 @@ export type Favorite = CreatorIdentity & {
    against — title, budget, deadline, deliverables — comes nested under
    campaign.
 
+   The negotiation rides on the row TWICE, and the two are not redundant.
+
    proposal is the live version of the negotiation, null when nothing has been
    offered yet. On a brief it is context; on a direct order it IS the order —
-   the buyer's offer, and the id the creator accepts or declines with. */
+   the buyer's offer, and the id the creator accepts or declines with.
+
+   proposal_history is every version of that same chain, OLDEST FIRST, capped
+   at the twenty most recent exactly as the brand's list is (the cap is taken
+   from the recent end, because the last version is the live offer and the
+   only one that can be accepted). It is what the brand has always had and the
+   creator never did: without it, from version two onwards the creator was
+   reading a number with no idea what it was answering. Empty when nothing has
+   been offered, and the last element is the same row as proposal — which the
+   server still computes separately, because that is the id accept and decline
+   are addressed to. */
 export type InvitationWithCampaign = Invitation & {
   campaign: Campaign;
   business_company_name: string | null;
   proposal: Proposal | null;
+  proposal_history: Proposal[];
 };
 
 export type Contract = {

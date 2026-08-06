@@ -397,15 +397,18 @@ export default function ContractPage() {
                     {escrow.status === "held" && (
                       <>
                         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                          {isBusiness && (
-                            <button className="btn btn-teal" disabled={busy}
-                              onClick={() => act(() => api(`/payments/escrow/${escrow.id}/release`, { method: "POST", token }))}>
-                              {t("contract.release")}
-                            </button>
-                          )}
-                          {/* Either party. A dispute is a claim on money held
-                              between the two of them, and either can be the
-                              one who was let down. */}
+                          {/* No standalone release button on the money card any
+                              more. Confirming delivery IS approving what the creator
+                              handed in, and that now happens in the deliverables
+                              panel below, where the brand can see the work it is
+                              paying for and approving releases the escrow
+                              (POST /deliverables/{id}/approve). Releasing from the
+                              money side with nothing submitted was the second way
+                              for money to move — it let escrow state and deliverable
+                              state diverge, which backend Deliverables D2 closed. A
+                              dispute is what stays here, and either party can raise
+                              it: a claim on money held between the two of them, and
+                              either can be the one who was let down. */}
                           {!raising && (
                             <button className="btn btn-ghost" disabled={busy} onClick={() => setRaising(true)}>
                               {t("dispute.open")}

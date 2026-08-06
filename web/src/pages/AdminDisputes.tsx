@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, mediaSrc } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { Layout } from "../components/Layout";
 import { useAuth } from "../lib/auth";
 import { StatusChip } from "./Disputes";
@@ -72,11 +73,11 @@ export default function AdminDisputesPage() {
     try {
       setRows(await api<DisputeQueueRow[]>("/admin/disputes", { token }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -92,7 +93,7 @@ export default function AdminDisputesPage() {
       setRefunded("");
       setNote("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error");
+      setError(errorText(e, t));
     } finally {
       setBusy(false);
     }
@@ -282,7 +283,7 @@ export default function AdminDisputesPage() {
                             setOpenCase(null);
                             await load();
                           } catch (e) {
-                            setError(e instanceof Error ? e.message : "Error");
+                            setError(errorText(e, t));
                           } finally {
                             setBusy(false);
                           }

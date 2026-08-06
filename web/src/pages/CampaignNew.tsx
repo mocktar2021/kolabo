@@ -5,6 +5,7 @@ import { Layout } from "../components/Layout";
 import { DeliverableRows, emptyDeliverable } from "../components/DeliverableRows";
 import { EMPTY_TARGETING, TargetingFields, targetingBody, type Targeting } from "../components/TargetingFields";
 import { api } from "../lib/api";
+import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES, MAX_DESCRIPTION_LENGTH } from "../lib/campaignOptions";
 import { PLATFORM_LABELS } from "../lib/platforms";
@@ -61,7 +62,7 @@ export default function CampaignNew() {
       });
       setCreated(campaign);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -75,7 +76,7 @@ export default function CampaignNew() {
       const updated = await api<Campaign>(`/campaigns/${created.id}/publish`, { method: "POST", token });
       setCreated(updated);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error");
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }

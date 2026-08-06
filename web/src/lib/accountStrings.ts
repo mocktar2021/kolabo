@@ -45,10 +45,6 @@ const fr = {
   passwordTooShort: "{{n}} caractères minimum.",
   passwordMismatch: "Les deux mots de passe ne sont pas identiques.",
 
-  errPhoneTaken: "Ce numéro est déjà utilisé par un autre compte.",
-  errWrongPassword: "Mot de passe actuel incorrect.",
-  errSession: "Votre session a expiré. Reconnectez-vous, puis réessayez.",
-
   paymentTitle: "Comment vous êtes payé",
   paymentBody: "Les paiements passent par Mobile Money. L'argent d'une commande est bloqué en séquestre à la commande, puis libéré vers vous à la livraison — c'est ce séquestre qui vous protège d'un client qui disparaît, et le client d'une livraison qui n'arrive pas.",
   /* Why there is no form here. Nothing in this system stores an instrument de
@@ -105,10 +101,6 @@ const en = {
   passwordTooShort: "{{n}} characters minimum.",
   passwordMismatch: "The two passwords do not match.",
 
-  errPhoneTaken: "That number is already used by another account.",
-  errWrongPassword: "Current password is incorrect.",
-  errSession: "Your session has expired. Sign in again, then retry.",
-
   paymentTitle: "How you get paid",
   paymentBody: "Payments run on Mobile Money. An order's money is held in escrow when it is placed and released to you on delivery — that escrow is what protects you from a client who disappears, and the client from a delivery that never arrives.",
   paymentPending: "Payout details — operator and withdrawal number — arrive with the payment provider integration. While no payout leaves from here, there is nothing on this page to fill in.",
@@ -157,12 +149,7 @@ const resetFr = {
   changePhone: "Utiliser un autre numéro",
   success: "Mot de passe réinitialisé. Connectez-vous avec le nouveau.",
   tooShort: "{{n}} caractères minimum.",
-  mismatch: "Les deux mots de passe ne sont pas identiques.",
-  /* One sentence for a wrong code, an expired code, un code déjà utilisé et
-     un numéro inconnu — comme le backend, qui répond le même 400 aux quatre
-     pour ne pas trahir ce que la demande refuse de dire. */
-  errInvalidCode: "Code invalide ou expiré. Demandez-en un nouveau.",
-  errTooMany: "Trop de demandes pour ce numéro. Réessayez dans une heure."
+  mismatch: "Les deux mots de passe ne sont pas identiques."
 };
 
 const resetEn = {
@@ -181,9 +168,7 @@ const resetEn = {
   changePhone: "Use a different number",
   success: "Password reset. Sign in with the new one.",
   tooShort: "{{n}} characters minimum.",
-  mismatch: "The two passwords do not match.",
-  errInvalidCode: "That code is invalid or expired. Ask for a new one.",
-  errTooMany: "Too many requests for that number. Try again in an hour."
+  mismatch: "The two passwords do not match."
 };
 
 i18n.addResourceBundle("fr", "translation", { account: fr, reset: resetFr, nav: { account: "Compte" } }, true, true);

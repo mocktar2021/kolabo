@@ -34,18 +34,12 @@ const fr = {
   invitationConfirm: "Retirer cette invitation ? Le créateur en sera informé et le brief quittera sa liste. Rien n'est effacé : l'invitation passe au statut « retirée », qui n'est pas un refus — personne n'a dit non ici.",
   invitationYes: "Retirer l'invitation",
   invitationNo: "La garder",
-  /* Le seul 400 que cet endpoint renvoie, dit dans les deux cas qu'il
-     couvre : invitation déjà close, ou créateur ayant déjà chiffré le brief.
-     Dans les deux cas la réponse pour l'acheteur est la même : il y a
-     quelque chose à répondre, pas quelque chose à retirer. */
-  invitationRefused: "Cette invitation ne peut plus être retirée : le créateur y a déjà répondu. Il y a une offre sur la table — répondez-lui ou rejetez-la.",
 
   // ---- The creator takes their own offer back (MyInvitations) ----
   proposalWithdraw: "Retirer ma proposition",
   proposalConfirm: "Retirer cette proposition ? La marque en sera informée et vos conditions quitteront la table. La version précédente ne revient pas : elle avait été remplacée par celle-ci, et la plateforme ne fait pas d'offre à votre place. Vous pourrez toujours en envoyer une nouvelle.",
   proposalYes: "Retirer ma proposition",
   proposalNo: "La laisser",
-  proposalRefused: "Cette proposition ne peut plus être retirée : elle n'est plus l'offre en cours, ou un contrat en a déjà été généré. Dans ce dernier cas, c'est le contrat qu'il faut annuler.",
 
   // ---- Either party calls off an unsigned contract (ContractPage) ----
   contractTitle: "Annuler ce contrat",
@@ -63,13 +57,11 @@ const en = {
   invitationConfirm: "Withdraw this invitation? The creator is told, and the brief leaves their list. Nothing is erased: the invitation moves to \"withdrawn\", which is not a refusal — nobody said no here.",
   invitationYes: "Withdraw the invitation",
   invitationNo: "Keep it",
-  invitationRefused: "This invitation can no longer be withdrawn: the creator has already answered it. There is an offer on the table — reply to it or reject it.",
 
   proposalWithdraw: "Withdraw my proposal",
   proposalConfirm: "Withdraw this proposal? The brand is told and your terms leave the table. The previous version does not come back: it was superseded by this one, and the platform does not make an offer on your behalf. You can always send a new one.",
   proposalYes: "Withdraw my proposal",
   proposalNo: "Leave it",
-  proposalRefused: "This proposal can no longer be withdrawn: it is not the live offer any more, or a contract has already been generated from it. In that case it is the contract that has to be cancelled.",
 
   contractTitle: "Cancel this contract",
   contractExplain: "While both signatures are not in and no money is held, either party can end this contract. Saying so here beats going quiet: a half-signed contract sits in the other person's list indefinitely.",

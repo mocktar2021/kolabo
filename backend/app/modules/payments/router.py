@@ -133,7 +133,16 @@ def release_escrow(
     db: Session = Depends(get_db),
     business_user_id: str = Depends(get_current_user_id),
 ):
-    """Business confirms delivery and releases the escrow, commission deducted. KOL-36."""
+    """Business confirms delivery: approve the open submission and release the
+    escrow, commission deducted. KOL-36 / Deliverables D2.
+
+    Confirming delivery from the escrow side IS approving what the creator
+    handed in — the same act as POST /deliverables/{id}/approve, reached from
+    the money side and returning the escrow. It needs an open submission to
+    approve; with nothing submitted it refuses (escrow_release_needs_submission)
+    rather than paying out against no record, which is what let escrow state and
+    deliverable state diverge before.
+    """
     return service.release_escrow(db, business_user_id, escrow_id)
 
 

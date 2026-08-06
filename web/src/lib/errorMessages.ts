@@ -65,6 +65,7 @@ export const error_fr = {
   escrow_not_a_party: "Vous n'êtes pas partie à ce séquestre.",
   escrow_not_held: "Le séquestre n'est pas bloqué.",
   escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
+  escrow_release_needs_submission: "Il n'y a encore rien à confirmer : le créateur n'a pas envoyé de livrable pour ce séquestre. Une fois qu'il l'aura envoyé, confirmer la livraison valide cet envoi et libère le paiement.",
 
   contract_proposal_not_found: "Proposition introuvable.",
   contract_campaign_not_found: "Campagne introuvable.",
@@ -319,6 +320,7 @@ export const error_en = {
   escrow_not_a_party: "You are not a party to this escrow.",
   escrow_not_held: "This escrow is not held.",
   escrow_release_business_only: "Only the business can confirm delivery.",
+  escrow_release_needs_submission: "There is nothing to confirm yet: the creator has not submitted any work against this escrow. Once they submit it, confirming delivery approves that submission and releases the payment.",
 
   contract_proposal_not_found: "Proposal not found.",
   contract_campaign_not_found: "Campaign not found.",

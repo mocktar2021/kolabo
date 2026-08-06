@@ -187,9 +187,24 @@ def test_fund_requires_ownership_and_no_double_fund(client):
     assert client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).status_code == 409
 
 
+def _submission_row(client, contract_id):
+    """The submission on a contract, read straight from the table."""
+    db = client.session_factory()
+    try:
+        return (
+            db.query(deliverables.DeliverableSubmission)
+            .filter(deliverables.DeliverableSubmission.contract_id == contract_id)
+            .first()
+        )
+    finally:
+        db.close()
+
+
 def test_release_deducts_commission(client):
     biz, inf, cid = _signed_contract(client, amount=10000)
     escrow = client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)).json()
+    # Confirming delivery now approves an open hand-in, so there has to be one.
+    _submitted(client, cid, inf)
     r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
     assert r.status_code == 200
     body = r.json()
@@ -197,6 +212,38 @@ def test_release_deducts_commission(client):
     # 15 percent of 10000 is 1500 commission; payout is 8500.
     assert body["commission_amount"] == 1500
     assert pay_service.payment_provider.payouts[0]["amount"] == 8500
+
+
+def test_release_needs_an_open_submission(client):
+    """Deliverables D2: confirming delivery approves what the creator handed in,
+    so with nothing submitted there is nothing to confirm and the money waits.
+    A business does not pay out of the deliverable flow."""
+    biz, inf, cid = _signed_contract(client)
+    escrow = _fund(client, biz, cid)
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    # A 400 on a freshly funded, undisputed escrow can only be the D2 gate.
+    # (The coded refusal escrow_release_needs_submission and its two languages
+    # are guarded by test_error_codes.py and errorMessages.test.ts; this throwaway
+    # app does not register the AppError handler, so it asserts on behaviour.)
+    assert r.status_code == 400
+    # The money did not move.
+    assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "held"
+
+
+def test_release_approves_the_open_submission(client):
+    """The divergence this closes: releasing from the escrow side now closes the
+    open hand-in as approved in the same act, so deliverable state and escrow
+    state can no longer tell two different stories."""
+    biz, inf, cid = _signed_contract(client)
+    escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    assert r.status_code == 200
+    assert r.json()["status"] == "released"
+    sub = _submission_row(client, cid)
+    assert sub.status == deliverables.APPROVED
+    assert sub.reviewed_by_user_id == biz
+    assert sub.reviewed_at is not None
 
 
 def test_only_business_can_release(client):
@@ -289,6 +336,7 @@ def test_release_credits_both_sides_of_a_referral(client):
     biz, inf, cid = _signed_contract(client)
     referrer_id = _referred_by(client, inf)
     escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
     assert client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)).status_code == 200
 
     by_kind = {c.kind: c for c in _credits(client)}
@@ -311,6 +359,7 @@ def test_each_side_is_credited_in_its_own_market_currency(client):
     biz, inf, cid = _signed_contract(client)
     referrer_id = _referred_by(client, inf, country="GH")
     escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
     client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
 
     by_kind = {c.kind: c for c in _credits(client)}
@@ -324,11 +373,13 @@ def test_second_completed_order_credits_nobody_again(client):
     biz, inf, cid = _signed_contract(client)
     _referred_by(client, inf)
     first = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
     client.post(f"/payments/escrow/{first['id']}/release", headers=_headers(biz))
     assert len(_credits(client)) == 2
 
     second_contract = _another_signed_contract(client, biz, inf)
     second = _fund(client, biz, second_contract)
+    _submitted(client, second_contract, inf)
     assert client.post(f"/payments/escrow/{second['id']}/release", headers=_headers(biz)).status_code == 200
     assert len(_credits(client)) == 2
 
@@ -336,6 +387,7 @@ def test_second_completed_order_credits_nobody_again(client):
 def test_release_for_unreferred_users_credits_nobody(client):
     biz, inf, cid = _signed_contract(client)
     escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
     assert client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)).status_code == 200
     assert _credits(client) == []
 
@@ -358,6 +410,7 @@ def test_award_failure_never_breaks_the_release(client, monkeypatch):
     biz, inf, cid = _signed_contract(client)
     _referred_by(client, inf)
     escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
 
     def boom(*args, **kwargs):
         raise RuntimeError("referral rewards exploded")

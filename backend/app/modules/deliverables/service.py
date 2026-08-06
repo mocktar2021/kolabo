@@ -430,9 +430,11 @@ def approve(db: Session, actor_user_id: str, submission_id: str) -> dict:
             detail="This escrow is not held, so it cannot be released.",
         )
 
-    submission.status = models.APPROVED
-    submission.reviewed_by_user_id = actor_user_id
-    submission.reviewed_at = models.utcnow()
+    # The one definition of what approving a hand-in writes (status, reviewer,
+    # timestamp) — shared with the standalone confirm-delivery button, which
+    # approves the open submission this same way before it releases. See
+    # deliverables.models.mark_approved.
+    models.mark_approved(submission, actor_user_id)
     # Notifies both parties (escrow_released_*) and awards referral credit.
     payments_service._release(db, escrow, actor_user_id)
     db.commit()

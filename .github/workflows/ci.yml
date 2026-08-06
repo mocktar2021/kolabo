@@ -36,3 +36,19 @@ jobs:
       # than as a wall of failing tests. Vitest reads the project's own Vite
       # config, so there is no second toolchain to keep in step with this one.
       - run: npm run test
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      # Type-check only. The mobile app has no simulator in CI, so on-device
+      # behaviour is verified manually in Expo Go; what CI guards is that the
+      # TypeScript across screens, navigation and the API layer stays sound.
+      - run: npx tsc --noEmit

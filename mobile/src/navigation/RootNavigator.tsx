@@ -8,6 +8,7 @@ import RegisterScreen from "../screens/RegisterScreen";
 import VerifyOtpScreen from "../screens/VerifyOtpScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import DashboardScreen from "../screens/DashboardScreen";
+import CreatorProfileScreen from "../screens/CreatorProfileScreen";
 import type { AppStackParamList, AuthStackParamList } from "./types";
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -28,6 +29,7 @@ function AppNavigator() {
   return (
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
       <AppStack.Screen name="Dashboard" component={DashboardScreen} />
+      <AppStack.Screen name="CreatorProfile" component={CreatorProfileScreen} />
     </AppStack.Navigator>
   );
 }

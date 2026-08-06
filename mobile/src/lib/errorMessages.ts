@@ -37,6 +37,22 @@ export const error_fr: Record<string, string> = {
   auth_account_nothing_to_change: "Indiquez un nouveau numéro, un nouveau mot de passe, ou les deux.",
   auth_reset_too_many: "Trop de demandes de réinitialisation. Réessayez plus tard.",
   auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
+
+  profile_not_found: "Profil introuvable.",
+  profile_under_age: "Vous devez avoir au moins {{min}} ans pour créer un profil de créateur.",
+  profile_platform_unsupported: "Cette plateforme n'est pas prise en charge.",
+  profile_social_method_unknown: "La méthode de connexion doit être « oauth » ou « manual ».",
+  profile_proof_url_required: "Une connexion manuelle demande un lien de preuve.",
+  profile_social_not_found: "Compte social introuvable.",
+  profile_social_not_yours: "Ce compte social n'est pas le vôtre.",
+  profile_duration_pair: "La durée et son unité vont ensemble : indiquez les deux, ou aucun des deux.",
+  package_not_found: "Pack introuvable.",
+  profile_package_not_yours: "Ce pack n'est pas le vôtre.",
+  deliverable_not_on_platform: "« {{type}} » n'existe pas sur {{platform}}. Possibilités : {{allowed}}",
+  price_below_floor: "Le prix minimum en {{currency}} est de {{floor}}.",
+  profile_image_type_unsupported: "Seules les images JPEG, PNG, WEBP ou GIF sont acceptées.",
+  profile_file_empty: "Ce fichier est vide.",
+  profile_image_not_found: "Image introuvable.",
 };
 
 export const error_en: Record<string, string> = {
@@ -60,6 +76,22 @@ export const error_en: Record<string, string> = {
   auth_account_nothing_to_change: "Send a new phone number, a new password, or both.",
   auth_reset_too_many: "Too many reset requests. Try again later.",
   auth_reset_code_invalid: "That reset code is invalid or expired.",
+
+  profile_not_found: "Profile not found.",
+  profile_under_age: "You must be at least {{min}} to create a creator profile.",
+  profile_platform_unsupported: "That platform is not supported.",
+  profile_social_method_unknown: 'The connection method must be "oauth" or "manual".',
+  profile_proof_url_required: "A manual connection needs a proof link.",
+  profile_social_not_found: "Social account not found.",
+  profile_social_not_yours: "That social account is not yours.",
+  profile_duration_pair: "A duration and its unit go together: give both, or neither.",
+  package_not_found: "Package not found.",
+  profile_package_not_yours: "That package is not yours.",
+  deliverable_not_on_platform: '"{{type}}" is not available on {{platform}}. Allowed: {{allowed}}',
+  price_below_floor: "The minimum price in {{currency}} is {{floor}}.",
+  profile_image_type_unsupported: "Only JPEG, PNG, WEBP and GIF images are accepted.",
+  profile_file_empty: "That file is empty.",
+  profile_image_not_found: "Image not found.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

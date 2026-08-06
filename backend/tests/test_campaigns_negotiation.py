@@ -96,6 +96,27 @@ def _negotiation(client, biz_phone, inf_phone):
     return biz, inf, inf_id, cid, first
 
 
+def _invite(client, cid, headers, influencer_id):
+    """Put the creator on the campaign's invitation list.
+
+    The creator's own list is keyed on invitations, not on proposals, so a
+    chain with nobody invited to it does not appear there at all — which is
+    why _negotiation on its own is not enough for the tests below.
+    """
+    return client.post(
+        f"/campaigns/{cid}/invitations", json={"influencer_id": influencer_id}, headers=headers
+    )
+
+
+def _mine(client, headers):
+    """The one row of GET /campaigns/invitations/mine these tests care about."""
+    r = client.get("/campaigns/invitations/mine", headers=headers)
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 1
+    return rows[0]
+
+
 def test_a_proposal_carries_the_reason_for_its_price(client):
     """A rate with no reasoning attached gets discussed on WhatsApp, and a
     deal agreed there has no contract and no escrow behind it."""
@@ -306,3 +327,112 @@ def test_reply_requires_auth(client):
     _, _, _, cid, first = _negotiation(client, "+22990001030", "+22990001031")
     r = client.post(f"/campaigns/{cid}/proposals/{first['id']}/reply", json={"note": "hello"})
     assert r.status_code == 401
+
+
+def test_the_creator_reads_every_round_of_their_own_negotiation(client):
+    """The brand has always had the whole thread and the creator had one line
+    of it.
+
+    campaign_detail sends every proposal row and the brand's page reassembles
+    them per creator; the creator's invitations list nested the LIVE version
+    and nothing else. So from version two onwards the person being negotiated
+    with was reading a number with no idea what it was answering — and
+    /campaigns/{id} answers a creator 403, so there was nowhere else to look.
+
+    Oldest first, because a conversation reads downwards and the row the
+    creator has to act on is the one at the bottom.
+    """
+    biz, inf, inf_id, cid, first = _negotiation(client, "+22990001040", "+22990001041")
+    assert _invite(client, cid, biz, inf_id).status_code == 201
+    _reply(client, cid, first["id"], biz, note="8000 is our ceiling.", rate=8000)
+    _submit(client, cid, inf, rate=9000, days=7, note="Meeting you at 9000.")
+
+    history = _mine(client, inf)["proposal_history"]
+    assert [v["version"] for v in history] == [1, 2, 3]
+    assert [v["author_role"] for v in history] == ["influencer", "business", "influencer"]
+    assert [v["rate_amount"] for v in history] == [10000, 8000, 9000]
+    assert [v["note"] for v in history] == [
+        "Includes two rounds of revisions.",
+        "8000 is our ceiling.",
+        "Meeting you at 9000.",
+    ]
+    # Every row is a complete offer rather than a diff, and it is timestamped:
+    # "they countered four days ago" is most of what somebody needs to decide
+    # whether to chase.
+    assert all(v["rate_currency"] == "XOF" for v in history)
+    assert all(v["timeline_days"] for v in history)
+    assert all(v["created_at"] for v in history)
+
+
+def test_the_live_version_stays_its_own_field_and_is_the_end_of_the_history(client):
+    """`proposal` is what accept and decline are addressed to, so it must not
+    move when a history is added beside it.
+
+    The server still computes it with latest_in_chain rather than reading the
+    last element of the list — the two agree, but a client sending an id to
+    /orders/{id}/accept has to be sending the id the accept endpoint will also
+    call live. This pins the agreement, so the day the two ever disagree a
+    test says so instead of a creator signing the wrong terms.
+    """
+    biz, inf, inf_id, cid, first = _negotiation(client, "+22990001042", "+22990001043")
+    assert _invite(client, cid, biz, inf_id).status_code == 201
+    _reply(client, cid, first["id"], biz, note="8000 is our ceiling.", rate=8000)
+    third = _submit(client, cid, inf, rate=9000, days=7, note="Meeting you at 9000.").json()
+
+    row = _mine(client, inf)
+    assert row["proposal"] is not None
+    assert row["proposal"]["id"] == third["id"]
+    assert row["proposal"] == row["proposal_history"][-1]
+    # And the one at the end is the only one still open: everything above it
+    # was superseded by its own author when they wrote the next round.
+    assert row["proposal"]["status"] == "submitted"
+    assert [v["status"] for v in row["proposal_history"][:-1]] == ["superseded", "superseded"]
+
+
+def test_an_invitation_nobody_has_priced_yet_carries_an_empty_history(client):
+    """The ordinary state of a fresh brief invitation, and the one a client
+    renders a blank proposal form for.
+
+    Empty list and not null, and no live version: a creator invited this
+    morning has nothing to read and nothing to answer, and a page that
+    crashed on the absence would break the most common row in the list.
+    """
+    _, biz = _user(client, "+22990001044", "business")
+    inf_id, inf = _user(client, "+22990001045", "influencer")
+    cid = _published_campaign(client, biz)
+    assert _invite(client, cid, biz, inf_id).status_code == 201
+
+    row = _mine(client, inf)
+    assert row["proposal_history"] == []
+    assert row["proposal"] is None
+
+
+def test_the_creator_s_history_is_capped_from_the_recent_end_like_the_brand_s(client):
+    """Same cap and same reasoning as the brand's list, in the same shape.
+
+    MAX_PROPOSAL_VERSIONS is taken from the RECENT end on both sides: the last
+    version is the live offer and the only one that can be accepted, so
+    truncating from that end would hide the single row the creator's page
+    exists to act on. Twenty-five versions built the way
+    test_the_chain_is_oldest_first_and_capped builds them, so the two lists
+    are proved to cut identically rather than assumed to.
+    """
+    biz, inf, inf_id, cid, first = _negotiation(client, "+22990001046", "+22990001047")
+    assert _invite(client, cid, biz, inf_id).status_code == 201
+    for i in range(24):
+        if i % 2 == 0:
+            assert _reply(client, cid, first["id"], biz, note=f"round {i}").status_code == 201
+        else:
+            assert _submit(client, cid, inf, rate=10000 + i, note=f"round {i}").status_code == 201
+
+    from app.modules.campaigns.service import MAX_PROPOSAL_VERSIONS
+
+    history = _mine(client, inf)["proposal_history"]
+    assert len(history) == MAX_PROPOSAL_VERSIONS
+    assert [v["version"] for v in history] == list(range(6, 26))
+    # The identical window the brand is looking at, row for row.
+    brand_side = client.get(f"/campaigns/{cid}", headers=biz).json()["proposals"]
+    assert [v["version"] for v in history] == [p["version"] for p in brand_side]
+    # And the live offer survived the cut, which is the whole point of cutting
+    # from the old end.
+    assert history[-1]["status"] == "submitted"

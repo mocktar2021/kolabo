@@ -1,15 +1,19 @@
-import { SafeAreaView, Text, StyleSheet } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { I18nextProvider } from "react-i18next";
+import i18n from "./src/i18n";
+import { AuthProvider } from "./src/lib/auth";
+import RootNavigator from "./src/navigation/RootNavigator";
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Kolabo</Text>
-      <Text>Bilingual influencer marketing marketplace for Africa — mobile app scaffold.</Text>
-    </SafeAreaView>
+    <SafeAreaProvider>
+      <I18nextProvider i18n={i18n}>
+        <AuthProvider>
+          <StatusBar style="dark" />
+          <RootNavigator />
+        </AuthProvider>
+      </I18nextProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center" },
-  title: { fontSize: 28, fontWeight: "bold", marginBottom: 8 },
-});

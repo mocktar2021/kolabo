@@ -355,6 +355,12 @@ class ProposalOut(CreatorIdentity):
     # When a direct order stops being answerable. Null on everything else —
     # only direct orders run on a clock.
     expires_at: datetime | None = None
+    # When this version was sent. A chain without timestamps is a list of
+    # numbers; with them it is a conversation, and "they countered four days
+    # ago" is most of what somebody needs to decide whether to chase. Required
+    # rather than defaulted because the column is NOT NULL and every path that
+    # builds this row goes through service._proposal_out, which carries it.
+    created_at: datetime
 
 
 class CampaignDetailOut(CampaignOut):
@@ -398,3 +404,14 @@ class InvitationWithCampaign(BaseModel):
     # have nothing to answer it with. expires_at on it is also what tells the
     # two kinds of row apart client-side: only a direct order runs on a clock.
     proposal: ProposalOut | None = None
+    # Every version of that same chain, OLDEST FIRST, capped exactly as the
+    # brand's list is (service.MAX_PROPOSAL_VERSIONS, taken from the recent
+    # end). The brand has always had the whole thread; the creator had only
+    # the live version, so from version two onwards they were reading a number
+    # with no idea what it was answering.
+    #
+    # Additive, and `proposal` above is deliberately left alone: it is still
+    # the live version, still what accept and decline are addressed to, and a
+    # client that has not been taught about this list behaves exactly as it
+    # did. Empty — not absent — when nothing has been offered yet.
+    proposal_history: list[ProposalOut] = Field(default_factory=list)

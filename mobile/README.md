@@ -74,6 +74,40 @@ No route at all — locked-down office Wi-Fi, phone on mobile data? Run
 request that fails on the phone but works in the web app is an address or
 firewall problem every time.
 
+### Do not keep this repo inside OneDrive / iCloud / Dropbox
+
+A synced folder and `node_modules` are a bad pair, and Metro is where it shows
+up. The usual symptom is a red screen quoting a 500 from the dev server:
+
+```
+Metro has encountered an error: Cannot read properties of undefined
+(reading 'transformFile') ... node_modules\metro\src\Bundler.js
+```
+
+Nothing is wrong with the code. Sync clients virtualise files ("Files
+On-Demand"), so Metro opens a placeholder instead of the real module, or hits
+a file locked mid-upload — and a dependency graph built from that is
+incoherent. Hundreds of thousands of small files also make sync itself
+miserable.
+
+The durable fix is to keep the working copy on a local path, `C:\dev\kolabo`
+or similar. Cloud-syncing a git repository buys nothing that the remote does
+not already do, and costs this.
+
+To recover an installation that has already been corrupted this way:
+
+```powershell
+# stop Metro first
+Remove-Item -Recurse -Force node_modules
+npm install
+npx expo install --fix   # realign package versions with the SDK
+npx expo start -c
+```
+
+If the repo must stay in OneDrive, right-click the folder → **Always keep on
+this device**, and pause syncing while working. That reduces the failure rate;
+it does not remove it.
+
 ## What's here
 
 The whole marketplace loop, both sides of it.

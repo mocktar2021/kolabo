@@ -109,6 +109,13 @@ export const error_fr: Record<string, string> = {
   dispute_evidence_max: "Vous pouvez joindre au maximum {{max}} images.",
   dispute_evidence_not_found: "Image introuvable.",
   dispute_evidence_not_yours: "Vous ne pouvez joindre que des images que vous avez importées.",
+
+  board_not_a_creator: "Seuls les créateurs peuvent parcourir les briefs ouverts. Un brief contient un budget et les projets d'une marque, donc le tableau reste derrière un compte créateur.",
+  board_not_open: "Ce brief n'est pas ouvert aux candidatures. La marque y invite les créateurs directement.",
+  board_direct_order: "Ceci est une commande directe adressée à un seul créateur, pas un brief ouvert : on ne peut pas y candidater.",
+  board_already_applied: "Vous avez déjà une proposition en cours sur ce brief. Modifiez-la en envoyant une nouvelle version plutôt qu'en candidatant à nouveau.",
+  campaign_not_found: "Campagne introuvable.",
+  campaign_not_open: "Cette campagne n'accepte pas de propositions.",
 };
 
 export const error_en: Record<string, string> = {
@@ -204,6 +211,13 @@ export const error_en: Record<string, string> = {
   dispute_evidence_max: "At most {{max}} images can be attached.",
   dispute_evidence_not_found: "Evidence image not found.",
   dispute_evidence_not_yours: "You can only attach images you uploaded.",
+
+  board_not_a_creator: "Only creators can browse open briefs. A brief carries a budget and a brand's plans, so the board stays behind a creator login.",
+  board_not_open: "This brief is not open to applications. The brand invites creators to it directly.",
+  board_direct_order: "This is a direct order addressed to one creator, not an open brief, and it cannot be applied to.",
+  board_already_applied: "You already have a live proposal on this brief. Edit it by submitting a new version instead of applying again.",
+  campaign_not_found: "Campaign not found.",
+  campaign_not_open: "This campaign is not open for proposals.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

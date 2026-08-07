@@ -57,18 +57,54 @@ function parseError(status: number, data: unknown, fallback: string): ApiError {
   return new ApiError(status, typeof detail === "string" ? detail : fallback, code, values);
 }
 
+/* Every request goes through here, so the two ways a call can fail WITHOUT
+   the API ever answering are handled once instead of on each screen.
+
+   THE TRANSPORT FAILED. fetch rejects only when the request never completed:
+   no route to the host, DNS failure, TLS refused, the radio dropped, the dev
+   machine unreachable. React Native's message for all of it is the bare
+   "Network request failed", which is English, untranslatable, and reads as a
+   bug in the app rather than a phone with no signal — so it is replaced with
+   a code errorMessages can say in the reader's language. This matters more
+   here than on the web: the pilot markets are places where the connection
+   drops mid-tap as a matter of course.
+
+   THE BODY IS NOT THIS API. A captive portal, a proxy error page or an
+   expired tunnel answers with HTML, and JSON.parse then throws a SyntaxError
+   that reaches the screen as "Unexpected character: <". Caught and named,
+   because the fix a reader needs — sign in to the Wi-Fi — is nowhere in a
+   parser error.
+
+   Status 0 marks "no response at all", the conventional reading, and keeps
+   `e.status === 404` checks elsewhere honest: a 404 test must never be
+   satisfied by a phone that never reached the server. */
+async function request(url: string, init: RequestInit): Promise<{ res: Response; data: unknown }> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new ApiError(0, "Network request failed", "network_unreachable");
+  }
+
+  const text = await res.text();
+  if (!text) return { res, data: null };
+  try {
+    return { res, data: JSON.parse(text) };
+  } catch {
+    throw new ApiError(res.status, "Malformed response", "network_bad_response");
+  }
+}
+
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const { res, data } = await request(`${API_BASE}${path}`, {
     method: opts.method || "GET",
     headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw parseError(res.status, data, "Something went wrong");
   return data as T;
 }
@@ -94,9 +130,14 @@ export async function uploadMedia<T>(
   if (token) headers.Authorization = `Bearer ${token}`;
   const form = new FormData();
   form.append("file", file as unknown as Blob);
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  /* Through the same seam as api(): an upload is the request most likely to
+     die on a weak connection, so it is the last one that should answer with
+     an untranslated transport error. */
+  const { res, data } = await request(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
   if (!res.ok) throw parseError(res.status, data, "Upload failed");
   return data as T;
 }

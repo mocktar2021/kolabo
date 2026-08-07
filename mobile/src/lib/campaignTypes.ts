@@ -28,6 +28,39 @@ export type Campaign = {
   target_max_followers: number | null;
 };
 
+/* One version of a negotiation chain, mirrored from ProposalOut. author_role
+   says which side wrote it; expires_at is non-null only on a direct order,
+   which is what lib/orders.ts uses to tell the two kinds of row apart. */
+export type Proposal = {
+  id: string;
+  campaign_id: string;
+  influencer_user_id: string;
+  version: number;
+  rate_amount: number;
+  rate_currency: string;
+  timeline_days: number;
+  status: string;
+  note: string | null;
+  author_role: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
+/* A row of GET /campaigns/invitations/mine, mirrored from
+   InvitationWithCampaign: the whole brief nested (the creator prices from
+   it), the live version of the negotiation if one exists, and every version
+   of that chain oldest-first. */
+export type InvitationWithCampaign = {
+  id: string;
+  campaign_id: string;
+  influencer_user_id: string;
+  status: string;
+  campaign: Campaign;
+  business_company_name: string | null;
+  proposal: Proposal | null;
+  proposal_history: Proposal[];
+};
+
 /* Targeting as the form holds it. The follower bounds are strings, not
    numbers: an empty box means "no bound", and a number state cannot hold that
    without inventing a zero — which is a real value the server takes (ge=0),

@@ -73,6 +73,34 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   return data as T;
 }
 
+/* A local image about to be uploaded, as React Native's fetch wants it: a
+   {uri, name, type} triple appended to FormData. RN's runtime accepts this
+   shape natively (it streams the file at `uri`); the DOM typings do not know
+   it, hence the cast at the append site. */
+export type LocalImage = { uri: string; name: string; type: string };
+
+export type MediaOut = { id: string; url: string };
+
+/* The mobile twin of web/src/lib/api.ts uploadFile: multipart POST with the
+   file under the `file` field, no Content-Type header set by hand — fetch
+   writes the multipart boundary itself, and setting it manually breaks the
+   upload. */
+export async function uploadMedia<T>(
+  path: string,
+  file: LocalImage,
+  token?: string | null
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const form = new FormData();
+  form.append("file", file as unknown as Blob);
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: form });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) throw parseError(res.status, data, "Upload failed");
+  return data as T;
+}
+
 /* Auth response shapes, mirrored from backend/app/modules/auth/schemas.py. */
 export type Role = "influencer" | "business" | "agency";
 export type TokenResponse = { access_token: string; token_type: string; role: Role };

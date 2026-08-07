@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { ApiError, api } from "../lib/api";
+import { ApiError, api, mediaSrc, uploadMedia, type MediaOut } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
+import { pickImage } from "../lib/imagePicker";
 import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { CATEGORIES } from "../lib/categories";
 import type { InfluencerProfile, InfluencerProfileInput, OnboardingStatus } from "../lib/profileTypes";
@@ -24,6 +25,7 @@ import {
 } from "../components/ui";
 import { SocialsSection } from "../components/profile/SocialsSection";
 import { PackagesSection } from "../components/profile/PackagesSection";
+import { PortfolioSection } from "../components/profile/PortfolioSection";
 import { colors, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -46,6 +48,8 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
   const [languages, setLanguages] = useState<string[]>([]);
   const [gender, setGender] = useState("");
   const [followers, setFollowers] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
 
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +80,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
       setLanguages(p.languages ?? []);
       setGender(p.gender ?? "");
       setFollowers(p.follower_count ? String(p.follower_count) : "");
+      setAvatarUrl(p.avatar_url ?? null);
     } catch (e) {
       // A 404 just means "no profile yet" — a blank form is the right state.
       if (!(e instanceof ApiError && e.status === 404)) setError(errorText(e, t));
@@ -89,6 +94,30 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
 
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
+  }
+
+  /* The avatar saves immediately rather than riding the form's save button:
+     upload the bytes, then a one-field PUT — the upsert is exclude_unset, so
+     nothing else on the (possibly half-edited) form is touched. */
+  async function changeAvatar() {
+    if (!userId) return;
+    const file = await pickImage();
+    if (!file) return;
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      const media = await uploadMedia<MediaOut>(`/profiles/${userId}/media`, file, token);
+      await api(`/profiles/influencer/${userId}`, {
+        method: "PUT",
+        token,
+        body: { avatar_media_id: media.id },
+      });
+      setAvatarUrl(media.url);
+    } catch (e) {
+      setError(errorText(e, t));
+    } finally {
+      setAvatarBusy(false);
+    }
   }
 
   async function save() {
@@ -174,6 +203,37 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
         {error ? <Banner kind="error">{error}</Banner> : null}
         {saved ? <Banner kind="success">{t("profile.saved")}</Banner> : null}
 
+        <View style={{ flexDirection: "row", alignItems: "center", gap: space(3), marginBottom: space(4) }}>
+          {avatarUrl ? (
+            <Image
+              source={{ uri: mediaSrc(avatarUrl) }}
+              style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface2 }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: colors.surface2,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ fontSize: font.h1, fontWeight: "700", color: colors.muted }}>
+                {(displayName || "?").charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <GhostButton
+              title={avatarBusy ? t("common.working") : t("profile.uploadPhoto")}
+              onPress={() => void changeAvatar()}
+              disabled={avatarBusy}
+            />
+          </View>
+        </View>
+
         <Field label={t("profile.displayName")} value={displayName} onChangeText={setDisplayName} placeholder="Ama K." />
         <Field label={t("profile.headline")} value={headline} onChangeText={setHeadline} hint={t("profile.headlineHint")} />
 
@@ -219,6 +279,11 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
       <View style={{ height: space(4) }} />
       <Card>
         <SocialsSection userId={userId} token={token} onChanged={() => { void loadProfile(); void loadStatus(); }} />
+      </Card>
+
+      <View style={{ height: space(4) }} />
+      <Card>
+        <PortfolioSection userId={userId} token={token} />
       </Card>
 
       <View style={{ height: space(4) }} />

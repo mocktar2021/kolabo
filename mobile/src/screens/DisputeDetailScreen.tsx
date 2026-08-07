@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { api, mediaSrc } from "../lib/api";
+import { api, mediaSrc, type MediaOut } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/dates";
 import { isDisputeOpen, respondTimeLeft, type DisputeCase } from "../lib/disputeTypes";
+import { EvidencePicker } from "../components/disputes/EvidencePicker";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
 import { colors, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -48,6 +49,7 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
 
   const [dispute, setDispute] = useState<DisputeCase | null>(null);
   const [body, setBody] = useState("");
+  const [evidence, setEvidence] = useState<MediaOut[]>([]);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,6 +178,9 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
                   numberOfLines={3}
                   placeholder={t("dispute.composerPlaceholder")}
                 />
+                {userId ? (
+                  <EvidencePicker userId={userId} token={token} value={evidence} onChange={setEvidence} />
+                ) : null}
                 <PrimaryButton
                   title={busy ? "…" : t("dispute.send")}
                   onPress={() =>
@@ -183,9 +188,10 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
                       await api(`/payments/disputes/${dispute.id}/messages`, {
                         method: "POST",
                         token,
-                        body: { body: body.trim(), media_ids: [] },
+                        body: { body: body.trim(), media_ids: evidence.map((e) => e.id) },
                       });
                       setBody("");
+                      setEvidence([]);
                     })
                   }
                   loading={busy}

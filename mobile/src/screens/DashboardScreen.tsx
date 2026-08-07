@@ -45,9 +45,14 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
             <GhostButton title={t("board.title")} onPress={() => navigation.navigate("Board")} />
           </View>
         ) : (
-          <View style={{ marginBottom: space(3) }}>
-            <GhostButton title={t("campaign.listTitle")} onPress={() => navigation.navigate("Campaigns")} />
-          </View>
+          <>
+            <View style={{ marginBottom: space(3) }}>
+              <GhostButton title={t("discover.title")} onPress={() => navigation.navigate("Discover")} />
+            </View>
+            <View style={{ marginBottom: space(3) }}>
+              <GhostButton title={t("campaign.listTitle")} onPress={() => navigation.navigate("Campaigns")} />
+            </View>
+          </>
         )}
         <View style={{ marginBottom: space(3) }}>
           <GhostButton title={t("contract.listTitle")} onPress={() => navigation.navigate("Contracts")} />

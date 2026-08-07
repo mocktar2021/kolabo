@@ -23,6 +23,8 @@ export type AppStackParamList = {
   Spend: undefined;
   Campaigns: undefined;
   CampaignNew: undefined;
+  Discover: undefined;
+  CreatorPublic: { userId: string };
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

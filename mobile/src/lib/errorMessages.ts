@@ -116,6 +116,23 @@ export const error_fr: Record<string, string> = {
   board_already_applied: "Vous avez déjà une proposition en cours sur ce brief. Modifiez-la en envoyant une nouvelle version plutôt qu'en candidatant à nouveau.",
   campaign_not_found: "Campagne introuvable.",
   campaign_not_open: "Cette campagne n'accepte pas de propositions.",
+
+  order_terms_both: "Envoyez soit un pack, soit des conditions personnalisées, pas les deux. Conditions reçues : {{supplied}}",
+  order_terms_missing: "Une commande demande soit un pack, soit une offre personnalisée complète ({{fields}}).",
+  order_terms_incomplete: "Cette offre personnalisée est incomplète. Il manque : {{missing}}",
+  order_to_self: "Vous ne pouvez pas vous envoyer une offre à vous-même.",
+  order_target_not_creator: "Une offre ne peut être envoyée qu'à un créateur.",
+  order_package_inactive: "Ce pack n'est pas disponible pour le moment.",
+  order_own_package: "Vous ne pouvez pas commander votre propre pack.",
+  order_quantity_range: "La quantité de livrables doit être un nombre entier entre {{min}} et {{max}}.",
+  order_rate_invalid: "Le tarif doit être un montant entier positif.",
+  order_timeline_range: "Le délai doit être un nombre entier de jours entre {{min}} et {{max}}.",
+  order_not_found: "Commande introuvable.",
+  order_not_direct: "Cette proposition n'est pas une commande directe.",
+  order_not_yours: "Cette commande ne vous est pas adressée.",
+  order_own_counter: "Ceci est votre propre contre-proposition. C'est à la marque de l'accepter.",
+  order_not_open: "Cette commande n'est plus ouverte.",
+  order_expired: "Cette commande a expiré.",
 };
 
 export const error_en: Record<string, string> = {
@@ -218,6 +235,23 @@ export const error_en: Record<string, string> = {
   board_already_applied: "You already have a live proposal on this brief. Edit it by submitting a new version instead of applying again.",
   campaign_not_found: "Campaign not found.",
   campaign_not_open: "This campaign is not open for proposals.",
+
+  order_terms_both: "Send either a package or custom terms, not both. Custom terms received: {{supplied}}",
+  order_terms_missing: "An order needs either a package or a full custom offer ({{fields}}).",
+  order_terms_incomplete: "That custom offer is incomplete. Missing: {{missing}}",
+  order_to_self: "You cannot send an offer to yourself.",
+  order_target_not_creator: "An offer can only be sent to a creator.",
+  order_package_inactive: "That package is not available at the moment.",
+  order_own_package: "You cannot order your own package.",
+  order_quantity_range: "The deliverable quantity must be a whole number between {{min}} and {{max}}.",
+  order_rate_invalid: "The rate must be a whole positive amount.",
+  order_timeline_range: "The timeline must be a whole number of days between {{min}} and {{max}}.",
+  order_not_found: "Order not found.",
+  order_not_direct: "That proposal is not a direct order.",
+  order_not_yours: "That order is not addressed to you.",
+  order_own_counter: "This is your own counter-offer. The brand has to accept it.",
+  order_not_open: "That order is no longer open.",
+  order_expired: "That order has expired.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

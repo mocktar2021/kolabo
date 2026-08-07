@@ -19,6 +19,12 @@ export const GENERIC_KEY = "apiError.generic";
 export const error_fr: Record<string, string> = {
   generic: "Une erreur est survenue. Réessayez dans un instant.",
 
+  /* Pannes de transport : l'API n'a jamais répondu. Ce ne sont pas des codes
+     du backend — api.ts les fabrique — mais ils passent par le même chemin,
+     pour que l'écran n'ait rien de particulier à faire. */
+  network_unreachable: "Impossible de joindre Kolabo. Vérifiez votre connexion et réessayez.",
+  network_bad_response: "Réponse inattendue du serveur. Sur un Wi-Fi public, une page de connexion intercepte peut-être la connexion.",
+
   auth_user_not_found: "Utilisateur introuvable.",
   auth_referral_code_failed: "Impossible de générer un code de parrainage. Réessayez.",
   auth_role_unknown: "Le rôle doit être l'un des suivants : {{roles}}",
@@ -164,6 +170,12 @@ export const error_fr: Record<string, string> = {
 
 export const error_en: Record<string, string> = {
   generic: "Something went wrong. Try again in a moment.",
+
+  /* Transport failures: the API never answered. Not backend codes — api.ts
+     mints them — but they travel the same path, so no screen needs to know
+     the difference. */
+  network_unreachable: "Can't reach Kolabo. Check your connection and try again.",
+  network_bad_response: "The server sent back something unexpected. On public Wi-Fi, a sign-in page may be intercepting the connection.",
 
   auth_user_not_found: "User not found.",
   auth_referral_code_failed: "A referral code could not be generated. Please try again.",

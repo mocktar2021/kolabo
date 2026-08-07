@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -82,7 +82,11 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
       ) : (
         <View style={{ gap: space(2) }}>
           {campaigns.map((c) => (
-            <View key={c.id} style={styles.row}>
+            <Pressable
+              key={c.id}
+              onPress={() => navigation.navigate("CampaignDetail", { id: c.id })}
+              style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface }]}
+            >
               <View style={styles.rowTop}>
                 <Text style={styles.rowTitle}>{c.title}</Text>
                 <StatusChip status={c.status} />
@@ -107,7 +111,7 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
                   />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
           ))}
         </View>
       )}

@@ -23,6 +23,7 @@ export type AppStackParamList = {
   Spend: undefined;
   Campaigns: undefined;
   CampaignNew: undefined;
+  CampaignDetail: { id: string };
   Discover: undefined;
   CreatorPublic: { userId: string };
   Invitations: undefined;

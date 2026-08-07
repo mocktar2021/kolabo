@@ -1,7 +1,7 @@
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { isBusinessLike, useAuth } from "../lib/auth";
-import { Banner, Card, GhostButton, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
+import { Card, GhostButton, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -35,7 +35,9 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
             <PrimaryButton title={t("dash.setupProfile")} onPress={() => navigation.navigate("CreatorProfile")} />
           </View>
         ) : (
-          <Banner kind="info">{t("dash.comingSoon")}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <PrimaryButton title={t("biz.title")} onPress={() => navigation.navigate("BusinessProfile")} />
+          </View>
         )}
 
         {creator ? (
@@ -50,7 +52,11 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
           <View style={{ marginBottom: space(3) }}>
             <GhostButton title={t("earn.title")} onPress={() => navigation.navigate("Earnings")} />
           </View>
-        ) : null}
+        ) : (
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("spend.title")} onPress={() => navigation.navigate("Spend")} />
+          </View>
+        )}
         <GhostButton title={t("dash.logout")} onPress={() => void logout()} />
       </Card>
     </Screen>

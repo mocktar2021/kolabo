@@ -93,6 +93,22 @@ export const error_fr: Record<string, string> = {
   deliverable_release_escrow_not_held: "Le séquestre n'est pas bloqué : il ne peut pas être libéré.",
   deliverable_changes_need_note: "Dites ce qui doit changer, pour que le créateur puisse corriger.",
   deliverable_withdraw_own_only: "Seul le créateur qui a envoyé ce livrable peut le retirer.",
+
+  dispute_not_found: "Litige introuvable.",
+  dispute_closed: "Ce litige est clos.",
+  dispute_already_open: "Ce séquestre a déjà un litige ouvert.",
+  dispute_escrow_not_held: "Seul un séquestre bloqué peut faire l'objet d'un litige.",
+  dispute_escrow_not_disputed: "Ce séquestre n'est pas en litige.",
+  dispute_frozen_without_case: "Ce séquestre est gelé sans litige ouvert. Signalez-le avant de trancher.",
+  dispute_withdraw_own_only: "Seule la partie qui a ouvert le litige peut le retirer.",
+  dispute_reason_unknown: "Le motif doit être l'un des suivants : {{reasons}}",
+  dispute_statement_too_short: "Expliquez ce qui s'est passé en au moins {{min}} caractères.",
+  dispute_statement_too_long: "Une déclaration fait au plus {{max}} caractères.",
+  dispute_message_empty: "Un message ne peut pas être vide.",
+  dispute_message_too_long: "Un message fait au plus {{max}} caractères.",
+  dispute_evidence_max: "Vous pouvez joindre au maximum {{max}} images.",
+  dispute_evidence_not_found: "Image introuvable.",
+  dispute_evidence_not_yours: "Vous ne pouvez joindre que des images que vous avez importées.",
 };
 
 export const error_en: Record<string, string> = {
@@ -172,6 +188,22 @@ export const error_en: Record<string, string> = {
   deliverable_release_escrow_not_held: "This escrow is not held, so it cannot be released.",
   deliverable_changes_need_note: "Say what needs to change, so the creator can fix it.",
   deliverable_withdraw_own_only: "Only the creator who submitted this work can withdraw it.",
+
+  dispute_not_found: "Dispute not found.",
+  dispute_closed: "This dispute is closed.",
+  dispute_already_open: "This escrow already has an open dispute.",
+  dispute_escrow_not_held: "Only a held escrow can be disputed.",
+  dispute_escrow_not_disputed: "This escrow is not under dispute.",
+  dispute_frozen_without_case: "This escrow is frozen with no open dispute attached. Report it before settling.",
+  dispute_withdraw_own_only: "Only the party who raised the dispute can withdraw it.",
+  dispute_reason_unknown: "The reason must be one of: {{reasons}}",
+  dispute_statement_too_short: "Say what went wrong in at least {{min}} characters.",
+  dispute_statement_too_long: "A statement is at most {{max}} characters.",
+  dispute_message_empty: "A message cannot be empty.",
+  dispute_message_too_long: "A message is at most {{max}} characters.",
+  dispute_evidence_max: "At most {{max}} images can be attached.",
+  dispute_evidence_not_found: "Evidence image not found.",
+  dispute_evidence_not_yours: "You can only attach images you uploaded.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

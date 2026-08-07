@@ -5,7 +5,9 @@ import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import type { ContractDetail, Escrow } from "../lib/contractTypes";
+import { openDisputeFor, type Dispute } from "../lib/disputeTypes";
 import { DeliverablesPanel } from "../components/contracts/DeliverablesPanel";
+import { RaiseDisputeForm } from "../components/contracts/RaiseDisputeForm";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
 import { colors, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -30,11 +32,20 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [raising, setRaising] = useState(false);
 
   const loadEscrow = useCallback(
     async (contractId: string) => {
       try {
         setEscrow(await api<Escrow>(`/payments/escrow/by-contract/${contractId}`, { token }));
+        // The caller's cases in one request; the open one on this escrow (if
+        // any) is found client-side, exactly as the web contract page does it.
+        try {
+          setDisputes(await api<Dispute[]>("/payments/disputes/mine", { token }));
+        } catch {
+          setDisputes([]);
+        }
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) setEscrow(null);
       }
@@ -73,6 +84,7 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
 
   const isBusiness = !!contract && userId === contract.business_user_id;
   const alreadySigned = !!contract && (isBusiness ? contract.business_signed : contract.influencer_signed);
+  const openDispute = escrow ? openDisputeFor(disputes, escrow.id) : null;
 
   return (
     <Screen>
@@ -184,9 +196,38 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
                     {/* No standalone release button (D2): confirming delivery is
                         approving the open submission, which happens in the
                         deliverables panel below. */}
+                    {/* Either party can report a problem while the money is
+                        held: it freezes the escrow and starts the response
+                        window. Said before the click inside the form. */}
+                    {escrow.status === "held" ? (
+                      raising ? (
+                        <RaiseDisputeForm
+                          escrowId={escrow.id}
+                          onSubmitted={async () => {
+                            setRaising(false);
+                            await load();
+                          }}
+                          onCancel={() => setRaising(false)}
+                        />
+                      ) : (
+                        <View style={{ marginTop: space(2) }}>
+                          <GhostButton title={t("dispute.open")} onPress={() => setRaising(true)} />
+                        </View>
+                      )
+                    ) : null}
                     {escrow.status === "released" ? <Banner kind="success">{t("contract.released")}</Banner> : null}
                     {escrow.status === "refunded" ? <Banner kind="info">{t("contract.refunded")}</Banner> : null}
-                    {escrow.status === "disputed" ? <Banner kind="info">{t("contract.disputed")}</Banner> : null}
+                    {escrow.status === "disputed" ? (
+                      <>
+                        <Banner kind="info">{t("contract.disputed")}</Banner>
+                        {openDispute ? (
+                          <GhostButton
+                            title={t("dispute.view")}
+                            onPress={() => navigation.navigate("DisputeDetail", { id: openDispute.id })}
+                          />
+                        ) : null}
+                      </>
+                    ) : null}
                   </>
                 )}
               </Card>

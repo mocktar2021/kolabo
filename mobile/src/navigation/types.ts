@@ -21,6 +21,8 @@ export type AppStackParamList = {
   Board: undefined;
   BusinessProfile: undefined;
   Spend: undefined;
+  Campaigns: undefined;
+  CampaignNew: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

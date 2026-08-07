@@ -142,6 +142,18 @@ export const error_fr: Record<string, string> = {
   proposal_has_contract: "Un contrat existe déjà pour cette proposition. C'est le contrat qu'il faut annuler.",
   proposal_is_direct_order: "Ceci est une commande directe, pas une offre sur un brief. Refusez-la plutôt que de la retirer.",
 
+  invitation_not_found: "Invitation introuvable.",
+  invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
+  invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
+
+  campaign_is_direct_order: "Une commande directe ne se modifie pas. Ses conditions sont une négociation : faites une contre-proposition, ou laissez le créateur la refuser.",
+  campaign_cancelled_immutable: "Cette campagne est annulée et ne peut plus être modifiée.",
+  campaign_already_cancelled: "Cette campagne est déjà annulée.",
+  campaign_needs_title: "Une campagne a besoin d'un titre.",
+  campaign_field_locked: "« {{field}} » ne peut plus être modifié : un créateur a déjà chiffré une proposition dessus. Annulez cette campagne et republiez-la si les conditions doivent changer.",
+  campaign_has_activity: "Cette campagne a de l'activité : annulez-la plutôt que de la supprimer.",
+  campaign_has_contract: "Cette campagne a un contrat. Défaire un accord signé passe par le litige et le remboursement, pas par une annulation.",
+
   order_not_found: "Commande introuvable.",
   order_not_direct: "Cette proposition n'est pas une commande directe.",
   order_not_yours: "Cette commande ne vous est pas adressée.",
@@ -275,6 +287,18 @@ export const error_en: Record<string, string> = {
   proposal_negotiation_closed: "That negotiation is closed and cannot be answered.",
   proposal_has_contract: "A contract already exists for this proposal. It is the contract that has to be cancelled.",
   proposal_is_direct_order: "This is a direct order, not a bid on a brief. Decline it rather than withdrawing it.",
+
+  invitation_not_found: "Invitation not found.",
+  invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
+  invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
+
+  campaign_is_direct_order: "A direct order cannot be edited. Its terms are a negotiation: counter it with a reply, or let the creator decline it.",
+  campaign_cancelled_immutable: "This campaign is cancelled and cannot be edited.",
+  campaign_already_cancelled: "This campaign is already cancelled.",
+  campaign_needs_title: "A campaign needs a title.",
+  campaign_field_locked: "\"{{field}}\" cannot be changed: a creator has already priced a proposal against it. Cancel this campaign and publish a new one if the terms have to change.",
+  campaign_has_activity: "This campaign has activity: cancel it instead of deleting it.",
+  campaign_has_contract: "This campaign has a contract. Unwinding a signed agreement is the dispute and refund path, not a cancellation.",
 
   order_not_found: "Order not found.",
   order_not_direct: "That proposal is not a direct order.",

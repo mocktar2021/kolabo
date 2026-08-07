@@ -30,9 +30,15 @@ export function emptyDeliverable(): Deliverable {
 export function DeliverableRows({
   value,
   onChange,
+  disabled = false,
 }: {
   value: Deliverable[];
   onChange: (next: Deliverable[]) => void;
+  /* The locked case, not a loading case: a published campaign somebody has
+     priced against keeps its deliverables read-only, and the add button goes
+     away with them — a row that cannot be edited is not a row anybody should
+     be able to add next to. */
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -46,6 +52,22 @@ export function DeliverableRows({
 
   function setQty(i: number, qty: number) {
     update(i, { quantity: Math.min(MAX_QTY, Math.max(1, qty)) });
+  }
+
+  /* Locked: the rows as a plain read, no editors and no add button. Static
+     text rather than greyed-out controls because a chip row has no native
+     disabled look and a dead-looking picker still invites taps. */
+  if (disabled) {
+    return (
+      <View style={{ gap: space(1) }}>
+        {value.map((d, i) => (
+          <Text key={i} style={styles.lockedRow}>
+            {d.quantity} × {deliverableLabel(d.type)} —{" "}
+            {SELLABLE_PLATFORMS.find((p) => p.id === d.platform)?.label ?? d.platform}
+          </Text>
+        ))}
+      </View>
+    );
   }
 
   return (
@@ -149,4 +171,5 @@ const styles = StyleSheet.create({
   stepOff: { opacity: 0.4 },
   stepGlyph: { fontSize: 22, fontWeight: "700", color: colors.ink, lineHeight: 24 },
   qty: { fontSize: font.h2, fontWeight: "700", color: colors.ink, minWidth: 32, textAlign: "center" },
+  lockedRow: { fontSize: font.small, color: colors.ink },
 });

@@ -138,6 +138,18 @@ export type TargetingBody = {
   target_max_followers: number | null;
 };
 
+/* A campaign's targeting columns folded back into form state — the inverse of
+   targetingBody, used when the edit form opens on an existing campaign. */
+export function targetingOf(campaign: TargetingBody): Targeting {
+  return {
+    is_open: campaign.is_open,
+    categories: campaign.target_categories ?? [],
+    countries: campaign.target_countries ?? [],
+    minFollowers: campaign.target_min_followers === null ? "" : String(campaign.target_min_followers),
+    maxFollowers: campaign.target_max_followers === null ? "" : String(campaign.target_max_followers),
+  };
+}
+
 export function targetingBody(value: Targeting): TargetingBody {
   return {
     is_open: value.is_open,

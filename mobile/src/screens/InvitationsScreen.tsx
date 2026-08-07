@@ -8,6 +8,7 @@ import { formatDate } from "../lib/dates";
 import { directOrderOf } from "../lib/orders";
 import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import type { InvitationWithCampaign } from "../lib/campaignTypes";
+import { ListFilter, type FilterOption } from "../components/lists";
 import { Negotiation } from "../components/invitations/Negotiation";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, font, radius, space } from "../theme";
@@ -188,6 +189,9 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
   const { token } = useAuth();
   const [invitations, setInvitations] = useState<InvitationWithCampaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /* "" is all. Narrows on the invitation status the creator already reads on
+     each card; filtered in memory. */
+  const [statusFilter, setStatusFilter] = useState("");
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -207,6 +211,12 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
 
   const loading = invitations === null;
   const empty = !loading && invitations.length === 0;
+  const statusOptions: FilterOption[] = Array.from(
+    new Set((invitations ?? []).map((i) => i.status))
+  ).map((s) => ({ value: s, label: t(`invitation.status_${s}`, { defaultValue: s }) }));
+  const shown = statusFilter
+    ? (invitations ?? []).filter((i) => i.status === statusFilter)
+    : invitations ?? [];
 
   return (
     <Screen>
@@ -218,14 +228,22 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
 
       {error ? <Banner kind="error">{error}</Banner> : null}
 
+      {!loading && !empty ? (
+        <View style={{ marginBottom: space(3) }}>
+          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+        </View>
+      ) : null}
+
       {loading ? null : empty ? (
         <>
           <Text style={{ color: colors.ink, fontSize: font.body }}>{t("invitation.empty")}</Text>
           <Hint>{t("invitation.emptyHint")}</Hint>
         </>
+      ) : shown.length === 0 ? (
+        <Hint>{t("lf.none")}</Hint>
       ) : (
         <View style={{ gap: space(3) }}>
-          {invitations.map((inv) => (
+          {shown.map((inv) => (
             <InvitationCard
               key={inv.id}
               inv={inv}

@@ -6,6 +6,8 @@ import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
 import type { Campaign } from "../lib/campaignTypes";
+import { campaignIsCompleted, partitionByCompletion, type CompletableContract } from "../lib/lifecycle";
+import { ListFilter, ListTabs, type FilterOption, type Tab } from "../components/lists";
 import { Banner, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -26,6 +28,13 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("active");
+  const [statusFilter, setStatusFilter] = useState("");
+  /* The caller's contracts, fetched ONLY to work out which campaigns are
+     finished — a campaign has no completed status of its own; what ends it is
+     the work underneath it ending. Failing here is not worth an error state:
+     it costs the Completed shelf its accuracy and leaves the rest working. */
+  const [contracts, setContracts] = useState<CompletableContract[]>([]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -35,6 +44,9 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
     } catch (e) {
       setError(errorText(e, t));
     }
+    api<CompletableContract[]>("/contracts/mine", { token })
+      .then(setContracts)
+      .catch(() => setContracts([]));
   }, [token, t]);
 
   // Reload on focus so a campaign created on the New screen and navigated back
@@ -60,6 +72,20 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
   const loading = campaigns === null;
   const empty = !loading && campaigns.length === 0;
 
+  const { active, completed } = partitionByCompletion(campaigns ?? [], (c) =>
+    campaignIsCompleted(c, contracts)
+  );
+  const inTab = tab === "completed" ? completed : active;
+  const statusOptions: FilterOption[] = Array.from(new Set(inTab.map((c) => c.status))).map(
+    (s) => ({ value: s, label: t(`campaign.status_${s}`, { defaultValue: s }) })
+  );
+  const shown = statusFilter ? inTab.filter((c) => c.status === statusFilter) : inTab;
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    setStatusFilter("");
+  }
+
   return (
     <Screen>
       <View style={{ marginBottom: space(2) }}>
@@ -74,14 +100,32 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
 
       {error ? <Banner kind="error">{error}</Banner> : null}
 
+      {!loading && !empty ? (
+        <View style={{ marginBottom: space(3) }}>
+          <ListTabs
+            active={tab}
+            activeCount={active.length}
+            completedCount={completed.length}
+            onChange={selectTab}
+          />
+          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+        </View>
+      ) : null}
+
       {loading ? null : empty ? (
         <>
           <Text style={styles.emptyText}>{t("campaign.listEmpty")}</Text>
           <Hint>{t("campaign.listEmptyHint")}</Hint>
         </>
+      ) : shown.length === 0 ? (
+        <Hint>
+          {inTab.length === 0
+            ? t(tab === "completed" ? "lf.noneCompleted" : "lf.noneActive")
+            : t("lf.none")}
+        </Hint>
       ) : (
         <View style={{ gap: space(2) }}>
-          {campaigns.map((c) => (
+          {shown.map((c) => (
             <Pressable
               key={c.id}
               onPress={() => navigation.navigate("CampaignDetail", { id: c.id })}

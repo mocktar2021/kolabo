@@ -1,7 +1,10 @@
 /* Screen copy for the mobile app, EN + FR. Kept here (not in the web i18n.ts,
    which is web-only) but written to match the web app's voice. API refusal
    sentences are separate — see lib/errorMessages.ts — and folded in under the
-   `apiError` namespace by i18n.ts. */
+   `apiError` namespace by i18n.ts. The notification BODIES live in
+   lib/notificationBodies.ts (a mirror of the web file the backend-parity test
+   reads) and are hung off notif.body here. */
+import { body_en, body_fr } from "./lib/notificationBodies";
 
 export const en = {
   common: { appName: "Kolabo", working: "Working…", cancel: "Cancel", back: "Back" },
@@ -494,6 +497,25 @@ export const en = {
     sentMinutesAgo: "Sent {{n}} min ago",
     sentHoursAgo: "Sent {{n}} h ago",
     sentDaysAgo: "Sent {{n}} d ago",
+  },
+  notif: {
+    title: "Notifications",
+    titleWithCount: "Notifications ({{n}})",
+    sub: "Everything Kolabo has told you about, newest first.",
+    markAll: "Mark all as read",
+    unreadMark: "Unread",
+    empty: "No notifications yet.",
+    emptyHint: "Invitations, proposals, contracts, messages and money movements arrive here.",
+    loadFailed: "Your notifications could not be loaded right now.",
+    routeNote: "Tapping opens the item it is about when it can — the contract, the dispute, the campaign — otherwise the matching screen.",
+    justNow: "just now",
+    minutesAgo: "{{n}} min ago",
+    hoursAgo: "{{n}} h ago",
+    daysAgo: "{{n}} d ago",
+    newer: "Newer",
+    older: "Older",
+    pageEnd: "You have reached the end of your history.",
+    body: body_en,
   },
 };
 
@@ -989,5 +1011,24 @@ export const fr: typeof en = {
     sentMinutesAgo: "Envoyé il y a {{n}} min",
     sentHoursAgo: "Envoyé il y a {{n}} h",
     sentDaysAgo: "Envoyé il y a {{n}} j",
+  },
+  notif: {
+    title: "Notifications",
+    titleWithCount: "Notifications ({{n}})",
+    sub: "Tout ce que Kolabo vous a signalé, de la plus récente à la plus ancienne.",
+    markAll: "Tout marquer comme lu",
+    unreadMark: "Non lue",
+    empty: "Aucune notification pour l'instant.",
+    emptyHint: "Les invitations, les propositions, les contrats, les messages et les mouvements d'argent arrivent ici.",
+    loadFailed: "Impossible de charger vos notifications pour l'instant.",
+    routeNote: "Un appui ouvre directement l'élément concerné quand c'est possible — le contrat, le litige, la campagne — et sinon l'écran correspondant.",
+    justNow: "à l'instant",
+    minutesAgo: "il y a {{n}} min",
+    hoursAgo: "il y a {{n}} h",
+    daysAgo: "il y a {{n}} j",
+    newer: "Plus récentes",
+    older: "Plus anciennes",
+    pageEnd: "Vous êtes au bout de votre historique.",
+    body: body_fr,
   },
 };

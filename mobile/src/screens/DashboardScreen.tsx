@@ -1,17 +1,34 @@
+import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { api } from "../lib/api";
 import { isBusinessLike, useAuth } from "../lib/auth";
+import type { UnreadCount } from "../lib/notifications";
 import { Card, GhostButton, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
-/* A signed-in home. For a creator it's the way into profile setup; the brand
-   experience and the creator tabs (briefs, contracts, deliverables, earnings)
-   are later slices. */
+/* A signed-in home, and the app's stand-in for the web's persistent header:
+   the notifications entry lives here, badge included, because there is no nav
+   bar to hang a bell on. */
 export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboard">) {
   const { t } = useTranslation();
-  const { role, logout } = useAuth();
+  const { role, token, logout } = useAuth();
   const creator = !isBusinessLike(role);
+
+  /* The badge count comes from its own endpoint rather than a list length:
+     the list is capped and the badge must not be. Refreshed on focus so
+     answering something clears it without a restart; a failed fetch keeps
+     the last number rather than erasing it. */
+  const [unread, setUnread] = useState(0);
+  const loadUnread = useCallback(() => {
+    if (!token) return;
+    api<UnreadCount>("/notifications/unread-count", { token })
+      .then((r) => setUnread(r.unread))
+      .catch(() => undefined);
+  }, [token]);
+  useEffect(() => navigation.addListener("focus", loadUnread), [navigation, loadUnread]);
+  useEffect(loadUnread, [loadUnread]);
 
   const roleLabel =
     role === "business"
@@ -61,6 +78,12 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
         )}
         <View style={{ marginBottom: space(3) }}>
           <GhostButton title={t("contract.listTitle")} onPress={() => navigation.navigate("Contracts")} />
+        </View>
+        <View style={{ marginBottom: space(3) }}>
+          <GhostButton
+            title={unread > 0 ? t("notif.titleWithCount", { n: unread }) : t("notif.title")}
+            onPress={() => navigation.navigate("Notifications")}
+          />
         </View>
         {creator ? (
           <View style={{ marginBottom: space(3) }}>

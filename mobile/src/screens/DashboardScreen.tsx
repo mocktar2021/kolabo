@@ -41,9 +41,14 @@ export default function DashboardScreen({ navigation }: AppScreenProps<"Dashboar
         )}
 
         {creator ? (
-          <View style={{ marginBottom: space(3) }}>
-            <GhostButton title={t("board.title")} onPress={() => navigation.navigate("Board")} />
-          </View>
+          <>
+            <View style={{ marginBottom: space(3) }}>
+              <GhostButton title={t("board.title")} onPress={() => navigation.navigate("Board")} />
+            </View>
+            <View style={{ marginBottom: space(3) }}>
+              <GhostButton title={t("invitation.title")} onPress={() => navigation.navigate("Invitations")} />
+            </View>
+          </>
         ) : (
           <>
             <View style={{ marginBottom: space(3) }}>

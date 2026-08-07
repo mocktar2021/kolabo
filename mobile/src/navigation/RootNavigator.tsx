@@ -18,6 +18,8 @@ import BusinessProfileScreen from "../screens/BusinessProfileScreen";
 import SpendScreen from "../screens/SpendScreen";
 import CampaignsListScreen from "../screens/CampaignsListScreen";
 import CampaignNewScreen from "../screens/CampaignNewScreen";
+import DiscoverScreen from "../screens/DiscoverScreen";
+import CreatorPublicScreen from "../screens/CreatorPublicScreen";
 import type { AppStackParamList, AuthStackParamList } from "./types";
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -48,6 +50,8 @@ function AppNavigator() {
       <AppStack.Screen name="Spend" component={SpendScreen} />
       <AppStack.Screen name="Campaigns" component={CampaignsListScreen} />
       <AppStack.Screen name="CampaignNew" component={CampaignNewScreen} />
+      <AppStack.Screen name="Discover" component={DiscoverScreen} />
+      <AppStack.Screen name="CreatorPublic" component={CreatorPublicScreen} />
     </AppStack.Navigator>
   );
 }

@@ -6,6 +6,8 @@ import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
 import type { ContractListItem } from "../lib/contractTypes";
+import { contractIsCompleted, partitionByCompletion } from "../lib/lifecycle";
+import { ListFilter, ListTabs, type FilterOption, type Tab } from "../components/lists";
 import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
 import { colors, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -16,6 +18,10 @@ export default function ContractsListScreen({ navigation }: AppScreenProps<"Cont
   const [rows, setRows] = useState<ContractListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("active");
+  /* "" is all. Filtered in memory — /contracts/mine returns the whole set
+     and it is short at pilot volume. */
+  const [statusFilter, setStatusFilter] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -32,6 +38,21 @@ export default function ContractsListScreen({ navigation }: AppScreenProps<"Cont
     void load();
   }, [load]);
 
+  const { active, completed } = partitionByCompletion(rows, contractIsCompleted);
+  const inTab = tab === "completed" ? completed : active;
+  /* Chips from the statuses present IN THIS TAB, labelled with the same key
+     the row's pill renders, so a status is worded one way across the screen
+     and no chip ever matches zero rows. */
+  const statusOptions: FilterOption[] = Array.from(new Set(inTab.map((c) => c.status))).map(
+    (s) => ({ value: s, label: t(`contract.status_${s}`, { defaultValue: s }) })
+  );
+  const shown = statusFilter ? inTab.filter((c) => c.status === statusFilter) : inTab;
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    setStatusFilter("");
+  }
+
   return (
     <Screen>
       <View style={{ marginBottom: space(2) }}>
@@ -41,11 +62,29 @@ export default function ContractsListScreen({ navigation }: AppScreenProps<"Cont
       <Subtitle>{t("contract.listSub")}</Subtitle>
       {error ? <Banner kind="error">{error}</Banner> : null}
 
+      {!loading && rows.length > 0 ? (
+        <View style={{ marginBottom: space(3) }}>
+          <ListTabs
+            active={tab}
+            activeCount={active.length}
+            completedCount={completed.length}
+            onChange={selectTab}
+          />
+          <ListFilter options={statusOptions} value={statusFilter} onChange={setStatusFilter} />
+        </View>
+      ) : null}
+
       {loading ? null : rows.length === 0 ? (
         <Hint>{t("contract.listEmpty")}</Hint>
+      ) : shown.length === 0 ? (
+        <Hint>
+          {inTab.length === 0
+            ? t(tab === "completed" ? "lf.noneCompleted" : "lf.noneActive")
+            : t("lf.none")}
+        </Hint>
       ) : (
         <View style={{ gap: space(3) }}>
-          {rows.map((c) => (
+          {shown.map((c) => (
             <Pressable
               key={c.id}
               style={styles.card}

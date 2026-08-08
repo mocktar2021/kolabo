@@ -59,6 +59,7 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
   const [orderError, setOrderError] = useState<string | null>(null);
   const [ordered, setOrdered] = useState<DirectOrder | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     try {
       const p = await api<PublicProfileData>(
@@ -106,9 +107,6 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
   if (notFound) {
     return (
       <Screen>
-        <View style={{ marginBottom: space(2) }}>
-          <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-        </View>
         <Banner kind="error">{t("public.notFound")}</Banner>
       </Screen>
     );
@@ -117,12 +115,22 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
   const avatar = mediaSrc(profile?.avatar_url);
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
-
-      {error ? <Banner kind="error">{error}</Banner> : null}
+    <Screen
+      loading={profile === null && !error && !notFound}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
       {profile === null ? null : (
         <>
           <View style={styles.head}>

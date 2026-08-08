@@ -171,9 +171,6 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
 
   return (
     <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
       <Title>{t("profile.title")}</Title>
       <Subtitle>{t("profile.sub")}</Subtitle>
 

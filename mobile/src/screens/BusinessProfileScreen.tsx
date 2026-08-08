@@ -69,9 +69,6 @@ export default function BusinessProfileScreen({ navigation }: AppScreenProps<"Bu
 
   return (
     <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
       <Title>{t("biz.title")}</Title>
       <Subtitle>{t("biz.sub")}</Subtitle>
       <Card>

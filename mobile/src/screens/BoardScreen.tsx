@@ -147,6 +147,7 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
 
   const badDeadline = draft.deadlineBefore !== "" && !DATE_RE.test(draft.deadlineBefore);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -176,10 +177,14 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
   }
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={loading}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("board.title")}</Title>
       <Subtitle>{t("board.sub")}</Subtitle>
       <Hint>{t("board.rankHint")}</Hint>
@@ -269,7 +274,14 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
         </View>
       ) : null}
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {loading ? null : briefs.length === 0 ? (
         <View style={{ marginTop: space(3) }}>

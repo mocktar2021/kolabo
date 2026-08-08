@@ -34,6 +34,7 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -107,10 +108,14 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
   const unreadOnPage = !loading && rows.some((r) => !r.is_read);
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={rows === null && !error}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("notif.title")}</Title>
       <Subtitle>{t("notif.sub")}</Subtitle>
       <Hint>{t("notif.routeNote")}</Hint>
@@ -119,7 +124,14 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
         <GhostButton title={t("notif.markAll")} onPress={markAll} disabled={!unreadOnPage} />
       </View>
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {loading ? null : rows.length === 0 ? (
         <>

@@ -47,6 +47,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -79,14 +80,25 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
   const nothing = !loading && currencies.length === 0 && payments.length === 0;
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={loading}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("spend.title")}</Title>
       <Subtitle>{t("spend.sub")}</Subtitle>
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {loading ? null : nothing ? (
         <>

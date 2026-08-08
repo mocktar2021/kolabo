@@ -55,6 +55,7 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     try {
       setDispute(await api<DisputeCase>(`/payments/disputes/${id}`, { token }));
@@ -89,11 +90,22 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
   const left = dispute && dispute.status === "awaiting_response" ? respondTimeLeft(dispute.respond_by) : null;
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
-      {error ? <Banner kind="error">{error}</Banner> : null}
+    <Screen
+      loading={loading}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {loading ? null : !dispute ? (
         <Hint>{t("dispute.notFound")}</Hint>

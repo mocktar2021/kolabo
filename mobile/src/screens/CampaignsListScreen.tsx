@@ -36,6 +36,7 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
      it costs the Completed shelf its accuracy and leaves the rest working. */
   const [contracts, setContracts] = useState<CompletableContract[]>([]);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -87,10 +88,14 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
   }
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={campaigns === null && !error}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("campaign.listTitle")}</Title>
       <Subtitle>{t("campaign.listSub")}</Subtitle>
 
@@ -98,7 +103,14 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
         <PrimaryButton title={t("campaign.new")} onPress={() => navigation.navigate("CampaignNew")} />
       </View>
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {!loading && !empty ? (
         <View style={{ marginBottom: space(3) }}>

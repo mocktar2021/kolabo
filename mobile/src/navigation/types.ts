@@ -34,6 +34,10 @@ export type AppStackParamList = {
   CreatorPublic: { userId: string };
   Invitations: undefined;
   Notifications: undefined;
+  Messages: undefined;
+  MessageThread: { userId: string; name: string };
+  Disputes: undefined;
+  Account: undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<

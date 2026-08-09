@@ -148,6 +148,9 @@ export const error_fr: Record<string, string> = {
   proposal_has_contract: "Un contrat existe déjà pour cette proposition. C'est le contrat qu'il faut annuler.",
   proposal_is_direct_order: "Ceci est une commande directe, pas une offre sur un brief. Refusez-la plutôt que de la retirer.",
 
+  message_gate: "La messagerie s'ouvre en même temps que le contrat. Il n'y a pas de contrat entre vous et cette personne sur cette campagne.",
+  message_self: "Choisissez un autre destinataire.",
+
   invitation_not_found: "Invitation introuvable.",
   invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
   invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
@@ -299,6 +302,9 @@ export const error_en: Record<string, string> = {
   proposal_negotiation_closed: "That negotiation is closed and cannot be answered.",
   proposal_has_contract: "A contract already exists for this proposal. It is the contract that has to be cancelled.",
   proposal_is_direct_order: "This is a direct order, not a bid on a brief. Decline it rather than withdrawing it.",
+
+  message_gate: "Messaging opens when a contract does. There is no contract between you and this person on this campaign.",
+  message_self: "Choose a different recipient.",
 
   invitation_not_found: "Invitation not found.",
   invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",

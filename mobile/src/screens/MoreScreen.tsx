@@ -26,7 +26,10 @@ export default function MoreScreen({ navigation }: AppScreenProps<"More">) {
     brand
       ? { icon: "wallet-outline", label: t("spend.title"), onPress: () => navigation.navigate("Spend") }
       : { icon: "wallet-outline", label: t("earn.title"), onPress: () => navigation.navigate("Earnings") },
+    { icon: "chatbubbles-outline", label: t("msg.title"), onPress: () => navigation.navigate("Messages") },
+    { icon: "alert-circle-outline", label: t("dispute.listTitle"), onPress: () => navigation.navigate("Disputes") },
     { icon: "notifications-outline", label: t("notif.title"), onPress: () => navigation.navigate("Notifications") },
+    { icon: "settings-outline", label: t("acct.title"), onPress: () => navigation.navigate("Account") },
     { icon: "log-out-outline", label: t("dash.logout"), onPress: () => void logout(), danger: true },
   ];
 

@@ -29,6 +29,10 @@ import InvitationsScreen from "../screens/InvitationsScreen";
 import CampaignDetailScreen from "../screens/CampaignDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import MoreScreen from "../screens/MoreScreen";
+import MessagesScreen from "../screens/MessagesScreen";
+import MessageThreadScreen from "../screens/MessageThreadScreen";
+import DisputesScreen from "../screens/DisputesScreen";
+import AccountScreen from "../screens/AccountScreen";
 import type { AppStackParamList, AuthStackParamList } from "./types";
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -182,6 +186,14 @@ function AppNavigator() {
       <AppStack.Screen name="Earnings" component={EarningsScreen} options={{ title: t("earn.title") }} />
       <AppStack.Screen name="Spend" component={SpendScreen} options={{ title: t("spend.title") }} />
       <AppStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: t("notif.title") }} />
+      <AppStack.Screen name="Messages" component={MessagesScreen} options={{ title: t("msg.title") }} />
+      <AppStack.Screen
+        name="MessageThread"
+        component={MessageThreadScreen}
+        options={({ route }) => ({ title: route.params.name })}
+      />
+      <AppStack.Screen name="Disputes" component={DisputesScreen} options={{ title: t("dispute.listTitle") }} />
+      <AppStack.Screen name="Account" component={AccountScreen} options={{ title: t("acct.title") }} />
     </AppStack.Navigator>
   );
 }

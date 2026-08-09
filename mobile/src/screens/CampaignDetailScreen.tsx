@@ -52,6 +52,7 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -187,9 +188,6 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
   if (notFound) {
     return (
       <Screen>
-        <View style={{ marginBottom: space(2) }}>
-          <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-        </View>
         <Banner kind="error">{t("campaign.notFound")}</Banner>
       </Screen>
     );
@@ -217,12 +215,22 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
   const invitableFavorites = favorites.filter((f) => !invitedIds.has(f.influencer_user_id));
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
-
-      {error ? <Banner kind="error">{error}</Banner> : null}
+    <Screen
+      loading={campaign === null && !error}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
       {campaign === null ? null : (
         <>
           <View style={styles.headRow}>

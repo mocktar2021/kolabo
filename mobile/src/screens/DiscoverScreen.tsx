@@ -96,6 +96,7 @@ export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover"
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const search = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -147,10 +148,14 @@ export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover"
   }
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={results === null && !error}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void search().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("discover.title")}</Title>
       <Subtitle>{t("discover.sub")}</Subtitle>
 
@@ -211,7 +216,14 @@ export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover"
         </View>
       ) : null}
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void search()} />
+          </View>
+        </>
+      ) : null}
 
       {results === null ? null : results.length === 0 ? (
         <>

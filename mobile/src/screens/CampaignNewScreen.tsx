@@ -117,9 +117,6 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
 
   return (
     <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
       <Title>{t("campaign.title")}</Title>
       <Subtitle>{t("campaign.sub")}</Subtitle>
 

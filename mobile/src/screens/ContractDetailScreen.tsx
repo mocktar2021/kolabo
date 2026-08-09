@@ -53,6 +53,7 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
     [token]
   );
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     try {
       const c = await api<ContractDetail>(`/contracts/${id}`, { token });
@@ -87,12 +88,22 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
   const openDispute = escrow ? openDisputeFor(disputes, escrow.id) : null;
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
-
-      {error ? <Banner kind="error">{error}</Banner> : null}
+    <Screen
+      loading={loading}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {loading ? null : !contract ? (
         <Hint>{t("contract.listEmpty")}</Hint>

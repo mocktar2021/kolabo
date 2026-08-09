@@ -7,7 +7,7 @@
 import { body_en, body_fr } from "./lib/notificationBodies";
 
 export const en = {
-  common: { appName: "Kolabo", working: "Working…", cancel: "Cancel", back: "Back" },
+  common: { appName: "Kolabo", working: "Working…", cancel: "Cancel", back: "Back", retry: "Try again" },
   auth: {
     registerTitle: "Create your account",
     registerSub: "Join Kolabo — verified creators and businesses across Africa.",
@@ -566,6 +566,18 @@ export const en = {
     pageEnd: "You have reached the end of your history.",
     body: body_en,
   },
+  tab: {
+    home: "Home",
+    discover: "Discover",
+    board: "Briefs",
+    campaigns: "Campaigns",
+    invitations: "Invitations",
+    contracts: "Contracts",
+    more: "More",
+  },
+  more: {
+    title: "Menu",
+  },
   lf: {
     all: "All",
     label: "Filter the list",
@@ -579,7 +591,7 @@ export const en = {
 };
 
 export const fr: typeof en = {
-  common: { appName: "Kolabo", working: "En cours…", cancel: "Annuler", back: "Retour" },
+  common: { appName: "Kolabo", working: "En cours…", cancel: "Annuler", back: "Retour", retry: "Réessayer" },
   auth: {
     registerTitle: "Créez votre compte",
     registerSub: "Rejoignez Kolabo — créateurs et entreprises vérifiés à travers l'Afrique.",
@@ -1138,6 +1150,18 @@ export const fr: typeof en = {
     older: "Plus anciennes",
     pageEnd: "Vous êtes au bout de votre historique.",
     body: body_fr,
+  },
+  tab: {
+    home: "Accueil",
+    discover: "Découvrir",
+    board: "Briefs",
+    campaigns: "Campagnes",
+    invitations: "Invitations",
+    contracts: "Contrats",
+    more: "Plus",
+  },
+  more: {
+    title: "Menu",
   },
   lf: {
     all: "Tous",

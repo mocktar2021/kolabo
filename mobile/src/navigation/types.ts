@@ -9,9 +9,15 @@ export type AuthStackParamList = {
   ForgotPassword: undefined;
 };
 
-/* The signed-in stack. One screen for now; creator tabs land in the next
-   slice, which is why this is already its own param list. */
+/* The signed-in tree. `Tabs` hosts the bottom-tab navigator (whose tab
+   screens keep their old names — React Navigation resolves navigate("X")
+   across nested navigators, so no call site changed when tabs arrived);
+   everything else is a detail screen pushed above the tabs with a native
+   header. All names stay in ONE param list so AppScreenProps keeps typing
+   every screen, tab or stacked. */
 export type AppStackParamList = {
+  Tabs: undefined;
+  More: undefined;
   Dashboard: undefined;
   CreatorProfile: undefined;
   Contracts: undefined;

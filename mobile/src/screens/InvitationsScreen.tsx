@@ -193,6 +193,7 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
      each card; filtered in memory. */
   const [statusFilter, setStatusFilter] = useState("");
 
+  const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     if (!token) return;
     try {
@@ -219,14 +220,25 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
     : invitations ?? [];
 
   return (
-    <Screen>
-      <View style={{ marginBottom: space(2) }}>
-        <GhostButton title={t("common.back")} onPress={() => navigation.goBack()} />
-      </View>
+    <Screen
+      loading={invitations === null && !error}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load().finally(() => setRefreshing(false));
+      }}
+    >
       <Title>{t("invitation.title")}</Title>
       <Subtitle>{t("invitation.sub")}</Subtitle>
 
-      {error ? <Banner kind="error">{error}</Banner> : null}
+      {error ? (
+        <>
+          <Banner kind="error">{error}</Banner>
+          <View style={{ marginBottom: space(3) }}>
+            <GhostButton title={t("common.retry")} onPress={() => void load()} />
+          </View>
+        </>
+      ) : null}
 
       {!loading && !empty ? (
         <View style={{ marginBottom: space(3) }}>

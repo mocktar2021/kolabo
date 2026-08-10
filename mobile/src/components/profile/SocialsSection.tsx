@@ -7,7 +7,7 @@ import { SOCIAL_PLATFORMS, platformHasAudience, type SocialPlatform } from "../.
 import { PLATFORM_LABELS } from "../../lib/platforms";
 import type { SocialAccount } from "../../lib/profileTypes";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 /* Connected accounts + an inline add flow. Connecting always goes in as a
    manual proof (status "pending") — there is no OAuth handshake in the UI yet,
@@ -187,13 +187,13 @@ const styles = StyleSheet.create({
     padding: space(3),
     gap: space(2),
   },
-  rowTitle: { fontSize: font.body, fontWeight: "600", color: colors.ink },
-  rowSub: { fontSize: font.tiny, color: colors.muted, marginTop: 2 },
-  chip: { fontSize: font.tiny, fontWeight: "600", overflow: "hidden", borderRadius: radius.pill, paddingHorizontal: space(2), paddingVertical: 3 },
+  rowTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
+  rowSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  chip: { fontSize: font.tiny, fontFamily: family.bodySemi, overflow: "hidden", borderRadius: radius.pill, paddingHorizontal: space(2), paddingVertical: 3 },
   chipOk: { backgroundColor: "#e7f6f0", color: colors.success },
   chipMuted: { backgroundColor: colors.surface2, color: colors.muted },
-  remove: { fontSize: font.small, color: colors.danger, fontWeight: "600" },
-  addLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(2) },
+  remove: { fontSize: font.small, color: colors.danger, fontFamily: family.bodySemi },
+  addLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(2) },
   tiles: { flexDirection: "row", flexWrap: "wrap", gap: space(2) },
   tile: {
     borderWidth: 1,
@@ -205,6 +205,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   tileOn: { borderColor: colors.teal, backgroundColor: colors.tealSoft },
-  tileText: { fontSize: font.small, fontWeight: "600", color: colors.ink },
+  tileText: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink },
   tileTextOn: { color: colors.teal600 },
 });

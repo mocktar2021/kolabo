@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { mediaSrc, uploadMedia, type MediaOut } from "../../lib/api";
 import { pickImage } from "../../lib/imagePicker";
 import { GhostButton, Hint } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 /* Mirrors MAX_EVIDENCE_IMAGES in backend/app/modules/payments/disputes.py, so
    the cap is met as a disabled button rather than as a 400 after the upload. */
@@ -78,7 +78,7 @@ export function EvidencePicker({ userId, token, value, onChange }: {
 }
 
 const styles = StyleSheet.create({
-  label: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  label: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: space(2), marginBottom: space(1) },
   cell: { alignItems: "center" },
   image: {
@@ -89,5 +89,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  remove: { fontSize: font.tiny, color: colors.danger, fontWeight: "600", marginTop: 3 },
+  remove: { fontSize: font.tiny, color: colors.danger, fontFamily: family.bodySemi, marginTop: 3 },
 });

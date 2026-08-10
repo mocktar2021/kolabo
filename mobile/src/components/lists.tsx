@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 
 /* The two list controls the campaign, contract and invitation lists share,
    mirrored from web/src/components/ListFilter.tsx and ListTabs.tsx. They
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space(2), marginTop: space(3) },
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     color: colors.muted,
     backgroundColor: colors.surface2,
     borderRadius: radius.pill,
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     paddingVertical: space(1.5),
     overflow: "hidden",
   },
-  chipActive: { color: colors.white, backgroundColor: colors.teal600, fontWeight: "700" },
+  chipActive: { color: colors.white, backgroundColor: colors.teal600, fontFamily: family.bodyBold },
   tabRow: {
     flexDirection: "row",
     gap: space(4),
@@ -110,6 +110,6 @@ const styles = StyleSheet.create({
   },
   tab: { paddingBottom: space(2), borderBottomWidth: 2, borderBottomColor: "transparent" },
   tabSelected: { borderBottomColor: colors.teal600 },
-  tabText: { fontSize: font.small, fontWeight: "600", color: colors.muted },
-  tabTextSelected: { color: colors.teal600, fontWeight: "700" },
+  tabText: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.muted },
+  tabTextSelected: { color: colors.teal600, fontFamily: family.bodyBold },
 });

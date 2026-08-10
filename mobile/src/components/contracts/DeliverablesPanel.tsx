@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { errorText } from "../../lib/errorMessages";
 import {
   REVIEW_WINDOW_DAYS,
@@ -9,7 +10,7 @@ import {
   type DeliverableSubmission,
 } from "../../lib/contractTypes";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 /* The work, on the contract it was agreed in — the mobile twin of web's
    DeliverablesPanel. Approving a submission RELEASES the escrow (the D2 rule),
@@ -30,6 +31,7 @@ export function DeliverablesPanel({
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  const { token } = useAuth();
   const [rows, setRows] = useState<DeliverableSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -42,14 +44,14 @@ export function DeliverablesPanel({
 
   const load = useCallback(async () => {
     try {
-      setRows(await api<DeliverableSubmission[]>(`/deliverables?contract_id=${contractId}`));
+      setRows(await api<DeliverableSubmission[]>(`/deliverables?contract_id=${contractId}`, { token }));
       setError(null);
     } catch (e) {
       setError(errorText(e, t));
     } finally {
       setLoading(false);
     }
-  }, [contractId, t]);
+  }, [contractId, t, token]);
 
   useEffect(() => {
     void load();
@@ -87,10 +89,13 @@ export function DeliverablesPanel({
         <Hint>{t("deliv.notFunded")}</Hint>
       ) : loading ? null : (
         <>
-          {rows.length === 0 ? (
+          {/* The empty-state copy claims "nothing submitted yet", which is a
+              lie when the list simply failed to load — the banner above is
+              already telling that story. */}
+          {rows.length === 0 && !error ? (
             <Hint>{isBusiness ? t("deliv.emptyBrand") : t("deliv.emptyCreator")}</Hint>
           ) : null}
-          {rows.length === 0 && isBusiness ? <Hint>{t("deliv.emptyBrandHint")}</Hint> : null}
+          {rows.length === 0 && !error && isBusiness ? <Hint>{t("deliv.emptyBrandHint")}</Hint> : null}
 
           {/* The brand's answer, only on an attempt awaiting one. */}
           {canReview && open ? (
@@ -103,7 +108,7 @@ export function DeliverablesPanel({
                   <View style={{ height: space(2) }} />
                   <PrimaryButton
                     title={busy ? "…" : t("deliv.approve")}
-                    onPress={() => act(() => api(`/deliverables/${open.id}/approve`, { method: "POST" }))}
+                    onPress={() => act(() => api(`/deliverables/${open.id}/approve`, { method: "POST", token }))}
                     loading={busy}
                   />
                   <View style={{ height: space(2) }} />
@@ -127,6 +132,7 @@ export function DeliverablesPanel({
                       act(async () => {
                         await api(`/deliverables/${open.id}/request-changes`, {
                           method: "POST",
+                          token,
                           body: { note: reviewNote.trim() },
                         });
                         setAsking(false);
@@ -151,7 +157,7 @@ export function DeliverablesPanel({
               <View style={{ height: space(2) }} />
               <GhostButton
                 title={t("deliv.withdraw")}
-                onPress={() => act(() => api(`/deliverables/${open.id}/withdraw`, { method: "POST" }))}
+                onPress={() => act(() => api(`/deliverables/${open.id}/withdraw`, { method: "POST", token }))}
                 disabled={busy}
               />
             </View>
@@ -184,6 +190,7 @@ export function DeliverablesPanel({
                   act(async () => {
                     await api("/deliverables", {
                       method: "POST",
+                      token,
                       body: {
                         contract_id: contractId,
                         link_url: link.trim() || null,
@@ -215,7 +222,7 @@ export function DeliverablesPanel({
                   {r.note ? <Text style={styles.note}>{r.note}</Text> : null}
                   {r.review_note ? (
                     <Text style={styles.reviewNote}>
-                      <Text style={{ fontWeight: "700" }}>{t("deliv.reviewNoteShown")}</Text> {r.review_note}
+                      <Text style={{ fontFamily: family.bodyBold }}>{t("deliv.reviewNoteShown")}</Text> {r.review_note}
                     </Text>
                   ) : null}
                 </View>
@@ -235,18 +242,18 @@ function chipStyle(status: string) {
 }
 
 const styles = StyleSheet.create({
-  h4: { fontSize: font.body, fontWeight: "700", color: colors.ink, marginBottom: space(1) },
+  h4: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, marginBottom: space(1) },
   histRow: { borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: space(3) },
   statusChip: {
     alignSelf: "flex-start",
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,
   },
-  link: { color: colors.teal600, fontWeight: "600", fontSize: font.small, marginTop: space(2) },
-  note: { color: colors.ink, fontSize: font.small, marginTop: space(2) },
-  reviewNote: { color: colors.muted, fontSize: font.small, marginTop: space(2) },
+  link: { color: colors.teal600, fontFamily: family.bodySemi, fontSize: font.small, marginTop: space(2) },
+  note: { fontFamily: family.body, color: colors.ink, fontSize: font.small, marginTop: space(2) },
+  reviewNote: { fontFamily: family.body, color: colors.muted, fontSize: font.small, marginTop: space(2) },
 });

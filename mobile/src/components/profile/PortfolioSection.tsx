@@ -5,7 +5,7 @@ import { api, mediaSrc, uploadMedia, type MediaOut } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
 import { pickImage } from "../../lib/imagePicker";
 import { Banner, GhostButton, Hint, SectionTitle } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 type PortfolioItem = { id: string; media_id: string; url: string };
 
@@ -98,5 +98,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  remove: { fontSize: font.tiny, color: colors.danger, fontWeight: "600", marginTop: space(1) },
+  remove: { fontSize: font.tiny, color: colors.danger, fontFamily: family.bodySemi, marginTop: space(1) },
 });

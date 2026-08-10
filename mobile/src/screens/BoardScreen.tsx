@@ -4,12 +4,12 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
-import { COUNTRIES } from "../lib/countries";
+import { COUNTRIES, countryName } from "../lib/countries";
 import { SELLABLE_PLATFORMS, deliverableLabel, PLATFORM_LABELS } from "../lib/platforms";
 import type { OpenBrief } from "../lib/boardTypes";
 import { ApplyForm } from "../components/board/ApplyForm";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 function MatchChip({ score }: { score: number }) {
@@ -49,7 +49,7 @@ function BriefCard({ brief, onApplied }: { brief: OpenBrief; onApplied: (id: str
       {brief.description ? <Text style={styles.desc}>{brief.description}</Text> : null}
 
       <Text style={styles.deliv}>
-        <Text style={{ fontWeight: "700", color: colors.muted }}>{t("board.deliverables")}: </Text>
+        <Text style={{ fontFamily: family.bodyBold, color: colors.muted }}>{t("board.deliverables")}: </Text>
         {brief.deliverables.length === 0
           ? t("board.noDeliverables")
           : brief.deliverables
@@ -134,7 +134,7 @@ function anyFilter(f: Filters): boolean {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { token } = useAuth();
   const [briefs, setBriefs] = useState<OpenBrief[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,7 +233,7 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
           <ChoiceGroup
             options={[
               { value: "", label: t("board.countryAll") },
-              ...COUNTRIES.map((c) => ({ value: c.code, label: c.name })),
+              ...COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) })),
             ]}
             value={draft.country}
             onChange={(v) => setDraft({ ...draft, country: v })}
@@ -285,7 +285,7 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
 
       {loading ? null : briefs.length === 0 ? (
         <View style={{ marginTop: space(3) }}>
-          <Text style={{ color: colors.ink, fontSize: font.body }}>
+          <Text style={{ fontFamily: family.body, color: colors.ink, fontSize: font.body }}>
             {filtered ? t("board.emptyFiltered") : t("board.empty")}
           </Text>
           <Hint>{filtered ? t("board.emptyFilteredHint") : t("board.emptyHint")}</Hint>
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     padding: space(3),
     marginBottom: space(3),
   },
-  filterLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginTop: space(3), marginBottom: space(1.5) },
+  filterLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(3), marginBottom: space(1.5) },
   card: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -319,11 +319,11 @@ const styles = StyleSheet.create({
     padding: space(4),
   },
   top: { flexDirection: "row", justifyContent: "space-between", gap: space(2) },
-  brand: { fontSize: font.tiny, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6 },
-  title: { fontSize: font.body, fontWeight: "700", color: colors.ink, marginTop: 2 },
+  brand: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6 },
+  title: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, marginTop: 2 },
   match: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
@@ -332,12 +332,12 @@ const styles = StyleSheet.create({
   },
   matchStrong: { color: colors.teal600, backgroundColor: "#e7f6f0" },
   matchNone: { color: colors.muted, backgroundColor: colors.surface2 },
-  meta: { fontSize: font.small, color: colors.muted, marginTop: space(2) },
-  desc: { fontSize: font.small, color: colors.ink, marginTop: space(2), lineHeight: 20 },
-  deliv: { fontSize: font.small, color: colors.ink, marginTop: space(2) },
+  meta: { fontFamily: family.body, fontSize: font.small, color: colors.muted, marginTop: space(2) },
+  desc: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: space(2), lineHeight: 20 },
+  deliv: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: space(2) },
   stateChip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     backgroundColor: colors.surface2,
     overflow: "hidden",
     borderRadius: radius.pill,

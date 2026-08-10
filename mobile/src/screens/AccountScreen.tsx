@@ -16,7 +16,6 @@ import {
   Screen,
   SectionTitle,
   Subtitle,
-  Title,
 } from "../components/ui";
 import { family, font, colors, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -140,7 +139,6 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
 
   return (
     <Screen loading={me === null && !loadError}>
-      <Title>{t("acct.title")}</Title>
       <Subtitle>{t("acct.sub")}</Subtitle>
 
       {loadError ? <Banner kind="error">{loadError}</Banner> : null}

@@ -12,7 +12,7 @@ import {
 } from "../../lib/disputeTypes";
 import { EvidencePicker } from "../disputes/EvidencePicker";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton, type Choice } from "../ui";
-import { colors, font, space } from "../../theme";
+import { colors, family, font, space } from "../../theme";
 
 /* Reporting a problem, inline on the contract. Raising a dispute freezes the
    money for both sides and hands the other party a 72 h window — the
@@ -65,7 +65,7 @@ export function RaiseDisputeForm({
   return (
     <View style={{ marginTop: space(3) }}>
       {error ? <Banner kind="error">{error}</Banner> : null}
-      <Text style={{ fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) }}>
+      <Text style={{ fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) }}>
         {t("dispute.reason")}
       </Text>
       <ChoiceGroup options={reasonOptions} value={reason} onChange={(v) => setReason(v as DisputeReason)} />

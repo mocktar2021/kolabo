@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { SELLABLE_PLATFORMS, deliverableLabel, deliverablesFor } from "../../lib/platforms";
 import type { Deliverable } from "../../lib/campaignTypes";
 import { ChoiceGroup, GhostButton } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 /* The most a single deliverable row goes to. Far past any real brief, and a
    cap the stepper enforces so a hold on the + never runs away. The backend
@@ -152,10 +152,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: space(2),
   },
-  rowLabel: { fontSize: font.small, fontWeight: "700", color: colors.ink },
-  remove: { fontSize: font.small, color: colors.danger, fontWeight: "600" },
+  rowLabel: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink },
+  remove: { fontSize: font.small, color: colors.danger, fontFamily: family.bodySemi },
   removeOff: { color: colors.muted, opacity: 0.5 },
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
   stepper: { flexDirection: "row", alignItems: "center", gap: space(3) },
   stepBtn: {
     width: 44,
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   },
   stepPressed: { backgroundColor: colors.surface },
   stepOff: { opacity: 0.4 },
-  stepGlyph: { fontSize: 22, fontWeight: "700", color: colors.ink, lineHeight: 24 },
-  qty: { fontSize: font.h2, fontWeight: "700", color: colors.ink, minWidth: 32, textAlign: "center" },
-  lockedRow: { fontSize: font.small, color: colors.ink },
+  stepGlyph: { fontSize: 22, fontFamily: family.display, color: colors.ink, lineHeight: 24 },
+  qty: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, minWidth: 32, textAlign: "center" },
+  lockedRow: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
 });

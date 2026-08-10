@@ -1,10 +1,10 @@
 import { StyleSheet, Switch, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { CATEGORIES } from "../../lib/categories";
-import { COUNTRIES } from "../../lib/countries";
+import { COUNTRIES, countryName } from "../../lib/countries";
 import type { Targeting } from "../../lib/campaignTypes";
 import { Field, Hint, MultiChoiceGroup } from "../ui";
-import { colors, font, space } from "../../theme";
+import { colors, family, font, space } from "../../theme";
 
 /* Who a brand is hoping to reach with a brief, as a form.
 
@@ -25,7 +25,7 @@ export function TargetingFields({
   value: Targeting;
   onChange: (next: Targeting) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   function toggle(key: "categories" | "countries", entry: string) {
     const current = value[key];
@@ -62,7 +62,7 @@ export function TargetingFields({
 
       <Text style={styles.groupLabel}>{t("target.countries")}</Text>
       <MultiChoiceGroup
-        options={COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
+        options={COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) }))}
         values={value.countries}
         onToggle={(c) => toggle("countries", c)}
       />
@@ -100,8 +100,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: space(4),
   },
-  switchLabel: { fontSize: font.body, fontWeight: "600", color: colors.ink },
-  switchHint: { fontSize: font.tiny, color: colors.muted, marginTop: space(1) },
-  legend: { fontSize: font.small, fontWeight: "700", color: colors.ink, marginBottom: space(1.5) },
-  groupLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginTop: space(3), marginBottom: space(1.5) },
+  switchLabel: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
+  switchHint: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: space(1) },
+  legend: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink, marginBottom: space(1.5) },
+  groupLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(3), marginBottom: space(1.5) },
 });

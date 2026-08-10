@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
-import { Banner, Card, Field, GhostButton, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
+import { Banner, Card, Field, GhostButton, PrimaryButton, Screen, Subtitle } from "../components/ui";
 import { space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -69,7 +69,6 @@ export default function BusinessProfileScreen({ navigation }: AppScreenProps<"Bu
 
   return (
     <Screen>
-      <Title>{t("biz.title")}</Title>
       <Subtitle>{t("biz.sub")}</Subtitle>
       <Card>
         {error ? <Banner kind="error">{error}</Banner> : null}

@@ -22,7 +22,13 @@ export type AppStackParamList = {
   CreatorProfile: undefined;
   Contracts: undefined;
   ContractDetail: { id: string };
+  /* Funding a contract, not a contract itself: the param is the contract to
+     pay for, and the payment intent is created by the screen rather than
+     passed in — a half-finished checkout must never be resumable from a stale
+     navigation param. */
+  Checkout: { contractId: string };
   Earnings: undefined;
+  PayoutMethod: undefined;
   DisputeDetail: { id: string };
   Board: undefined;
   BusinessProfile: undefined;

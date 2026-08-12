@@ -39,6 +39,9 @@ import "./lib/negotiationStrings";
    i18n.ts — it sits with the other feature bundles for the reason they all
    exist, which is to keep the 40 KB i18n.ts about core app copy. */
 import "./lib/deliverableStrings";
+/* The hosted checkout screen and the payout-method form. Owns the pay.* group
+   outright, so no ordering constraint either. */
+import "./lib/paymentStrings";
 /* What the API says when it refuses. Owns the apiError.* group outright, so
    no ordering constraint against i18n.ts either — but unlike every bundle
    above it belongs to no single feature: any page that calls the API can

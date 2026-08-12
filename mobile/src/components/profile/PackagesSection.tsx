@@ -7,7 +7,7 @@ import { SELLABLE_PLATFORMS, deliverableLabel, deliverablesFor } from "../../lib
 import { minPrice } from "../../lib/pricing";
 import type { Package, PackageInput, SocialAccount } from "../../lib/profileTypes";
 import { Banner, ChoiceGroup, Field, Hint, PrimaryButton, SectionTitle, type Choice } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const UNIT_OPTIONS: Choice[] = [
@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
     padding: space(3),
     gap: space(2),
   },
-  rowTitle: { fontSize: font.body, fontWeight: "600", color: colors.ink },
-  rowSub: { fontSize: font.tiny, color: colors.muted, marginTop: 2 },
-  price: { fontSize: font.small, fontWeight: "700", color: colors.ink },
-  remove: { fontSize: font.small, color: colors.danger, fontWeight: "600" },
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  rowTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
+  rowSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  price: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink },
+  remove: { fontSize: font.small, color: colors.danger, fontFamily: family.bodySemi },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
 });

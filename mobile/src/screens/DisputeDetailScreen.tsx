@@ -8,7 +8,7 @@ import { parseApiDate } from "../lib/dates";
 import { isDisputeOpen, respondTimeLeft, type DisputeCase } from "../lib/disputeTypes";
 import { EvidencePicker } from "../components/disputes/EvidencePicker";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 function when(iso: string, locale: string): string {
@@ -249,17 +249,17 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
 const styles = StyleSheet.create({
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,
   },
-  author: { fontSize: font.small, fontWeight: "700", color: colors.ink, marginTop: space(1) },
-  statement: { fontSize: font.small, color: colors.ink, marginTop: space(1), lineHeight: 20 },
-  time: { fontSize: font.tiny, color: colors.muted },
-  muted: { fontSize: font.small, color: colors.muted },
-  ink: { fontSize: font.small, color: colors.ink },
+  author: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink, marginTop: space(1) },
+  statement: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: space(1), lineHeight: 20 },
+  time: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted },
+  muted: { fontFamily: family.body, fontSize: font.small, color: colors.muted },
+  ink: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
   outRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
   msg: { borderTopWidth: 1, borderTopColor: colors.line, paddingVertical: space(3) },
   evidence: { width: 88, height: 88, borderRadius: 8, backgroundColor: colors.surface2 },

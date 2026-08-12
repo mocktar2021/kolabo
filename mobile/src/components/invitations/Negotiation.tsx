@@ -8,7 +8,7 @@ import { orderTimeLeft, sentParts } from "../../lib/orders";
 import type { Proposal } from "../../lib/campaignTypes";
 import type { Contract } from "../../lib/contractTypes";
 import { Banner, Field, GhostButton, Hint, PrimaryButton } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py, so the
    limit is hit as a full field rather than as a 422 after typing. */
@@ -216,7 +216,7 @@ export function Negotiation({ campaignId, live, history, isOrder, onDone, onCont
                   {isLive ? `${t("campaign.currentOffer")} · ` : ""}v{v.version}
                 </Text>
               </View>
-              <Text style={[styles.versionTerms, isLive && { fontWeight: "700" }]}>
+              <Text style={[styles.versionTerms, isLive && { fontFamily: family.bodyBold }]}>
                 {v.rate_amount} {v.rate_currency} · {v.timeline_days} {t("campaign.daysShort")}
               </Text>
               {v.note ? <Text style={styles.versionNote}>{v.note}</Text> : null}
@@ -229,7 +229,7 @@ export function Negotiation({ campaignId, live, history, isOrder, onDone, onCont
       {/* The clock, orders only — a brief's proposal has nothing to count
           down. Hours while there is a day left, minutes in the last stretch. */}
       {isOrder ? (
-        <Text style={[styles.clock, expired && { fontWeight: "700" }]}>
+        <Text style={[styles.clock, expired && { fontFamily: family.bodyBold }]}>
           {expired || left === null
             ? t("invitation.orderExpired")
             : left.unit === "hours"
@@ -331,10 +331,10 @@ const styles = StyleSheet.create({
     marginTop: space(3),
   },
   headRow: { flexDirection: "row", alignItems: "center", gap: space(2), flexWrap: "wrap" },
-  title: { fontSize: font.small, fontWeight: "700", color: colors.ink },
+  title: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink },
   turn: {
     fontSize: font.tiny,
-    fontWeight: "700",
+    fontFamily: family.bodyBold,
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,
@@ -350,10 +350,10 @@ const styles = StyleSheet.create({
   },
   versionLive: { borderLeftColor: colors.indigo, backgroundColor: colors.surface2, borderRadius: radius.sm },
   versionHead: { flexDirection: "row", justifyContent: "space-between", gap: space(2) },
-  versionAuthor: { fontSize: font.tiny, fontWeight: "700", color: colors.ink },
-  versionMeta: { fontSize: font.tiny, color: colors.indigo, fontWeight: "600" },
-  versionTerms: { fontSize: font.small, color: colors.ink, marginTop: 2 },
-  versionNote: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  versionWhen: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  clock: { fontSize: font.tiny, color: colors.muted, marginTop: space(3) },
+  versionAuthor: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.ink },
+  versionMeta: { fontSize: font.tiny, color: colors.indigo, fontFamily: family.bodySemi },
+  versionTerms: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: 2 },
+  versionNote: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  versionWhen: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  clock: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: space(3) },
 });

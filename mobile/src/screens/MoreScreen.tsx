@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { isBusinessLike, useAuth } from "../lib/auth";
-import { Screen, Title } from "../components/ui";
+import { Screen } from "../components/ui";
 import { colors, family, font, radius, shadow, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -35,7 +35,6 @@ export default function MoreScreen({ navigation }: AppScreenProps<"More">) {
 
   return (
     <Screen>
-      <Title>{t("more.title")}</Title>
       <View style={{ gap: space(2), marginTop: space(2) }}>
         {rows.map((row) => (
           <Pressable

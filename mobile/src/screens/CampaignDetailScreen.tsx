@@ -11,7 +11,7 @@ import type { Contract } from "../lib/contractTypes";
 import { ProposalThread } from "../components/campaigns/ProposalThread";
 import { CampaignEditForm } from "../components/campaigns/CampaignEditForm";
 import { Banner, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 /* One row of GET /discovery/favorites — the shared creator identity. */
@@ -467,7 +467,7 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space(2) },
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
@@ -476,8 +476,8 @@ const styles = StyleSheet.create({
   },
   chipPublished: { backgroundColor: "#e7f6f0", color: colors.teal600 },
   chipMuted: { backgroundColor: colors.surface2, color: colors.muted },
-  desc: { fontSize: font.small, color: colors.ink, marginBottom: space(2) },
-  deliv: { fontSize: font.small, color: colors.ink },
+  desc: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginBottom: space(2) },
+  deliv: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
   invRow: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -491,8 +491,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space(2),
   },
-  invName: { fontSize: font.small, fontWeight: "600", color: colors.ink, flexShrink: 1 },
-  invStatus: { fontSize: font.tiny, color: colors.muted },
-  invWithdraw: { fontSize: font.tiny, color: colors.danger, fontWeight: "600", marginTop: space(2) },
-  invite: { fontSize: font.small, color: colors.teal600, fontWeight: "700" },
+  invName: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, flexShrink: 1 },
+  invStatus: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted },
+  invWithdraw: { fontSize: font.tiny, color: colors.danger, fontFamily: family.bodySemi, marginTop: space(2) },
+  invite: { fontSize: font.small, color: colors.teal600, fontFamily: family.bodyBold },
 });

@@ -3,26 +3,27 @@ import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
+import { formatAmount } from "../lib/money";
 import { useAuth } from "../lib/auth";
 import type { ContractDetail, Escrow } from "../lib/contractTypes";
 import { openDisputeFor, type Dispute } from "../lib/disputeTypes";
 import { DeliverablesPanel } from "../components/contracts/DeliverablesPanel";
 import { RaiseDisputeForm } from "../components/contracts/RaiseDisputeForm";
-import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
-import { colors, font, space } from "../theme";
+import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle } from "../components/ui";
+import { colors, family, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 function Row({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={[styles.rowValue, ok && { color: colors.teal600, fontWeight: "700" }]}>{value}</Text>
+      <Text style={[styles.rowValue, ok && { color: colors.teal600, fontFamily: family.bodyBold }]}>{value}</Text>
     </View>
   );
 }
 
 export default function ContractDetailScreen({ navigation, route }: AppScreenProps<"ContractDetail">) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { userId, token } = useAuth();
   const { id } = route.params;
 
@@ -109,13 +110,12 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
         <Hint>{t("contract.listEmpty")}</Hint>
       ) : (
         <>
-          <Title>{t("contract.title")}</Title>
           <Subtitle>
             {t(`contract.status_${contract.status}`, { defaultValue: contract.status })}
           </Subtitle>
 
           <Card>
-            <Row label={t("contract.rate")} value={`${contract.rate_amount} ${contract.rate_currency}`} />
+            <Row label={t("contract.rate")} value={formatAmount(contract.rate_amount, contract.rate_currency, i18n.language)} />
             <Row label={t("contract.timeline")} value={`${contract.timeline_days} ${t("contract.days")}`} />
             <Row
               label={t("contract.businessSigned")}
@@ -200,9 +200,12 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
                       value={t(`escrow.status_${escrow.status}`, { defaultValue: escrow.status })}
                       ok={escrow.status === "released"}
                     />
-                    <Row label={t("contract.amount")} value={`${escrow.amount} ${escrow.currency}`} />
+                    <Row label={t("contract.amount")} value={formatAmount(escrow.amount, escrow.currency, i18n.language)} />
                     {escrow.commission_amount !== null ? (
-                      <Row label={t("contract.commission")} value={`${escrow.commission_amount} ${escrow.currency}`} />
+                      <Row
+                        label={t("contract.commission")}
+                        value={formatAmount(escrow.commission_amount, escrow.currency, i18n.language)}
+                      />
                     ) : null}
                     {/* No standalone release button (D2): confirming delivery is
                         approving the open submission, which happens in the
@@ -263,10 +266,11 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  rowLabel: { fontSize: font.small, color: colors.muted },
-  rowValue: { fontSize: font.small, color: colors.ink },
-  body: {
-    fontSize: font.small,
+  /* The label owns the leftover width and may wrap; the value keeps its
+     intrinsic size — so neither can ever clip the other's tail again. */
+  rowLabel: { flex: 1, paddingRight: space(2), fontFamily: family.body, fontSize: font.small, color: colors.muted },
+  rowValue: { flexShrink: 0, fontFamily: family.body, fontSize: font.small, color: colors.ink },
+  body: { fontFamily: family.body, fontSize: font.small,
     color: colors.ink,
     backgroundColor: colors.surface,
     padding: space(3),

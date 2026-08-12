@@ -20,9 +20,8 @@ import {
   Screen,
   SectionTitle,
   Subtitle,
-  Title,
 } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
@@ -117,7 +116,6 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
 
   return (
     <Screen>
-      <Title>{t("campaign.title")}</Title>
       <Subtitle>{t("campaign.sub")}</Subtitle>
 
       {error ? <Banner kind="error">{error}</Banner> : null}
@@ -230,17 +228,17 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
 }
 
 const styles = StyleSheet.create({
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
   publishRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginVertical: space(4),
   },
-  publishLabel: { fontSize: font.body, fontWeight: "600", color: colors.ink },
+  publishLabel: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
@@ -249,8 +247,8 @@ const styles = StyleSheet.create({
   chipPublished: { backgroundColor: "#e7f6f0", color: colors.teal600 },
   chipMuted: { backgroundColor: colors.surface2, color: colors.muted },
   createdHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space(2) },
-  createdTitle: { fontSize: font.h2, fontWeight: "700", color: colors.ink, flexShrink: 1 },
-  createdMeta: { fontSize: font.small, color: colors.muted, marginTop: space(2), marginBottom: space(2) },
-  createdDesc: { fontSize: font.small, color: colors.ink, marginBottom: space(3) },
-  createdDeliv: { fontSize: font.small, color: colors.ink },
+  createdTitle: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, flexShrink: 1 },
+  createdMeta: { fontFamily: family.body, fontSize: font.small, color: colors.muted, marginTop: space(2), marginBottom: space(2) },
+  createdDesc: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginBottom: space(3) },
+  createdDeliv: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
 });

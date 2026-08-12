@@ -6,7 +6,7 @@ import { errorText } from "../../lib/errorMessages";
 import { useAuth } from "../../lib/auth";
 import type { ProposalChain } from "../../lib/campaignTypes";
 import { Banner, Field, GhostButton, Hint, PrimaryButton } from "../ui";
-import { colors, font, radius, space } from "../../theme";
+import { colors, family, font, radius, space } from "../../theme";
 
 const NOTE_MAX_LENGTH = 2000;
 
@@ -148,7 +148,7 @@ export function ProposalThread({ campaignId, chain, disabled, onAccept, onViewCo
                   {isLatest ? `${t("campaign.currentOffer")} · ` : ""}v{v.version}
                 </Text>
               </View>
-              <Text style={[styles.versionTerms, isLatest && { fontWeight: "700" }]}>
+              <Text style={[styles.versionTerms, isLatest && { fontFamily: family.bodyBold }]}>
                 {v.rate_amount} {v.rate_currency} · {v.timeline_days} {t("campaign.daysShort")}
               </Text>
               {v.note ? <Text style={styles.versionNote}>{v.note}</Text> : null}
@@ -199,10 +199,10 @@ export function ProposalThread({ campaignId, chain, disabled, onAccept, onViewCo
 const styles = StyleSheet.create({
   wrap: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: space(3), marginTop: space(3) },
   headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space(2), flexWrap: "wrap" },
-  creator: { fontSize: font.body, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  creator: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, flexShrink: 1 },
   turn: {
     fontSize: font.tiny,
-    fontWeight: "700",
+    fontFamily: family.bodyBold,
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,
@@ -218,10 +218,10 @@ const styles = StyleSheet.create({
   },
   versionLive: { borderLeftColor: colors.indigo, backgroundColor: colors.surface2, borderRadius: radius.sm },
   versionHead: { flexDirection: "row", justifyContent: "space-between", gap: space(2) },
-  versionAuthor: { fontSize: font.tiny, fontWeight: "700", color: colors.ink },
-  versionMeta: { fontSize: font.tiny, color: colors.indigo, fontWeight: "600" },
-  versionTerms: { fontSize: font.small, color: colors.ink, marginTop: 2 },
-  versionNote: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  versionAuthor: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.ink },
+  versionMeta: { fontSize: font.tiny, color: colors.indigo, fontFamily: family.bodySemi },
+  versionTerms: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: 2 },
+  versionNote: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
   replyBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,

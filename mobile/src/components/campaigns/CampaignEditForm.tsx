@@ -14,7 +14,7 @@ import {
 import { DeliverableRows } from "./DeliverableRows";
 import { TargetingFields } from "./TargetingFields";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton } from "../ui";
-import { colors, font, space } from "../../theme";
+import { colors, family, font, space } from "../../theme";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const MAX_DESCRIPTION_LENGTH = 5000;
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     padding: space(4),
     marginTop: space(3),
   },
-  title: { fontSize: font.h2, fontWeight: "700", color: colors.ink, marginBottom: space(3) },
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
-  lockedLine: { fontSize: font.small, color: colors.ink, marginTop: 2 },
+  title: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, marginBottom: space(3) },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
+  lockedLine: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: 2 },
 });

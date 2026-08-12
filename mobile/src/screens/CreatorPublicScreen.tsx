@@ -8,7 +8,7 @@ import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import type { DirectOrder, PublicProfileData } from "../lib/discoveryTypes";
 import type { Package } from "../lib/profileTypes";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 /* A creator's storefront, seen by a buyer. Mirrors the web PublicProfile's
@@ -235,11 +235,11 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", gap: space(3), alignItems: "center", marginBottom: space(2) },
   avatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface2 },
   avatarEmpty: { alignItems: "center", justifyContent: "center" },
-  avatarLetter: { fontSize: font.h1, fontWeight: "700", color: colors.muted },
-  headline: { fontSize: font.small, color: colors.muted, marginTop: -space(1) },
-  audience: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginTop: space(1) },
-  cats: { fontSize: font.tiny, color: colors.muted, marginBottom: space(2) },
-  bio: { fontSize: font.small, color: colors.ink, marginBottom: space(2) },
+  avatarLetter: { fontSize: font.h1, fontFamily: family.display, color: colors.muted },
+  headline: { fontFamily: family.body, fontSize: font.small, color: colors.muted, marginTop: -space(1) },
+  audience: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(1) },
+  cats: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginBottom: space(2) },
+  bio: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginBottom: space(2) },
   pkg: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -248,8 +248,8 @@ const styles = StyleSheet.create({
     padding: space(3),
   },
   pkgSelected: { borderColor: colors.teal, backgroundColor: colors.tealSoft },
-  pkgTitle: { fontSize: font.body, fontWeight: "700", color: colors.ink, flexShrink: 1 },
-  pkgPrice: { fontSize: font.body, fontWeight: "700", color: colors.ink },
-  pkgSub: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  confirmLine: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(3) },
+  pkgTitle: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, flexShrink: 1 },
+  pkgPrice: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink },
+  pkgSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  confirmLine: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(3) },
 });

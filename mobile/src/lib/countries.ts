@@ -2,18 +2,30 @@
    pilot markets (Benin, Togo) are enabled in the backend country config; the
    rest are shown for onboarding readiness. The dial prefix is added here (the
    web list carries only code + name) because the phone field on mobile shows
-   it as a hint next to a numeric keypad. */
-export type Country = { code: string; name: string; dial: string };
+   it as a hint next to a numeric keypad.
+
+   Names are per-language — "Côte d'Ivoire", not "Cote d'Ivoire", in a French
+   UI. `countryName(code, language)` is the one place that choice is made;
+   every chip row goes through it. */
+export type Country = { code: string; en: string; fr: string; dial: string };
 
 export const COUNTRIES: Country[] = [
-  { code: "BJ", name: "Benin", dial: "+229" },
-  { code: "TG", name: "Togo", dial: "+228" },
-  { code: "CI", name: "Cote d'Ivoire", dial: "+225" },
-  { code: "GH", name: "Ghana", dial: "+233" },
-  { code: "SN", name: "Senegal", dial: "+221" },
-  { code: "CM", name: "Cameroon", dial: "+237" },
-  { code: "NG", name: "Nigeria", dial: "+234" },
+  { code: "BJ", en: "Benin", fr: "Bénin", dial: "+229" },
+  { code: "TG", en: "Togo", fr: "Togo", dial: "+228" },
+  { code: "CI", en: "Côte d'Ivoire", fr: "Côte d'Ivoire", dial: "+225" },
+  { code: "GH", en: "Ghana", fr: "Ghana", dial: "+233" },
+  { code: "SN", en: "Senegal", fr: "Sénégal", dial: "+221" },
+  { code: "CM", en: "Cameroon", fr: "Cameroun", dial: "+237" },
+  { code: "NG", en: "Nigeria", fr: "Nigéria", dial: "+234" },
 ];
+
+export function countryName(codeOrCountry: string | Country, language: string): string {
+  const c = typeof codeOrCountry === "string"
+    ? COUNTRIES.find((x) => x.code === codeOrCountry)
+    : codeOrCountry;
+  if (!c) return typeof codeOrCountry === "string" ? codeOrCountry : "";
+  return language.startsWith("fr") ? c.fr : c.en;
+}
 
 export function dialFor(code: string): string {
   return COUNTRIES.find((c) => c.code === code)?.dial ?? "";

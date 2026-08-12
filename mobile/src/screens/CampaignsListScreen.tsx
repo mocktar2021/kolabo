@@ -9,7 +9,7 @@ import type { Campaign } from "../lib/campaignTypes";
 import { campaignIsCompleted, partitionByCompletion, type CompletableContract } from "../lib/lifecycle";
 import { ListFilter, ListTabs, type FilterOption, type Tab } from "../components/lists";
 import { Banner, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 function StatusChip({ status }: { status: string }) {
@@ -176,10 +176,10 @@ export default function CampaignsListScreen({ navigation }: AppScreenProps<"Camp
 }
 
 const styles = StyleSheet.create({
-  emptyText: { fontSize: font.body, color: colors.ink },
+  emptyText: { fontFamily: family.body, fontSize: font.body, color: colors.ink },
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
@@ -195,11 +195,10 @@ const styles = StyleSheet.create({
     padding: space(3),
   },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space(2) },
-  rowTitle: { fontSize: font.body, fontWeight: "700", color: colors.ink, flexShrink: 1 },
-  rowMeta: { fontSize: font.tiny, color: colors.muted, marginTop: space(1) },
+  rowTitle: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, flexShrink: 1 },
+  rowMeta: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: space(1) },
   rowTags: { flexDirection: "row", flexWrap: "wrap", gap: space(2), marginTop: space(2) },
-  tag: {
-    fontSize: font.tiny,
+  tag: { fontFamily: family.body, fontSize: font.tiny,
     color: colors.muted,
     backgroundColor: colors.surface,
     borderRadius: radius.sm,

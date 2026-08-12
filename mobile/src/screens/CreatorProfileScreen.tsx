@@ -5,7 +5,7 @@ import { ApiError, api, mediaSrc, uploadMedia, type MediaOut } from "../lib/api"
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { pickImage } from "../lib/imagePicker";
-import { COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
+import { COUNTRIES, countryName, joinLocation, splitLocation } from "../lib/countries";
 import { CATEGORIES } from "../lib/categories";
 import type { InfluencerProfile, InfluencerProfileInput, OnboardingStatus } from "../lib/profileTypes";
 import {
@@ -20,13 +20,12 @@ import {
   Screen,
   SectionTitle,
   Subtitle,
-  Title,
   type Choice,
 } from "../components/ui";
 import { SocialsSection } from "../components/profile/SocialsSection";
 import { PackagesSection } from "../components/profile/PackagesSection";
 import { PortfolioSection } from "../components/profile/PortfolioSection";
-import { colors, font, space } from "../theme";
+import { colors, family, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 const LANGUAGES: Choice[] = [
@@ -35,7 +34,7 @@ const LANGUAGES: Choice[] = [
 ];
 
 export default function CreatorProfileScreen({ navigation }: AppScreenProps<"CreatorProfile">) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { userId, token } = useAuth();
 
   const [displayName, setDisplayName] = useState("");
@@ -154,7 +153,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
     { value: "other", label: t("profile.genderOther") },
     { value: "prefer_not_to_say", label: t("profile.genderNoSay") },
   ];
-  const countryOptions: Choice[] = COUNTRIES.map((c) => ({ value: c.code, label: c.name }));
+  const countryOptions: Choice[] = COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) }));
   const categoryOptions: Choice[] = CATEGORIES.map((c) => ({ value: c, label: t(`cat.${c}`) }));
 
   if (!userId) return null;
@@ -171,7 +170,6 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
 
   return (
     <Screen>
-      <Title>{t("profile.title")}</Title>
       <Subtitle>{t("profile.sub")}</Subtitle>
 
       {status ? (
@@ -180,7 +178,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
           {checklist.map((row) => (
             <View key={row.label} style={{ flexDirection: "row", alignItems: "center", gap: space(2), paddingVertical: 3 }}>
               <Text style={{ color: row.ok ? colors.teal600 : colors.muted, width: 16 }}>{row.ok ? "✓" : "○"}</Text>
-              <Text style={{ color: row.ok ? colors.ink : colors.muted, fontSize: font.small }}>{row.label}</Text>
+              <Text style={{ fontFamily: family.body, color: row.ok ? colors.ink : colors.muted, fontSize: font.small }}>{row.label}</Text>
             </View>
           ))}
           <View style={{ height: space(2) }} />
@@ -217,7 +215,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
                 justifyContent: "center",
               }}
             >
-              <Text style={{ fontSize: font.h1, fontWeight: "700", color: colors.muted }}>
+              <Text style={{ fontSize: font.h1, fontFamily: family.display, color: colors.muted }}>
                 {(displayName || "?").charAt(0).toUpperCase()}
               </Text>
             </View>
@@ -243,7 +241,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
           label={t("profile.birthDate")}
           value={birthDate}
           onChangeText={setBirthDate}
-          placeholder="1998-04-20"
+          placeholder={t("profile.birthDateFormat")}
           autoCapitalize="none"
           hint={t("profile.birthDateHint")}
         />
@@ -292,5 +290,5 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
 }
 
 const styles = {
-  label: { fontSize: font.small, fontWeight: "600" as const, color: colors.ink, marginBottom: space(1.5) },
+  label: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
 };

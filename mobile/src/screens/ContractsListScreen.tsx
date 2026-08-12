@@ -9,7 +9,7 @@ import type { ContractListItem } from "../lib/contractTypes";
 import { contractIsCompleted, partitionByCompletion } from "../lib/lifecycle";
 import { ListFilter, ListTabs, type FilterOption, type Tab } from "../components/lists";
 import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 export default function ContractsListScreen({ navigation }: AppScreenProps<"Contracts">) {
@@ -145,11 +145,11 @@ const styles = StyleSheet.create({
     padding: space(4),
   },
   top: { flexDirection: "row", justifyContent: "space-between", gap: space(3) },
-  title: { fontSize: font.body, fontWeight: "700", color: colors.ink },
-  party: { fontSize: font.small, color: colors.muted, marginTop: 3 },
+  title: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink },
+  party: { fontFamily: family.body, fontSize: font.small, color: colors.muted, marginTop: 3 },
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     color: colors.muted,
     backgroundColor: colors.surface2,
     overflow: "hidden",
@@ -158,8 +158,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   chipOk: { color: colors.teal600 },
-  escrow: { fontSize: font.tiny, color: colors.muted },
+  escrow: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted },
   terms: { flexDirection: "row", flexWrap: "wrap", gap: space(3), marginTop: space(3) },
-  rate: { fontSize: font.small, fontWeight: "700", color: colors.ink },
-  muted: { fontSize: font.small, color: colors.muted },
+  rate: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink },
+  muted: { fontFamily: family.body, fontSize: font.small, color: colors.muted },
 });

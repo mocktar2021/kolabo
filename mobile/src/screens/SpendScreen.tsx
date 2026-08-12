@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
 import { formatAmount as amount } from "../lib/money";
-import type { Spend, SpendPayment } from "../lib/spendTypes";
+import { spendRowMatches, type Spend, type SpendKind, type SpendPayment } from "../lib/spendTypes";
 import { Banner, GhostButton, Hint, Screen, Subtitle } from "../components/ui";
 import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -27,13 +27,28 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
-function Tile({ label, hint, value }: { label: string; hint: string; value: string }) {
+/* A tappable total, exactly as on My earnings and the web Payments page:
+   tapping a tile narrows the statement below to the rows that make up that
+   figure; tapping it again shows everything. */
+function Tile({
+  label,
+  hint,
+  value,
+  active,
+  onPress,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.tile}>
+    <Pressable style={[styles.tile, active && styles.tileActive]} onPress={onPress}>
       <Text style={styles.tileLabel}>{label}</Text>
       <Text style={styles.tileValue}>{value}</Text>
       <Text style={styles.tileHint}>{hint}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -43,6 +58,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
   const [data, setData] = useState<Spend | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pick, setPick] = useState<{ kind: SpendKind; currency: string } | null>(null);
 
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
@@ -74,6 +90,13 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
   }, [data]);
 
   const payments: SpendPayment[] = data?.payments ?? [];
+  const shown = pick
+    ? payments.filter((p) => p.currency === pick.currency && spendRowMatches(p, pick.kind))
+    : payments;
+
+  const toggle = (kind: SpendKind, currency: string) =>
+    setPick((cur) => (cur && cur.kind === kind && cur.currency === currency ? null : { kind, currency }));
+
   const nothing = !loading && currencies.length === 0 && payments.length === 0;
 
   return (
@@ -109,10 +132,34 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
                 <Text style={styles.currencyGroup}>{t("spend.currencyGroup", { currency })}</Text>
               ) : null}
               <View style={{ gap: space(2) }}>
-                <Tile label={t("spend.spent")} hint={t("spend.spentHint")} value={amount(data?.spent[currency] ?? 0, currency, i18n.language)} />
-                <Tile label={t("spend.pending")} hint={t("spend.pendingHint")} value={amount(data?.pending[currency] ?? 0, currency, i18n.language)} />
-                <Tile label={t("spend.disputed")} hint={t("spend.disputedHint")} value={amount(data?.disputed[currency] ?? 0, currency, i18n.language)} />
-                <Tile label={t("spend.refunded")} hint={t("spend.refundedHint")} value={amount(data?.refunded[currency] ?? 0, currency, i18n.language)} />
+                <Tile
+                  label={t("spend.spent")}
+                  hint={t("spend.spentHint")}
+                  value={amount(data?.spent[currency] ?? 0, currency, i18n.language)}
+                  active={pick?.kind === "spent" && pick?.currency === currency}
+                  onPress={() => toggle("spent", currency)}
+                />
+                <Tile
+                  label={t("spend.pending")}
+                  hint={t("spend.pendingHint")}
+                  value={amount(data?.pending[currency] ?? 0, currency, i18n.language)}
+                  active={pick?.kind === "pending" && pick?.currency === currency}
+                  onPress={() => toggle("pending", currency)}
+                />
+                <Tile
+                  label={t("spend.disputed")}
+                  hint={t("spend.disputedHint")}
+                  value={amount(data?.disputed[currency] ?? 0, currency, i18n.language)}
+                  active={pick?.kind === "disputed" && pick?.currency === currency}
+                  onPress={() => toggle("disputed", currency)}
+                />
+                <Tile
+                  label={t("spend.refunded")}
+                  hint={t("spend.refundedHint")}
+                  value={amount(data?.refunded[currency] ?? 0, currency, i18n.language)}
+                  active={pick?.kind === "refunded" && pick?.currency === currency}
+                  onPress={() => toggle("refunded", currency)}
+                />
               </View>
             </View>
           ))}
@@ -121,7 +168,15 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
           {currencies.length > 1 ? <Hint>{t("spend.currencyRule")}</Hint> : null}
 
           <Text style={styles.statementTitle}>{t("spend.statement")}</Text>
-          {payments.length === 0 ? (
+          {pick ? (
+            <Text style={styles.showing}>
+              {t("spend.showingKind", { label: t(`spend.${pick.kind}`), currency: pick.currency })}{" "}
+              <Text style={styles.showAll} onPress={() => setPick(null)}>
+                {t("spend.showAll")}
+              </Text>
+            </Text>
+          ) : null}
+          {shown.length === 0 ? (
             <Hint>{t("spend.empty")}</Hint>
           ) : (
             <View style={{ gap: space(2) }}>
@@ -129,7 +184,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
                   statement and the contracts list. It used to be only the
                   title text — a one-line tap target with no pressed state,
                   which reads as a dead link on a phone. */}
-              {payments.map((row) => (
+              {shown.map((row) => (
                 <Pressable
                   key={row.escrow_id}
                   style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface }]}
@@ -175,6 +230,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: space(4),
   },
+  tileActive: { borderColor: colors.teal600, backgroundColor: colors.surface2 },
+  showing: { fontFamily: family.body, fontSize: font.small, color: colors.muted, marginBottom: space(2) },
+  showAll: { color: colors.teal600, fontFamily: family.bodyBold },
   tileLabel: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6 },
   tileValue: { fontSize: 24, fontFamily: family.display, color: colors.ink, marginTop: 4 },
   tileHint: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 6 },

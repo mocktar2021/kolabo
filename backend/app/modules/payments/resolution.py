@@ -18,15 +18,23 @@ figures and the total named.
 COMMISSION IS CHARGED ON THE RELEASED PART ONLY. Refunded money never earned a
 fee: the platform's cut is a share of a transaction that happened, and the
 refunded half is the part that did not.
+
+BOTH LEGS GO OUT THROUGH payments/payouts.py, the same disbursement machinery
+every other payment uses. They used to call the provider inline, which was
+fine against a mock and wrong against a network: half of a split failing would
+have raised in the middle of settling a dispute, rolling back the admin's
+decision and leaving the escrow frozen with the case marked resolved. Now each
+leg is a Payout row that the retry sweep owns, and the settlement itself cannot
+be undone by a timeout.
 """
 from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
-from app.modules.auth.models import User
 from app.modules.notifications.service import notify
-from app.modules.payments import disputes, models
+from app.modules.payments import disputes, models, payouts
+from app.modules.payments import gateway_models as gmodels
 from app.modules.payments import service as payments_service
 
 
@@ -103,18 +111,24 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
 
     creator_ref = None
     if released > 0:
-        influencer = (
-            db.query(User).filter(User.id == escrow.influencer_user_id).first()
-        )
-        creator_ref = payments_service.payment_provider.payout(
-            influencer.phone, payout_amount, escrow.currency
+        creator_ref = payouts.disburse(
+            db,
+            escrow,
+            amount=payout_amount,
+            recipient_user_id=escrow.influencer_user_id,
+            kind=gmodels.PAYOUT_KIND_RELEASE,
+            legacy_provider=payments_service.payment_provider,
         )
         payments_service._event(db, escrow, admin_id, "released")
     refund_ref = None
     if refunded > 0:
-        business = db.query(User).filter(User.id == escrow.business_user_id).first()
-        refund_ref = payments_service.payment_provider.payout(
-            business.phone, refunded, escrow.currency
+        refund_ref = payouts.disburse(
+            db,
+            escrow,
+            amount=refunded,
+            recipient_user_id=escrow.business_user_id,
+            kind=gmodels.PAYOUT_KIND_REFUND,
+            legacy_provider=payments_service.payment_provider,
         )
         payments_service._event(db, escrow, admin_id, "refunded")
 
@@ -123,7 +137,9 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
     # One column, and a split can be two movements. The creator's payout is
     # the reference worth keeping when there is one, because it is the leg a
     # support ticket asks about; both legs are on escrow_events either way,
-    # which is the record reconciliation actually reads.
+    # which is the record reconciliation actually reads. Either may now be None
+    # when the gateway could not be reached — the Payout rows carry the real
+    # state and the sweep finishes them.
     escrow.provider_payout_ref = creator_ref or refund_ref
     # RELEASED the moment anything reached the creator, however little.
     # "Refunded" has to mean the buyer got their money back, and a buyer who

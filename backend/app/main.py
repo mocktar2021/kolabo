@@ -15,7 +15,9 @@ from app.modules.deliverables.router import router as deliverables_router
 from app.modules.discovery.router import router as discovery_router
 from app.modules.messaging.router import router as messaging_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.payments.gateway_router import router as payments_gateway_router
 from app.modules.payments.router import router as payments_router
+from app.modules.payments.webhooks import router as payment_webhooks_router
 from app.modules.profiles.router import router as profiles_router
 from app.modules.trust_safety.router import router as trust_safety_router
 
@@ -78,5 +80,18 @@ app.include_router(deliverables_router, prefix="/deliverables", tags=["deliverab
 app.include_router(messaging_router, prefix="/messaging", tags=["messaging"])
 app.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 app.include_router(payments_router, prefix="/payments", tags=["payments"])
+# A SECOND ROUTER ON THE SAME PREFIX, carrying checkout, payout methods and the
+# payout sweep. payments/router.py is about the platform's own view of money —
+# escrow, disputes, statements — and payments/gateway_router.py is about the
+# conversation with an outside gateway. They came in together and they will
+# change together; FastAPI does not mind sharing a prefix, and one 350-line
+# router would have hidden the seam.
+app.include_router(payments_gateway_router, prefix="/payments", tags=["payments"])
+# THE ONLY UNAUTHENTICATED WRITE PATH IN THE API, and mounted at the top level
+# rather than under /payments to make that obvious in the route table. There is
+# no bearer token on these requests because the caller is a machine at the
+# gateway; what stands in for one is an HMAC signature, a replay window and an
+# idempotency key, all of which live in payments/webhooks.py.
+app.include_router(payment_webhooks_router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(trust_safety_router, prefix="/trust-safety", tags=["trust_safety"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])

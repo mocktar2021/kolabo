@@ -11,8 +11,28 @@ the response window live in payments/disputes.py; the admin's split decision
 lives in payments/resolution.py. What stays here is the ordinary money path
 and the two things both of those reuse: commission_for and _release.
 
-No real money moves: all provider calls go through the mock provider until a real
-Mobile Money provider is contracted.
+TWO FUNDING PATHS NOW LIVE HERE, and the difference between them is asynchrony,
+not vendor:
+
+  * DIRECT (fund_escrow). The original one-step path. The provider is asked to
+    collect and answers immediately, so the escrow is HELD before the request
+    returns. Only the mock provider can actually behave this way, so this path
+    is what the test suite and a keyless dev stack use, and it REFUSES as soon
+    as a real gateway is configured — see the guard in fund_escrow. Leaving it
+    reachable in production would be a way to hold an escrow against money
+    nobody collected.
+  * HOSTED CHECKOUT (payments/checkout.py). What a real mobile money collection
+    actually is: redirect, wait, webhook, verify, then hold. It calls the two
+    helpers below rather than reimplementing the rules.
+
+assert_fundable and hold_funds exist so both paths enforce one set of rules with
+one wording. Splitting fund_escrow into "what is allowed" and "what happens" is
+the whole refactor; nothing about the rules themselves changed.
+
+Payouts no longer happen inline. _release and _refund hand off to
+payments/payouts.py, which writes a Payout row and reports whether the money
+moved WITHOUT being able to fail the release. The reasoning is in that module's
+docstring and it is the single most important design decision in this change.
 """
 import logging
 from datetime import timedelta
@@ -32,7 +52,9 @@ from app.modules.contracts import models as contracts
 # same way for the same reason.
 from app.modules.deliverables import models as deliverables
 from app.modules.notifications.service import notify
-from app.modules.payments import models, provider
+from app.modules.payments import gateway_models as gmodels
+from app.modules.payments import models, payouts, provider
+from app.modules.payments.gateways import registry
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +90,15 @@ def _event(db: Session, escrow: models.Escrow, actor_id: str, event: str) -> Non
     db.add(models.EscrowEvent(escrow_id=escrow.id, actor_id=actor_id, event=event))
 
 
-def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
+def assert_fundable(db: Session, business_user_id: str, contract_id: str) -> contracts.Contract:
+    """The four questions both funding paths have to ask, in one place.
+
+    Returns the contract so the caller does not fetch it twice. Raises the same
+    coded refusals fund_escrow always raised, unchanged, because they are
+    asserted by name in test_error_codes.py and rendered by name in the web and
+    mobile clients — a rename here is a silent regression to a user-facing
+    sentence in two languages.
+    """
     contract = db.query(contracts.Contract).filter(contracts.Contract.id == contract_id).first()
     if contract is None:
         raise AppError(
@@ -94,9 +124,30 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
             code="escrow_already_funded",
             detail="This contract is already funded",
         )
+    return contract
 
-    business = db.query(User).filter(User.id == business_user_id).first()
-    fund_ref = payment_provider.collect(business.phone, contract.rate_amount, contract.rate_currency)
+
+def hold_funds(
+    db: Session, *, contract_id: str, provider_name: str, fund_ref: str
+) -> models.Escrow:
+    """Write the HELD escrow. Money has ALREADY been collected when this runs.
+
+    FLUSHES, DOES NOT COMMIT. The hosted-checkout path has more to write after
+    this — it stamps the intent with the new escrow id — and the two must land
+    together or a crash between them leaves a funded escrow whose payment
+    attempt still reads pending. The caller owns the transaction boundary.
+
+    Deliberately takes no user id and does no permission check: by the time
+    money has moved, refusing to record it would be the worst of both worlds.
+    Permission is assert_fundable's job and it runs before anyone is charged.
+    """
+    contract = db.query(contracts.Contract).filter(contracts.Contract.id == contract_id).first()
+    if contract is None:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="escrow_contract_not_found",
+            detail="Contract not found",
+        )
 
     now = models.utcnow()
     escrow = models.Escrow(
@@ -106,7 +157,7 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
         influencer_user_id=contract.influencer_user_id,
         amount=contract.rate_amount,
         currency=contract.rate_currency,
-        provider="mock",
+        provider=provider_name,
         provider_fund_ref=fund_ref,
         status=models.HELD,
         held_at=now,
@@ -114,11 +165,38 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
     )
     db.add(escrow)
     db.flush()
-    _event(db, escrow, business_user_id, "funded")
+    _event(db, escrow, contract.business_user_id, "funded")
     notify(db, escrow.influencer_user_id, "payment", "Funds are held in escrow for your collaboration",
            link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_funded_creator"})
     notify(db, escrow.business_user_id, "payment", "Your payment is held in escrow",
            link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_funded_brand"})
+    return escrow
+
+
+def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
+    """Direct one-step funding. Mock provider only. KOL-28.
+
+    REFUSES WHEN A REAL GATEWAY IS CONFIGURED, which is the whole safety
+    property of keeping this endpoint alive at all. A synchronous collect()
+    against a real mobile money network cannot be honest: the payer has not
+    seen a PIN prompt yet, let alone answered one, so anything this path
+    returned would be a HELD escrow against money that has not been collected
+    and may never be. The client is told, by code, to use the checkout path.
+    """
+    if registry.registry():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="escrow_use_checkout",
+            detail=(
+                "Direct funding is disabled when a live payment provider is "
+                "configured. Start the payment with POST /payments/checkout/start."
+            ),
+        )
+
+    contract = assert_fundable(db, business_user_id, contract_id)
+    business = db.query(User).filter(User.id == business_user_id).first()
+    fund_ref = payment_provider.collect(business.phone, contract.rate_amount, contract.rate_currency)
+    escrow = hold_funds(db, contract_id=contract.id, provider_name="mock", fund_ref=fund_ref)
     db.commit()
     db.refresh(escrow)
     return _out(escrow)
@@ -150,15 +228,39 @@ def _award_referral_credits(db: Session, escrow: models.Escrow) -> None:
 
 
 def _release(db: Session, escrow: models.Escrow, actor_id: str) -> None:
-    influencer = db.query(User).filter(User.id == escrow.influencer_user_id).first()
+    """The creator is owed the money, and we try to send it.
+
+    THE ORDER OF THESE LINES IS THE DESIGN. The escrow is marked RELEASED and
+    the commission is stamped BEFORE the payout is attempted, because the
+    release is a decision the platform has made — the brand confirmed delivery,
+    or the review window closed — and that decision does not become untrue
+    because a mobile money network timed out thirty seconds later.
+
+    payouts.disburse cannot raise. It returns a reference when the money moved
+    and None when it did not, and either way a Payout row now exists carrying
+    the real state, retried by payouts.run_pending_payouts. A None here means a
+    creator who is owed money and can see they are owed it, which is a support
+    conversation. The alternative — letting the network failure propagate —
+    would roll back the release itself and leave an escrow HELD on work that
+    was accepted.
+    """
     commission = commission_for(escrow.amount)
     payout_amount = escrow.amount - commission
-    payout_ref = payment_provider.payout(influencer.phone, payout_amount, escrow.currency)
     escrow.commission_amount = commission
-    escrow.provider_payout_ref = payout_ref
     escrow.status = models.RELEASED
     escrow.resolved_at = models.utcnow()
     _event(db, escrow, actor_id, "released")
+
+    payout_ref = payouts.disburse(
+        db,
+        escrow,
+        amount=payout_amount,
+        recipient_user_id=escrow.influencer_user_id,
+        kind=gmodels.PAYOUT_KIND_RELEASE,
+        legacy_provider=payment_provider,
+    )
+    escrow.provider_payout_ref = payout_ref
+
     notify(db, escrow.influencer_user_id, "payment", "Escrow released, your payout is on the way",
            link=f"/contracts/{escrow.contract_id}", params={"key": "escrow_released_creator"})
     notify(db, escrow.business_user_id, "payment", "Escrow released to the influencer",
@@ -185,9 +287,21 @@ def _refund(db: Session, escrow: models.Escrow, actor_id: str) -> None:
     judgement behind it and must not pretend to one. If some of the work
     arrived, this is not the function for it — see run_non_delivery_refunds
     for why an escrow with any submission against it never reaches here.
+
+    Goes out through the same disbursement machinery as a release, with kind
+    REFUND. A brand being paid back is the same mechanical act as a creator
+    being paid, in the other direction, and it can fail the same way — so it
+    gets the same Payout row and the same retry sweep rather than a second,
+    quieter path that nobody watches.
     """
-    business = db.query(User).filter(User.id == escrow.business_user_id).first()
-    refund_ref = payment_provider.payout(business.phone, escrow.amount, escrow.currency)
+    refund_ref = payouts.disburse(
+        db,
+        escrow,
+        amount=escrow.amount,
+        recipient_user_id=escrow.business_user_id,
+        kind=gmodels.PAYOUT_KIND_REFUND,
+        legacy_provider=payment_provider,
+    )
     escrow.provider_payout_ref = refund_ref
     escrow.status = models.REFUNDED
     escrow.resolved_at = models.utcnow()

@@ -35,6 +35,14 @@ def import_all_models() -> None:
 
     Used by init_db (create_all) and by the Alembic env so autogenerate and
     migrations see the full schema.
+
+    A MODULE MISSING FROM THIS LIST IS A TABLE THAT EXISTS IN PRODUCTION AND
+    NOT IN TESTS. The suite builds its schema with create_all, so a model
+    nobody imports here simply is not there when a test runs, and the failure
+    surfaces as a confusing "no such table" in whichever test first touches it
+    — long after the model was written. payments.gateway_models is listed
+    separately from payments.models for that reason: it is a second models
+    module in one package and the easiest kind to forget.
     """
     from app.modules.auth import models as auth_models  # noqa: F401
     from app.modules.profiles import models as profile_models  # noqa: F401
@@ -45,6 +53,7 @@ def import_all_models() -> None:
     from app.modules.contracts import models as contract_models  # noqa: F401
     from app.modules.messaging import models as messaging_models  # noqa: F401
     from app.modules.payments import models as payment_models  # noqa: F401
+    from app.modules.payments import gateway_models as payment_gateway_models  # noqa: F401
     from app.modules.deliverables import models as deliverable_models  # noqa: F401
     from app.modules.trust_safety import models as trust_safety_models  # noqa: F401
     from app.modules.config import models as config_models  # noqa: F401

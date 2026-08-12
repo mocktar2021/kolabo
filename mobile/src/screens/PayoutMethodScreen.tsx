@@ -177,10 +177,10 @@ export default function PayoutMethodScreen(_props: AppScreenProps<"PayoutMethod"
           )}
 
           <View style={{ height: space(4) }} />
+          {/* No heading on this card: the native header already asks the
+              question (pay.payoutTitle), and repeating it two rows down reads
+              as a second, different form. */}
           <Card>
-            <SectionTitle>{t("pay.payoutTitle")}</SectionTitle>
-
-            <View style={{ height: space(2) }} />
             <Text style={styles.label}>{t("pay.payoutCountry")}</Text>
             <ChoiceGroup options={countryOptions} value={country} onChange={setCountry} />
 

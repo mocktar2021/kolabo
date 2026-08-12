@@ -122,7 +122,16 @@ export default function CheckoutScreen({ navigation, route }: AppScreenProps<"Ch
     [refresh]
   );
 
+  /* ONE CHECKOUT PER VISIT, enforced outside React's state. The effect below
+     closes over `t` and over memoised callbacks, and a language change
+     re-creates all of them; without this guard that re-run would POST a second
+     payment intent for a contract that is already being paid for, and the
+     payer would be looking at a checkout url the app has stopped polling. */
+  const startedFor = useRef<string | null>(null);
+
   useEffect(() => {
+    if (startedFor.current === contractId) return;
+    startedFor.current = contractId;
     let cancelled = false;
     void (async () => {
       try {

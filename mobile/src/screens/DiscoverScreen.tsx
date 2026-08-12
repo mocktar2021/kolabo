@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { Ionicons } from "@expo/vector-icons";
 import { api, mediaSrc } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
-import { COUNTRIES } from "../lib/countries";
+import { COUNTRIES, countryName } from "../lib/countries";
 import { SOCIAL_PLATFORMS } from "../lib/socialPlatforms";
 import type { SearchResult } from "../lib/discoveryTypes";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 /* Discovery, the brand's storefront aisle. Mirrors web/src/pages/Discover.tsx
@@ -66,23 +67,32 @@ function CreatorRow({ r, fav, onFav, onOpen }: {
               : t("discover.onRequest")}
           </Text>
         </View>
-        <Text
-          style={[styles.favBtn, fav && styles.favOn]}
+        {/* An icon, not the "♥" character — Android substitutes its coloured
+            emoji glyph for the literal heart, which lands a red iOS-style
+            emoji in the middle of the design system. */}
+        <Pressable
           onPress={(e) => {
             e.stopPropagation();
             onFav();
           }}
+          accessibilityRole="button"
           accessibilityLabel={t("discover.favorite")}
+          hitSlop={8}
+          style={styles.favBtn}
         >
-          {fav ? "♥" : "♡"}
-        </Text>
+          <Ionicons
+            name={fav ? "heart" : "heart-outline"}
+            size={22}
+            color={fav ? colors.terracotta : colors.muted}
+          />
+        </Pressable>
       </View>
     </Pressable>
   );
 }
 
 export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover">) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { token } = useAuth();
 
   const [category, setCategory] = useState(ANY);
@@ -182,7 +192,7 @@ export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover"
           <ChoiceGroup
             options={[
               { value: ANY, label: t("discover.any") },
-              ...COUNTRIES.map((c) => ({ value: c.code, label: c.name })),
+              ...COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) })),
             ]}
             value={country}
             onChange={setCountry}
@@ -227,7 +237,7 @@ export default function DiscoverScreen({ navigation }: AppScreenProps<"Discover"
 
       {results === null ? null : results.length === 0 ? (
         <>
-          <Text style={{ color: colors.ink, fontSize: font.body }}>{t("discover.empty")}</Text>
+          <Text style={{ fontFamily: family.body, color: colors.ink, fontSize: font.body }}>{t("discover.empty")}</Text>
           <Hint>{t("discover.emptyHint")}</Hint>
         </>
       ) : (
@@ -256,7 +266,7 @@ const styles = StyleSheet.create({
     padding: space(3),
     marginBottom: space(3),
   },
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
   card: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -266,12 +276,12 @@ const styles = StyleSheet.create({
   },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface2 },
   avatarEmpty: { alignItems: "center", justifyContent: "center" },
-  avatarLetter: { fontSize: font.h2, fontWeight: "700", color: colors.muted },
+  avatarLetter: { fontSize: font.h2, fontFamily: family.display, color: colors.muted },
   nameRow: { flexDirection: "row", alignItems: "center", gap: space(2) },
-  name: { fontSize: font.body, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  name: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, flexShrink: 1 },
   verified: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     color: colors.teal600,
     backgroundColor: "#e7f6f0",
     borderRadius: radius.pill,
@@ -279,9 +289,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     overflow: "hidden",
   },
-  headline: { fontSize: font.tiny, color: colors.muted, marginTop: 2 },
-  meta: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  price: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginTop: space(1.5) },
-  favBtn: { fontSize: 22, color: colors.muted, paddingHorizontal: space(1) },
-  favOn: { color: colors.danger },
+  headline: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  meta: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  price: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(1.5) },
+  favBtn: { paddingHorizontal: space(1), justifyContent: "flex-start" },
 });

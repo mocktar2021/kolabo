@@ -11,7 +11,7 @@ import type { InvitationWithCampaign } from "../lib/campaignTypes";
 import { ListFilter, type FilterOption } from "../components/lists";
 import { Negotiation } from "../components/invitations/Negotiation";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
@@ -248,7 +248,7 @@ export default function InvitationsScreen({ navigation }: AppScreenProps<"Invita
 
       {loading ? null : empty ? (
         <>
-          <Text style={{ color: colors.ink, fontSize: font.body }}>{t("invitation.empty")}</Text>
+          <Text style={{ fontFamily: family.body, color: colors.ink, fontSize: font.body }}>{t("invitation.empty")}</Text>
           <Hint>{t("invitation.emptyHint")}</Hint>
         </>
       ) : shown.length === 0 ? (
@@ -279,16 +279,16 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontSize: font.tiny,
-    fontWeight: "700",
+    fontFamily: family.bodyBold,
     color: colors.muted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   titleRow: { flexDirection: "row", alignItems: "center", gap: space(2), flexWrap: "wrap", marginTop: 2 },
-  cardTitle: { fontSize: font.h2, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  cardTitle: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, flexShrink: 1 },
   orderBadge: {
     fontSize: font.tiny,
-    fontWeight: "700",
+    fontFamily: family.bodyBold,
     color: colors.white,
     backgroundColor: colors.indigo,
     borderRadius: radius.pill,
@@ -296,15 +296,15 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     overflow: "hidden",
   },
-  status: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  meta: { fontSize: font.small, color: colors.ink, marginTop: space(2) },
-  delivTitle: { fontSize: font.small, fontWeight: "700", color: colors.ink, marginTop: space(3), marginBottom: space(1) },
-  deliv: { fontSize: font.small, color: colors.ink },
+  status: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  meta: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: space(2) },
+  delivTitle: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink, marginTop: space(3), marginBottom: space(1) },
+  deliv: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
   proposalWrap: { borderTopWidth: 1, borderTopColor: colors.line, marginTop: space(3), paddingTop: space(1) },
-  fieldLabel: { fontSize: font.small, fontWeight: "600", color: colors.ink, marginBottom: space(1.5) },
+  fieldLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) },
   currencyChip: {
     fontSize: font.small,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     color: colors.ink,
     borderWidth: 1,
     borderColor: colors.line,

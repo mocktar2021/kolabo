@@ -6,7 +6,7 @@ import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/dates";
 import { respondTimeLeft, type Dispute } from "../lib/disputeTypes";
-import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
+import { Banner, GhostButton, Hint, Screen, Subtitle } from "../components/ui";
 import { colors, family, font, radius, shadow, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -57,7 +57,6 @@ export default function DisputesScreen({ navigation }: AppScreenProps<"Disputes"
         void load().finally(() => setRefreshing(false));
       }}
     >
-      <Title>{t("dispute.listTitle")}</Title>
       <Subtitle>{t("dispute.listSub")}</Subtitle>
 
       {error ? (

@@ -12,8 +12,8 @@ import {
   type MarkAllRead,
   type NavTarget,
 } from "../lib/notifications";
-import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { Banner, GhostButton, Hint, Screen, Subtitle } from "../components/ui";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 /* The whole history, newest first, one server page at a time. The paging is
@@ -116,7 +116,6 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
         void load().finally(() => setRefreshing(false));
       }}
     >
-      <Title>{t("notif.title")}</Title>
       <Subtitle>{t("notif.sub")}</Subtitle>
       <Hint>{t("notif.routeNote")}</Hint>
 
@@ -135,7 +134,7 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
 
       {loading ? null : rows.length === 0 ? (
         <>
-          <Text style={{ color: colors.ink, fontSize: font.body }}>
+          <Text style={{ fontFamily: family.body, color: colors.ink, fontSize: font.body }}>
             {page === 0 ? t("notif.empty") : t("notif.pageEnd")}
           </Text>
           {page === 0 ? <Hint>{t("notif.emptyHint")}</Hint> : null}
@@ -154,7 +153,7 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
                   pressed && { backgroundColor: colors.surface },
                 ]}
               >
-                <Text style={[styles.body, !row.is_read && { fontWeight: "600" }]}>
+                <Text style={[styles.body, !row.is_read && { fontFamily: family.bodySemi }]}>
                   {notificationBody(row, t)}
                 </Text>
                 <View style={styles.metaRow}>
@@ -194,8 +193,8 @@ const styles = StyleSheet.create({
     padding: space(3),
   },
   rowUnread: { backgroundColor: colors.surface2, borderColor: colors.teal },
-  body: { fontSize: font.small, color: colors.ink },
+  body: { fontFamily: family.body, fontSize: font.small, color: colors.ink },
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: space(1.5) },
-  when: { fontSize: font.tiny, color: colors.muted },
-  unread: { fontSize: font.tiny, fontWeight: "700", color: colors.teal600 },
+  when: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted },
+  unread: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.teal600 },
 });

@@ -6,7 +6,7 @@ import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { relativeParts } from "../lib/notifications";
 import type { MessageThread } from "../lib/messageTypes";
-import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
+import { Banner, GhostButton, Hint, Screen, Subtitle } from "../components/ui";
 import { colors, family, font, radius, shadow, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
@@ -49,7 +49,6 @@ export default function MessagesScreen({ navigation }: AppScreenProps<"Messages"
         void load().finally(() => setRefreshing(false));
       }}
     >
-      <Title>{t("msg.title")}</Title>
       <Subtitle>{t("msg.sub")}</Subtitle>
 
       {error ? (

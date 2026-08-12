@@ -4,14 +4,11 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
+import { formatAmount as amount } from "../lib/money";
 import type { Spend, SpendPayment } from "../lib/spendTypes";
-import { Banner, GhostButton, Hint, Screen, Subtitle, Title } from "../components/ui";
-import { colors, font, radius, space } from "../theme";
+import { Banner, GhostButton, Hint, Screen, Subtitle } from "../components/ui";
+import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
-
-function amount(value: number, currency: string, locale: string): string {
-  return `${value.toLocaleString(locale)} ${currency}`;
-}
 
 function StatusChip({ status }: { status: string }) {
   const { t } = useTranslation();
@@ -88,7 +85,6 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
         void load().finally(() => setRefreshing(false));
       }}
     >
-      <Title>{t("spend.title")}</Title>
       <Subtitle>{t("spend.sub")}</Subtitle>
 
       {error ? (
@@ -102,7 +98,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
 
       {loading ? null : nothing ? (
         <>
-          <Text style={{ color: colors.ink, fontSize: font.body }}>{t("spend.empty")}</Text>
+          <Text style={{ fontFamily: family.body, color: colors.ink, fontSize: font.body }}>{t("spend.empty")}</Text>
           <Hint>{t("spend.emptyHint")}</Hint>
         </>
       ) : (
@@ -163,7 +159,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
 const styles = StyleSheet.create({
   chip: {
     fontSize: font.tiny,
-    fontWeight: "600",
+    fontFamily: family.bodySemi,
     overflow: "hidden",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
@@ -176,11 +172,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: space(4),
   },
-  tileLabel: { fontSize: font.tiny, fontWeight: "700", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6 },
-  tileValue: { fontSize: 24, fontWeight: "700", color: colors.ink, marginTop: 4 },
-  tileHint: { fontSize: font.tiny, color: colors.muted, marginTop: 6 },
-  currencyGroup: { fontSize: font.h2, fontWeight: "700", color: colors.ink, marginBottom: space(2) },
-  statementTitle: { fontSize: font.h2, fontWeight: "700", color: colors.ink, marginTop: space(4), marginBottom: space(2) },
+  tileLabel: { fontSize: font.tiny, fontFamily: family.bodyBold, color: colors.muted, textTransform: "uppercase", letterSpacing: 0.6 },
+  tileValue: { fontSize: 24, fontFamily: family.display, color: colors.ink, marginTop: 4 },
+  tileHint: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 6 },
+  currencyGroup: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, marginBottom: space(2) },
+  statementTitle: { fontSize: font.h2, fontFamily: family.display, color: colors.ink, marginTop: space(4), marginBottom: space(2) },
   row: {
     backgroundColor: colors.white,
     borderWidth: 1,
@@ -189,7 +185,7 @@ const styles = StyleSheet.create({
     padding: space(3),
   },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space(2) },
-  campaign: { fontSize: font.body, fontWeight: "700", color: colors.teal600, flexShrink: 1 },
-  sub: { fontSize: font.tiny, color: colors.muted, marginTop: 3 },
-  amount: { fontSize: font.small, color: colors.ink, marginTop: space(2), fontWeight: "600" },
+  campaign: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.teal600, flexShrink: 1 },
+  sub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  amount: { fontSize: font.small, color: colors.ink, marginTop: space(2), fontFamily: family.bodySemi },
 });

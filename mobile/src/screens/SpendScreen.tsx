@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -125,15 +125,18 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
             <Hint>{t("spend.empty")}</Hint>
           ) : (
             <View style={{ gap: space(2) }}>
+              {/* The WHOLE row opens the contract, exactly like the web
+                  statement and the contracts list. It used to be only the
+                  title text — a one-line tap target with no pressed state,
+                  which reads as a dead link on a phone. */}
               {payments.map((row) => (
-                <View key={row.escrow_id} style={styles.row}>
+                <Pressable
+                  key={row.escrow_id}
+                  style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface }]}
+                  onPress={() => navigation.navigate("ContractDetail", { id: row.contract_id })}
+                >
                   <View style={styles.rowTop}>
-                    <Text
-                      style={styles.campaign}
-                      onPress={() => navigation.navigate("ContractDetail", { id: row.contract_id })}
-                    >
-                      {row.campaign_title || t("spend.untitled")}
-                    </Text>
+                    <Text style={styles.campaign}>{row.campaign_title || t("spend.untitled")}</Text>
                     <StatusChip status={row.status} />
                   </View>
                   <Text style={styles.sub}>
@@ -146,7 +149,7 @@ export default function SpendScreen({ navigation }: AppScreenProps<"Spend">) {
                       ? ` · ${t("spend.rowRefunded", { amount: amount(row.refunded_amount, row.currency, i18n.language) })}`
                       : ""}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}

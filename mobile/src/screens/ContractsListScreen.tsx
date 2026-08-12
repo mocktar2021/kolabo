@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
+import { formatAmount } from "../lib/money";
 import type { ContractListItem } from "../lib/contractTypes";
 import { contractIsCompleted, partitionByCompletion } from "../lib/lifecycle";
 import { ListFilter, ListTabs, type FilterOption, type Tab } from "../components/lists";
@@ -120,7 +121,7 @@ export default function ContractsListScreen({ navigation }: AppScreenProps<"Cont
               </View>
               <View style={styles.terms}>
                 <Text style={styles.rate}>
-                  {c.rate_amount} {c.rate_currency}
+                  {formatAmount(c.rate_amount, c.rate_currency, i18n.language)}
                 </Text>
                 <Text style={styles.muted}>
                   {c.timeline_days} {t("contract.days")}

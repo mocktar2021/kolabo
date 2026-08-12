@@ -164,15 +164,18 @@ export default function EarningsScreen({ navigation }: AppScreenProps<"Earnings"
             <Hint>{t("earn.empty")}</Hint>
           ) : (
             <View style={{ gap: space(2) }}>
+              {/* The WHOLE row opens the contract, exactly like the web
+                  statement and the contracts list. It used to be only the
+                  title text — a one-line tap target with no pressed state,
+                  which reads as a dead link on a phone. */}
               {shown.map((row) => (
-                <View key={row.escrow_id} style={styles.row}>
+                <Pressable
+                  key={row.escrow_id}
+                  style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surface }]}
+                  onPress={() => navigation.navigate("ContractDetail", { id: row.contract_id })}
+                >
                   <View style={styles.rowTop}>
-                    <Text
-                      style={styles.campaign}
-                      onPress={() => navigation.navigate("ContractDetail", { id: row.contract_id })}
-                    >
-                      {row.campaign_title || t("earn.untitled")}
-                    </Text>
+                    <Text style={styles.campaign}>{row.campaign_title || t("earn.untitled")}</Text>
                     <StatusChip status={row.status} />
                   </View>
                   <Text style={styles.sub}>
@@ -190,7 +193,7 @@ export default function EarningsScreen({ navigation }: AppScreenProps<"Earnings"
                       {t("earn.colNet")} {amount(row.net, row.currency, i18n.language)}
                     </Text>
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -14,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { colors, family, font, radius, shadow, space } from "../theme";
 
 /* The shared primitives, restyled to match web/src/styles/theme.css so the
@@ -299,6 +301,78 @@ export function ChoiceGroup({
   );
 }
 
+/* The mobile <select>: a field-shaped trigger that opens a modal option
+   sheet. This is what long single-choice lists (countries, cities) use —
+   a seven-country chip grid was eating half the register screen; a dropdown
+   is one row, exactly as the web renders its <select>. ChoiceGroup remains
+   the right shape for short lists (roles, genders) where seeing every option
+   at once helps. */
+export function Select({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+  hint,
+}: {
+  label?: string;
+  value: string;
+  options: Choice[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+  hint?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <View style={styles.field}>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [styles.selectBox, pressed && { backgroundColor: colors.surface }]}
+      >
+        <Text style={[styles.selectValue, !current && { color: colors.muted }]} numberOfLines={1}>
+          {current ? current.label : (placeholder ?? "—")}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={colors.muted} />
+      </Pressable>
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.selectBackdrop} onPress={() => setOpen(false)}>
+          {/* The sheet itself swallows taps so choosing doesn't also dismiss-through. */}
+          <Pressable style={styles.selectSheet} onPress={() => undefined}>
+            {label ? <Text style={styles.selectSheetTitle}>{label}</Text> : null}
+            <ScrollView style={{ flexGrow: 0 }}>
+              {options.map((o) => {
+                const selected = o.value === value;
+                return (
+                  <Pressable
+                    key={o.value}
+                    onPress={() => {
+                      onChange(o.value);
+                      setOpen(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.selectRow,
+                      pressed && { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <Text style={[styles.selectRowLabel, selected && styles.selectRowSelected]}>
+                      {o.label}
+                    </Text>
+                    {selected ? <Ionicons name="checkmark" size={18} color={colors.indigo} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 /* The multi-select sibling of ChoiceGroup — categories, languages: tap to add
    or remove, no single-selection constraint. */
 export function MultiChoiceGroup({
@@ -404,6 +478,50 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.6 },
   banner: { borderRadius: radius.sm, borderWidth: 1, padding: space(3), marginBottom: space(4) },
   bannerText: { fontSize: font.small, fontFamily: family.body, lineHeight: 19 },
+  selectBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(2),
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.sm,
+    paddingHorizontal: space(3),
+    paddingVertical: space(3),
+    minHeight: 48,
+    backgroundColor: colors.white,
+  },
+  selectValue: { flex: 1, fontSize: font.body, fontFamily: family.body, color: colors.ink },
+  selectBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(21, 24, 36, 0.45)",
+    justifyContent: "center",
+    padding: space(5),
+  },
+  selectSheet: {
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    paddingVertical: space(2),
+    maxHeight: "70%",
+    ...shadow.md,
+  },
+  selectSheetTitle: {
+    fontSize: font.small,
+    fontFamily: family.bodySemi,
+    color: colors.muted,
+    paddingHorizontal: space(4),
+    paddingVertical: space(2),
+  },
+  selectRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space(2),
+    paddingHorizontal: space(4),
+    paddingVertical: space(3.5),
+  },
+  selectRowLabel: { fontSize: font.body, fontFamily: family.body, color: colors.ink, flexShrink: 1 },
+  selectRowSelected: { fontFamily: family.bodySemi, color: colors.indigo },
   choiceWrap: { flexDirection: "row", flexWrap: "wrap", gap: space(2) },
   choice: {
     borderWidth: 1,

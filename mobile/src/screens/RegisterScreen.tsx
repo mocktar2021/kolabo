@@ -11,6 +11,7 @@ import {
   Field,
   PrimaryButton,
   Screen,
+  Select,
   Subtitle,
   Title,
   type Choice,
@@ -75,12 +76,9 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
           <ChoiceGroup options={roleOptions} value={role} onChange={(v) => setRole(v as Role)} />
         </View>
 
-        <View style={{ marginBottom: space(4) }}>
-          <Text style={{ fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(1.5) }}>
-            {t("auth.country")}
-          </Text>
-          <ChoiceGroup options={countryOptions} value={country} onChange={setCountry} />
-        </View>
+        {/* A dropdown, not a chip grid: seven countries as chips ate half the
+            screen and pushed the form below the fold. */}
+        <Select label={t("auth.country")} value={country} options={countryOptions} onChange={setCountry} />
 
         <Field
           label={t("auth.phone")}

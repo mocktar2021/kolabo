@@ -22,6 +22,7 @@ import NotificationsPage from "./pages/Notifications";
 import MyInvitations from "./pages/MyInvitations";
 import ContractsList from "./pages/ContractsList";
 import ContractPage from "./pages/ContractPage";
+import CheckoutPage from "./pages/Checkout";
 import DisputesPage from "./pages/Disputes";
 import DisputeDetailPage from "./pages/DisputeDetail";
 import AdminDisputesPage from "./pages/AdminDisputes";
@@ -109,6 +110,19 @@ export default function App() {
           {/* The buyer's half of the same question. See BrandOnly above for
               why it is not the same route with a role branch inside it. */}
           <Route path="/payments" element={<BrandOnly><PaymentsPage /></BrandOnly>} />
+          {/* Funding a contract, and the page the gateway sends the payer back to.
+              BrandOnly on both: a creator never funds an escrow, and the API answers
+              them 403 either way — a typed URL should not land on a payment form whose
+              only possible outcome is a refusal.
+
+              Two paths into ONE screen rather than two screens. "Here is what you owe"
+              and "here is what happened" are the start and the end of one payment, and
+              a separate return page would duplicate the polling, the error rendering
+              and every terminal state. The literal /checkout/return is declared FIRST:
+              react-router v6 ranks static segments above dynamic ones, but declaring it
+              first makes the intent legible rather than relying on that. */}
+          <Route path="/checkout/return" element={<BrandOnly><CheckoutPage /></BrandOnly>} />
+          <Route path="/checkout/:contractId" element={<BrandOnly><CheckoutPage /></BrandOnly>} />
           <Route path="/discover" element={<Discover />} />
           {/* The open board: the briefs a creator can find without having been
               invited. Creators only, because the API says so with a 403. */}

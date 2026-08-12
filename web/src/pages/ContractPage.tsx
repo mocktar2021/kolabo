@@ -379,10 +379,23 @@ export default function ContractPage() {
                   isBusiness ? (
                     <>
                       <p className="muted" style={{ fontSize: 14, marginTop: 0 }}>{t("contract.fundHint")}</p>
-                      <button className="btn btn-teal" disabled={busy}
-                        onClick={() => act(() => api("/payments/escrow/fund", { method: "POST", token, body: { contract_id: contract.id } }))}>
+                      {/* A LINK, not a mutation. Funding is no longer one call
+                          that returns a funded escrow: it starts a payment
+                          intent, sends the brand to the gateway's hosted page,
+                          and the escrow appears only once the money is
+                          confirmed — by the webhook or by the checkout screen
+                          polling. POST /payments/escrow/fund still exists for
+                          the keyless dev stack and the test suite, and refuses
+                          with escrow_use_checkout as soon as a real gateway is
+                          configured, so calling it from here would show a brand
+                          an error on the one button that has to work.
+
+                          act() is deliberately not involved either: there is no
+                          request to await and no page state to reload. The next
+                          thing that happens is a navigation. */}
+                      <Link className="btn btn-teal" to={`/checkout/${contract.id}`}>
                         {t("contract.fund")}
-                      </button>
+                      </Link>
                     </>
                   ) : (
                     <div className="alert alert-info" style={{ marginBottom: 0 }}>{t("contract.awaitingFunding")}</div>

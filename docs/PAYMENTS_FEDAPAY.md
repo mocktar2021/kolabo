@@ -123,13 +123,13 @@ UEMOA three, or budget a second PSP integration before launch.
 ## 3. Architecture
 
 ```
-                    ┌────────────────────────────────────┐
+                    ┌──────────────────────────────────────┐
   brand clicks Fund │  POST /payments/checkout/start       │
                     │  → PaymentIntent (pending)           │
                     │  → FedaPay POST /transactions        │
                     │  → FedaPay POST /transactions/{}/token│
                     │  ← checkout_url                      │
-                    └──────────────┬─────────────────────┘
+                    └──────────────┬───────────────────────┘
                                    │ redirect
                           ┌────────▼────────┐
                           │ FedaPay hosted  │  payer approves on their handset

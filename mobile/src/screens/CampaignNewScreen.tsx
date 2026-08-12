@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
-import { formatDate } from "../lib/dates";
+import { formatDate, toIsoDay } from "../lib/dates";
 import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import { EMPTY_TARGETING, targetingBody, type Campaign, type Deliverable, type Targeting } from "../lib/campaignTypes";
 import { DeliverableRows, emptyDeliverable } from "../components/campaigns/DeliverableRows";
@@ -26,7 +26,6 @@ import type { AppScreenProps } from "../navigation/types";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const MAX_DESCRIPTION_LENGTH = 5000;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function StatusChip({ status }: { status: string }) {
   const { t } = useTranslation();
@@ -55,7 +54,7 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const badDeadline = deadline.trim() !== "" && !DATE_RE.test(deadline.trim());
+  const badDeadline = deadline.trim() !== "" && toIsoDay(deadline) === null;
   const canSubmit = title.trim() !== "" && deliverables.length > 0 && !badDeadline;
 
   async function submit() {
@@ -74,7 +73,7 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
           budget_amount: budget ? Number(budget) : null,
           budget_currency: budget ? currency : null,
           deliverables,
-          deadline: deadline.trim() || null,
+          deadline: deadline.trim() ? toIsoDay(deadline) : null,
           publish: publishNow,
           ...targetingBody(targeting),
         },
@@ -193,7 +192,7 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
             label={t("campaign.deadline")}
             value={deadline}
             onChangeText={setDeadline}
-            placeholder="2026-12-31"
+            placeholder={t("campaign.deadlineFormat")}
             autoCapitalize="none"
             hint={t("campaign.deadlineHint")}
           />

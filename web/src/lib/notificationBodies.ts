@@ -20,6 +20,12 @@ export const body_fr = {
   escrow_funded_brand: "Votre paiement est bloqué en séquestre.",
   escrow_released_creator: "Séquestre libéré, votre paiement est en route.",
   escrow_released_brand: "Séquestre libéré au créateur.",
+  /* Les deux bouts d'un versement Mobile Money : pas de portefeuille au
+     dossier, donc rien ne peut partir, puis la confirmation une fois parti.
+     Deux clés plutôt qu'une : la première demande une action au créateur, la
+     seconde n'est jamais qu'une bonne nouvelle. */
+  payout_method_missing: "Ajoutez vos coordonnées Mobile Money pour recevoir vos paiements.",
+  payout_sent: "Votre paiement a été envoyé sur votre portefeuille Mobile Money.",
   /* Non-delivery: the delivery date passed with nothing submitted. Two
      stages, so both parties hear the warning before any money moves — see
      payments.service.run_non_delivery_refunds. */
@@ -92,6 +98,11 @@ export const body_en = {
   escrow_funded_brand: "Your payment is held in escrow.",
   escrow_released_creator: "Escrow released, your payout is on the way.",
   escrow_released_brand: "Escrow released to the creator.",
+  /* The two ends of a Mobile Money payout: no wallet on file, so nothing can
+     leave, and the confirmation once it has. Two keys rather than one because
+     the first asks the creator for something and the second never does. */
+  payout_method_missing: "Add your Mobile Money details so we can send you your payments.",
+  payout_sent: "Your payment has been sent to your Mobile Money wallet.",
   delivery_overdue_creator: "The delivery date has passed with nothing submitted. The escrow is refunded to the brand in {{days}} days unless you submit your work.",
   delivery_overdue_brand: "The delivery date has passed with nothing submitted. Your escrow is refunded to you automatically in {{days}} days if nothing arrives.",
   escrow_refunded_brand: "Nothing was delivered, so your escrow has been refunded to you in full.",

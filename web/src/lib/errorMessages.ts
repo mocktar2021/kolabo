@@ -67,6 +67,24 @@ export const error_fr = {
   escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
   escrow_release_needs_submission: "Il n'y a encore rien à confirmer : le créateur n'a pas envoyé de livrable pour ce séquestre. Une fois qu'il l'aura envoyé, confirmer la livraison valide cet envoi et libère le paiement.",
 
+  /* Les refus que peut produire le passage par la passerelle FedaPay. Ceux
+     qui portent sur le pays et la devise sont le « refus franc » assumé pour
+     les marchés que FedaPay ne dessert pas (Ghana, Cameroun) : la phrase doit
+     donc promettre une suite, et non se lire comme une panne qu'il suffirait
+     de réessayer. */
+  escrow_business_not_found: "Nous n'avons pas retrouvé votre compte. Reconnectez-vous puis réessayez.",
+  payments_gateway_unavailable: "Le service de paiement est momentanément injoignable. Rien n'a été débité — réessayez dans un instant.",
+  payments_gateway_not_configured: "Les paiements ne sont pas encore activés sur la plateforme. Contactez le support.",
+  payment_intent_not_found: "Ce paiement est introuvable. Si un montant a été débité, contactez le support avec la référence.",
+  payment_intent_not_yours: "Ce paiement ne vous appartient pas.",
+  payments_country_unknown: "Nous n'avons pas pu déterminer le pays de ce paiement. Complétez le pays de votre profil puis réessayez.",
+  payments_country_unsupported: "Les paiements en ligne ne sont pas encore disponibles dans votre pays. Nous vous préviendrons dès l'ouverture.",
+  payments_currency_unsupported: "Nous ne pouvons pas encore traiter cette devise dans votre pays. Contactez le support si cela vous semble être une erreur.",
+  payout_country_unsupported: "Nous ne pouvons pas encore effectuer de versement vers votre pays. Nous vous préviendrons dès l'ouverture.",
+  payout_mode_unsupported: "Ce réseau Mobile Money n'est pas disponible dans le pays choisi. Sélectionnez-en un dans la liste.",
+  payout_phone_invalid: "Ce numéro ne ressemble pas à un numéro Mobile Money valide.",
+  escrow_use_checkout: "Le financement direct n'est plus disponible. Ouvrez la page de paiement sécurisé pour financer ce contrat.",
+
   contract_proposal_not_found: "Proposition introuvable.",
   contract_campaign_not_found: "Campagne introuvable.",
   contract_already_exists: "Un contrat existe déjà pour cette proposition.",
@@ -321,6 +339,23 @@ export const error_en = {
   escrow_not_held: "This escrow is not held.",
   escrow_release_business_only: "Only the business can confirm delivery.",
   escrow_release_needs_submission: "There is nothing to confirm yet: the creator has not submitted any work against this escrow. Once they submit it, confirming delivery approves that submission and releases the payment.",
+
+  /* The refusals the FedaPay gateway path can produce. The country and
+     currency ones are the deliberate "fail loudly" answer for markets FedaPay
+     does not serve (Ghana, Cameroon), so the sentence has to promise a
+     follow-up rather than read like a fault worth retrying. */
+  escrow_business_not_found: "We couldn't find your account. Please sign in again and retry.",
+  payments_gateway_unavailable: "The payment service is unreachable right now. Nothing has been charged — please try again in a moment.",
+  payments_gateway_not_configured: "Payments aren't switched on yet. Please contact support.",
+  payment_intent_not_found: "We can't find this payment. If you were charged, contact support with the reference.",
+  payment_intent_not_yours: "This payment isn't yours.",
+  payments_country_unknown: "We couldn't tell which country this payment belongs to. Please complete your profile country and try again.",
+  payments_country_unsupported: "Online payments aren't available in your country yet. We'll let you know as soon as they open.",
+  payments_currency_unsupported: "We can't process this currency in your country yet. Contact support if you think that's a mistake.",
+  payout_country_unsupported: "We can't pay out to your country yet. We'll let you know as soon as it opens.",
+  payout_mode_unsupported: "That Mobile Money network isn't available in the country you chose. Please pick one from the list.",
+  payout_phone_invalid: "That doesn't look like a valid Mobile Money number.",
+  escrow_use_checkout: "Direct funding is no longer available. Open the secure payment page to fund this contract.",
 
   contract_proposal_not_found: "Proposal not found.",
   contract_campaign_not_found: "Campaign not found.",

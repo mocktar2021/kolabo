@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api, type MeOut } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -21,6 +21,17 @@ import { family, font, colors, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
 
 const MIN_PASSWORD = 8;
+
+/* The notify() call sites, in the order web/src/pages/Account.tsx lists them. */
+const NOTIFY_KEYS = [
+  "acct.notifInvitation",
+  "acct.notifProposal",
+  "acct.notifContract",
+  "acct.notifPayment",
+  "acct.notifDispute",
+  "acct.notifMessage",
+  "acct.notifSecurity",
+] as const;
 
 /* The account itself: the number somebody signs in with, their password, the
    app's language, and the way out. Web's /account, minus the notification
@@ -208,6 +219,38 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
         />
       </Card>
 
+      {/* Web /account's Payment tab, verbatim: explained rather than collected.
+          Nothing in this system stores a payment instrument — money moves by
+          Mobile Money through the buyer-funded escrow, and no endpoint accepts
+          a payout destination. A form here would collect details nobody reads
+          or imply an automatic payout that does not exist yet. */}
+      <View style={{ height: space(4) }} />
+      <Card>
+        <SectionTitle>{t("acct.paymentTitle")}</SectionTitle>
+        <Text style={styles.body}>{t("acct.paymentBody")}</Text>
+        <Hint>{t("acct.paymentPending")}</Hint>
+        <Hint>{t("acct.paymentMeanwhile")}</Hint>
+      </Card>
+
+      {/* Web /account's Notifications tab, verbatim: the list of what the
+          platform sends, READ-ONLY. There are no notification preferences
+          server-side — notify() writes a row for every event — so there are
+          no switches; switches that switched nothing would teach people to
+          distrust the product. The entries mirror the notify() call sites. */}
+      <View style={{ height: space(4) }} />
+      <Card>
+        <SectionTitle>{t("acct.notifTitle")}</SectionTitle>
+        <Hint>{t("acct.notifIntro")}</Hint>
+        <View style={{ height: space(2) }} />
+        {NOTIFY_KEYS.map((key) => (
+          <View key={key} style={styles.notifRow}>
+            <Text style={styles.notifBullet}>•</Text>
+            <Text style={styles.notifText}>{t(key)}</Text>
+          </View>
+        ))}
+        <Hint>{t("acct.notifReadOnly")}</Hint>
+      </Card>
+
       <View style={{ height: space(4) }} />
       <Card>
         <SectionTitle>{t("acct.langTitle")}</SectionTitle>
@@ -260,3 +303,10 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  body: { fontFamily: family.body, fontSize: font.small, color: colors.ink, lineHeight: 20, marginBottom: space(2) },
+  notifRow: { flexDirection: "row", gap: space(2), paddingVertical: 3 },
+  notifBullet: { fontFamily: family.body, fontSize: font.small, color: colors.muted },
+  notifText: { flex: 1, fontFamily: family.body, fontSize: font.small, color: colors.ink, lineHeight: 19 },
+});

@@ -1411,4 +1411,44 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
         latest = latest_in_chain(db, campaign.id, influencer_user_id)
         item["proposal"] = _proposal_out(latest) if latest is not None else None
         result.append(item)
+
+    # THE APPLICATIONS, which have no invitation row at all. A creator who
+    # bids off the board writes a proposal chain and nothing else — that is
+    # apply_to_campaign's deliberate design — but this list used to iterate
+    # invitation rows only, so the brand's counter on an application reached
+    # the creator as a notification with no surface behind it: the offer was
+    # on the table and invisible. Each such chain becomes a synthetic row with
+    # status "applied" and a stable synthetic id; there is no invitation to
+    # accept or decline, and the clients act on the proposal, exactly as they
+    # do for a brief's negotiation.
+    invited_campaign_ids = {inv.campaign_id for inv in invitations}
+    applied_campaign_ids = [
+        row[0]
+        for row in db.query(models.Proposal.campaign_id)
+        .filter(models.Proposal.influencer_user_id == influencer_user_id)
+        .distinct()
+        .all()
+        if row[0] not in invited_campaign_ids
+    ]
+    for campaign_id in applied_campaign_ids:
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if campaign is None:
+            continue
+        if campaign.business_user_id not in company_names:
+            company_names[campaign.business_user_id] = _company_name(db, campaign.business_user_id)
+        latest = latest_in_chain(db, campaign_id, influencer_user_id)
+        result.append(
+            {
+                "id": f"applied-{campaign_id}",
+                "campaign_id": campaign_id,
+                "influencer_user_id": influencer_user_id,
+                "status": "applied",
+                "campaign": _to_out(campaign),
+                "business_company_name": company_names[campaign.business_user_id],
+                "proposal_history": [
+                    _proposal_out(v) for v in chain_versions(db, campaign_id, influencer_user_id)
+                ],
+                "proposal": _proposal_out(latest) if latest is not None else None,
+            }
+        )
     return result

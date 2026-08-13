@@ -6,8 +6,17 @@
     "orientation": "portrait",
     "scheme": "kolabo",
     "platforms": ["ios", "android"],
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.kolabo.app",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.kolabo.app",
+      "edgeToEdgeEnabled": true
+    },
     "extra": {
-      "apiBaseUrl": "http://localhost:8000"
+      "apiBaseUrl": "https://api.kolabo.mocktar.com"
     }
   }
 }

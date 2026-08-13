@@ -174,7 +174,9 @@ function AppNavigator() {
         headerStyle: { backgroundColor: colors.white },
         headerShadowVisible: false,
         headerTintColor: colors.indigo,
-        headerBackTitleVisible: false,
+        /* Navigation 7 dropped headerBackTitleVisible; its own typings point to
+           "minimal" as the equivalent of the old `false`. */
+        headerBackButtonDisplayMode: "minimal",
       }}
     >
       <AppStack.Screen name="Tabs" component={TabNavigator} options={{ headerShown: false }} />

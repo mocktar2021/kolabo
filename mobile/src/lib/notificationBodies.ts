@@ -65,6 +65,11 @@ export const body_fr = {
   social_rejected_reason: "Votre compte {{platform}} @{{handle}} a été refusé : {{reason}}",
   report_reviewed: "Votre signalement a été examiné et le dossier est clos.",
   password_changed: "Votre mot de passe Kolabo a été modifié. Si ce n'était pas vous, contactez le support immédiatement.",
+
+  /* Les deux moitiés d'un versement : la première demande quelque chose au
+     créateur, la seconde n'est jamais qu'une bonne nouvelle. */
+  payout_method_missing: "Ajoutez vos coordonnées Mobile Money pour recevoir vos paiements.",
+  payout_sent: "Votre paiement a été envoyé sur votre portefeuille Mobile Money.",
 };
 
 export const body_en: typeof body_fr = {
@@ -121,4 +126,9 @@ export const body_en: typeof body_fr = {
   social_rejected_reason: "Your {{platform}} account @{{handle}} was rejected: {{reason}}",
   report_reviewed: "Your report has been reviewed and the case is closed.",
   password_changed: "Your Kolabo password was changed. If this was not you, contact support immediately.",
+
+  /* The two halves of a payout, and they are not interchangeable: the first
+     asks the creator for something and the second never does. */
+  payout_method_missing: "Add your Mobile Money details so we can send you your payments.",
+  payout_sent: "Your payment has been sent to your Mobile Money wallet.",
 };

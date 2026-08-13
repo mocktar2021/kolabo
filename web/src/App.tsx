@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
 import AccountPage from "./pages/Account";
 import EarningsPage from "./pages/Earnings";
+import PayoutMethodPage from "./pages/PayoutMethod";
 import PaymentsPage from "./pages/Payments";
 import Discover from "./pages/Discover";
 import BoardPage from "./pages/Board";
@@ -107,6 +108,15 @@ export default function App() {
               DO on Kolabo, not in what an account is. */}
           <Route path="/account" element={<AccountPage />} />
           <Route path="/earnings" element={<CreatorOnly><EarningsPage /></CreatorOnly>} />
+          {/* Beside /earnings because it is the other half of getting paid,
+              and CreatorOnly for the plainest reason on this file: a brand is
+              never paid out, so there is nothing here for one to fill in.
+              This is also the screen a release depends on — with no wallet on
+              file the money is owed and visible but cannot move — so it is
+              worth a guard that sends a brand somewhere useful rather than a
+              form it can only fail. The path is not free: payments/payouts.py
+              deep-links a notification to /settings/payouts. */}
+          <Route path="/settings/payouts" element={<CreatorOnly><PayoutMethodPage /></CreatorOnly>} />
           {/* The buyer's half of the same question. See BrandOnly above for
               why it is not the same route with a role branch inside it. */}
           <Route path="/payments" element={<BrandOnly><PaymentsPage /></BrandOnly>} />

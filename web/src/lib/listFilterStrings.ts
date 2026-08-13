@@ -26,6 +26,7 @@ const fr = {
      list it is: "Acceptée" is the one that became a contract, "Retirée" the
      one the brand took back before it was answered. */
   inv_invited: "En attente",
+  inv_applied: "Vous avez postulé",
   inv_accepted: "Acceptée",
   inv_declined: "Refusée",
   inv_withdrawn: "Retirée",
@@ -46,6 +47,7 @@ const en = {
   label: "Filter the list",
 
   inv_invited: "Pending",
+  inv_applied: "You applied",
   inv_accepted: "Accepted",
   inv_declined: "Declined",
   inv_withdrawn: "Withdrawn",

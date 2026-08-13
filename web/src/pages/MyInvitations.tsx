@@ -241,7 +241,7 @@ function CounterForm({ campaignId, live, isOrder, onSent }: {
 
      - Counter is the answer available on both kinds of row, and it is simply
        the next version in the chain. */
-function Negotiation({ campaignId, live, history, isOrder, onDone }: {
+function Negotiation({ campaignId, live, history, isOrder, readOnly = false, onDone }: {
   campaignId: string;
   live: Proposal;
   /* Every version of this chain, oldest first, with the live one last. Empty
@@ -249,6 +249,11 @@ function Negotiation({ campaignId, live, history, isOrder, onDone }: {
      `versions` below, which falls back to the live version alone. */
   history: Proposal[];
   isOrder: boolean;
+  /* True when the campaign underneath is cancelled: the thread stays readable
+     — it is the record of what was offered — but every action goes, because
+     the backend would refuse it with campaign_not_open and a button that only
+     ever earns a refusal is a trap. */
+  readOnly?: boolean;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
@@ -268,7 +273,7 @@ function Negotiation({ campaignId, live, history, isOrder, onDone }: {
   // has no expires_at and stays answerable.
   const expired = isOrder && left === null;
   // Superseded, accepted or declined: already answered, so the row is history.
-  const open = live.status === "submitted";
+  const open = live.status === "submitted" && !readOnly;
   // The brand wrote the live version, so the ball is in the creator's court.
   const theirMove = live.author_role === "business";
   /* The thread to draw. An empty history means the payload came from a
@@ -508,6 +513,10 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
   const c = inv.campaign;
   const order = directOrderOf(inv);
   const live = inv.proposal;
+  /* A creator only ever sees published and cancelled campaigns; a cancelled
+     one keeps its card (the record of what was offered) but takes no more
+     answers — the badge says why the forms are gone. */
+  const cancelled = c.status === "cancelled";
 
   return (
     <div className="card">
@@ -523,6 +532,11 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
             {order && (
               <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", padding: "3px 10px", borderRadius: 999 }}>
                 {t("invitation.orderBadge")}
+              </span>
+            )}
+            {cancelled && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#9b2c2c", background: "#fdecec", padding: "3px 10px", borderRadius: 999 }}>
+                {t("invitation.campaignCancelled")}
               </span>
             )}
           </div>
@@ -578,9 +592,10 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
              version rather than to nothing. */
           history={inv.proposal_history ?? []}
           isOrder={order !== null}
+          readOnly={cancelled}
           onDone={onDone}
         />
-      ) : (
+      ) : cancelled ? null : (
         /* The rule above the line is the brand's; everything below it is the
            creator's answer, so the two are separated visually. */
         <div style={{ borderTop: "1px solid var(--line)", marginTop: 20, paddingTop: 16 }}>

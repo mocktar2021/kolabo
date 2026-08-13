@@ -274,6 +274,7 @@ const resources = {
            read like them: the terms are already set, the money is already
            named, and the only thing missing is a yes or a no. */
         orderBadge: "Commande directe",
+        campaignCancelled: "Campagne annulée",
         orderPrice: "Prix", orderDelay: "Délai", orderNote: "Note de la marque",
         orderExpiresHours: "Expire dans {{n}} h",
         orderExpiresMinutes: "Expire dans {{n}} min",
@@ -552,6 +553,7 @@ const resources = {
            read like them: the terms are already set, the money is already
            named, and the only thing missing is a yes or a no. */
         orderBadge: "Direct order",
+        campaignCancelled: "Campaign cancelled",
         orderPrice: "Price", orderDelay: "Timeline", orderNote: "Note from the brand",
         orderExpiresHours: "Expires in {{n}} h",
         orderExpiresMinutes: "Expires in {{n}} min",

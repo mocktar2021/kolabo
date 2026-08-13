@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
 import { api, type TokenResponse } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -124,13 +125,13 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
           </div>
           <div className="field">
             <label className="label" htmlFor="reset-password">{t("reset.newPassword")}</label>
-            <input id="reset-password" className="input" type="password" value={password}
+            <PasswordInput id="reset-password" value={password}
               onChange={(e) => setPassword(e.target.value)} required />
             {tooShort && <div className="hint" style={{ color: "var(--danger)" }}>{t("reset.tooShort", { n: MIN_PASSWORD_LENGTH })}</div>}
           </div>
           <div className="field">
             <label className="label" htmlFor="reset-confirm">{t("reset.confirmPassword")}</label>
-            <input id="reset-confirm" className="input" type="password" value={confirm}
+            <PasswordInput id="reset-confirm" value={confirm}
               onChange={(e) => setConfirm(e.target.value)} required />
             {mismatch && <div className="hint" style={{ color: "var(--danger)" }}>{t("reset.mismatch")}</div>}
           </div>
@@ -209,7 +210,7 @@ export default function Login() {
                 </div>
                 <div className="field">
                   <label className="label" htmlFor="password">{t("auth.password")}</label>
-                  <input id="password" className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
                 <button className="btn btn-primary btn-block btn-lg" disabled={busy} type="submit">
                   {busy ? t("auth.working") : t("auth.submitLogin")}

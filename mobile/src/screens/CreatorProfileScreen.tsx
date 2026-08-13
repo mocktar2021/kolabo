@@ -5,7 +5,8 @@ import { ApiError, api, mediaSrc, uploadMedia, type MediaOut } from "../lib/api"
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { pickImage } from "../lib/imagePicker";
-import { COUNTRIES, countryName, joinLocation, splitLocation } from "../lib/countries";
+import { CITIES, COUNTRIES, countryName, joinLocation, splitLocation } from "../lib/countries";
+import { fromIsoDay, toIsoDay } from "../lib/dates";
 import { CATEGORIES } from "../lib/categories";
 import type { InfluencerProfile, InfluencerProfileInput, OnboardingStatus } from "../lib/profileTypes";
 import {
@@ -19,6 +20,7 @@ import {
   PrimaryButton,
   Screen,
   SectionTitle,
+  Select,
   Subtitle,
   type Choice,
 } from "../components/ui";
@@ -41,6 +43,11 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
   const [headline, setHeadline] = useState("");
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
+  /* Mirrors web ProfileSetup's cityOther: true once the person has asked for
+     free text, so picking "Other…" doesn't immediately snap back to the list. */
+  const [cityOther, setCityOther] = useState(false);
+  /* Held in DD/MM/YYYY — what people here write — and converted to the API's
+     ISO form at the save edge. */
   const [birthDate, setBirthDate] = useState("");
   const [bio, setBio] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -73,7 +80,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
       const loc = splitLocation(p.location);
       setCity(loc.city);
       setCountry(loc.country);
-      setBirthDate(p.birth_date ?? "");
+      setBirthDate(fromIsoDay(p.birth_date ?? ""));
       setBio(p.bio ?? "");
       setCategories(p.categories ?? []);
       setLanguages(p.languages ?? []);
@@ -121,6 +128,15 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
 
   async function save() {
     if (!userId) return;
+    /* The date is validated here, at the same edge where it is converted:
+       the web's <input type="date"> makes a bad day untypeable, so the API
+       has never needed to be graceful about one. */
+    const isoBirth = birthDate.trim() ? toIsoDay(birthDate) : null;
+    if (birthDate.trim() && !isoBirth) {
+      setSaved(false);
+      setError(t("profile.birthDateBad"));
+      return;
+    }
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -132,7 +148,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
         bio: bio || null,
         categories,
         follower_count: followers ? Number(followers) : null,
-        birth_date: birthDate || null,
+        birth_date: isoBirth,
         gender: gender || null,
         languages,
       };
@@ -155,6 +171,11 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
   ];
   const countryOptions: Choice[] = COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) }));
   const categoryOptions: Choice[] = CATEGORIES.map((c) => ({ value: c, label: t(`cat.${c}`) }));
+
+  /* Web ProfileSetup's cityIsFree, verbatim: free text when the country has
+     no list, when "Other…" was chosen, or when the saved city is off-list. */
+  const cityList = CITIES[country] ?? [];
+  const cityIsFree = cityList.length === 0 || cityOther || (city !== "" && !cityList.includes(city));
 
   if (!userId) return null;
 
@@ -232,10 +253,41 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
         <Field label={t("profile.displayName")} value={displayName} onChangeText={setDisplayName} placeholder="Ama K." />
         <Field label={t("profile.headline")} value={headline} onChangeText={setHeadline} hint={t("profile.headlineHint")} />
 
-        <Text style={styles.label}>{t("profile.country")}</Text>
-        <ChoiceGroup options={countryOptions} value={country} onChange={setCountry} />
-        <View style={{ height: space(3) }} />
-        <Field label={t("profile.city")} value={city} onChangeText={setCity} placeholder="Cotonou" />
+        <Select
+          label={t("profile.country")}
+          value={country}
+          options={countryOptions}
+          onChange={(v) => {
+            setCountry(v);
+            setCityOther(false);
+          }}
+          placeholder={t("profile.country")}
+        />
+        {/* City follows the web exactly: a dropdown of the country's major
+            cities with an "Other…" escape back to free text, and free text
+            whenever the saved city is not on the list — so an unusual city
+            never blocks saving. */}
+        {cityIsFree ? (
+          <Field label={t("profile.city")} value={city} onChangeText={setCity} placeholder="Cotonou" />
+        ) : (
+          <Select
+            label={t("profile.city")}
+            value={city}
+            options={[
+              ...cityList.map((c) => ({ value: c, label: c })),
+              { value: "__other__", label: t("profile.cityOther") },
+            ]}
+            onChange={(v) => {
+              if (v === "__other__") {
+                setCityOther(true);
+                setCity("");
+              } else {
+                setCity(v);
+              }
+            }}
+            placeholder={t("profile.city")}
+          />
+        )}
 
         <Field
           label={t("profile.birthDate")}

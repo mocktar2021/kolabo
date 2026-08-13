@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { COUNTRIES, countryName } from "../lib/countries";
+import { fromIsoDay, toIsoDay } from "../lib/dates";
 import { SELLABLE_PLATFORMS, deliverableLabel, PLATFORM_LABELS } from "../lib/platforms";
 import type { OpenBrief } from "../lib/boardTypes";
 import { ApplyForm } from "../components/board/ApplyForm";
@@ -43,7 +44,7 @@ function BriefCard({ brief, onApplied }: { brief: OpenBrief; onApplied: (id: str
           ? `${brief.budget_amount.toLocaleString(i18n.language)} ${brief.budget_currency ?? ""}`
           : t("board.noBudget")}
         {" · "}
-        {brief.deadline ? `${t("board.deadline")} ${brief.deadline}` : t("board.noDeadline")}
+        {brief.deadline ? `${t("board.deadline")} ${fromIsoDay(brief.deadline)}` : t("board.noDeadline")}
       </Text>
 
       {brief.description ? <Text style={styles.desc}>{brief.description}</Text> : null}
@@ -122,7 +123,7 @@ function filterQuery(f: Filters): string {
   if (f.category) params.set("category", f.category);
   if (f.country) params.set("country", f.country);
   if (f.platform) params.set("platform", f.platform);
-  if (f.deadlineBefore) params.set("deadline_before", f.deadlineBefore);
+  if (f.deadlineBefore) params.set("deadline_before", toIsoDay(f.deadlineBefore) ?? "");
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -130,8 +131,6 @@ function filterQuery(f: Filters): string {
 function anyFilter(f: Filters): boolean {
   return Object.values(f).some((v) => v !== "");
 }
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
   const { t, i18n } = useTranslation();
@@ -145,7 +144,7 @@ export default function BoardScreen({ navigation }: AppScreenProps<"Board">) {
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
 
-  const badDeadline = draft.deadlineBefore !== "" && !DATE_RE.test(draft.deadlineBefore);
+  const badDeadline = draft.deadlineBefore !== "" && toIsoDay(draft.deadlineBefore) === null;
 
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {

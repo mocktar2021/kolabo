@@ -12,13 +12,13 @@ import {
   type Targeting,
 } from "../../lib/campaignTypes";
 import { DeliverableRows } from "./DeliverableRows";
+import { fromIsoDay, toIsoDay } from "../../lib/dates";
 import { TargetingFields } from "./TargetingFields";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton } from "../ui";
 import { colors, family, font, space } from "../../theme";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const MAX_DESCRIPTION_LENGTH = 5000;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /* Correcting a brief in place, within what the people looking at it allow.
 
@@ -47,13 +47,13 @@ export function CampaignEditForm({ campaign, locked, onSaved, onClose }: {
   const [description, setDescription] = useState(campaign.description ?? "");
   const [budget, setBudget] = useState(campaign.budget_amount ? String(campaign.budget_amount) : "");
   const [currency, setCurrency] = useState(campaign.budget_currency ?? "XOF");
-  const [deadline, setDeadline] = useState(campaign.deadline ?? "");
+  const [deadline, setDeadline] = useState(fromIsoDay(campaign.deadline ?? ""));
   const [deliverables, setDeliverables] = useState<Deliverable[]>(campaign.deliverables);
   const [targeting, setTargeting] = useState<Targeting>(targetingOf(campaign));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const badDeadline = deadline.trim() !== "" && !DATE_RE.test(deadline.trim());
+  const badDeadline = deadline.trim() !== "" && toIsoDay(deadline) === null;
 
   async function save() {
     if (!title.trim() || badDeadline) return;
@@ -70,7 +70,7 @@ export function CampaignEditForm({ campaign, locked, onSaved, onClose }: {
       // together or both go null, exactly as the create form posts them.
       const cur = amount === null ? null : currency;
       if (cur !== campaign.budget_currency) patch.budget_currency = cur;
-      const due = deadline.trim() || null;
+      const due = deadline.trim() ? toIsoDay(deadline) : null;
       if (due !== campaign.deadline) patch.deadline = due;
       if (JSON.stringify(deliverables) !== JSON.stringify(campaign.deliverables)) {
         patch.deliverables = deliverables;
@@ -137,7 +137,7 @@ export function CampaignEditForm({ campaign, locked, onSaved, onClose }: {
               : t("campaign.noBudget")}
           </Text>
           <Text style={styles.lockedLine}>
-            {t("campaign.deadline")}: {campaign.deadline || "—"}
+            {t("campaign.deadline")}: {campaign.deadline ? fromIsoDay(campaign.deadline) : "—"}
           </Text>
           <Text style={[styles.fieldLabel, { marginTop: space(2) }]}>{t("campaign.deliverables")}</Text>
           <DeliverableRows value={deliverables} onChange={setDeliverables} disabled />
@@ -167,7 +167,7 @@ export function CampaignEditForm({ campaign, locked, onSaved, onClose }: {
             label={t("campaign.deadline")}
             value={deadline}
             onChangeText={setDeadline}
-            placeholder="2026-12-31"
+            placeholder={t("campaign.deadlineFormat")}
             autoCapitalize="none"
             hint={t("campaign.deadlineHint")}
           />

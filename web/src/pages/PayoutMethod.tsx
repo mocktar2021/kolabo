@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { useAuth } from "../lib/auth";
 import { errorText } from "../lib/errorMessages";
+import { COUNTRIES } from "../lib/countries";
 import {
   getPayoutMethod,
   paymentConfig,
@@ -200,9 +201,15 @@ export default function PayoutMethodPage() {
                 disabled={busy}
                 onChange={(e) => setCountry(e.target.value)}
               >
+                {/* English-only, like every other country droplist on web;
+                    mobile localises the same codes through
+                    countryName(code, language). Fix the two together. The raw
+                    code is the fallback because the backend can enable a
+                    market before this constant catches up, and an option with
+                    no label is one nobody can pick. */}
                 {(config?.countries || []).map((code) => (
                   <option key={code} value={code}>
-                    {t(`country.${code}`, code)}
+                    {COUNTRIES.find((c) => c.code === code)?.name || code}
                   </option>
                 ))}
               </select>

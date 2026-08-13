@@ -5,6 +5,7 @@ import { api, mediaSrc, type MediaOut } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/dates";
+import { formatAmount } from "../lib/money";
 import { isDisputeOpen, respondTimeLeft, type DisputeCase } from "../lib/disputeTypes";
 import { EvidencePicker } from "../components/disputes/EvidencePicker";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle, Title } from "../components/ui";
@@ -111,13 +112,19 @@ export default function DisputeDetailScreen({ navigation, route }: AppScreenProp
         <Hint>{t("dispute.notFound")}</Hint>
       ) : (
         <>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space(2) }}>
-            <Title>{t(`dispute.reason_${dispute.reason}`)}</Title>
+          {/* flex: 1 on the title's wrapper, flexShrink: 0 implied on the
+              chip: without them a long reason label pushes the status chip
+              past the screen edge, where Android clips it — the same trap
+              fixed on the campaign header. */}
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space(2) }}>
+            <View style={{ flex: 1 }}>
+              <Title>{t(`dispute.reason_${dispute.reason}`)}</Title>
+            </View>
             <StatusChip status={dispute.status} />
           </View>
           <Subtitle>
             {t("dispute.unknownParty")}
-            {escrow ? ` · ${escrow.amount} ${escrow.currency}` : ""}
+            {escrow ? ` · ${formatAmount(escrow.amount, escrow.currency, i18n.language)}` : ""}
           </Subtitle>
           {dispute.status === "awaiting_response" ? (
             <Banner kind="info">

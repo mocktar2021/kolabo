@@ -233,8 +233,17 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
       ) : null}
       {campaign === null ? null : (
         <>
+          {/* The title yields, the chip never does. Text in a yoga row keeps
+              its full intrinsic width by default (flexShrink 0), so a long
+              title used to push the status chip past the screen edge, where
+              Android clips it. flex: 1 on the title's wrapper hands it exactly
+              the width the chip leaves over — wrapping to as many lines as it
+              needs — and flexShrink: 0 on the chip pins the chip to its own
+              content width, fully visible inside the screen's padding. */}
           <View style={styles.headRow}>
-            <Title>{campaign.title}</Title>
+            <View style={{ flex: 1 }}>
+              <Title>{campaign.title}</Title>
+            </View>
             <Text
               style={[
                 styles.chip,
@@ -466,6 +475,7 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
 const styles = StyleSheet.create({
   headRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space(2) },
   chip: {
+    flexShrink: 0,
     fontSize: font.tiny,
     fontFamily: family.bodySemi,
     overflow: "hidden",

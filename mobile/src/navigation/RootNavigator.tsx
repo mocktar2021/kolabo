@@ -16,6 +16,8 @@ import DashboardScreen from "../screens/DashboardScreen";
 import CreatorProfileScreen from "../screens/CreatorProfileScreen";
 import ContractsListScreen from "../screens/ContractsListScreen";
 import ContractDetailScreen from "../screens/ContractDetailScreen";
+import CheckoutScreen from "../screens/CheckoutScreen";
+import PayoutMethodScreen from "../screens/PayoutMethodScreen";
 import EarningsScreen from "../screens/EarningsScreen";
 import DisputeDetailScreen from "../screens/DisputeDetailScreen";
 import BoardScreen from "../screens/BoardScreen";
@@ -179,6 +181,11 @@ function AppNavigator() {
       <AppStack.Screen name="CreatorProfile" component={CreatorProfileScreen} options={{ title: t("profile.title") }} />
       <AppStack.Screen name="BusinessProfile" component={BusinessProfileScreen} options={{ title: t("biz.title") }} />
       <AppStack.Screen name="ContractDetail" component={ContractDetailScreen} options={{ title: t("contract.title") }} />
+      {/* The two payment screens. Their titles come from the pay.* bundle,
+          which each screen registers as a side effect of its own import — the
+          imports above are what put those keys on i18n before this renders. */}
+      <AppStack.Screen name="Checkout" component={CheckoutScreen} options={{ title: t("pay.title") }} />
+      <AppStack.Screen name="PayoutMethod" component={PayoutMethodScreen} options={{ title: t("pay.payoutTitle") }} />
       <AppStack.Screen name="CampaignDetail" component={CampaignDetailScreen} options={{ title: "" }} />
       <AppStack.Screen name="CampaignNew" component={CampaignNewScreen} options={{ title: t("campaign.title") }} />
       <AppStack.Screen name="CreatorPublic" component={CreatorPublicScreen} options={{ title: "" }} />

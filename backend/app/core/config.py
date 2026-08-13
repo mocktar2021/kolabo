@@ -50,6 +50,47 @@ class Settings(BaseSettings):
     # of frozen money. A setting rather than a constant because the right
     # number is a thing the pilot will tell us, not a thing we know.
     dispute_response_hours: int = 72
+
+    # ---------------------------------------------------------------- payments
+    # FedaPay is the contracted gateway for the UEMOA launch markets: Benin,
+    # Togo and Cote d'Ivoire. The decision and the numbers behind it are in
+    # docs/PAYMENTS_FEDAPAY.md; the short version is that a marketplace has to
+    # be able to pay third parties from code, and of the two candidates only
+    # FedaPay has an API that does it.
+    #
+    # UNSET MEANS PAYMENTS ARE OFF, not that they run against some default.
+    # With no secret key the gateway registry is empty, escrow funding falls
+    # back to the in-process mock provider, and every real money endpoint
+    # refuses with a sentence that says so. Same rule the YouTube and Anthropic
+    # integrations follow below: a feature with no key reports itself
+    # unavailable rather than half working.
+    fedapay_secret_key: str = ""
+    # The publishable key. The backend never calls FedaPay with it — it is
+    # served to the clients through GET /payments/config so that rotating a key
+    # is a backend deploy rather than two app store releases.
+    fedapay_public_key: str = ""
+    # The endpoint secret from the FedaPay dashboard's webhook tab, prefixed
+    # wh_. NOT the same value as fedapay_secret_key, and mixing them up rejects
+    # every webhook in a way that reads like a network fault rather than a
+    # configuration one. Empty makes verification REFUSE rather than skip —
+    # see gateways/signature.py for why that is the only safe direction.
+    fedapay_webhook_secret: str = ""
+    # Sandbox by default, so a deployment handed live keys without being told
+    # to use them stays in the test environment instead of moving real money.
+    # Going live is an explicit FEDAPAY_SANDBOX=false.
+    fedapay_sandbox: bool = True
+    # Where the gateway sends the payer when checkout finishes; the payment
+    # intent id is appended as a query parameter. The domain must be
+    # whitelisted in the FedaPay dashboard or payers land on a signup page
+    # instead of a payment form. Mobile passes its own kolabo:// deep link per
+    # request rather than using this.
+    payment_return_url: str = "http://localhost:5173/checkout/return"
+    # How many times a failed payout is retried before the sweep leaves it
+    # alone and it becomes a support queue item. A payout that has failed five
+    # times will not succeed on the sixth for the same reason it failed on the
+    # first, and retrying forever bills us per attempt.
+    payout_max_attempts: int = 5
+
     # How long a password reset code stays usable.
     #
     # Short on purpose, and shorter than the registration OTP's ten minutes is

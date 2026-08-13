@@ -176,18 +176,17 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
                     <>
                       <Hint>{t("contract.fundHint")}</Hint>
                       <View style={{ height: space(2) }} />
+                      {/* Funding is no longer one call that hands back a funded
+                          escrow. The money moves on the payer's handset at the
+                          gateway and the escrow exists only once it lands, so
+                          this button opens that conversation rather than
+                          finishing it. POST /payments/escrow/fund is still
+                          there but refuses (escrow_use_checkout) the moment a
+                          live gateway is configured — which is every
+                          deployment that takes real money. */}
                       <PrimaryButton
-                        title={busy ? "…" : t("contract.fund")}
-                        onPress={() =>
-                          act(() =>
-                            api("/payments/escrow/fund", {
-                              method: "POST",
-                              token,
-                              body: { contract_id: contract.id },
-                            })
-                          )
-                        }
-                        loading={busy}
+                        title={t("contract.fund")}
+                        onPress={() => navigation.navigate("Checkout", { contractId: contract.id })}
                       />
                     </>
                   ) : (

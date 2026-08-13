@@ -17,6 +17,11 @@ export type PaymentConfig = {
   public_key: string;
   sandbox: boolean;
   countries: string[];
+  /* May this client fall back to the mock funding path? True only when the
+     backend has no gateway configured AND is not running as production. Lets a
+     developer with no FedaPay account still exercise deliver -> approve ->
+     release locally; false in production, where funding refuses instead. */
+  mock_payments: boolean;
 };
 
 export type PaymentIntentStatus = "pending" | "succeeded" | "failed" | "canceled";

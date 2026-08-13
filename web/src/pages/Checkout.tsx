@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { useAuth } from "../lib/auth";
-import { ApiError } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import {
   paymentConfig,
@@ -103,6 +103,29 @@ export default function CheckoutPage() {
              the whole flow is designed to come back here through the return
              url anyway. */
           if (created.checkout_url) window.location.href = created.checkout_url;
+        } else if (contractId && cfg.mock_payments) {
+          /* No gateway configured, and the backend says this is not
+             production — so fund through the original one-step mock path and
+             go straight back to the contract.
+
+             THIS EXISTS BECAUSE REPOINTING THE FUND BUTTON HERE BROKE LOCAL
+             DEV. A developer with no FedaPay account previously funded an
+             escrow instantly through the mock provider; afterwards they landed
+             on this screen being told payments were unavailable in their
+             country, with no way to reach deliver -> approve -> release at all.
+
+             The backend decides whether this is allowed, not the client:
+             mock_payments is false in production, where funding refuses
+             instead of quietly holding an escrow against money nobody
+             collected. */
+          await api("/payments/escrow/fund", {
+            method: "POST",
+            token,
+            body: { contract_id: contractId },
+          });
+          if (cancelled) return;
+          navigate(`/contracts/${contractId}`, { replace: true });
+          return;
         }
       } catch (e) {
         if (!cancelled) setError(errorText(e, t));
@@ -113,7 +136,7 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [contractId, returningIntentId, token, refresh, t]);
+  }, [contractId, returningIntentId, token, refresh, navigate, t]);
 
   useEffect(() => {
     if (!intent || terminal) return;
@@ -159,7 +182,7 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        {config && !config.enabled && !loading && (
+        {config && !config.enabled && !config.mock_payments && !loading && (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>{t("pay.unavailable")}</h3>
             <p className="muted">{t("pay.unavailableHint")}</p>

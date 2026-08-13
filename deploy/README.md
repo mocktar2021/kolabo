@@ -1,0 +1,212 @@
+# Deploying the Kolabo dev environment
+
+One VPS, Docker Compose, Caddy for TLS.
+
+| | |
+|---|---|
+| Web | `https://kolabo.mocktar.com` |
+| API | `https://api.kolabo.mocktar.com` |
+| Payments | **FedaPay sandbox only.** No real money can move. |
+
+**This is a development environment on a public hostname.** Those two facts pull in opposite directions: it is reachable by anyone, and it is configured for convenience. Everything under "Before you start" exists because of that tension — in particular the two committed default secrets, which protect nothing until you replace them.
+
+---
+
+## 1. Why HTTPS is a requirement, not a nicety
+
+You cannot test the payment flow on `localhost`. FedaPay redirects the payer back to `PAYMENT_RETURN_URL` and POSTs webhooks to `/webhooks/fedapay`, and both must be publicly reachable HTTPS URLs with a valid certificate. That is the main thing this deployment buys you.
+
+Caddy obtains and renews the certificates from Let's Encrypt automatically — no certbot, no cron, no renewal to forget.
+
+---
+
+## 2. Before you start — the four secrets that matter
+
+`backend/app/core/config.py` ships working defaults so a laptop runs with no setup. Two of them are real credentials committed to a git repository:
+
+| Variable | Committed default | Why it matters on a public host |
+|---|---|---|
+| `JWT_SECRET` | `change-me` | Signs every session token. Anyone who has read this repo can forge a token for any account, **including an admin**. |
+| `DOCUMENT_ENCRYPTION_KEY` | a real Fernet key | Encrypts verification documents at rest. Unchanged, the encryption is decorative. |
+| `POSTGRES_PASSWORD` | `kolabo` | Not published to the host here, but it is the credential for every user and payment row. |
+| `ADMIN_PHONES` | empty | Empty means **nobody** is an admin. Safe by default, but you cannot resolve a dispute or trigger a sweep by hand until it is set. |
+
+Generate them:
+
+```bash
+openssl rand -hex 32                                                    # JWT_SECRET
+openssl rand -base64 24                                                 # POSTGRES_PASSWORD
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"   # DOCUMENT_ENCRYPTION_KEY
+```
+
+---
+
+## 3. DNS
+
+Two A records at your registrar, both pointing at the VPS's public IPv4:
+
+```
+kolabo.mocktar.com.      A    <server-ip>
+api.kolabo.mocktar.com.  A    <server-ip>
+```
+
+Add `AAAA` records too if the box has IPv6. **Let DNS propagate before the first `up`** — Caddy asks Let's Encrypt for certificates on boot, and the HTTP-01 challenge fails if the name does not yet resolve to this machine. Let's Encrypt rate-limits to **5 failures per hostname per hour** and 5 certificates per week, which is easy to burn through while debugging.
+
+Check first:
+
+```bash
+dig +short kolabo.mocktar.com api.kolabo.mocktar.com
+```
+
+---
+
+## 4. Server preparation
+
+A 2 GB / 1 vCPU box is enough (Hetzner CX22, DO basic, Contabo VPS S). Debian 12 or Ubuntu 24.04.
+
+```bash
+# Docker Engine + compose plugin
+curl -fsSL https://get.docker.com | sh
+
+# Only 80, 443 and SSH should be open. Nothing else in the stack publishes a
+# port — Postgres in particular is reachable only on the compose network.
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw enable
+```
+
+---
+
+## 5. First deploy
+
+```bash
+git clone https://github.com/mocktar2021/kolabo.git
+cd kolabo/deploy
+cp .env.example .env
+$EDITOR .env          # fill in every CHANGE THIS, and the FedaPay sandbox keys
+
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml logs -f
+```
+
+The first build takes a few minutes (the web image runs `tsc && vite build`, so a type error fails the build rather than shipping a broken bundle). Watch for Caddy reporting `certificate obtained successfully` for both hostnames.
+
+### What each service does
+
+| Service | Role |
+|---|---|
+| `db` | Postgres 16. **No host port** — not on the public internet. |
+| `backend` | `alembic upgrade head`, then uvicorn. Migrations run on every start; Alembic is idempotent. |
+| `sweeps` | The four money jobs on a timer. See §8 — without it the money path is incomplete. |
+| `web` | nginx serving the built SPA, with the fallback that makes `/checkout/return` work. |
+| `caddy` | TLS for both hostnames. The only service that publishes ports. |
+
+---
+
+## 6. FedaPay dashboard setup
+
+Do this at [sandbox.fedapay.com](https://sandbox.fedapay.com). All of it is on their side, none of it is in code.
+
+1. **Whitelist `kolabo.mocktar.com`** under the account's allowed domains. **Skip this and payers are redirected to a FedaPay signup page instead of a payment form.** It is the single most common first-launch failure and it looks like a bug in your app.
+2. Copy the sandbox **secret** and **public** keys into `deploy/.env`.
+3. Add a webhook:
+   - URL `https://api.kolabo.mocktar.com/webhooks/fedapay`
+   - Events: `transaction.approved`, `transaction.declined`, `transaction.canceled`, `transaction.transferred`, plus the payout events
+   - Copy the endpoint secret — it is prefixed **`wh_`** — into `FEDAPAY_WEBHOOK_SECRET`
+4. `docker compose -f docker-compose.prod.yml up -d backend sweeps` to pick up the new values.
+
+> `FEDAPAY_WEBHOOK_SECRET` is **not** `FEDAPAY_SECRET_KEY`. They are different values from different screens, and signing with the wrong one rejects every webhook with an error that reads like a network fault rather than a configuration one.
+
+---
+
+## 7. Verify
+
+```bash
+curl https://api.kolabo.mocktar.com/health
+# {"status":"ok","env":"development"}
+
+curl https://api.kolabo.mocktar.com/payments/config
+# {"enabled":true,"public_key":"...","sandbox":true,
+#  "countries":["BJ","CI","TG"],"mock_payments":false}
+```
+
+`"enabled": false` with `"countries": []` means `FEDAPAY_SECRET_KEY` did not reach the container. Check `deny`/typo in `.env`, then `docker compose -f docker-compose.prod.yml up -d backend` — the settings are read at import, so a running process will not pick up an edited `.env`.
+
+Then walk the money path end to end:
+
+| Step | Expected |
+|---|---|
+| Brand funds a signed contract, pays with MTN Benin **`97000000`** | Return page settles, escrow `held` |
+| Same, with **`97000002`** (insufficient funds) | Intent `failed`, **`GET /payments/escrow/by-contract/{id}` → 404**. No escrow is the correct outcome. |
+| Creator saves a wallet at `/settings/payouts` (`mtn_open`, `97000000`) | Masked number shown back |
+| Creator submits a deliverable, brand approves | Escrow `released`, `Payout` row `sent` |
+| Approve with no wallet saved | Escrow still `released`, payout `awaiting_method` — owed, tracked, paid by the sweep once they add one |
+
+Sandbox numbers: `97000000` / `61000000` succeed, `…001` processing error, `…002` insufficient funds. Moov: `95000000` / `68000000`, same pattern.
+
+Watch a payment arrive:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f backend | grep -i -E "webhook|intent|payout"
+```
+
+---
+
+## 8. The sweeps container
+
+Four jobs run every `SWEEP_INTERVAL_SECONDS` (default 300): auto-release, non-delivery refunds, dispute escalation, and **payout retries**.
+
+That last one is why this container exists. `payments/payouts.py` is built so a network failure cannot fail a release — the escrow releases, the creator is owed, and a `FAILED` payout row is left for a sweep to retry. With nothing running the sweep, that is a promise nothing keeps: the creator stays owed forever and **no error appears anywhere**. The design only works if something runs it.
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f sweeps
+```
+
+A quiet pass logs nothing at INFO — that is deliberate, so the pass that actually moved money is not buried under a hundred that did not.
+
+**Not yet included:** the campaigns order-expiry job behind `POST /campaigns/orders/expire`. Its service callable was not verified when this was written, and a guessed import would crash the container on boot and take the four money sweeps down with it. One line in `JOBS` once confirmed.
+
+---
+
+## 9. Updating
+
+```bash
+cd kolabo && git pull
+cd deploy && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Migrations run automatically on backend start.
+
+**Changing `VITE_API_URL` needs a rebuild, not a restart.** Vite substitutes it into the bundle at build time, so there is no runtime environment left to read. `docker compose -f docker-compose.prod.yml up -d --build web`.
+
+### Backups
+
+Nothing here backs up the database. For a dev environment that may be fine — but decide deliberately rather than by omission:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U kolabo kolabo | gzip > kolabo-$(date +%F).sql.gz
+```
+
+---
+
+## 10. Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Caddy loops on certificates | DNS not resolving to this box yet, or 80/443 blocked. Fix DNS **first** — retries burn the Let's Encrypt rate limit. |
+| `payments_gateway_not_configured` | `FEDAPAY_SECRET_KEY` unset or the backend was not restarted after editing `.env`. |
+| `payments_country_unsupported` for Benin | Should now be impossible with keys loaded — it means the registry is populated but has no `BJ`. Check `/payments/config`. |
+| Payer lands on a FedaPay signup page | The domain is not whitelisted in the dashboard (§6.1). |
+| Webhooks all rejected | `FEDAPAY_WEBHOOK_SECRET` holds the API key instead of the `wh_` endpoint secret. Also check the server clock — verification allows 300 s of drift. |
+| CORS errors in the browser | `CORS_ORIGINS` must be exactly `https://kolabo.mocktar.com`, scheme included, no trailing slash. |
+| Escrow funded but stuck `pending` | Webhook not reaching you *and* the payer never returned. Check the webhook URL and the dashboard's delivery log. |
+| Creator never paid after release | Check the `payouts` table and the `sweeps` logs. `awaiting_method` means no wallet on file — expected, not an error. |
+
+---
+
+## 11. Known limitations of this environment
+
+- **`init_db()` still runs `create_all` on boot** alongside Alembic. Belt-and-braces, but it can mask a missing migration by creating a table Alembic never learned about — the schema-drift risk the testing plan already flags. Fine for a dev box; resolve before production.
+- **Single box, no redundancy.** Losing it loses the environment. Postgres data survives in a named volume unless you `docker compose down -v`.
+- **No log aggregation, metrics or alerting.** Diagnosis is `docker compose logs`.
+- **Payments are UEMOA-only** (Benin, Togo, Côte d'Ivoire). Ghana and Cameroon refuse by design — see `docs/PAYMENTS_FEDAPAY.md`.
+- **`ENV=development`**, which is what keeps `mock_payments` available as a fallback. Setting `ENV=production` disables it, so funding refuses outright when no gateway is configured.

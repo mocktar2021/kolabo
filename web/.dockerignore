@@ -1,0 +1,10 @@
+# Keeps the build context small and, more importantly, keeps a developer's
+# local .env out of the image — VITE_API_URL is supplied as a build arg by the
+# compose file, and a stray .env copied in would silently win over it.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

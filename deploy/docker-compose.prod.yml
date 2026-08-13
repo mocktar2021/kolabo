@@ -1,0 +1,115 @@
+# Kolabo dev environment — one VPS, four services behind Caddy.
+#
+# Run from this directory:  docker compose -f docker-compose.prod.yml up -d --build
+#
+# HOW THIS DIFFERS FROM THE ROOT docker-compose.yml, which stays as it is for
+# local development:
+#   * no source bind mounts and no --reload — the image is the artifact
+#   * no host port on Postgres, so the database is not on the public internet
+#     (the root compose publishes 5432, which is correct on a laptop and would
+#     be an open database on a VPS)
+#   * secrets come from deploy/.env rather than being hardcoded
+#   * a sweeps worker, so the jobs that move money actually run
+#   * Caddy terminates TLS for both hostnames
+#
+# Only Caddy publishes ports. Everything else is reachable solely on the
+# internal compose network.
+
+name: kolabo
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - kolabo_db_data:/var/lib/postgresql/data
+    # depends_on alone waits for the container, not for Postgres to accept
+    # connections, which is not enough for a migration step.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    # Migrations run on every start so the running schema always matches the
+    # models. Alembic is idempotent: a no-op when already at head.
+    #
+    # ONE WORKER, ON PURPOSE. The sweeps run in their own container, and a
+    # second uvicorn worker would not double throughput on a dev box — it would
+    # double the memory and make logs harder to read. Scale this when there is
+    # traffic to justify it.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The jobs that move money on a clock. Same image, different command.
+  #
+  # WITHOUT THIS CONTAINER THE MONEY PATH IS INCOMPLETE, which is easy to miss
+  # because nothing errors: escrows never auto-release, un-delivered contracts
+  # never refund, disputes never reach the admin queue, and — most visibly — a
+  # payout that failed on a network blip is never retried, so a creator who is
+  # owed money stays owed it forever. Those four jobs had only admin-triggered
+  # HTTP endpoints before; this runs them without anyone remembering to.
+  #
+  # A separate container rather than a thread inside the API so a stuck sweep
+  # cannot take request handling with it, and so its logs are readable on their
+  # own.
+  sweeps:
+    build: ../backend
+    restart: unless-stopped
+    command: python -m app.jobs.sweeps
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../web
+      args:
+        # Baked into the bundle at build time — see web/Dockerfile. Changing
+        # this requires a rebuild, not a restart.
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. NAMED VOLUMES, so a
+      # `docker compose down` does not throw away the certificates and send you
+      # back to Let's Encrypt for new ones — their rate limit is five per week
+      # per hostname, and it is very easy to burn through while debugging.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - backend
+
+volumes:
+  kolabo_db_data:
+  caddy_data:
+  caddy_config:

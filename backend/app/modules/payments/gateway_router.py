@@ -41,6 +41,10 @@ def payment_config():
         "public_key": settings.fedapay_public_key,
         "sandbox": settings.fedapay_sandbox,
         "countries": sorted(live.keys()),
+        # Only where there is no gateway AND this is not production. See
+        # gateway_schemas.PaymentConfigOut for why the environment check is the
+        # load-bearing half of that condition.
+        "mock_payments": (not live) and settings.env != "production",
     }
 
 

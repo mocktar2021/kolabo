@@ -1,0 +1,56 @@
+# Kolabo dev environment edge.
+#
+# Caddy is here for one reason above all others: FedaPay will not talk to this
+# deployment over plain HTTP. The hosted checkout redirects the payer back to
+# PAYMENT_RETURN_URL and the gateway POSTs webhooks to /webhooks/fedapay, and
+# both of those have to be public HTTPS URLs with a valid certificate. Caddy
+# obtains and renews them from Let's Encrypt with no cron and no certbot.
+#
+# TWO HOSTNAMES, deliberately:
+#   kolabo.mocktar.com      the built SPA, served as static files
+#   api.kolabo.mocktar.com  FastAPI
+#
+# The split is what CORS_ORIGINS in the backend already assumes, and it means
+# the API can move to its own box later without touching the web deploy.
+
+{
+	# Let's Encrypt sends expiry warnings here. Set ACME_EMAIL in deploy/.env.
+	email {$ACME_EMAIL}
+}
+
+kolabo.mocktar.com {
+	encode zstd gzip
+	reverse_proxy web:80
+
+	header {
+		# The SPA is same-origin only; the API is the sole cross-origin thing
+		# it talks to and it is named explicitly rather than allowed by
+		# wildcard.
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Strict-Transport-Security "max-age=31536000"
+	}
+}
+
+api.kolabo.mocktar.com {
+	encode zstd gzip
+	reverse_proxy backend:8000
+
+	header {
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	# CORS is answered by FastAPI's middleware from CORS_ORIGINS, not here.
+	# Two layers both setting Access-Control-Allow-Origin is how you end up
+	# with duplicated headers that browsers reject outright.
+
+	# The webhook endpoint is deliberately NOT special-cased. It needs no
+	# allowlist at this layer: FedaPay does not publish stable egress IPs, and
+	# the real gate is the HMAC signature, the 300-second replay window and the
+	# idempotency key — see backend/app/modules/payments/webhooks.py. An IP
+	# rule here would give a false sense of protection and break silently the
+	# day they change ranges.
+}

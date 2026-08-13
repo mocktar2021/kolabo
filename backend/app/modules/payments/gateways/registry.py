@@ -94,7 +94,25 @@ def gateway_for(country: str | None, currency: str) -> PaymentGateway:
                 "Please complete your profile country and try again."
             ),
         )
-    gateway = registry().get(country)
+    live = registry()
+    if not live:
+        # NOTHING IS CONFIGURED AT ALL, which is a different failure from "your
+        # country is not covered" and has to say so. It used to fall through to
+        # the country refusal below, so a deployment that had simply forgotten
+        # FEDAPAY_SECRET_KEY told a Beninese brand that payments were not
+        # available in Benin — sending whoever debugged it looking at the
+        # country routing instead of at an unset environment variable. 503
+        # rather than 400: nobody did anything wrong, the server is not
+        # finished being set up.
+        raise AppError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="payments_gateway_not_configured",
+            detail=(
+                "Online payments are not switched on for this deployment yet. "
+                "If you are running it, set FEDAPAY_SECRET_KEY."
+            ),
+        )
+    gateway = live.get(country)
     if gateway is None:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,

@@ -46,6 +46,20 @@ class PaymentConfigOut(BaseModel):
     public_key: str = ""
     sandbox: bool = True
     countries: list[str] = Field(default_factory=list)
+    # May this client fall back to the in-process mock funding path?
+    #
+    # True ONLY when no gateway is configured AND this is not production. It
+    # exists because repointing the fund button at the hosted checkout broke
+    # every keyless stack — a developer with no FedaPay account could no longer
+    # fund an escrow at all, so the whole delivery-and-release flow became
+    # untestable locally.
+    #
+    # The environment check is the part that matters. Without it, a production
+    # deploy that forgot its keys would quietly mock-fund real escrows against
+    # money nobody collected, which is precisely what the direct path was
+    # disabled to prevent. In production this stays false and funding refuses,
+    # loudly, as it should.
+    mock_payments: bool = False
 
 
 class PayoutMethodIn(BaseModel):

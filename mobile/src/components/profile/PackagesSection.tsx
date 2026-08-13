@@ -56,18 +56,33 @@ export function PackagesSection({
     void load();
   }, [load]);
 
+  /* A failed fetch used to be recorded as new Set() — the same value as "no
+     accounts connected" — which silently collapsed the platform picker to
+     UGC-only on any transient error, with nothing on screen saying why. The
+     failure now stays null ("unknown") and the picker offers everything the
+     backend would accept, whose own validation remains the authority; a
+     wrong guess costs one readable 400, a silent collapse costs a creator
+     believing they cannot sell Instagram posts here. */
+  const [socialsFailed, setSocialsFailed] = useState(false);
   useEffect(() => {
+    setSocialsFailed(false);
     api<SocialAccount[]>(`/profiles/${userId}/social-accounts`, { token })
       .then((list) => setSocialPlatforms(new Set(list.map((a) => a.platform))))
-      .catch(() => setSocialPlatforms(new Set<string>()));
+      .catch(() => {
+        setSocialPlatforms(null);
+        setSocialsFailed(true);
+      });
   }, [userId, token]);
 
   /* Sell only where the creator exists: platform options are the connected
-     socials plus UGC (which is delivered to the brand, never posted). */
+     socials plus UGC (which is delivered to the brand, never posted). While
+     the connected list is unknown — still loading, or failed — nothing is
+     hidden, because hiding on ignorance looks exactly like a missing
+     feature. */
   const platformOptions: Choice[] = useMemo(
     () =>
       SELLABLE_PLATFORMS.filter(
-        (p) => p.id === "ugc" || (socialPlatforms?.has(p.id) ?? false)
+        (p) => p.id === "ugc" || socialPlatforms === null || socialPlatforms.has(p.id)
       ).map((p) => ({ value: p.id, label: p.label })),
     [socialPlatforms]
   );
@@ -165,6 +180,7 @@ export function PackagesSection({
       {socialPlatforms !== null && socialPlatforms.size === 0 ? (
         <Hint>{t("profile.connectSocialFirst")}</Hint>
       ) : null}
+      {socialsFailed ? <Hint>{t("profile.socialsUnknown")}</Hint> : null}
 
       <Text style={styles.fieldLabel}>{t("profile.platform")}</Text>
       <ChoiceGroup

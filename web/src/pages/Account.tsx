@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -93,7 +94,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
         </div>
         <div className="field">
           <label className="label" htmlFor="acc-phone-password">{t("account.passwordCurrent")}</label>
-          <input id="acc-phone-password" className="input" type="password" value={currentPassword}
+          <PasswordInput id="acc-phone-password" value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <button className="btn btn-primary" type="submit" disabled={busy || !changed || !currentPassword}>
@@ -152,18 +153,18 @@ function PasswordForm() {
       <form onSubmit={submit}>
         <div className="field">
           <label className="label" htmlFor="acc-pass-current">{t("account.passwordCurrent")}</label>
-          <input id="acc-pass-current" className="input" type="password" value={currentPassword}
+          <PasswordInput id="acc-pass-current" value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <div className="field">
           <label className="label" htmlFor="acc-pass-new">{t("account.passwordNew")}</label>
-          <input id="acc-pass-new" className="input" type="password" value={password}
+          <PasswordInput id="acc-pass-new" value={password}
             onChange={(e) => setPassword(e.target.value)} />
           {tooShort && <div className="hint" style={{ color: "var(--danger)" }}>{t("account.passwordTooShort", { n: MIN_PASSWORD_LENGTH })}</div>}
         </div>
         <div className="field">
           <label className="label" htmlFor="acc-pass-confirm">{t("account.passwordConfirm")}</label>
-          <input id="acc-pass-confirm" className="input" type="password" value={confirm}
+          <PasswordInput id="acc-pass-confirm" value={confirm}
             onChange={(e) => setConfirm(e.target.value)} />
           {mismatch && <div className="hint" style={{ color: "var(--danger)" }}>{t("account.passwordMismatch")}</div>}
         </div>
@@ -286,7 +287,7 @@ function DangerZone() {
         <div>
           <div className="field">
             <label className="label" htmlFor="del-pass">{t("danger.confirmPassword")}</label>
-            <input id="del-pass" className="input" type="password" value={password}
+            <PasswordInput id="del-pass" value={password}
               onChange={(e) => setPassword(e.target.value)} />
           </div>
           <div style={{ display: "flex", gap: 10 }}>

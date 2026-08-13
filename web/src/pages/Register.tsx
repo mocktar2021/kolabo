@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
 import { api, type RegisterResponse } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -100,7 +101,7 @@ export default function Register() {
               </div>
               <div className="field">
                 <label className="label" htmlFor="password">{t("auth.password")}</label>
-                <input id="password" className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+                <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
                 <div className="hint">8+ characters.</div>
               </div>
               <button className="btn btn-primary btn-block btn-lg" disabled={busy} type="submit">

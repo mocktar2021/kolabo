@@ -537,3 +537,43 @@ def test_apply_requires_auth(client):
     assert client.post("/campaigns/x/apply", json={
         "rate_amount": 40000, "rate_currency": "XOF", "timeline_days": 7,
     }).status_code == 401
+
+
+def test_an_application_and_its_counter_reach_the_creators_own_list(client):
+    """The other half of "an application is an ordinary proposal": it must be
+    ordinary for the CREATOR too. A board application writes no invitation
+    row, and /campaigns/invitations/mine used to iterate invitation rows only
+    — so when the brand countered an application, the creator got a
+    notification with no surface behind it: an offer on the table, invisible.
+    The list now carries a synthetic `applied` row for each such chain, with
+    the same campaign, live proposal and full history every invited row has."""
+    _, biz = _user(client, "+22990001130", "business")
+    _, inf = _user(client, "+22990001131", "influencer")
+    cid = _open_brief(client, biz, "Countered brief")
+
+    r = client.post(f"/campaigns/{cid}/apply",
+                    json={"rate_amount": 40000, "rate_currency": "XOF",
+                          "timeline_days": 7, "note": None},
+                    headers=inf)
+    assert r.status_code == 201
+    proposal_id = r.json()["id"]
+
+    # Visible to the creator immediately, as an applied row with the chain.
+    mine = client.get("/campaigns/invitations/mine", headers=inf).json()
+    row = next(i for i in mine if i["campaign_id"] == cid)
+    assert row["status"] == "applied"
+    assert row["campaign"]["title"] == "Countered brief"
+    assert row["proposal"]["rate_amount"] == 40000
+    assert len(row["proposal_history"]) == 1
+
+    # The brand counters; the counter must land in the same row.
+    r = client.post(f"/campaigns/{cid}/proposals/{proposal_id}/reply",
+                    json={"rate_amount": 30000, "note": "Budget stops at 30k"},
+                    headers=biz)
+    assert r.status_code == 201
+
+    mine = client.get("/campaigns/invitations/mine", headers=inf).json()
+    row = next(i for i in mine if i["campaign_id"] == cid)
+    assert row["proposal"]["rate_amount"] == 30000
+    assert row["proposal"]["author_role"] == "business"
+    assert [v["rate_amount"] for v in row["proposal_history"]] == [40000, 30000]

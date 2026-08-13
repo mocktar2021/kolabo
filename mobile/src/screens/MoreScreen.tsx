@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { isBusinessLike, useAuth } from "../lib/auth";
 import { Screen } from "../components/ui";
 import { colors, family, font, radius, shadow, space } from "../theme";
+/* Side-effect import: registers the pay.* copy on the i18n instance. */
+import "../lib/paymentStrings";
 import type { AppScreenProps } from "../navigation/types";
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -26,6 +28,19 @@ export default function MoreScreen({ navigation }: AppScreenProps<"More">) {
     brand
       ? { icon: "wallet-outline", label: t("spend.title"), onPress: () => navigation.navigate("Spend") }
       : { icon: "wallet-outline", label: t("earn.title"), onPress: () => navigation.navigate("Earnings") },
+    /* Creator-only rather than a ternary, because a brand has no counterpart
+       row here: it is never paid out. Spread away entirely for a brand so the
+       list has no gap. Until this row existed the screen was registered in the
+       navigator and reachable by nothing. */
+    ...(brand
+      ? []
+      : [
+          {
+            icon: "card-outline" as IconName,
+            label: t("pay.payoutTitle"),
+            onPress: () => navigation.navigate("PayoutMethod"),
+          },
+        ]),
     { icon: "chatbubbles-outline", label: t("msg.title"), onPress: () => navigation.navigate("Messages") },
     { icon: "alert-circle-outline", label: t("dispute.listTitle"), onPress: () => navigation.navigate("Disputes") },
     { icon: "notifications-outline", label: t("notif.title"), onPress: () => navigation.navigate("Notifications") },

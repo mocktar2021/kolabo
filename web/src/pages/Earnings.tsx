@@ -230,6 +230,13 @@ export default function EarningsPage() {
         <div>
           <h1 style={{ margin: 0 }}>{t("earn.title")}</h1>
           <p className="muted" style={{ marginTop: 6 }}>{t("earn.sub")}</p>
+          {/* The way to the payout wallet, and it lives here because this is
+              the screen somebody is on when they ask where the money lands.
+              A creator with nothing on file has every release stranded in
+              awaiting_method: owed, counted above, and going nowhere. */}
+          <div style={{ marginTop: 10 }}>
+            <Link className="btn btn-ghost" to="/settings/payouts">{t("pay.payoutTitle")}</Link>
+          </div>
         </div>
 
         {/* Offered only once there is something to choose between; see

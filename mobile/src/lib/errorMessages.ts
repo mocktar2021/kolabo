@@ -169,6 +169,22 @@ export const error_fr: Record<string, string> = {
   order_own_counter: "Ceci est votre propre contre-proposition. C'est à la marque de l'accepter.",
   order_not_open: "Cette commande n'est plus ouverte.",
   order_expired: "Cette commande a expiré.",
+
+  /* Paiements. Sans ces phrases, un refus de paiement s'affichait en anglais
+     sur mobile — et le refus arrive au moment où quelqu'un regarde son
+     argent, donc c'est la dernière phrase qui doive être illisible. */
+  escrow_business_not_found: "Nous n'avons pas retrouvé votre compte. Reconnectez-vous puis réessayez.",
+  payments_gateway_unavailable: "Le service de paiement est momentanément injoignable. Rien n'a été débité — réessayez dans un instant.",
+  payments_gateway_not_configured: "Les paiements ne sont pas encore activés sur la plateforme. Contactez le support.",
+  payment_intent_not_found: "Ce paiement est introuvable. Si un montant a été débité, contactez le support avec la référence.",
+  payment_intent_not_yours: "Ce paiement ne vous appartient pas.",
+  payments_country_unknown: "Nous n'avons pas pu déterminer le pays de ce paiement. Complétez le pays de votre profil puis réessayez.",
+  payments_country_unsupported: "Les paiements en ligne ne sont pas encore disponibles dans votre pays. Nous vous préviendrons dès l'ouverture.",
+  payments_currency_unsupported: "Nous ne pouvons pas encore traiter cette devise dans votre pays. Contactez le support si cela vous semble être une erreur.",
+  payout_country_unsupported: "Nous ne pouvons pas encore effectuer de versement vers votre pays. Nous vous préviendrons dès l'ouverture.",
+  payout_mode_unsupported: "Ce réseau Mobile Money n'est pas disponible dans le pays choisi. Sélectionnez-en un dans la liste.",
+  payout_phone_invalid: "Ce numéro ne ressemble pas à un numéro Mobile Money valide.",
+  escrow_use_checkout: "Le financement direct n'est plus disponible. Ouvrez la page de paiement sécurisé pour financer ce contrat.",
 };
 
 export const error_en: Record<string, string> = {
@@ -324,6 +340,22 @@ export const error_en: Record<string, string> = {
   order_own_counter: "This is your own counter-offer. The brand has to accept it.",
   order_not_open: "That order is no longer open.",
   order_expired: "That order has expired.",
+
+  /* Payments. Mobile CI only type-checks, so a code missing from these maps
+     never fails a build — it falls through to the backend's English and only
+     a francophone reader ever finds out. */
+  escrow_business_not_found: "We couldn't find your account. Please sign in again and retry.",
+  payments_gateway_unavailable: "The payment service is unreachable right now. Nothing has been charged — please try again in a moment.",
+  payments_gateway_not_configured: "Payments aren't switched on yet. Please contact support.",
+  payment_intent_not_found: "We can't find this payment. If you were charged, contact support with the reference.",
+  payment_intent_not_yours: "This payment isn't yours.",
+  payments_country_unknown: "We couldn't tell which country this payment belongs to. Please complete your profile country and try again.",
+  payments_country_unsupported: "Online payments aren't available in your country yet. We'll let you know as soon as they open.",
+  payments_currency_unsupported: "We can't process this currency in your country yet. Contact support if you think that's a mistake.",
+  payout_country_unsupported: "We can't pay out to your country yet. We'll let you know as soon as it opens.",
+  payout_mode_unsupported: "That Mobile Money network isn't available in the country you chose. Please pick one from the list.",
+  payout_phone_invalid: "That doesn't look like a valid Mobile Money number.",
+  escrow_use_checkout: "Direct funding is no longer available. Open the secure payment page to fund this contract.",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather

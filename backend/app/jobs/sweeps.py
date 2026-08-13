@@ -65,6 +65,11 @@ JOBS = (
 
 _running = True
 
+# How long to wait for the backend container to finish `alembic upgrade head`
+# before giving up and letting the jobs fail loudly instead. Generous, because
+# the first boot of a fresh database runs every migration from scratch.
+SCHEMA_WAIT_SECONDS = 300
+
 
 def _stop(signum, _frame):
     """Finish the pass in flight, then exit. NEVER mid-sweep.
@@ -77,6 +82,52 @@ def _stop(signum, _frame):
     global _running
     logger.info("Received signal %s; finishing the current pass then exiting", signum)
     _running = False
+
+
+def wait_for_schema(timeout: int = SCHEMA_WAIT_SECONDS) -> bool:
+    """Block until the tables exist. THE COLD-START RACE, and it is ours.
+
+    This container and the backend both wait only on the DATABASE being
+    healthy, which Postgres reports the moment it accepts connections — before
+    the backend has run `alembic upgrade head` against it. On a fresh volume
+    those migrations take a few seconds, and the first sweep pass fires inside
+    that window and explodes with `relation "escrows" does not exist`.
+
+    The jobs already survive it: each is wrapped, the pass completes, and the
+    next one five minutes later works fine. But a stack trace on every cold
+    boot is a bad thing to teach an operator to ignore — the next stack trace
+    might be real, and by then nobody is reading them.
+
+    Waiting rather than ordering on the backend container, because
+    `depends_on: service_started` would not help: the backend process starts,
+    and only THEN migrates. Short of giving it a healthcheck that reports
+    migration completion, asking the database directly is the honest test.
+
+    Returns False on timeout rather than raising, and the caller proceeds
+    anyway — if something is that badly wrong, the per-job handlers surfacing
+    real errors every pass is more useful than a container that quietly exits.
+    """
+    from sqlalchemy import inspect
+
+    from app.core.db import engine
+
+    deadline = time.monotonic() + timeout
+    announced = False
+    while _running and time.monotonic() < deadline:
+        try:
+            if inspect(engine).has_table("escrows"):
+                if announced:
+                    logger.info("Schema is ready")
+                return True
+        except Exception:  # noqa: BLE001 - database not up yet is not exceptional here
+            pass
+        if not announced:
+            logger.info("Waiting for the backend to finish migrations...")
+            announced = True
+        time.sleep(3)
+    if _running:
+        logger.warning("Gave up waiting for the schema after %ss; starting anyway", timeout)
+    return False
 
 
 def run_once() -> dict:
@@ -132,6 +183,9 @@ def main() -> int:
     import_all_models()
 
     logger.info("Sweeps starting: %s jobs every %ss", len(JOBS), interval)
+    # Before the first pass, not between passes: the race only exists on a cold
+    # start, and after that the schema cannot disappear.
+    wait_for_schema()
     while _running:
         started = time.monotonic()
         results = run_once()

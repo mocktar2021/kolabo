@@ -119,11 +119,16 @@ function CounterForm({ campaignId, live, isOrder, onSent }: {
    The turn is DERIVED from the live version's author_role, never stored:
    one side wrote the last word and there is exactly one of those, so a
    stored "waiting_on" would only ever be a second copy that could drift. */
-export function Negotiation({ campaignId, live, history, isOrder, onDone, onContract }: {
+export function Negotiation({ campaignId, live, history, isOrder, readOnly = false, onDone, onContract }: {
   campaignId: string;
   live: Proposal;
   history: Proposal[];
   isOrder: boolean;
+  /* True when the campaign underneath is no longer open (cancelled): the
+     thread stays readable — it is the record of what was offered — but every
+     action goes, because the backend would refuse it with campaign_not_open
+     and a button that only ever earns a refusal is a trap. */
+  readOnly?: boolean;
   onDone: () => void;
   onContract: (contractId: string) => void;
 }) {
@@ -136,7 +141,7 @@ export function Negotiation({ campaignId, live, history, isOrder, onDone, onCont
 
   const left = live.expires_at ? orderTimeLeft(live.expires_at) : null;
   const expired = isOrder && left === null;
-  const open = live.status === "submitted";
+  const open = live.status === "submitted" && !readOnly;
   const theirMove = live.author_role === "business";
   const versions = history.length > 0 ? history : [live];
   const withdrawable = !isOrder && open && !theirMove;

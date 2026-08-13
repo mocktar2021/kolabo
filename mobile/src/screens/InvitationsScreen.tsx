@@ -127,6 +127,11 @@ function InvitationCard({ inv, onDone, onContract }: {
   const c = inv.campaign;
   const order = directOrderOf(inv);
   const live = inv.proposal;
+  /* A creator only ever sees published and cancelled campaigns; a cancelled
+     one keeps its card (the record of what was offered) but takes no more
+     answers — the badge says why the forms are gone, instead of leaving a
+     button that could only earn the backend's campaign_not_open refusal. */
+  const cancelled = c.status === "cancelled";
 
   return (
     <View style={styles.card}>
@@ -134,6 +139,7 @@ function InvitationCard({ inv, onDone, onContract }: {
       <View style={styles.titleRow}>
         <Text style={styles.cardTitle} numberOfLines={2}>{c.title}</Text>
         {order ? <Text style={styles.orderBadge}>{t("invitation.orderBadge")}</Text> : null}
+        {cancelled ? <Text style={styles.cancelledBadge}>{t("invitation.campaignCancelled")}</Text> : null}
       </View>
       <Text style={styles.status}>{t(`invitation.status_${inv.status}`, { defaultValue: inv.status })}</Text>
 
@@ -171,10 +177,11 @@ function InvitationCard({ inv, onDone, onContract }: {
           live={live}
           history={inv.proposal_history ?? []}
           isOrder={order !== null}
+          readOnly={cancelled}
           onDone={onDone}
           onContract={onContract}
         />
-      ) : (
+      ) : cancelled ? null : (
         <View style={styles.proposalWrap}>
           <Text style={styles.delivTitle}>{t("invitation.yourProposal")}</Text>
           <ProposalForm campaignId={inv.campaign_id} onDone={onDone} />
@@ -291,6 +298,16 @@ const styles = StyleSheet.create({
     fontFamily: family.bodyBold,
     color: colors.white,
     backgroundColor: colors.indigo,
+    borderRadius: radius.pill,
+    paddingHorizontal: space(2),
+    paddingVertical: 3,
+    overflow: "hidden",
+  },
+  cancelledBadge: {
+    fontSize: font.tiny,
+    fontFamily: family.bodyBold,
+    color: "#9b2c2c",
+    backgroundColor: "#fdecec",
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,

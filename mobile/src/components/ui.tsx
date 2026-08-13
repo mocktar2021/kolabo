@@ -147,21 +147,41 @@ export function Hint({ children }: { children: ReactNode }) {
 export function Field({
   label,
   hint,
+  secureTextEntry,
   ...rest
 }: { label: string; hint?: string } & TextInputProps) {
   /* Web inputs get a focus ring (border + soft glow); RN has no box-shadow,
      so the border carries the state alone. */
   const [focused, setFocused] = useState(false);
+  /* Every secure field gets an eye toggle for free: on a phone keyboard,
+     typing a password blind is how typos become lockouts. `hidden` is this
+     field's own state, so revealing one password never reveals another. */
+  const [hidden, setHidden] = useState(true);
+  const secure = !!secureTextEntry;
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, focused && styles.inputFocused]}
-        placeholderTextColor={colors.muted}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        {...rest}
-      />
+      <View>
+        <TextInput
+          style={[styles.input, secure && styles.inputSecure, focused && styles.inputFocused]}
+          placeholderTextColor={colors.muted}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          secureTextEntry={secure && hidden}
+          {...rest}
+        />
+        {secure ? (
+          <Pressable
+            onPress={() => setHidden((v) => !v)}
+            hitSlop={8}
+            style={styles.eye}
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? "Show password" : "Hide password"}
+          >
+            <Ionicons name={hidden ? "eye-outline" : "eye-off-outline"} size={20} color={colors.muted} />
+          </Pressable>
+        ) : null}
+      </View>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
@@ -457,6 +477,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   inputFocused: { borderColor: colors.indigo600 },
+  inputSecure: { paddingRight: space(9) },
+  eye: {
+    position: "absolute",
+    right: space(3),
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
   btn: {
     borderRadius: radius.sm,
     paddingVertical: space(3),

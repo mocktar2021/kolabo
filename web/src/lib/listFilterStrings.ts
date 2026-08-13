@@ -31,7 +31,7 @@ const fr = {
   inv_declined: "Refusée",
   inv_withdrawn: "Retirée",
 
-  /* "Terminé" et non "Complété": it covers everything that has ENDED — payé,
+  /* "Terminé" and not "Complété": it covers everything that has ENDED — payé,
      remboursé après litige, annulé — and in French that is exactly what
      terminé means. Les puces de statut en dessous permettent de distinguer
      lesquels. */

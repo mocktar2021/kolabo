@@ -30,6 +30,20 @@ INFLUENCER_REQUIRED = ("bio", "categories", "packages")
 DOC_TYPES = {"business_registration", "identity"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
+# The ceiling on an uploaded file, and the number is about where the bytes
+# land rather than about photography: MediaAsset keeps them in a Postgres
+# LargeBinary ("swap for object storage before production", says the model),
+# and VerificationDocument does the same with the ciphertext, so an upload
+# with no ceiling is a database row with no ceiling. 10 MB sits well above a
+# photo straight off a mid-range Android — a 12 MP JPEG lands around 3-5 MB —
+# so no real avatar or ID photo is refused by it.
+#
+# It does not replace downscaling in the client, and is not meant to: every
+# launch market pays for data by the megabyte, so the megabytes that are
+# never uploaded are the ones that actually help. This only stops the row
+# that has no upper bound at all.
+MAX_MEDIA_BYTES = 10 * 1024 * 1024
+
 # Creators must be adults: legal register, child-safety item.
 MINIMUM_CREATOR_AGE = 18
 
@@ -241,6 +255,16 @@ def upload_verification_document(db: Session, user_id: str, doc_type: str, filen
             status.HTTP_400_BAD_REQUEST,
             code="profile_document_empty",
             detail="Empty document",
+        )
+    # Same rule as save_media, same constant, same code: a document is the
+    # other unbounded write in this module, and it is checked on the
+    # PLAINTEXT — encrypt_bytes only makes the row bigger.
+    if len(content) > MAX_MEDIA_BYTES:
+        raise AppError(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            code="profile_file_too_large",
+            detail=f"Documents must be under {MAX_MEDIA_BYTES // (1024 * 1024)} MB.",
+            values={"max": MAX_MEDIA_BYTES // (1024 * 1024)},
         )
     doc = models.VerificationDocument(
         user_id=user_id,
@@ -530,6 +554,16 @@ def save_media(db: Session, user_id: str, content_type: str, data: bytes) -> dic
             status.HTTP_400_BAD_REQUEST,
             code="profile_file_empty",
             detail="Empty file",
+        )
+    if len(data) > MAX_MEDIA_BYTES:
+        raise AppError(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            code="profile_file_too_large",
+            detail=f"Images must be under {MAX_MEDIA_BYTES // (1024 * 1024)} MB.",
+            # The ceiling travels as a number, in the units the sentence
+            # quotes it in, so neither language hard-codes a 10 that then
+            # drifts from the constant.
+            values={"max": MAX_MEDIA_BYTES // (1024 * 1024)},
         )
     asset = models.MediaAsset(owner_user_id=user_id, content_type=content_type, data=data)
     db.add(asset)

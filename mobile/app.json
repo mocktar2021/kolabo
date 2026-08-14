@@ -15,6 +15,20 @@
       "package": "com.kolabo.app",
       "edgeToEdgeEnabled": true
     },
+    "locales": {
+      "en": "./locales/en.json",
+      "fr": "./locales/fr.json"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kolabo needs access to your photos so you can add a profile picture and upload the content you deliver for a campaign.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
     "extra": {
       "apiBaseUrl": "https://api.kolabo.mocktar.com"
     }

@@ -80,11 +80,15 @@ When it finishes, EAS gives you a download URL. Send that to testers; they enabl
 TestFlight and ad-hoc distribution both require **Apple Developer Program membership at $99/year**. There is no free route to an iOS device; the only free option is a simulator build on a Mac, which does not help a tester in Cotonou.
 
 ```bash
-eas build -p ios --profile preview
+eas build -p ios --profile production
 eas submit -p ios --latest      # to TestFlight
 ```
 
+Note this uses `production`, not `preview` — on iOS the `preview` profile is `distribution: internal`, which means an ad-hoc build requiring every tester's device UDID registered up front. TestFlight avoids that.
+
 **Start enrolment before you need it.** Individual enrolment is usually quick. Enrolling as an *organisation* needs a D-U-N-S number and identity verification and routinely takes one to three weeks. It is the longest-lead item in the mobile plan and it costs nothing to begin.
+
+**→ See [`IOS_RELEASE.md`](./IOS_RELEASE.md)** for the full iOS path: enrolment choices, the permission and localisation config, the App Review items (demo accounts, privacy policy, the payments question), and the ordered checklist of what is blocked by what.
 
 ### Expo Go — fastest loop for you, not for testers
 

@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
@@ -32,6 +33,13 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The REAL AppError handler, registered from app.core.errors the way
+    # app/main.py does it, so a refusal reaches the client carrying its `code`.
+    # Without it FastAPI's default HTTPException handler answers with `detail`
+    # alone and a test cannot assert WHICH rule refused — which is the thing
+    # both clients key their translated sentence off. Same reasoning, and the
+    # same handler, as test_error_codes.py's fixture.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(contracts_router, prefix="/contracts")
     app.dependency_overrides[get_db] = override_get_db
     c = TestClient(app)
@@ -131,6 +139,78 @@ def test_double_sign_by_same_party_rejected(client):
     client.post(f"/contracts/{cid}/sign", json={"signature": "Business Rep"}, headers=_headers(biz))
     r = client.post(f"/contracts/{cid}/sign", json={"signature": "Business Rep again"}, headers=_headers(biz))
     assert r.status_code == 400
+
+
+def test_signing_a_cancelled_contract_is_refused_and_writes_nothing(client):
+    """A cancelled contract is not signable, and the refusal leaves no trace.
+
+    Its own code rather than contract_signed_immutable: this contract is not
+    signed, it is over, and the two refusals point somewhere different. The
+    second half matters more than the first — a refusal that still stamped the
+    signature would be the worse bug, because the stamps are exactly what
+    sign_contract reads to decide the contract is fully signed.
+    """
+    from app.modules.contracts import models as contracts
+
+    biz, inf, camp, prop = _setup(client)
+    cid = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz)).json()["id"]
+    assert client.post(f"/contracts/{cid}/cancel", headers=_headers(biz)).status_code == 200
+
+    db = client.session_factory()
+    before = db.query(contracts.ContractEvent).filter(contracts.ContractEvent.contract_id == cid).count()
+    db.close()
+
+    r = client.post(f"/contracts/{cid}/sign", json={"signature": "Business Rep"}, headers=_headers(biz))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_sign_cancelled"
+
+    db = client.session_factory()
+    contract = db.query(contracts.Contract).filter(contracts.Contract.id == cid).first()
+    after = db.query(contracts.ContractEvent).filter(contracts.ContractEvent.contract_id == cid).count()
+    db.close()
+    assert contract.status == contracts.CANCELLED
+    assert contract.business_signature is None
+    assert contract.business_signed_at is None
+    # No signed_business row was added on the way out of the refusal.
+    assert after == before
+
+
+def test_a_cancelled_contract_cannot_be_signed_back_to_life_by_the_other_party(client):
+    """The actual exploit, end to end: sign, cancel, then sign anyway.
+
+    The business signs, the creator calls the deal off — allowed, because it
+    is not fully signed and no escrow exists against it — and then the creator
+    signs after all. Without the guard that second signature completes the
+    pair, the pair sets the status to signed, and payments.assert_fundable
+    asks nothing except whether the status is signed: an ended deal becomes
+    fundable, and the money is real.
+    """
+    from app.modules.contracts import models as contracts
+
+    biz, inf, camp, prop = _setup(client)
+    cid = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz)).json()["id"]
+    assert client.post(f"/contracts/{cid}/sign", json={"signature": "Business Rep"},
+                       headers=_headers(biz)).status_code == 200
+    assert client.post(f"/contracts/{cid}/cancel", headers=_headers(inf)).status_code == 200
+
+    r = client.post(f"/contracts/{cid}/sign", json={"signature": "The Creator"}, headers=_headers(inf))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_sign_cancelled"
+
+    db = client.session_factory()
+    contract = db.query(contracts.Contract).filter(contracts.Contract.id == cid).first()
+    events = [
+        e.event
+        for e in db.query(contracts.ContractEvent).filter(contracts.ContractEvent.contract_id == cid).all()
+    ]
+    db.close()
+    # Still cancelled. The first signature stands as a record; the contract
+    # does not become signed because of it.
+    assert contract.status == contracts.CANCELLED
+    assert contract.influencer_signature is None
+    assert contract.influencer_signed_at is None
+    assert "signed_influencer" not in events
+    assert "fully_signed" not in events
 
 
 def test_endpoints_require_auth(client):

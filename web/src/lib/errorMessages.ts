@@ -94,6 +94,7 @@ export const error_fr = {
   contract_not_a_party: "Vous n'êtes pas partie à ce contrat.",
   contract_signed_immutable: "Ce contrat est entièrement signé : il ne peut plus être modifié.",
   contract_you_already_signed: "Vous avez déjà signé.",
+  contract_sign_cancelled: "Ce contrat a été annulé et ne peut plus être signé. Convenez de nouvelles conditions et générez un nouveau contrat.",
   /* Ces trois-là remplacent undo.contractFunded / undo.contractRefused, qui
      étaient choisis d'après le code HTTP : le 400 servait à la fois pour un
      contrat déjà annulé et pour un contrat signé, deux situations qui
@@ -366,6 +367,7 @@ export const error_en = {
   contract_not_a_party: "You are not a party to this contract.",
   contract_signed_immutable: "This contract is fully signed and can no longer be changed.",
   contract_you_already_signed: "You have already signed.",
+  contract_sign_cancelled: "This contract was cancelled and can no longer be signed. Agree new terms and generate a new contract.",
   contract_already_cancelled: "This contract is already cancelled.",
   contract_cancel_signed: "This contract is fully signed. Both parties agreed to it, and it is not something either side can cancel alone.",
   contract_cancel_funded: "This contract has money in escrow. Ending it is a question about who is owed what, which is the dispute and refund path, not a cancellation.",

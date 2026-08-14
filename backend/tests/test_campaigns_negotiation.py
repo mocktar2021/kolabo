@@ -249,23 +249,32 @@ def test_the_chain_is_oldest_first_and_capped(client):
 
 def test_accepting_signs_the_latest_version(client):
     """The business accepts from a page holding the opening offer's id, after
-    its own counter moved the terms. The contract must carry the counter: a
-    proposal id names a negotiation, not a frozen offer."""
-    biz, _, _, cid, first = _negotiation(client, "+22990001026", "+22990001027")
-    counter = _reply(client, cid, first["id"], biz, note="8000 over ten days.", rate=8000, days=10).json()
+    two more rounds moved the terms. The contract must carry the LAST version:
+    a proposal id names a negotiation, not a frozen offer.
+
+    The chain ends on the CREATOR's version deliberately. Accepting is
+    answering, so the live offer has to be the other side's — a business
+    accepting its own counter is refused with contract_own_offer
+    (contracts/service.py), and test_contracts.py owns that case. Before that
+    guard existed this test stopped at the business's own counter and accepted
+    it, which is the bug rather than the behaviour being pinned here.
+    """
+    biz, inf, _, cid, first = _negotiation(client, "+22990001026", "+22990001027")
+    _reply(client, cid, first["id"], biz, note="8000 over ten days.", rate=8000, days=10)
+    latest = _submit(client, cid, inf, rate=9000, days=10, note="9000 and we have a deal.").json()
 
     r = client.post(f"/contracts/from-proposal/{first['id']}", headers=biz)
     assert r.status_code == 201
     contract = r.json()
-    assert contract["rate_amount"] == 8000
+    assert contract["rate_amount"] == 9000
     assert contract["timeline_days"] == 10
-    assert contract["proposal_id"] == counter["id"]
+    assert contract["proposal_id"] == latest["id"]
 
     from app.modules.campaigns.models import Proposal
     db = client.session_factory()
     statuses = {p.version: p.status for p in db.query(Proposal).filter(Proposal.campaign_id == cid).all()}
     db.close()
-    assert statuses == {1: "superseded", 2: "accepted"}
+    assert statuses == {1: "superseded", 2: "superseded", 3: "accepted"}
 
 
 def test_a_closed_negotiation_cannot_be_answered(client):

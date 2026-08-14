@@ -30,6 +30,17 @@ from app.modules.profiles.models import BusinessProfile
 # fields; Cameroon defaults to French for the contract body for now.
 FRENCH_COUNTRIES = {"BJ", "TG", "CI", "SN", "CM"}
 
+# What signing a cancelled contract is refused with. Its own sentence rather
+# than the fully-signed one, because the two refusals point somewhere
+# different: a signed contract is finished and unchangeable, a cancelled one
+# is over, and the way forward is a new agreement rather than a retry. Named
+# for the same reason cancellation.SIGNED_DETAIL is — the sentence is long
+# enough that it reads better out of the raise.
+CANCELLED_SIGN_DETAIL = (
+    "This contract was cancelled and can no longer be signed. Agree new terms "
+    "and generate a new contract."
+)
+
 
 def _language_for(country_code: str) -> str:
     return "fr" if country_code in FRENCH_COUNTRIES else "en"
@@ -189,6 +200,19 @@ def sign_contract(db: Session, contract_id: str, user_id: str, signature: str) -
             status.HTTP_403_FORBIDDEN,
             code="contract_not_a_party",
             detail="Not a party to this contract",
+        )
+    # Refused HERE, and not only in contracts/cancellation.py. A signature
+    # completes the pair, the pair flips the status to SIGNED, and SIGNED is
+    # the only thing payments.assert_fundable asks about before an escrow is
+    # funded. So without this guard a contract cancelled after one party had
+    # signed is brought back by the other party's signature and becomes
+    # collectable in real money — an ended deal, funded, with a
+    # contract_events trail saying it was called off.
+    if contract.status == models.CANCELLED:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_sign_cancelled",
+            detail=CANCELLED_SIGN_DETAIL,
         )
     if contract.status == models.SIGNED:
         raise AppError(

@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
+from app.modules.campaigns import completion
 from app.modules.notifications.service import notify
 from app.modules.payments import disputes, models, payouts
 from app.modules.payments import gateway_models as gmodels
@@ -198,7 +199,13 @@ def resolve_dispute(db: Session, admin_id: str, escrow_id: str, payload) -> dict
     if released > 0:
         payments_service._award_referral_credits(db, escrow)
 
+    campaign_id = escrow.campaign_id
     db.commit()
+    # A settled dispute is an ending whichever way the split fell: the escrow
+    # is RELEASED or REFUNDED and either satisfies the money half of the
+    # completion rule. After the commit, so a campaign is never finished off a
+    # settlement that did not stick.
+    completion.maybe_complete_campaign(db, campaign_id)
     db.refresh(dispute)
     db.refresh(escrow)
     return disputes.dispute_out(db, dispute, escrow)

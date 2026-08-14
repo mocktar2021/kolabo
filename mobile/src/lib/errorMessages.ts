@@ -139,6 +139,8 @@ export const error_fr: Record<string, string> = {
   contract_campaign_not_found: "Campagne introuvable.",
   contract_already_exists: "Un contrat existe déjà pour cette proposition.",
   contract_proposal_not_submitted: "Seule une proposition en cours peut être acceptée.",
+  contract_own_offer: "Vous ne pouvez pas accepter votre propre offre. C'est à l'autre partie de l'accepter.",
+  contract_campaign_not_open: "Cette campagne n'est plus ouverte : aucun nouveau contrat ne peut en être créé.",
   contract_none_for_proposal: "Aucun contrat pour cette proposition.",
 
   proposal_not_found: "Proposition introuvable.",
@@ -311,6 +313,8 @@ export const error_en: Record<string, string> = {
   contract_campaign_not_found: "Campaign not found.",
   contract_already_exists: "A contract already exists for this proposal.",
   contract_proposal_not_submitted: "Only a live proposal can be accepted.",
+  contract_own_offer: "You cannot accept your own offer. The other party has to accept it.",
+  contract_campaign_not_open: "This campaign is no longer open, so no new contract can be created from it.",
   contract_none_for_proposal: "No contract for this proposal.",
 
   proposal_not_found: "Proposal not found.",

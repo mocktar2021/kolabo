@@ -1,4 +1,6 @@
 """Tests for Epic E (KOL-5): contract generation and e-signature."""
+from datetime import timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -283,3 +285,224 @@ def test_list_my_contracts_carries_campaign_and_counterparty(client):
     assert inf_row["campaign_title"] == "Launch push"
     assert inf_row["counterparty_name"] is None
     assert inf_row["counterparty_avatar_url"] is None
+
+
+# --------------------------------------------------------------------------
+# W2: what may be turned into a contract at all
+#
+# generate_from_proposal used to ask two questions — is the live version
+# `submitted`, and does a contract already exist — and three it did not, all
+# of them upstream of money: whose offer is on the table, whether the campaign
+# is still open, and whether the offer has lapsed.
+#
+# Every case below asserts the refusal AND that nothing was written. That
+# second half is the one that matters: generation marks the chain `accepted`
+# before it writes the contract, and an `accepted` chain is exactly what makes
+# the creator's decline fail with order_not_open — so a refusal that still
+# wrote would take the creator's way out with it.
+# --------------------------------------------------------------------------
+
+
+def _counter_from_business(client, camp, inf, rate_amount=8000):
+    """Add a business-authored version to the chain, superseding the one below.
+
+    What a buyer's counter-offer looks like on a brief, and the shape a direct
+    order carries from the moment it is placed.
+    """
+    db = client.session_factory()
+    try:
+        previous = (
+            db.query(campaigns.Proposal)
+            .filter(campaigns.Proposal.campaign_id == camp)
+            .order_by(campaigns.Proposal.version.desc())
+            .first()
+        )
+        previous.status = campaigns.SUPERSEDED
+        counter = campaigns.Proposal(
+            campaign_id=camp,
+            influencer_user_id=inf,
+            version=previous.version + 1,
+            rate_amount=rate_amount,
+            rate_currency="XOF",
+            timeline_days=7,
+            author_role=campaigns.AUTHOR_BUSINESS,
+            status=campaigns.SUBMITTED,
+            # Carried forward, the way reply_to_proposal carries it.
+            expires_at=previous.expires_at,
+        )
+        db.add(counter)
+        db.commit()
+        db.refresh(counter)
+        return counter.id
+    finally:
+        db.close()
+
+
+def _contracts_for(client, camp):
+    from app.modules.contracts import models as contracts
+
+    db = client.session_factory()
+    try:
+        return db.query(contracts.Contract).filter(contracts.Contract.campaign_id == camp).all()
+    finally:
+        db.close()
+
+
+def _proposal_status(client, proposal_id):
+    db = client.session_factory()
+    try:
+        return (
+            db.query(campaigns.Proposal)
+            .filter(campaigns.Proposal.id == proposal_id)
+            .first()
+            .status
+        )
+    finally:
+        db.close()
+
+
+def test_business_cannot_generate_a_contract_from_its_own_counter(client):
+    """The buyer accepting its own offer, which is not an acceptance at all.
+
+    Once the business counters, the live version is the business's own. Taking
+    it through the contracts endpoint marked the chain accepted and wrote a
+    contract on terms the creator never said yes to — and with the chain then
+    `accepted`, the creator's decline came back order_not_open, so they could
+    not turn the offer down through the order flow either.
+    """
+    biz, inf, camp, prop = _setup(client)
+    counter = _counter_from_business(client, camp, inf)
+
+    r = client.post(f"/contracts/from-proposal/{counter}", headers=_headers(biz))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_own_offer"
+
+    # The same refusal through the stale id the buyer's page may still hold:
+    # generation resolves the chain to its latest version either way.
+    stale = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+    assert stale.status_code == 400
+    assert stale.json()["code"] == "contract_own_offer"
+
+    assert _contracts_for(client, camp) == []
+    # Still an open offer, still waiting on the creator to answer it.
+    assert _proposal_status(client, counter) == campaigns.SUBMITTED
+
+
+def test_the_order_accept_path_still_generates_a_contract(client):
+    """The one caller that may accept a business-authored offer.
+
+    A direct order IS business-authored — the buyer named the terms — and the
+    creator is the one saying yes. accept_direct_order passes the BUYER as the
+    actor, because contract generation is written from the buyer's side, so
+    the exemption has to be an explicit argument: who is calling cannot be
+    read off the actor. This is the regression case proving the guard above
+    did not close the real flow.
+    """
+    from app.modules.campaigns import orders
+    from app.modules.contracts import models as contracts
+
+    biz, inf, camp, prop = _setup(client)
+    db = client.session_factory()
+    try:
+        campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first()
+        campaign.is_direct = True
+        db.add(
+            campaigns.CampaignInvitation(
+                campaign_id=camp, influencer_user_id=inf, status=campaigns.INVITED
+            )
+        )
+        offer = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == prop).first()
+        offer.author_role = campaigns.AUTHOR_BUSINESS
+        offer.expires_at = campaigns.utcnow() + timedelta(hours=48)
+        db.commit()
+    finally:
+        db.close()
+
+    db = client.session_factory()
+    try:
+        contract = orders.accept_direct_order(db, inf, prop)
+    finally:
+        db.close()
+
+    assert contract["campaign_id"] == camp
+    assert contract["status"] == contracts.PENDING
+    assert [c.proposal_id for c in _contracts_for(client, camp)] == [prop]
+    assert _proposal_status(client, prop) == campaigns.PROPOSAL_ACCEPTED
+
+
+def test_a_cancelled_campaign_cannot_be_turned_into_a_contract(client):
+    """The brief is off, and its proposals are still sitting there `submitted`.
+
+    campaigns/editing.py cancel_campaign changes the campaign's status and
+    leaves the proposals alone — it refuses only when a contract already
+    exists. So without this guard a buyer could cancel a brief, let every
+    invited creator be told it was cancelled, and then accept one of their
+    proposals anyway. payments.assert_fundable never looks at the campaign, so
+    the contract would sign and fund like any other.
+    """
+    biz, inf, camp, prop = _setup(client)
+    db = client.session_factory()
+    try:
+        campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first()
+        campaign.status = campaigns.CANCELLED
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_campaign_not_open"
+
+    assert _contracts_for(client, camp) == []
+    assert _proposal_status(client, prop) == campaigns.SUBMITTED
+
+
+def test_an_expired_offer_cannot_be_turned_into_a_contract(client):
+    """A lapsed direct order the sweep has not reached yet.
+
+    expires_at bounds a direct order's accept window, and every counter in the
+    chain inherits it rather than restarting the clock, so a negotiated order
+    can lapse while still sitting at `submitted` — expire_stale_orders runs
+    only when an admin triggers it.
+
+    order_expired, not a contract-prefixed code of its own: it is the same
+    rule on the same column as campaigns/orders.py, and it can only ever fire
+    on a direct order, because a brief's proposals carry NULL there.
+    """
+    biz, inf, camp, prop = _setup(client)
+    db = client.session_factory()
+    try:
+        offer = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == prop).first()
+        offer.expires_at = campaigns.utcnow() - timedelta(hours=1)
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+    assert r.status_code == 400
+    assert r.json()["code"] == "order_expired"
+
+    assert _contracts_for(client, camp) == []
+    assert _proposal_status(client, prop) == campaigns.SUBMITTED
+
+
+def test_the_ordinary_brief_acceptance_is_untouched(client):
+    """Creator-authored, campaign published, no expiry: still a contract.
+
+    All three guards have to stay false at once for the normal path, so this
+    pins that they do — including that a brief's NULL expires_at is read as
+    "never expires" rather than as a date already past.
+    """
+    biz, inf, camp, prop = _setup(client)
+    db = client.session_factory()
+    try:
+        offer = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == prop).first()
+        assert offer.author_role == campaigns.AUTHOR_INFLUENCER
+        assert offer.expires_at is None
+    finally:
+        db.close()
+
+    r = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+    assert r.status_code == 201
+    assert [c.proposal_id for c in _contracts_for(client, camp)] == [prop]
+    assert _proposal_status(client, prop) == campaigns.PROPOSAL_ACCEPTED

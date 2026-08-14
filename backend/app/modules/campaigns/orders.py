@@ -142,7 +142,16 @@ def accept_direct_order(db: Session, influencer_user_id: str, proposal_id: str) 
         )
 
     _set_invitation(db, campaign.id, influencer_user_id, models.ACCEPTED)
-    contract = contracts_service.generate_from_proposal(db, campaign.business_user_id, proposal.id)
+    # allow_business_offer, because this is the one path where a
+    # business-authored offer is legitimately being accepted: the actor passed
+    # below is the buyer, but the person accepting is the CREATOR, and
+    # _require_business_offer above has already established that the live
+    # version is the buyer's. Contract generation otherwise refuses that shape
+    # with contract_own_offer, which is what stops the buyer accepting its own
+    # order through the contracts endpoint.
+    contract = contracts_service.generate_from_proposal(
+        db, campaign.business_user_id, proposal.id, allow_business_offer=True
+    )
     # Contract generation notifies the creator that a contract is ready, which
     # is the right message for a brief — there the business just accepted. On
     # an order it is the buyer who has been waiting on an answer, so they get

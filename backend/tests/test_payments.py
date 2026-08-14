@@ -16,6 +16,7 @@ from app.core.db import Base, get_db
 from app.core.rewards import REFERRAL_CREDIT
 from app.core.security import create_access_token
 from app.modules.auth.models import ReferralCredit, User
+from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models as deliverables
 from app.modules.payments import provider as provider_module
@@ -214,6 +215,72 @@ def test_release_deducts_commission(client):
     assert pay_service.payment_provider.payouts[0]["amount"] == 8500
 
 
+def _brief(client, business_user_id, campaign_id="camp-1"):
+    """The campaign the contracts in this file only ever named by id.
+
+    Every other case here leaves it absent, which is a real state — a contract
+    row carries a campaign_id and nothing enforces a brief behind it — and the
+    completion hook is silent about it on purpose. This one writes the row so
+    the hook has something to finish.
+    """
+    db = client.session_factory()
+    try:
+        db.add(campaigns.Campaign(
+            id=campaign_id, business_user_id=business_user_id, title="Launch push",
+            budget_amount=500000, budget_currency="XOF",
+            deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
+            status=campaigns.PUBLISHED,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _campaign_status(client, campaign_id="camp-1"):
+    db = client.session_factory()
+    try:
+        return db.query(campaigns.Campaign).filter(
+            campaigns.Campaign.id == campaign_id
+        ).first().status
+    finally:
+        db.close()
+
+
+def test_releasing_the_last_escrow_finishes_the_campaign(client):
+    """The commonest way a brief ends, through the real endpoint: the brand
+    confirms the only delivery, the money leaves escrow, and the campaign
+    reaches its terminal state without the router knowing anything about it —
+    the hook is at the service layer for exactly that reason.
+
+    The rule itself (which contract and escrow states count as an ending) is
+    pinned in test_cancellations.py; what this asserts is that the release path
+    calls it at all, and after the release has been committed."""
+    biz, inf, cid = _signed_contract(client)
+    _brief(client, biz)
+    escrow = _fund(client, biz, cid)
+    assert _campaign_status(client) == campaigns.PUBLISHED
+    _submitted(client, cid, inf)
+
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    assert r.status_code == 200
+    assert r.json()["status"] == "released"
+    assert _campaign_status(client) == campaigns.COMPLETED
+
+
+def test_a_release_on_a_contract_with_no_campaign_row_still_pays_out(client):
+    """The hook must never cost somebody their money. A contract naming a brief
+    that was never written is the state every other case in this file is in,
+    and the release has to behave exactly as it always did."""
+    biz, inf, cid = _signed_contract(client)
+    escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
+
+    r = client.post(f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz))
+    assert r.status_code == 200
+    assert r.json()["status"] == "released"
+    assert pay_service.payment_provider.payouts[0]["amount"] == 8500
+
+
 def test_release_needs_an_open_submission(client):
     """Deliverables D2: confirming delivery approves what the creator handed in,
     so with nothing submitted there is nothing to confirm and the money waits.
@@ -267,6 +334,21 @@ def test_auto_release_after_timeout(client, admin_headers):
     r = client.post("/payments/escrow/auto-release", headers=admin_headers)
     assert r.json()["released"] == 1
     assert client.get(f"/payments/escrow/{escrow['id']}", headers=_headers(biz)).json()["status"] == "released"
+
+
+def test_the_auto_release_sweep_finishes_the_campaign_too(client, admin_headers):
+    """The sweep pays out in a batch and commits once, so it closes the briefs
+    it touched in a pass of its own afterwards rather than one at a time. A
+    creator paid by the clock ends the brief exactly as a creator paid by the
+    button does."""
+    biz, inf, cid = _signed_contract(client)
+    _brief(client, biz)
+    escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
+    _age_release_deadline(client, escrow["id"])
+
+    assert client.post("/payments/escrow/auto-release", headers=admin_headers).json()["released"] == 1
+    assert _campaign_status(client) == campaigns.COMPLETED
 
 
 def test_nothing_submitted_never_auto_releases(client, admin_headers):

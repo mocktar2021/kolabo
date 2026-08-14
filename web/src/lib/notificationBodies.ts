@@ -57,6 +57,11 @@ export const body_fr = {
   campaign_cancelled: "La campagne {{campaign}} a été annulée par l'entreprise.",
   invitation_withdrawn: "L'invitation à {{campaign}} a été retirée par l'entreprise.",
   proposal_withdrawn: "Un créateur a retiré sa proposition pour {{campaign}}.",
+  /* L'autre fin d'un brief : celui-ci a abouti, avec quelqu'un d'autre. Le ton
+     est neutre à dessein — personne n'a refusé la proposition du créateur, le
+     brief est simplement pourvu — et la phrase ne nomme pas la campagne, comme
+     l'anglaise, parce que le lien ouvre déjà ses invitations. */
+  brief_filled: "Ce brief a été pourvu : votre proposition est maintenant close.",
 
   invitation_received: "Vous avez été invité(e) à la campagne {{campaign}}.",
   order_custom_offer: "Une marque vous a envoyé une offre personnalisée : {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
@@ -131,6 +136,11 @@ export const body_en = {
   campaign_cancelled: "The campaign {{campaign}} was cancelled by the business.",
   invitation_withdrawn: "The invitation to {{campaign}} was withdrawn by the business.",
   proposal_withdrawn: "A creator withdrew their proposal for {{campaign}}.",
+  /* The other way a brief ends: it worked, with somebody else. Neutral on
+     purpose — nobody rejected this creator, the brief is simply filled — and
+     it names no campaign, so the two languages ask for the same (empty) set of
+     interpolation values. */
+  brief_filled: "This brief has been filled, so your proposal is now closed.",
 
   invitation_received: "You were invited to the campaign {{campaign}}.",
   order_custom_offer: "A brand sent you a custom offer: {{title}}. You have {{hours}} hours to accept or decline.",

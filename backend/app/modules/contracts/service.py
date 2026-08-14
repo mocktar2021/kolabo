@@ -87,7 +87,22 @@ def _out(contract: models.Contract) -> dict:
     }
 
 
-def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str) -> dict:
+def generate_from_proposal(
+    db: Session,
+    business_user_id: str,
+    proposal_id: str,
+    *,
+    allow_business_offer: bool = False,
+) -> dict:
+    """Accept the live offer in a negotiation and write the contract from it.
+
+    `allow_business_offer` is for ONE caller: campaigns/orders.accept_direct_order,
+    where the creator is the one accepting and the offer on the table is
+    legitimately the buyer's. Everywhere else the rule below holds. It is a
+    parameter rather than something inferred from the actor because the actor
+    is the business on both paths — accept_direct_order passes the buyer's id
+    deliberately, so identity cannot tell the two apart.
+    """
     proposal = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == proposal_id).first()
     if proposal is None:
         raise AppError(
@@ -113,6 +128,25 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
             detail="Not your campaign",
         )
 
+    # A dead campaign has no deal left in it to write down. campaigns/editing.py
+    # cancel_campaign only refuses when a contract ALREADY exists, and it does
+    # not touch the proposals hanging off the brief — so after a cancellation
+    # every proposal on it is still `submitted`, and without this guard the
+    # buyer could turn one into a contract afterwards. The creators were
+    # notified the brief was off; the contract would be written against them
+    # anyway, and payments.assert_fundable asks only about the contract's own
+    # status, never about the campaign behind it, so it would fund normally.
+    #
+    # Written as "must be PUBLISHED" rather than "must not be CANCELLED"
+    # because the set of states that are not open is going to grow — a
+    # completed state is coming — and only the open one is worth naming.
+    if campaign.status != campaigns.PUBLISHED:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_campaign_not_open",
+            detail="This campaign is no longer open, so no new contract can be created from it.",
+        )
+
     # A proposal id names a negotiation, not a frozen offer. Since the business
     # can now counter, the chain moves on — sometimes by the business's own
     # hand — and the id on the page can be a round or two behind. The contract
@@ -136,6 +170,38 @@ def generate_from_proposal(db: Session, business_user_id: str, proposal_id: str)
             status.HTTP_400_BAD_REQUEST,
             code="contract_proposal_not_submitted",
             detail="Only a submitted proposal can be accepted",
+        )
+
+    # Accepting is ANSWERING, so the live version has to be the other side's.
+    # The caller here is the business, so it has to be the creator's. Without
+    # this the buyer can accept its own direct order, or its own counter on a
+    # brief: that marks the chain accepted and writes a contract the creator
+    # never agreed to, and the creator's decline then fails with
+    # order_not_open (campaigns/orders.py) — they cannot even turn it down.
+    # campaigns/orders.py::_require_business_offer is this same rule facing
+    # the other way, and order_own_counter is its refusal for the creator.
+    if not allow_business_offer and latest.author_role != campaigns.AUTHOR_INFLUENCER:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_own_offer",
+            detail="You cannot accept your own offer. The other party has to accept it.",
+        )
+
+    # The window the order was placed under. Only a direct order carries an
+    # expires_at — NULL for anything born of a brief, deliberately — and a
+    # counter INHERITS it rather than restarting the clock, so a negotiated
+    # order can lapse mid-chain and still be sitting here as `submitted`:
+    # expire_stale_orders is admin-triggered and may not have run.
+    #
+    # order_expired rather than a contract-prefixed code of its own. It is the
+    # same rule on the same column as campaigns/orders.py, and this refusal can
+    # only ever fire on a direct order, so "order" is the right noun on both
+    # surfaces — the same reasoning that has campaign_not_yours shared above.
+    if latest.expires_at is not None and latest.expires_at <= models.utcnow():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_expired",
+            detail="This order has expired.",
         )
 
     business = db.query(User).filter(User.id == business_user_id).first()

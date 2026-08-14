@@ -28,6 +28,15 @@ PUBLISHED = "published"
 # the audit trail hang off it, and the buyer changing its mind is not a reason
 # to erase the other side's half of the record.
 CANCELLED = "cancelled"
+# Finished, as opposed to called off. Every contract on the brief reached an
+# ending and at least one of those endings was the money moving — the rule the
+# web client already derived for its Active/Completed shelves, now a status the
+# server writes and guards from (campaigns.completion).
+#
+# Reached only from PUBLISHED, and never left. Nothing here re-opens: a brand
+# with more work to commission publishes the next brief, which is a different
+# brief with its own proposals and its own record.
+COMPLETED = "completed"
 
 INVITED = "invited"
 ACCEPTED = "accepted"

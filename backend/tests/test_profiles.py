@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.models import User
 from app.modules.profiles.router import router as profiles_router
@@ -33,6 +34,12 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The real handler, not a lookalike: without it an AppError falls through
+    # to FastAPI's default HTTPException handler, which serialises `detail`
+    # and drops `code`. Every existing assertion in this file reads `detail`
+    # or a status and is unaffected — the handler only adds the two siblings
+    # (see app/core/errors.py, which lives outside main.py for this reason).
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(profiles_router, prefix="/profiles")
     app.include_router(admin_router, prefix="/admin")
     app.dependency_overrides[get_db] = override_get_db
@@ -137,6 +144,47 @@ def test_verification_document_stored_encrypted_and_pending(client):
     stored = bytes(doc.ciphertext)
     db.close()
     assert b"real-document-bytes" not in stored
+
+
+def test_verification_document_over_the_ceiling_is_refused(client):
+    """The other unbounded write in this module. A document is encrypted and
+    stored whole in a LargeBinary column, so it needs the same ceiling as an
+    image and carries the same code. Checked on the PLAINTEXT: encrypting only
+    makes the stored row bigger."""
+    from app.modules.profiles.models import VerificationDocument
+    from app.modules.profiles.service import MAX_MEDIA_BYTES
+
+    uid = _make_user(client, phone="+22990000062", role="business")
+    oversized = b"\x00" * (MAX_MEDIA_BYTES + 1)
+    r = client.post(
+        f"/profiles/{uid}/verification-documents",
+        data={"doc_type": "identity"},
+        files={"file": ("huge.pdf", oversized, "application/pdf")},
+    )
+    assert r.status_code == 413
+    assert r.json()["code"] == "profile_file_too_large"
+    assert r.json()["values"] == {"max": MAX_MEDIA_BYTES // (1024 * 1024)}
+    # The other half: nothing was written.
+    db = client.session_factory()
+    assert db.query(VerificationDocument).count() == 0
+    db.close()
+
+
+def test_verification_document_under_the_ceiling_still_uploads(client):
+    """The happy path is untouched."""
+    from app.modules.profiles.models import VerificationDocument
+
+    uid = _make_user(client, phone="+22990000063", role="business")
+    r = client.post(
+        f"/profiles/{uid}/verification-documents",
+        data={"doc_type": "identity"},
+        files={"file": ("id.pdf", b"an-ordinary-document", "application/pdf")},
+    )
+    assert r.status_code == 201
+    assert r.json()["status"] == "pending"
+    db = client.session_factory()
+    assert db.query(VerificationDocument).count() == 1
+    db.close()
 
 
 def test_social_oauth_is_verified_manual_is_pending(client):
@@ -443,6 +491,47 @@ def test_media_rejects_non_image(client):
     uid = _make_user(client)
     r = client.post(f"/profiles/{uid}/media", files={"file": ("a.txt", b"hello", "text/plain")})
     assert r.status_code == 400
+
+
+def test_media_over_the_ceiling_is_refused(client):
+    """Web test-plan P7: a 20 MB photo comes back as a graceful refusal, not a
+    500 and not a 20 MB row. MediaAsset.data is a Postgres blob, so an upload
+    with no ceiling is a database row with no ceiling.
+
+    The real payload, not a monkeypatched constant: this goes through the
+    router, the UploadFile read and the service check exactly as a phone would.
+    """
+    from app.modules.profiles.models import MediaAsset
+    from app.modules.profiles.service import MAX_MEDIA_BYTES
+
+    uid = _make_user(client, phone="+22990000060")
+    oversized = b"\x00" * (MAX_MEDIA_BYTES + 1)
+    r = client.post(f"/profiles/{uid}/media", files={"file": ("big.png", oversized, "image/png")})
+    assert r.status_code == 413
+    assert r.json()["code"] == "profile_file_too_large"
+    # The ceiling travels as a number, in the units the sentence quotes.
+    assert r.json()["values"] == {"max": MAX_MEDIA_BYTES // (1024 * 1024)}
+    # The other half: the row was never written.
+    db = client.session_factory()
+    assert db.query(MediaAsset).count() == 0
+    db.close()
+
+
+def test_media_under_the_ceiling_still_uploads(client):
+    """The happy path is untouched: a file comfortably under the ceiling still
+    comes back with its id and its serving url."""
+    from app.modules.profiles.models import MediaAsset
+    from app.modules.profiles.service import MAX_MEDIA_BYTES
+
+    uid = _make_user(client, phone="+22990000061")
+    ordinary = PNG_BYTES + b"\x00" * (MAX_MEDIA_BYTES // 2)
+    r = client.post(f"/profiles/{uid}/media", files={"file": ("ok.png", ordinary, "image/png")})
+    assert r.status_code == 201
+    assert r.json()["id"]
+    assert r.json()["url"] == f"/profiles/media/{r.json()['id']}"
+    db = client.session_factory()
+    assert db.query(MediaAsset).count() == 1
+    db.close()
 
 
 def test_package_crud(client):

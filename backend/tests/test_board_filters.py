@@ -280,16 +280,34 @@ def test_the_buyers_list_filters_by_status(client):
     _open_brief(client, biz, "Live")
     called_off = _open_brief(client, biz, "Called off")
     assert client.post(f"/campaigns/{called_off}/cancel", headers=biz).status_code == 200
+    # Written straight onto the row rather than earned through a released
+    # escrow: this file is about what the list can be NARROWED to, and how a
+    # campaign comes to be completed is campaigns.completion's rule, pinned in
+    # test_cancellations.py. The same shortcut test_campaign_edit.py takes for
+    # a contract it only needs as a fact.
+    filled = _open_brief(client, biz, "Filled")
+    db = client.session_factory()
+    try:
+        brief = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == filled).first()
+        brief.status = campaigns.COMPLETED
+        db.commit()
+    finally:
+        db.close()
 
     def titles(query):
         r = client.get(f"/campaigns/mine{query}", headers=biz)
         assert r.status_code == 200, r.text
         return sorted(row["title"] for row in r.json())
 
-    assert titles("") == ["Called off", "Idea only", "Live"]
+    assert titles("") == ["Called off", "Filled", "Idea only", "Live"]
     assert titles("?status=draft") == ["Idea only"]
     assert titles("?status=published") == ["Live"]
     assert titles("?status=cancelled") == ["Called off"]
+    # The fourth status is filterable too, which is the whole reason
+    # MY_CAMPAIGN_STATUSES is a set the buyer may ASK for rather than a set the
+    # server happens to write: a status the filter does not know is a 400 for
+    # somebody asking a reasonable question about their own briefs.
+    assert titles("?status=completed") == ["Filled"]
     assert draft  # the id is only here to make the draft's existence explicit
 
 

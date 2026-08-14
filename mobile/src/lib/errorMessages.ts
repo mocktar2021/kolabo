@@ -58,6 +58,7 @@ export const error_fr: Record<string, string> = {
   price_below_floor: "Le prix minimum en {{currency}} est de {{floor}}.",
   profile_image_type_unsupported: "Seules les images JPEG, PNG, WEBP ou GIF sont acceptées.",
   profile_file_empty: "Ce fichier est vide.",
+  profile_file_too_large: "Ce fichier est trop volumineux. Les images doivent faire moins de {{max}} Mo.",
   profile_image_not_found: "Image introuvable.",
 
   contract_not_found: "Contrat introuvable.",
@@ -232,6 +233,7 @@ export const error_en: Record<string, string> = {
   price_below_floor: "The minimum price in {{currency}} is {{floor}}.",
   profile_image_type_unsupported: "Only JPEG, PNG, WEBP and GIF images are accepted.",
   profile_file_empty: "That file is empty.",
+  profile_file_too_large: "This file is too large. Images must be under {{max}} MB.",
   profile_image_not_found: "Image not found.",
 
   contract_not_found: "Contract not found.",

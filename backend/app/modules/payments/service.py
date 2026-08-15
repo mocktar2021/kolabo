@@ -45,6 +45,11 @@ from app.core.config import settings
 from app.core.errors import AppError
 from app.modules.auth.models import User
 from app.modules.auth.referrals import award_for_completed_order
+# The campaign-completion hook, and it is a module that reads MODELS ONLY —
+# campaigns.completion imports campaigns/contracts/payments models and nothing
+# else, which is what lets a function inside the payment path finish a brief
+# without this module ever depending on campaigns.service.
+from app.modules.campaigns import completion
 from app.modules.contracts import models as contracts
 # MODELS ONLY, never deliverables.service — that module imports THIS one, and
 # taking its service here would close the circle. Its models import nothing but
@@ -388,8 +393,13 @@ def release_escrow(db: Session, business_user_id: str, escrow_id: str) -> dict:
     # through the same _release, so commission, the payout, the escrow event and
     # the referral hook stay in exactly one place.
     deliverables.mark_approved(submission, business_user_id)
+    campaign_id = escrow.campaign_id
     _release(db, escrow, business_user_id)
     db.commit()
+    # AFTER the commit, never before: the campaign may only be finished off an
+    # ending that is already durable. Read off a local because the commit
+    # expires the row.
+    completion.maybe_complete_campaign(db, campaign_id)
     db.refresh(escrow)
     return _out(escrow)
 
@@ -437,9 +447,15 @@ def run_due_auto_releases(db: Session, now=None) -> int:
         )
         .all()
     )
+    campaign_ids = [escrow.campaign_id for escrow in due]
     for escrow in due:
         _release(db, escrow, "system_auto_release")
     db.commit()
+    # One pass over the campaigns this sweep touched, after its single commit.
+    # Deduplicated because two contracts on one brief can come due together and
+    # the second call would find the campaign already completed anyway.
+    for campaign_id in dict.fromkeys(campaign_ids):
+        completion.maybe_complete_campaign(db, campaign_id)
     return len(due)
 
 
@@ -550,14 +566,21 @@ def run_non_delivery_refunds(db: Session, now=None) -> dict:
     # answer — worth knowing, because a test that turns autoflush on or off
     # would otherwise look like it was testing this.
     cutoff = now - timedelta(days=settings.non_delivery_grace_days)
+    campaign_ids = []
     for escrow, _contract in _undelivered_escrows(db).filter(
         models.Escrow.non_delivery_warned_at.is_not(None),
         models.Escrow.non_delivery_warned_at <= cutoff,
     ):
+        campaign_ids.append(escrow.campaign_id)
         _refund(db, escrow, "system_non_delivery")
         refunded += 1
 
     db.commit()
+    # A refund is an ending too. A brief whose other contracts all paid out is
+    # finished the moment the last unfulfilled one is given back, so the sweep
+    # closes it — after its commit, and deduplicated, like the release sweep.
+    for campaign_id in dict.fromkeys(campaign_ids):
+        completion.maybe_complete_campaign(db, campaign_id)
     return {"warned": warned, "refunded": refunded}
 
 

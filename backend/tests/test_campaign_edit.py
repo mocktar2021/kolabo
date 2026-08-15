@@ -367,6 +367,56 @@ def test_cancelling_keeps_everything_and_tells_the_invited_creators(client):
     assert "campaign_cancelled" in kinds
 
 
+def test_cancelling_closes_the_live_bids_and_the_open_invitations(client):
+    """Cancelling used to move the status and leave everything under it alone:
+    the proposal stayed `submitted` and the invitation stayed `invited` on a
+    brief that no longer existed. That is the state withdraw_invitation refuses
+    against ("this creator has already sent a proposal") and the one contract
+    generation had to grow a guard for. A terminal state now closes what hangs
+    off it, through the same code completion uses."""
+    biz = _user(client, "+22990020026")
+    creator = _user(client, "+22990020027", role="influencer")
+    published = _published(client, biz)
+    client.post(
+        f"/campaigns/{published['id']}/invitations",
+        json={"influencer_id": creator},
+        headers=_headers(biz),
+    )
+    _propose(client, published["id"], creator)
+
+    assert client.post(f"/campaigns/{published['id']}/cancel", headers=_headers(biz)).status_code == 200
+
+    proposal = _rows(client, campaigns.Proposal, campaign_id=published["id"])[0]
+    assert proposal.status == campaigns.PROPOSAL_REJECTED
+    invitation = _rows(client, campaigns.CampaignInvitation, campaign_id=published["id"])[0]
+    assert invitation.status == campaigns.WITHDRAWN
+    # Withdrawn, not declined: the creator refused nothing.
+    assert invitation.status != campaigns.DECLINED
+
+
+def test_cancelling_does_not_also_claim_the_brief_was_filled(client):
+    """The cascade is shared with completion; the message is not. Cancelling
+    has just told every invited creator the brief is off, and a second row
+    saying their proposal is closed because it was FILLED is both noise and
+    untrue — nothing was filled here."""
+    biz = _user(client, "+22990020028")
+    creator = _user(client, "+22990020029", role="influencer")
+    published = _published(client, biz)
+    client.post(
+        f"/campaigns/{published['id']}/invitations",
+        json={"influencer_id": creator},
+        headers=_headers(biz),
+    )
+    _propose(client, published["id"], creator)
+    client.post(f"/campaigns/{published['id']}/cancel", headers=_headers(biz))
+
+    rows = _rows(client, Notification, user_id=creator)
+    keys = [(n.params or {}).get("key") for n in rows]
+    assert "campaign_cancelled" in keys
+    assert "brief_filled" not in keys
+    assert [n.type for n in rows].count("proposal_closed") == 0
+
+
 def test_cancelling_twice_is_refused_rather_than_notifying_twice(client):
     biz = _user(client, "+22990020016")
     published = _published(client, biz)

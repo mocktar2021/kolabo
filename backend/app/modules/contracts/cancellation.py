@@ -46,6 +46,7 @@ from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.modules.campaigns import completion
 from app.modules.contracts import models
 from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
@@ -136,7 +137,15 @@ def cancel_contract(db: Session, contract_id: str, user_id: str) -> dict:
         link=f"/contracts/{contract.id}",
         params={"key": "contract_cancelled"},
     )
+    campaign_id = contract.campaign_id
     db.commit()
+    # A cancelled contract is an ending the CONTRACT reached, and it can be the
+    # last one outstanding: a brief with two deals, one paid out and one called
+    # off before it was funded, is finished by this cancellation. It cannot
+    # complete a campaign on its own — no money ever moved on a contract that
+    # reaches here — which is the second half of the rule doing its job. After
+    # the commit, off a local id.
+    completion.maybe_complete_campaign(db, campaign_id)
     db.refresh(contract)
     # The service's own serialiser, so a cancelled contract is described by
     # exactly the same code as any other. fully_signed is False on it, which

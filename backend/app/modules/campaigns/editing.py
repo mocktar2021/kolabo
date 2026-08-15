@@ -39,7 +39,7 @@ from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.modules.campaigns import models, schemas, service
+from app.modules.campaigns import completion, models, schemas, service
 from app.modules.contracts import models as contracts
 from app.modules.notifications.service import notify
 
@@ -246,6 +246,19 @@ def cancel_campaign(db: Session, campaign_id: str, business_user_id: str) -> dic
     is removed, and every creator who was invited hears about it — a creator
     holding a brief they are pricing deserves to be told it is dead rather
     than to work out from silence that nobody is coming back.
+
+    IT ALSO CLOSES WHAT WAS OPEN, which it did not before. The status moved and
+    the rows underneath it did not: live proposals stayed `submitted` and
+    invitations stayed `invited` on a brief that no longer existed, so
+    withdraw_invitation refused ("this creator has already sent a proposal")
+    against a proposal nobody could ever answer, and contract generation had to
+    grow a campaign-status guard of its own to stop a cancelled brief's bids
+    being turned into contracts. Ending a campaign now ends what hangs off it,
+    through the same code completion uses — one definition of what a terminal
+    state closes, rather than two that drift.
+
+    Silently, though. The loop below has just told every invited creator the
+    brief is off; the filled-brief notification would be the same news twice.
     """
     campaign = service._require_campaign_owner(db, campaign_id, business_user_id)
     _reject_direct(campaign)
@@ -289,6 +302,7 @@ def cancel_campaign(db: Session, campaign_id: str, business_user_id: str) -> dic
             link="/invitations",
             params={"key": "campaign_cancelled", "campaign": campaign.title},
         )
+    completion.close_open_offers(db, campaign, tell_creators=False)
     db.commit()
     db.refresh(campaign)
     return service._to_out(campaign)

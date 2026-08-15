@@ -23,6 +23,7 @@ from app.core.config import settings
 from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
+from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models as deliverables  # noqa: F401  (registers tables)
 from app.modules.deliverables.router import router as deliverables_router
@@ -270,6 +271,40 @@ def test_approving_releases_the_escrow_in_the_same_act(client):
     # The release path notified both sides; no duplicate "approved" notice.
     assert len(_notices(client, inf, type="payment")) >= 1
     assert len(_notices(client, biz, type="payment")) >= 1
+
+
+def test_approving_the_last_hand_in_finishes_the_campaign(client):
+    """Approval releases the escrow, and the release is what finishes the brief
+    behind it — through the same hook the standalone confirm-delivery button
+    and the sweep use, called after the commit rather than beside it.
+
+    The campaign row is written here because the contracts in this file only
+    ever name one by id. Its absence everywhere else is the point: the hook is
+    silent about a brief that was never written rather than turning an approved
+    deliverable into a 500."""
+    biz, inf, _, cid, escrow = _funded(client)
+    db = client.session_factory()
+    try:
+        db.add(campaigns.Campaign(
+            id="camp-1", business_user_id=biz, title="Launch push", budget_amount=500000,
+            budget_currency="XOF",
+            deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
+            status=campaigns.PUBLISHED,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    sub = _submit(client, inf, cid).json()
+    assert client.post(f"/deliverables/{sub['id']}/approve", headers=_headers(biz)).status_code == 200
+
+    db = client.session_factory()
+    try:
+        assert db.query(campaigns.Campaign).filter(
+            campaigns.Campaign.id == "camp-1"
+        ).first().status == campaigns.COMPLETED
+    finally:
+        db.close()
 
 
 def test_only_the_business_can_review(client):

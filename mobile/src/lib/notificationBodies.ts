@@ -44,6 +44,7 @@ export const body_fr = {
   campaign_cancelled: "La campagne {{campaign}} a été annulée par l'entreprise.",
   invitation_withdrawn: "L'invitation à {{campaign}} a été retirée par l'entreprise.",
   proposal_withdrawn: "Un créateur a retiré sa proposition pour {{campaign}}.",
+  brief_filled: "Ce brief a été pourvu : votre proposition est maintenant close.",
 
   invitation_received: "Vous avez été invité(e) à la campagne {{campaign}}.",
   order_custom_offer: "Une marque vous a envoyé une offre personnalisée : {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
@@ -105,6 +106,7 @@ export const body_en: typeof body_fr = {
   campaign_cancelled: "The campaign {{campaign}} was cancelled by the business.",
   invitation_withdrawn: "The invitation to {{campaign}} was withdrawn by the business.",
   proposal_withdrawn: "A creator withdrew their proposal for {{campaign}}.",
+  brief_filled: "This brief has been filled, so your proposal is now closed.",
 
   invitation_received: "You were invited to the campaign {{campaign}}.",
   order_custom_offer: "A brand sent you a custom offer: {{title}}. You have {{hours}} hours to accept or decline.",

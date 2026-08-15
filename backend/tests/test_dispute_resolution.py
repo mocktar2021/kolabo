@@ -16,6 +16,7 @@ from app.core.security import create_access_token
 from app.modules.admin.models import AdminActionLog
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.models import ReferralCredit, User
+from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.payments import models as pay_models
 from app.modules.payments import provider as provider_module
@@ -187,6 +188,48 @@ def test_any_money_reaching_the_creator_means_released(client, admin_headers):
     got 90 percent of it did not."""
     biz, inf, escrow, dispute = _disputed(client, amount=10000)
     assert _resolve(client, admin_headers, escrow["id"], released=1000, refunded=9000).json()["escrow"]["status"] == "released"
+
+
+def _brief(client, business_user_id, campaign_id="camp-1"):
+    """The campaign the contracts here only ever named by id. Written for the
+    case below and nowhere else: everywhere in this file its absence is the
+    normal state, and the completion hook is silent about a brief that is not
+    there rather than turning a settled dispute into a 500."""
+    db = client.session_factory()
+    try:
+        db.add(campaigns.Campaign(
+            id=campaign_id, business_user_id=business_user_id, title="Launch push",
+            budget_amount=500000, budget_currency="XOF",
+            deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
+            status=campaigns.PUBLISHED,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _campaign_status(client, campaign_id="camp-1"):
+    db = client.session_factory()
+    try:
+        return db.query(campaigns.Campaign).filter(
+            campaigns.Campaign.id == campaign_id
+        ).first().status
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("released,refunded", [(6000, 4000), (0, 10000)])
+def test_settling_the_last_dispute_finishes_the_campaign(client, admin_headers, released, refunded):
+    """Either way the split falls the escrow reaches an ending — RELEASED when
+    anything reached the creator, REFUNDED when nothing did — and both are the
+    money ending the completion rule asks for. A brief must not be left looking
+    live because its last deal ended in an argument."""
+    biz, inf, escrow, dispute = _disputed(client, amount=10000)
+    _brief(client, biz)
+    assert _campaign_status(client) == campaigns.PUBLISHED
+
+    assert _resolve(client, admin_headers, escrow["id"], released=released, refunded=refunded).status_code == 200
+    assert _campaign_status(client) == campaigns.COMPLETED
 
 
 def test_resolving_is_logged_and_closed_to_everyone_but_an_admin(client, admin_headers):

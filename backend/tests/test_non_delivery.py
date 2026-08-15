@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
+from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models as deliverables
 from app.modules.notifications import models as notifications
@@ -202,6 +203,37 @@ def test_the_escrow_refunds_after_the_grace_period(client):
     assert escrow.resolved_at is not None
     assert "escrow_refunded_brand" in _notice_keys(client, biz)
     assert "escrow_refunded_creator" in _notice_keys(client, inf)
+
+
+def test_the_refund_finishes_the_campaign_behind_it(client):
+    """A refund is an ending too, and it is the money ending the completion
+    rule asks for: the brief is over, it just ended badly. Written with the
+    campaign row present, which is the only case in this file that has one —
+    everywhere else the contract names a brief that does not exist, and the
+    hook has to stay silent about that rather than break a refund."""
+    biz, _, _, escrow_id = _funded(client)
+    db = client.session_factory()
+    try:
+        db.add(campaigns.Campaign(
+            id="camp-1", business_user_id=biz, title="Launch push", budget_amount=500000,
+            budget_currency="XOF",
+            deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
+            status=campaigns.PUBLISHED,
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    _run(client, TIMELINE_DAYS)
+    assert _run(client, TIMELINE_DAYS + settings.non_delivery_grace_days)["refunded"] == 1
+
+    db = client.session_factory()
+    try:
+        assert db.query(campaigns.Campaign).filter(
+            campaigns.Campaign.id == "camp-1"
+        ).first().status == campaigns.COMPLETED
+    finally:
+        db.close()
 
 
 def test_the_refund_is_the_whole_amount_and_takes_no_commission(client):

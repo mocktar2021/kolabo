@@ -26,13 +26,13 @@ def my_campaigns(
 ):
     """List the campaigns owned by the current business, newest first.
 
-    Optionally narrowed by status (draft, published, cancelled) and by the day
-    the campaign was created. A buyer three months into using this has a list
-    it has to scroll to find last week's brief in, and "which of these are
-    still live" is the question it opens the page asking.
+    Optionally narrowed by status (draft, published, completed, cancelled) and
+    by the day the campaign was created. A buyer three months into using this
+    has a list it has to scroll to find last week's brief in, and "which of
+    these are still live" is the question it opens the page asking.
 
-    An unrecognised status is a 400 naming the three, not an empty list. This
-    is the buyer's own work: showing nothing would read as "you have no
+    An unrecognised status is a 400 naming the set, not an empty list. This is
+    the buyer's own work: showing nothing would read as "you have no
     campaigns", which is the one answer that sends somebody to support.
     """
     return service.list_my_campaigns(

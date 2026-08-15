@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.modules.campaigns import completion
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models
@@ -435,9 +436,14 @@ def approve(db: Session, actor_user_id: str, submission_id: str) -> dict:
     # approves the open submission this same way before it releases. See
     # deliverables.models.mark_approved.
     models.mark_approved(submission, actor_user_id)
+    campaign_id = escrow.campaign_id
     # Notifies both parties (escrow_released_*) and awards referral credit.
     payments_service._release(db, escrow, actor_user_id)
     db.commit()
+    # The brand approving the last outstanding piece of work is the commonest
+    # way a brief finishes. After the commit, off a local id: the commit
+    # expires the escrow row.
+    completion.maybe_complete_campaign(db, campaign_id)
     db.refresh(submission)
     by_submission = _attachments_for(db, [submission.id])
     return _out(submission, by_submission.get(submission.id, []))

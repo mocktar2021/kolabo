@@ -199,6 +199,7 @@ def _deal(db):
         budget_currency="XOF",
         deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
         status=campaigns.PUBLISHED,
+        is_open=True,
     )
     db.add(campaign)
     db.commit()

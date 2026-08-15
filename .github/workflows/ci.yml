@@ -48,7 +48,13 @@ jobs:
         with:
           node-version: "20"
       - run: npm install
-      # Type-check only. The mobile app has no simulator in CI, so on-device
-      # behaviour is verified manually in Expo Go; what CI guards is that the
-      # TypeScript across screens, navigation and the API layer stays sound.
+      # The mobile app has no simulator in CI, so on-device behaviour is
+      # verified manually in Expo Go; what this guards is that the TypeScript
+      # across screens, navigation and the API layer stays sound.
       - run: npx tsc --noEmit
+      # After the type-check, for the same reason the web job runs its tests
+      # last. These read backend/app/**.py to check that no refusal and no
+      # notification the backend can send is missing a French or an English
+      # sentence — a seam `tsc` cannot see across, because its far side is
+      # Python. actions/checkout has already put that tree on disk.
+      - run: npm run test

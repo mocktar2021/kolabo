@@ -128,8 +128,31 @@ Verified: prebuild generates `ios/Kolabo/Supporting/en.lproj/InfoPlist.strings` 
 `fr.lproj/InfoPlist.strings`, and the Xcode project references them. A francophone user in
 Cotonou now gets the French prompt.
 
-This mechanism is **iOS-only** and covers `Info.plist` strings and the display name — it is not a
-replacement for the in-app i18n, which already works.
+**This mechanism is not iOS-only, and assuming it was is what broke the Android release build.**
+Expo's prebuild feeds the same `locales` map to Android too, writing every key it finds into
+`android/app/src/main/res/values-b+<lang>/strings.xml`. iOS `Info.plist` key names mean nothing
+there and get no default-locale entry, so `aapt` drops them and the `ExtraTranslation` check fails
+`:app:lintVitalRelease`. That gate runs only on release builds, so nothing — not a debug build,
+not CI, which runs no native build at all — catches it before `eas build`.
+
+So each locale file nests its keys under an `"ios"` object:
+
+```json
+{
+  "ios": {
+    "CFBundleDisplayName": "Kolabo",
+    "NSPhotoLibraryUsageDescription": "..."
+  }
+}
+```
+
+Keys under `"ios"` reach `InfoPlist.strings` only. Keys under an `"android"` object reach the
+Android string resources only, where the display-name key is `app_name`, **not**
+`CFBundleDisplayName`. Anything left at the top level goes to **both** — which is the trap.
+Never put a bare `NS...` key at the top level of one of these files.
+
+Either way this covers `Info.plist` strings and the display name — it is not a replacement for the
+in-app i18n, which already works.
 
 ### 5. Payments — expect App Review to ask
 

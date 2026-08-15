@@ -158,7 +158,9 @@ export const error_fr: Record<string, string> = {
   invitation_not_found: "Invitation introuvable.",
   invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
   invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
+  invitation_already_sent: "Vous avez déjà invité ce créateur à cette campagne.",
 
+  campaign_publish_not_draft: "Seule une campagne en brouillon peut être publiée.",
   campaign_is_direct_order: "Une commande directe ne se modifie pas. Ses conditions sont une négociation : faites une contre-proposition, ou laissez le créateur la refuser.",
   campaign_cancelled_immutable: "Cette campagne est annulée et ne peut plus être modifiée.",
   campaign_already_cancelled: "Cette campagne est déjà annulée.",
@@ -333,7 +335,9 @@ export const error_en: Record<string, string> = {
   invitation_not_found: "Invitation not found.",
   invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
   invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
+  invitation_already_sent: "You have already invited this creator to this campaign.",
 
+  campaign_publish_not_draft: "Only a draft campaign can be published.",
   campaign_is_direct_order: "A direct order cannot be edited. Its terms are a negotiation: counter it with a reply, or let the creator decline it.",
   campaign_cancelled_immutable: "This campaign is cancelled and cannot be edited.",
   campaign_already_cancelled: "This campaign is already cancelled.",

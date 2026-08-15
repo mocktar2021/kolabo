@@ -1,4 +1,6 @@
 {
-  "CFBundleDisplayName": "Kolabo",
-  "NSPhotoLibraryUsageDescription": "Kolabo needs access to your photos so you can add a profile picture and upload the content you deliver for a campaign."
+  "ios": {
+    "CFBundleDisplayName": "Kolabo",
+    "NSPhotoLibraryUsageDescription": "Kolabo needs access to your photos so you can add a profile picture and upload the content you deliver for a campaign."
+  }
 }

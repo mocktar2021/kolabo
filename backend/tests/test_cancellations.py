@@ -76,6 +76,7 @@ def world(client):
             budget_currency="XOF",
             deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
             status=campaigns.PUBLISHED,
+            is_open=True,
         )
         db.add(camp); db.commit(); db.refresh(camp)
         inv = campaigns.CampaignInvitation(

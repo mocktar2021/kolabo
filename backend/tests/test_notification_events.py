@@ -73,7 +73,11 @@ def _influencer_profile(client, user_id, display_name):
         db.close()
 
 
-def _brief(client, headers, title="Launch push", is_open=False):
+# OPEN by default, because every test below has a creator nobody invited bid
+# on the brief — which is what `open` means. The flag is new (campaigns.board)
+# and the column defaults to false, so this helper was describing an open brief
+# while building a closed one.
+def _brief(client, headers, title="Launch push", is_open=True):
     return client.post(
         "/campaigns/",
         json={

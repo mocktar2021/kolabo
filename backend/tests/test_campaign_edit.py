@@ -94,6 +94,7 @@ PUBLISHED_BODY = {
     "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
     "deadline": "2026-12-01",
     "publish": True,
+    "is_open": True,
 }
 
 

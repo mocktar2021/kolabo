@@ -8,11 +8,16 @@
    `apiError` namespace.
 
    PARITY: the sentences below are copied verbatim from the web catalog so a
-   refusal reads identically on both clients. This is the auth-flow subset —
-   the rest of the codes get ported as the matching screens land, exactly the
-   way the backend migration itself proceeded one module at a time. A code with
-   no entry here falls through to the backend's English `message`, which is what
-   the app showed before any of this existed. */
+   refusal reads identically on both clients. Divergence between the two
+   clients' wording for the same code is itself a defect — the same refusal has
+   to read the same on both surfaces — so a sentence is rewritten in BOTH
+   catalogs or in neither.
+
+   THIS FILE USED TO BE A SUBSET, and that was the bug. Mobile CI type-checks
+   only, so a code with no entry here never failed a build: it fell through to
+   the backend's English `message` and a French reader quietly read English.
+   tests/errorMessages.test.ts now reads the backend Python and fails the build
+   when a code the API can emit has no sentence in both languages. */
 
 export const GENERIC_KEY = "apiError.generic";
 
@@ -46,14 +51,22 @@ export const error_fr: Record<string, string> = {
 
   profile_not_found: "Profil introuvable.",
   profile_under_age: "Vous devez avoir au moins {{min}} ans pour créer un profil de créateur.",
+  profile_doc_type_unknown: "Le type de document doit être l'un des suivants : {{types}}",
+  profile_document_empty: "Ce document est vide.",
   profile_platform_unsupported: "Cette plateforme n'est pas prise en charge.",
   profile_social_method_unknown: "La méthode de connexion doit être « oauth » ou « manual ».",
   profile_proof_url_required: "Une connexion manuelle demande un lien de preuve.",
   profile_social_not_found: "Compte social introuvable.",
   profile_social_not_yours: "Ce compte social n'est pas le vôtre.",
+  profile_bio_ai_unavailable: "La rédaction assistée n'est pas disponible. Écrivez votre bio vous-même pour l'instant.",
+  profile_bio_limit_reached: "Vous avez atteint la limite de bios générées. Modifiez le texte vous-même.",
+  profile_bio_needs_categories: "Choisissez d'abord au moins une catégorie de contenu, pour que la bio vous décrive vous et pas un créateur générique.",
+  profile_bio_failed: "Impossible de rédiger une bio pour le moment. Réessayez, ou écrivez la vôtre.",
   profile_duration_pair: "La durée et son unité vont ensemble : indiquez les deux, ou aucun des deux.",
   package_not_found: "Pack introuvable.",
   profile_package_not_yours: "Ce pack n'est pas le vôtre.",
+  profile_portfolio_item_not_found: "Élément de portfolio introuvable.",
+  profile_portfolio_not_yours: "Ce portfolio n'est pas le vôtre.",
   deliverable_not_on_platform: "« {{type}} » n'existe pas sur {{platform}}. Possibilités : {{allowed}}",
   price_below_floor: "Le prix minimum en {{currency}} est de {{floor}}.",
   profile_image_type_unsupported: "Seules les images JPEG, PNG, WEBP ou GIF sont acceptées.",
@@ -83,6 +96,8 @@ export const error_fr: Record<string, string> = {
     "Il n'y a encore rien à confirmer : le créateur n'a pas envoyé de livrable pour ce séquestre. Une fois qu'il l'aura envoyé, confirmer la livraison valide cet envoi et libère le paiement.",
 
   deliverable_attachments_max: "Vous pouvez joindre au maximum {{max}} fichiers.",
+  deliverable_attachment_not_found: "Pièce jointe introuvable.",
+  deliverable_attachment_not_yours: "Vous ne pouvez joindre que des fichiers que vous avez importés.",
   deliverable_contract_not_found: "Contrat introuvable.",
   deliverable_not_a_party: "Vous n'êtes pas partie à ce contrat.",
   deliverable_submit_creator_only: "Seul le créateur de ce contrat peut envoyer un livrable.",
@@ -117,13 +132,29 @@ export const error_fr: Record<string, string> = {
   dispute_evidence_max: "Vous pouvez joindre au maximum {{max}} images.",
   dispute_evidence_not_found: "Image introuvable.",
   dispute_evidence_not_yours: "Vous ne pouvez joindre que des images que vous avez importées.",
+  dispute_amount_negative: "Aucun des deux montants ne peut être négatif.",
+  dispute_amounts_must_balance: "{{released}} libérés et {{refunded}} remboursés font {{total}}, mais le séquestre contient {{amount}} {{currency}}. L'argent ne doit être ni créé ni détruit.",
 
   board_not_a_creator: "Seuls les créateurs peuvent parcourir les briefs ouverts. Un brief contient un budget et les projets d'une marque, donc le tableau reste derrière un compte créateur.",
   board_not_open: "Ce brief n'est pas ouvert aux candidatures. La marque y invite les créateurs directement.",
   board_direct_order: "Ceci est une commande directe adressée à un seul créateur, pas un brief ouvert : on ne peut pas y candidater.",
   board_already_applied: "Vous avez déjà une proposition en cours sur ce brief. Modifiez-la en envoyant une nouvelle version plutôt qu'en candidatant à nouveau.",
   campaign_not_found: "Campagne introuvable.",
+  campaign_author_only: "Seules les entreprises et les agences peuvent créer une campagne.",
+  campaign_status_unknown: "Le statut doit être l'un des suivants : {{statuses}}",
+  campaign_platform_unsupported: "{{platform}} n'est pas une plateforme prise en charge. Possibilités : {{allowed}}",
+  campaign_quantity_range: "La quantité doit être un nombre entier entre {{min}} et {{max}}.",
+  campaign_publish_incomplete: "Un budget, des livrables et une date limite sont nécessaires pour publier.",
+  campaign_publish_before_inviting: "Publiez la campagne avant d'inviter des créateurs.",
+  campaign_influencer_not_found: "Créateur introuvable.",
+  campaign_influencer_not_verified: "Ce créateur n'est pas encore vérifié et ne peut pas être invité.",
   campaign_not_open: "Cette campagne n'accepte pas de propositions.",
+
+  /* Le panier : plusieurs packs d'un même créateur payés en une fois. */
+  cart_empty: "Un paiement demande au moins un article.",
+  cart_too_many_items: "Un panier contient au plus {{max}} articles. Payez en plusieurs fois.",
+  cart_mixed_currencies: "Les articles de ce créateur sont libellés en {{currencies}}. Une commande porte un seul séquestre, et un séquestre une seule devise : commandez chaque devise séparément.",
+  cart_item_refused: "L'article {{cart_index}} de votre panier a été refusé.",
 
   order_terms_both: "Envoyez soit un pack, soit des conditions personnalisées, pas les deux. Conditions reçues : {{supplied}}",
   order_terms_missing: "Une commande demande soit un pack, soit une offre personnalisée complète ({{fields}}).",
@@ -155,6 +186,11 @@ export const error_fr: Record<string, string> = {
   message_gate: "La messagerie s'ouvre en même temps que le contrat. Il n'y a pas de contrat entre vous et cette personne sur cette campagne.",
   message_self: "Choisissez un autre destinataire.",
 
+  notification_not_found: "Notification introuvable.",
+  notification_critical_locked: "Les notifications critiques (paiement, litige) ne peuvent pas être désactivées.",
+
+  country_not_configured: "Ce pays n'est pas configuré.",
+
   invitation_not_found: "Invitation introuvable.",
   invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
   invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
@@ -176,6 +212,27 @@ export const error_fr: Record<string, string> = {
   order_not_open: "Cette commande n'est plus ouverte.",
   order_expired: "Cette commande a expiré.",
 
+  /* La file d'attente de modération. Un créateur ne voit jamais ces phrases ;
+     un administrateur travaillant en français, si. */
+  admin_not_authorised: "Ce compte n'est pas administrateur.",
+  admin_decision_unknown: "La décision doit être « approuvé » ou « refusé ».",
+  admin_rejection_needs_reason: "Un refus demande un motif.",
+  admin_document_not_found: "Document introuvable.",
+
+  /* Pas escrow_not_found, bien qu'il s'agisse de la même ligne en base. La
+     personne ici relit une collaboration terminée, et « séquestre introuvable »
+     n'est pas le mot qu'elle emploierait. */
+  review_collaboration_not_found: "Collaboration introuvable.",
+  review_not_a_party: "Vous n'avez pas participé à cette collaboration.",
+  review_not_completed: "Vous pourrez laisser un avis une fois la collaboration terminée et payée.",
+  review_already_submitted: "Vous avez déjà laissé un avis sur cette collaboration.",
+
+  report_target_type_unknown: "Type de signalement inconnu.",
+  report_reason_unknown: "Motif de signalement inconnu.",
+  report_decision_unknown: "La décision doit être « examiné » ou « rejeté ».",
+  report_not_found: "Signalement introuvable.",
+  report_already_resolved: "Ce signalement est déjà traité.",
+
   /* Paiements. Sans ces phrases, un refus de paiement s'affichait en anglais
      sur mobile — et le refus arrive au moment où quelqu'un regarde son
      argent, donc c'est la dernière phrase qui doive être illisible. */
@@ -191,6 +248,21 @@ export const error_fr: Record<string, string> = {
   payout_mode_unsupported: "Ce réseau Mobile Money n'est pas disponible dans le pays choisi. Sélectionnez-en un dans la liste.",
   payout_phone_invalid: "Ce numéro ne ressemble pas à un numéro Mobile Money valide.",
   escrow_use_checkout: "Le financement direct n'est plus disponible. Ouvrez la page de paiement sécurisé pour financer ce contrat.",
+
+  /* Le refus du garde-fou « pas de coordonnées », et le seul dont les valeurs
+     sont des mots plutôt que des nombres. {{what}} et {{surface}} sont
+     composés par contactDetails() plus bas à partir des jetons envoyés par le
+     backend : le français ne construit pas une liste comme l'anglais, et une
+     phrase assemblée en Python ne pourrait l'être que dans une seule langue. */
+  contact_details_found: "Ce {{surface}} semble contenir {{what}}. Kolabo garde la conversation, le contrat et l'argent au même endroit : un accord conclu ailleurs n'a ni contrat ni séquestre derrière lui, donc aucune des deux parties n'a de recours si ça tourne mal. Retirez-le et renvoyez votre {{surface}} — rien n'a été enregistré et rien n'a été modifié.",
+  kind_email: "une adresse e-mail",
+  kind_phone: "un numéro de téléphone",
+  kind_handle: "un identifiant de messagerie",
+  surface_message: "message",
+  surface_statement: "texte",
+  surface_proposal_note: "commentaire de proposition",
+  surface_brief_description: "descriptif de brief",
+  list_and: "et",
 };
 
 export const error_en: Record<string, string> = {
@@ -223,14 +295,22 @@ export const error_en: Record<string, string> = {
 
   profile_not_found: "Profile not found.",
   profile_under_age: "You must be at least {{min}} to create a creator profile.",
+  profile_doc_type_unknown: "The document type must be one of: {{types}}",
+  profile_document_empty: "That document is empty.",
   profile_platform_unsupported: "That platform is not supported.",
   profile_social_method_unknown: 'The connection method must be "oauth" or "manual".',
   profile_proof_url_required: "A manual connection needs a proof link.",
   profile_social_not_found: "Social account not found.",
   profile_social_not_yours: "That social account is not yours.",
+  profile_bio_ai_unavailable: "Assisted writing is not available. Write your bio yourself for now.",
+  profile_bio_limit_reached: "You have reached the limit for generated bios. Edit the text yourself instead.",
+  profile_bio_needs_categories: "Choose at least one content category first, so the bio describes you and not a generic creator.",
+  profile_bio_failed: "A bio could not be drafted right now. Try again, or write your own.",
   profile_duration_pair: "A duration and its unit go together: give both, or neither.",
   package_not_found: "Package not found.",
   profile_package_not_yours: "That package is not yours.",
+  profile_portfolio_item_not_found: "Portfolio item not found.",
+  profile_portfolio_not_yours: "That portfolio is not yours.",
   deliverable_not_on_platform: '"{{type}}" is not available on {{platform}}. Allowed: {{allowed}}',
   price_below_floor: "The minimum price in {{currency}} is {{floor}}.",
   profile_image_type_unsupported: "Only JPEG, PNG, WEBP and GIF images are accepted.",
@@ -260,6 +340,8 @@ export const error_en: Record<string, string> = {
     "There is nothing to confirm yet: the creator has not submitted any work against this escrow. Once they submit it, confirming delivery approves that submission and releases the payment.",
 
   deliverable_attachments_max: "At most {{max}} files can be attached.",
+  deliverable_attachment_not_found: "Attachment not found.",
+  deliverable_attachment_not_yours: "You can only attach files you uploaded.",
   deliverable_contract_not_found: "Contract not found.",
   deliverable_not_a_party: "You are not a party to this contract.",
   deliverable_submit_creator_only: "Only the creator on this contract can submit work.",
@@ -294,13 +376,29 @@ export const error_en: Record<string, string> = {
   dispute_evidence_max: "At most {{max}} images can be attached.",
   dispute_evidence_not_found: "Evidence image not found.",
   dispute_evidence_not_yours: "You can only attach images you uploaded.",
+  dispute_amount_negative: "Neither amount can be negative.",
+  dispute_amounts_must_balance: "{{released}} released and {{refunded}} refunded add up to {{total}}, but the escrow holds {{amount}} {{currency}}. Money must not be invented or destroyed.",
 
   board_not_a_creator: "Only creators can browse open briefs. A brief carries a budget and a brand's plans, so the board stays behind a creator login.",
   board_not_open: "This brief is not open to applications. The brand invites creators to it directly.",
   board_direct_order: "This is a direct order addressed to one creator, not an open brief, and it cannot be applied to.",
   board_already_applied: "You already have a live proposal on this brief. Edit it by submitting a new version instead of applying again.",
   campaign_not_found: "Campaign not found.",
+  campaign_author_only: "Only businesses and agencies can create a campaign.",
+  campaign_status_unknown: "The status must be one of: {{statuses}}",
+  campaign_platform_unsupported: "{{platform}} is not a supported platform. Allowed: {{allowed}}",
+  campaign_quantity_range: "The quantity must be a whole number between {{min}} and {{max}}.",
+  campaign_publish_incomplete: "A budget, deliverables and a deadline are required to publish.",
+  campaign_publish_before_inviting: "Publish the campaign before inviting creators.",
+  campaign_influencer_not_found: "Creator not found.",
+  campaign_influencer_not_verified: "This creator is not verified yet and cannot be invited.",
   campaign_not_open: "This campaign is not open for proposals.",
+
+  /* The cart: several packages from one creator, paid for in one go. */
+  cart_empty: "A checkout needs at least one item.",
+  cart_too_many_items: "A cart holds at most {{max}} items. Check out in smaller baskets.",
+  cart_mixed_currencies: "This creator's items are priced in {{currencies}}. An order carries one escrow and an escrow carries one currency, so order each currency separately.",
+  cart_item_refused: "Item {{cart_index}} in your basket was refused.",
 
   order_terms_both: "Send either a package or custom terms, not both. Custom terms received: {{supplied}}",
   order_terms_missing: "An order needs either a package or a full custom offer ({{fields}}).",
@@ -332,6 +430,11 @@ export const error_en: Record<string, string> = {
   message_gate: "Messaging opens when a contract does. There is no contract between you and this person on this campaign.",
   message_self: "Choose a different recipient.",
 
+  notification_not_found: "Notification not found.",
+  notification_critical_locked: "Critical notifications (payment, dispute) cannot be turned off.",
+
+  country_not_configured: "That country is not configured.",
+
   invitation_not_found: "Invitation not found.",
   invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
   invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
@@ -353,9 +456,31 @@ export const error_en: Record<string, string> = {
   order_not_open: "That order is no longer open.",
   order_expired: "That order has expired.",
 
-  /* Payments. Mobile CI only type-checks, so a code missing from these maps
-     never fails a build — it falls through to the backend's English and only
-     a francophone reader ever finds out. */
+  /* The moderation queue. A creator never sees these sentences; an
+     administrator working in French does. */
+  admin_not_authorised: "This account is not an administrator.",
+  admin_decision_unknown: 'The decision must be "approved" or "rejected".',
+  admin_rejection_needs_reason: "A rejection needs a reason.",
+  admin_document_not_found: "Document not found.",
+
+  /* Not escrow_not_found, though it is the same row being looked up. The
+     person here is reviewing a finished job, and "escrow" is not the word
+     they would use for it. */
+  review_collaboration_not_found: "Collaboration not found.",
+  review_not_a_party: "You were not part of this collaboration.",
+  review_not_completed: "You can leave a review once the collaboration is completed and paid.",
+  review_already_submitted: "You have already reviewed this collaboration.",
+
+  report_target_type_unknown: "Unknown report target type.",
+  report_reason_unknown: "Unknown report reason.",
+  report_decision_unknown: 'The decision must be "reviewed" or "dismissed".',
+  report_not_found: "Report not found.",
+  report_already_resolved: "That report has already been dealt with.",
+
+  /* Payments. Mobile CI only type-checked, so a code missing from these maps
+     never failed a build — it fell through to the backend's English and only
+     a francophone reader ever found out. tests/errorMessages.test.ts is what
+     changed that. */
   escrow_business_not_found: "We couldn't find your account. Please sign in again and retry.",
   payments_gateway_unavailable: "The payment service is unreachable right now. Nothing has been charged — please try again in a moment.",
   payments_gateway_not_configured: "Payments aren't switched on yet. Please contact support.",
@@ -368,6 +493,19 @@ export const error_en: Record<string, string> = {
   payout_mode_unsupported: "That Mobile Money network isn't available in the country you chose. Please pick one from the list.",
   payout_phone_invalid: "That doesn't look like a valid Mobile Money number.",
   escrow_use_checkout: "Direct funding is no longer available. Open the secure payment page to fund this contract.",
+
+  /* The contact guard's refusal, and the only body whose values are words
+     rather than numbers. {{what}} and {{surface}} are composed by
+     contactDetails() below from the tokens the backend sends. */
+  contact_details_found: "This {{surface}} looks like it contains {{what}}. Kolabo keeps the conversation, the contract and the money in one place: a deal agreed elsewhere has no contract and no escrow behind it, so neither side has any recourse if it goes wrong. Take it out and send the {{surface}} again — nothing was saved and nothing was edited.",
+  kind_email: "an email address",
+  kind_phone: "a phone number",
+  kind_handle: "a messaging app handle",
+  surface_message: "message",
+  surface_statement: "statement",
+  surface_proposal_note: "proposal note",
+  surface_brief_description: "brief description",
+  list_and: "and",
 };
 
 /* i18next's t, narrowed to what this file needs — taken as an argument rather
@@ -383,6 +521,44 @@ type MaybeApiError = { code?: unknown; values?: unknown; message?: unknown };
    (possibly falsy) sentence and falls through to the backend's English. */
 const MISS = "::apiError-miss::";
 
+/* Values that are WORDS, not numbers, and so need translating before they are
+   interpolated. Ported from web/src/lib/errorMessages.ts unchanged.
+
+   Every other code sends a ceiling or an amount, which goes straight into the
+   template. The contact guard sends a list of kinds and a surface — tokens
+   naming a concept, not values — and a French sentence needs French nouns and
+   a French "et" in the right place. Composing that in Python was impossible
+   (the backend does not know the reader's language) and composing it inside
+   the template is impossible too (a template interpolates, it does not join).
+   So one small step in between, keyed by code.
+
+   THIS TRAVELS WITH THE SENTENCE. contact_details_found interpolates {{what}},
+   which no backend `values` payload contains — it is built here out of
+   `kinds`. Copying the sentence without this function would put a literal
+   "{{what}}" in the middle of a refusal, which is worse than the English it
+   replaces. */
+function contactDetails(values: Record<string, unknown>, t: Translate): Record<string, unknown> {
+  const kinds = Array.isArray(values.kinds) ? values.kinds.map(String) : [];
+  /* An unknown kind falls back to the token. It would be a backend that grew a
+     fourth kind without telling anyone, and a stray English word beats a hole
+     in the sentence. */
+  const names = kinds.map((k) => t(`apiError.kind_${k}`, { defaultValue: k }));
+  const last = names.pop() ?? "";
+  const what = names.length ? `${names.join(", ")} ${t("apiError.list_and")} ${last}` : last;
+
+  /* "proposal note" -> surface_proposal_note. The backend keeps the spaced
+     form because it is also the noun in its own English sentence; normalising
+     here is cheaper than carrying two spellings of the same token. */
+  const raw = typeof values.surface === "string" ? values.surface : "";
+  const surface = t(`apiError.surface_${raw.trim().replace(/\s+/g, "_")}`, { defaultValue: raw });
+
+  return { what, surface };
+}
+
+const PREPARE: Record<string, (values: Record<string, unknown>, t: Translate) => Record<string, unknown>> = {
+  contact_details_found: contactDetails,
+};
+
 /* The sentence to show a human for a failed request. Order of preference:
    1) the localised sentence for the code, if we know it;
    2) the backend's English `detail`/`message` — specific beats generic even in
@@ -394,7 +570,9 @@ export function errorText(err: unknown, t: Translate): string {
   if (typeof e.code === "string" && e.code) {
     const values =
       e.values && typeof e.values === "object" ? (e.values as Record<string, unknown>) : {};
-    const text = t(`apiError.${e.code}`, { ...values, defaultValue: MISS });
+    const prepare = PREPARE[e.code];
+    const ready = prepare ? prepare(values, t) : values;
+    const text = t(`apiError.${e.code}`, { ...ready, defaultValue: MISS });
     if (text !== MISS && text) return text;
   }
 

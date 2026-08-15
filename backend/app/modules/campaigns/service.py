@@ -80,10 +80,13 @@ AUTHOR_EXCLUDED_ROLE = "influencer"
 MAX_PROPOSAL_VERSIONS = 20
 
 # The statuses a buyer may filter its own campaign list by — which is every
-# status a campaign can hold. Named off models rather than spelled out again,
-# so a fourth status becomes filterable the day it exists instead of silently
-# becoming a 400 for anybody who asks about it.
-MY_CAMPAIGN_STATUSES = (models.DRAFT, models.PUBLISHED, models.CANCELLED)
+# status a campaign can hold, and the tuple has to be EXTENDED BY HAND when a
+# new one is added. An earlier version of this comment claimed that naming the
+# values off models rather than spelling them out made a fourth status
+# filterable the day it existed; it does not, and `completed` arriving is what
+# proved it. A status missing from here is not a missing feature, it is a 400
+# for a buyer asking a perfectly reasonable question about their own briefs.
+MY_CAMPAIGN_STATUSES = (models.DRAFT, models.PUBLISHED, models.COMPLETED, models.CANCELLED)
 
 # What a notification calls somebody who has not written a profile yet.
 #

@@ -69,14 +69,19 @@ def _campaign(db, title, status, is_direct=False):
 def _contract(db, campaign_id, escrow_status, status=contracts.SIGNED):
     """A contract, optionally with an escrow in a given state.
 
-    User ids are strings that match no row, as in test_contract_lifecycle.py:
-    SQLite does not enforce the foreign keys, and what is under test is which
-    campaigns get chosen, not who the parties are. It also keeps notify() off
-    the email path, since it only mails a user it can find.
+    User ids and the proposal id are strings that match no row, as in
+    test_contract_lifecycle.py: SQLite does not enforce the foreign keys, and
+    what is under test is which campaigns get chosen, not who the parties are.
+    It also keeps notify() off the email path, since it only mails a user it
+    can find.
+
+    proposal_id must still be UNIQUE per contract, which SQLite does enforce —
+    a campaign here has two contracts, and reusing one literal makes the second
+    insert fail rather than the test.
     """
     row = contracts.Contract(
         campaign_id=campaign_id,
-        proposal_id="prop-x",
+        proposal_id=contracts.new_id(),
         business_user_id="biz-1",
         influencer_user_id="inf-1",
         language="fr",

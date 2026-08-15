@@ -144,6 +144,11 @@ def _publish_brief(client, biz):
             "deliverables": [{"platform": "instagram", "type": "post", "quantity": 3}],
             "deadline": "2026-12-01",
             "publish": True,
+            # An OPEN brief, because both tests below have a creator nobody
+            # invited bid on it — which is what `open` means. The flag is new
+            # (campaigns.board) and defaults to false, so this helper was
+            # describing an open brief while building a closed one.
+            "is_open": True,
         },
         headers=_headers(biz),
     )

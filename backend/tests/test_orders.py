@@ -581,3 +581,157 @@ def test_the_sweep_requires_an_admin(client):
     _age_out(client, order["proposal_id"])
     assert client.post("/campaigns/orders/expire").status_code == 401
     assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.SUBMITTED
+
+
+# --------------------------------------------------------------------------
+# The sweep expires THE ORDER, not whatever else is lying on the campaign
+#
+# Same stranger's chain as the section above, from the same helper, reaching
+# the same campaign by the other door. _load_order refuses a CALLER holding
+# one of these rows; the sweep has no caller — it reads the table itself — so
+# closing the endpoint did nothing for it and it needs the rule of its own.
+#
+# These are SKIPS rather than refusals: a batch passes the row over and keeps
+# going, so every test here asserts the count as well as the rows, because a
+# row that was skipped and still counted as expired is a report that lies.
+# --------------------------------------------------------------------------
+
+
+def test_an_orphan_chain_does_not_expire_somebody_elses_live_order(client, admin_headers):
+    """A stranger's lapsed row must not close an order it has nothing to do with.
+
+    The buyer's own offer here is FRESH — its full window still to run — so the
+    only lapsed row in the table belongs to somebody who was never addressed.
+    The sweep used to read that row, cancel whichever campaign it happened to
+    hang off, and tell the buyer their order had expired while it was still
+    live and still answerable.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    orphan = _stranger_chain(client, order["campaign_id"], _outsider(client))
+    _age_out(client, orphan)
+
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 0}
+
+    # The order is exactly where it was, and the creator can still answer it.
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.SUBMITTED
+    invitation = _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0]
+    assert invitation.influencer_user_id == creator
+    assert invitation.status == campaigns.INVITED
+
+    # Passed over, not closed: answering it is not this sweep's business either.
+    assert _rows(client, campaigns.Proposal, id=orphan)[0].status == campaigns.SUBMITTED
+
+    # And nobody is told an order lapsed when none did.
+    assert not any("expired" in n.message for n in _rows(client, Notification, user_id=biz))
+    assert not any("expired" in n.message for n in _rows(client, Notification, user_id=creator))
+
+
+def test_an_orphan_chain_does_not_cancel_an_order_that_was_already_accepted(client, admin_headers):
+    """The serious one: the campaign carries a contract by the time this runs.
+
+    Accepting supersedes only the accepted chain's OWN earlier versions, so the
+    stranger's row sits `submitted` for good and its window lapses against a
+    campaign that now has an agreement on it. Cancelling here would kill a
+    contract two people are about to sign and an escrow the buyer may already
+    have funded — and unlike a decline, nobody asked for it.
+
+    The contract is still PENDING rather than fully signed, deliberately.
+    Pending is the weaker state and the guard has to count it, which is the
+    same reading campaigns.editing._contract takes when it refuses the buyer
+    their own cancellation.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    accepted = client.post(
+        f"/campaigns/orders/{order['proposal_id']}/accept", headers=_headers(creator)
+    )
+    assert accepted.status_code == 201
+    contract = accepted.json()
+    orphan = _stranger_chain(client, order["campaign_id"], _outsider(client))
+    _age_out(client, orphan)
+
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 0}
+
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.PROPOSAL_ACCEPTED
+    assert _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0].status == campaigns.ACCEPTED
+
+    # The contract is untouched: same row, same proposal, same status.
+    row = _rows(client, contracts.Contract, id=contract["id"])[0]
+    assert row.campaign_id == order["campaign_id"]
+    assert row.proposal_id == order["proposal_id"]
+    assert row.status == contracts.PENDING
+
+    assert _rows(client, campaigns.Proposal, id=orphan)[0].status == campaigns.SUBMITTED
+    assert not any("expired" in n.message for n in _rows(client, Notification, user_id=biz))
+
+
+def test_a_campaign_carrying_a_contract_is_never_cancelled_by_the_sweep(client, admin_headers):
+    """The contract guard on its own, with no stranger involved.
+
+    The lapsed row below belongs to the ADDRESSED creator, so it clears the
+    invitation half and only the contract half can stop it. That state is not
+    reachable through the API today — submit_proposal refuses a new version
+    once the chain is accepted — so it is seeded, because what is being pinned
+    is the invariant rather than a path: a campaign that already carries an
+    agreement is not the sweep's to cancel, whoever the lapsed row belongs to.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    contract = client.post(
+        f"/campaigns/orders/{order['proposal_id']}/accept", headers=_headers(creator)
+    ).json()
+
+    db = client.session_factory()
+    try:
+        db.add(
+            campaigns.Proposal(
+                campaign_id=order["campaign_id"],
+                influencer_user_id=creator,
+                version=2,
+                rate_amount=25000,
+                rate_currency="XOF",
+                timeline_days=7,
+                author_role=campaigns.AUTHOR_INFLUENCER,
+                status=campaigns.SUBMITTED,
+                expires_at=campaigns.utcnow() - timedelta(hours=1),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 0}
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
+    assert _rows(client, contracts.Contract, id=contract["id"])[0].status == contracts.PENDING
+
+
+def test_a_genuinely_lapsed_order_still_expires_beside_an_orphan_chain(client, admin_headers):
+    """The guard must not have disabled the feature it is guarding.
+
+    Both rows on ONE campaign and both past their window: the buyer's real
+    order, unanswered, and a stranger's chain. Exactly one of the two is an
+    order that lapsed, so exactly one thing ends and the count says one — a
+    skipped row is not an expired row.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    stranger = _outsider(client)
+    orphan = _stranger_chain(client, order["campaign_id"], stranger)
+    _age_out(client, order["proposal_id"])
+    _age_out(client, orphan)
+
+    assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 1}
+
+    # The order ended exactly as it did before the guard existed.
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.PROPOSAL_DECLINED
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.CANCELLED
+    assert _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0].status == campaigns.DECLINED
+    assert any("expired" in n.message for n in _rows(client, Notification, user_id=biz))
+    assert any("expired" in n.message for n in _rows(client, Notification, user_id=creator))
+
+    # The orphan was passed over, and was never counted as one of the expired.
+    assert _rows(client, campaigns.Proposal, id=orphan)[0].status == campaigns.SUBMITTED
+    assert _rows(client, Notification, user_id=stranger) == []

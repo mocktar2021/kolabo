@@ -30,9 +30,35 @@ from app.modules.notifications.service import notify
 def _load_order(db: Session, proposal_id: str, influencer_user_id: str):
     """The order behind a proposal id, checked to be one and to be theirs.
 
-    Authorisation is by the proposal's creator rather than by the invitation
-    row: a direct order has exactly one creator on it from the moment it is
-    placed, and the proposal is the thing being answered.
+    TWO QUESTIONS, AND THE INVITATION IS THE ONE THAT AUTHORISES. A proposal's
+    creator only ever answers "is this row on the caller's own chain", which is
+    not the same question as "is the caller a party to this order": a chain
+    belongs to whoever opened it, and anybody could open one. A direct order is
+    a private transaction between two named parties, and the party it was
+    addressed to is the creator service._place_order wrote the single
+    invitation for. That row is the only thing on the campaign naming the
+    creator the buyer chose, so it is what the authorisation asks about.
+
+    Unasked, this let a stranger through on their own row. latest_in_chain is
+    per creator, so a chain opened by somebody nobody invited started at
+    version 1 without superseding the buyer's offer — two live v1 rows on one
+    campaign — and decline_direct_order then passed every check and cancelled a
+    live order between two other people, while _set_invitation silently did
+    nothing because there was no row of theirs to move. The creator the order
+    was actually addressed to lost it, and neither party was told why.
+
+    submit_proposal now refuses to open that chain at all (service, PR #124),
+    which shuts the way in. That is not what makes this redundant: an entry
+    point is not an authorisation, this is the layer that should have said no
+    in the first place, and the chains written before that guard landed are
+    still in the database.
+
+    BOTH HALVES ARE KEPT, because they refuse different callers. The invitation
+    says the caller is a party to this order at all; the proposal's creator says
+    this particular row is theirs to answer, which is what stops the BUYER
+    answering on the creator's chain — the case
+    test_only_the_invited_creator_can_accept has always pinned, and the buyer
+    holds no invitation of its own to be caught by the other half.
     """
     proposal = db.query(models.Proposal).filter(models.Proposal.id == proposal_id).first()
     if proposal is None:
@@ -57,7 +83,20 @@ def _load_order(db: Session, proposal_id: str, influencer_user_id: str):
             code="order_not_direct",
             detail="This proposal is not a direct order",
         )
-    if proposal.influencer_user_id != influencer_user_id:
+    # service._holds_invitation and not a second copy of the query: it is the
+    # same question, and the import already runs this way — orders has imported
+    # campaigns.service since it was written (see _proposal_out below), while
+    # service imports nothing from here. The circle this module exists to avoid
+    # is the contracts one, which this does not touch.
+    #
+    # ONE CODE FOR BOTH HALVES. order_not_yours already names this rule, and a
+    # code names the rule rather than the module or the branch it fired in —
+    # the convention profiles.service states where it reuses auth_user_not_found.
+    # Splitting it would tell a caller WHICH half of the authorisation they
+    # failed, which is of use to nobody except somebody probing the endpoint.
+    if proposal.influencer_user_id != influencer_user_id or not campaigns_service._holds_invitation(
+        db, campaign.id, influencer_user_id
+    ):
         raise AppError(
             status.HTTP_403_FORBIDDEN,
             code="order_not_yours",

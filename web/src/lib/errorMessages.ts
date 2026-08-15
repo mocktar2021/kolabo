@@ -173,6 +173,7 @@ export const error_fr = {
   campaign_platform_unsupported: "{{platform}} n'est pas une plateforme prise en charge. Possibilités : {{allowed}}",
   campaign_quantity_range: "La quantité doit être un nombre entier entre {{min}} et {{max}}.",
   campaign_publish_incomplete: "Un budget, des livrables et une date limite sont nécessaires pour publier.",
+  campaign_publish_not_draft: "Seule une campagne en brouillon peut être publiée.",
   campaign_publish_before_inviting: "Publiez la campagne avant d'inviter des créateurs.",
   campaign_influencer_not_found: "Créateur introuvable.",
   campaign_influencer_not_verified: "Ce créateur n'est pas encore vérifié et ne peut pas être invité.",
@@ -200,6 +201,7 @@ export const error_fr = {
   invitation_not_found: "Invitation introuvable.",
   invitation_not_open: "Cette invitation n'est plus ouverte et ne peut pas être retirée.",
   invitation_priced: "Ce créateur a déjà envoyé une proposition : il y a une offre sur la table, à laquelle il faut répondre plutôt qu'une invitation à retirer. Répondez-lui ou rejetez-la.",
+  invitation_already_sent: "Vous avez déjà invité ce créateur à cette campagne.",
 
   order_not_found: "Commande introuvable.",
   order_not_direct: "Cette proposition n'est pas une commande directe.",
@@ -427,6 +429,7 @@ export const error_en = {
   campaign_platform_unsupported: "{{platform}} is not a supported platform. Allowed: {{allowed}}",
   campaign_quantity_range: "The quantity must be a whole number between {{min}} and {{max}}.",
   campaign_publish_incomplete: "A budget, deliverables and a deadline are required to publish.",
+  campaign_publish_not_draft: "Only a draft campaign can be published.",
   campaign_publish_before_inviting: "Publish the campaign before inviting creators.",
   campaign_influencer_not_found: "Creator not found.",
   campaign_influencer_not_verified: "This creator is not verified yet and cannot be invited.",
@@ -454,6 +457,7 @@ export const error_en = {
   invitation_not_found: "Invitation not found.",
   invitation_not_open: "That invitation is no longer open and cannot be withdrawn.",
   invitation_priced: "This creator has already sent a proposal, so there is an offer on the table to answer rather than an invitation to retract. Reply to it or reject it.",
+  invitation_already_sent: "You have already invited this creator to this campaign.",
 
   order_not_found: "Order not found.",
   order_not_direct: "That proposal is not a direct order.",

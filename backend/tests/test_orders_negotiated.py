@@ -377,6 +377,7 @@ def test_a_brief_proposal_still_has_no_expiry(client):
             "deliverables": [{"platform": "instagram", "type": "post", "quantity": 3}],
             "deadline": "2026-12-01",
             "publish": True,
+            "is_open": True,
         },
         headers=_headers(biz),
     ).json()

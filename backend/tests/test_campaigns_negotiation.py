@@ -68,6 +68,7 @@ def _published_campaign(client, headers):
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
         "deadline": "2026-09-01",
         "publish": True,
+        "is_open": True,
     }, headers=headers).json()["id"]
 
 

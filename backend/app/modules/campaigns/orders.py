@@ -23,6 +23,11 @@ from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.modules.campaigns import models
 from app.modules.campaigns import service as campaigns_service
+# MODELS as well as the service now. The sweep below has to ask whether a
+# campaign already carries a contract, and that is a one-column read on a
+# table this module is already downstream of — no new direction in the
+# dependency chain the docstring above describes.
+from app.modules.contracts import models as contracts_models
 from app.modules.contracts import service as contracts_service
 from app.modules.notifications.service import notify
 
@@ -143,6 +148,31 @@ def _set_invitation(db: Session, campaign_id: str, influencer_user_id: str, new_
     )
     if invitation is not None:
         invitation.status = new_status
+
+
+def _campaign_has_contract(db: Session, campaign_id: str) -> bool:
+    """Whether a contract has been written off this campaign. PENDING COUNTS.
+
+    The same notion campaigns.editing._contract carries, and it is stated the
+    same way for the same reason: a contract that exists was generated from
+    agreed terms and is sitting in front of two people to sign, so the
+    campaign behind it is no longer anybody's to close on their own.
+    editing.cancel_campaign refuses the BUYER on exactly this test
+    (campaign_has_contract), and a sweep has less standing than the buyer, not
+    more.
+
+    Restated here rather than imported: campaigns.editing is a router-facing
+    module that pulls in campaigns.service, campaigns.schemas and
+    campaigns.completion, and reaching into it for one private helper would
+    widen this module's dependency chain to fetch a query that is four lines
+    long. contracts.models imports nothing but Base.
+    """
+    return (
+        db.query(contracts_models.Contract)
+        .filter(contracts_models.Contract.campaign_id == campaign_id)
+        .first()
+        is not None
+    )
 
 
 def accept_direct_order(db: Session, influencer_user_id: str, proposal_id: str) -> dict:
@@ -269,6 +299,47 @@ def expire_stale_orders(db: Session, now=None) -> int:
     Both parties are notified. The creator is told what they lost by not
     answering, and the buyer is told to stop waiting — which is the whole
     reason the window exists.
+
+    TWO THINGS IT WILL NOT EXPIRE, and both come from the same mistake: the
+    query finds a lapsed PROPOSAL, and a proposal is not the same thing as the
+    order it hangs off.
+
+      * A CHAIN THAT IS NOT THIS ORDER. This is _load_order's rule, one layer
+        down. latest_in_chain is per creator, so a chain opened by somebody
+        nobody invited started at version 1 without superseding the buyer's
+        offer, and cancelling the campaign off that row cancels the real order
+        — placed by a buyer, addressed to a different creator, and quite
+        possibly already answered. submit_proposal shut the way in (service,
+        PR #124) and _load_order stopped honouring those rows (PR #125), but
+        this sweep needs no caller at all: it reads the table directly, so it
+        went on acting on rows written before either guard landed.
+
+      * A CAMPAIGN THAT HAS MOVED ON. Acceptance does NOT change the campaign's
+        status — contracts.service.generate_from_proposal marks the accepted
+        version and leaves the campaign PUBLISHED — so the status cannot tell a
+        live order from one that is already contracted, and it is not the test
+        to use here. A stranger's row meanwhile stays `submitted` forever,
+        because accepting supersedes only the accepted chain's own earlier
+        versions. Put together, that is a sweep cancelling a campaign carrying
+        a signed contract and possibly a funded escrow.
+
+    BOTH ARE SKIPS, NOT REFUSALS, and that is the difference between this and
+    _load_order. There the caller asked for one order and gets told no; here
+    there is no caller and no single order — a batch passes over the rows that
+    are not its business and carries on, the same thing payments.service does
+    when it narrows run_due_auto_releases to escrows awaiting review and
+    _undelivered_escrows to contracts nobody submitted against. Those two
+    express it in the query because their tests are plain columns; these two
+    need a lookup per row, so they are written as a `continue` — same rule,
+    same effect, nothing raised.
+
+    A SKIPPED ROW IS NOT AN EXPIRED ROW, which is why the count below is kept
+    by hand rather than taken from len(stale): the endpoint answers
+    {"expired": n} and n has to mean orders that actually ended.
+
+    NOT LOGGED, deliberately. Nothing in the campaigns package holds a logger
+    and this change is not the place to introduce the first one; the skip is
+    instead visible in the count, which no longer claims a row it passed over.
     """
     now = now or models.utcnow()
     stale = (
@@ -280,13 +351,31 @@ def expire_stale_orders(db: Session, now=None) -> int:
         )
         .all()
     )
+    expired = 0
     for proposal in stale:
         campaign = (
             db.query(models.Campaign).filter(models.Campaign.id == proposal.campaign_id).first()
         )
-        proposal.status = models.PROPOSAL_DECLINED
         if campaign is None:
+            # Unreachable behind the foreign key, and left doing what it did:
+            # the dangling row is closed. It is not counted, because nothing
+            # was cancelled and nobody was told anything — there was no order
+            # here to expire.
+            proposal.status = models.PROPOSAL_DECLINED
             continue
+        if not campaigns_service._holds_invitation(
+            db, campaign.id, proposal.influencer_user_id
+        ):
+            # Somebody else's chain on this campaign. Not this order, so not
+            # this order's clock, and cancelling on it would close a live
+            # order out from under two people who never heard of this row.
+            continue
+        if _campaign_has_contract(db, campaign.id):
+            # The order was answered. Whatever is still sitting `submitted`
+            # here, the campaign is spoken for and a lapsed window is no
+            # longer a reason to end it.
+            continue
+        proposal.status = models.PROPOSAL_DECLINED
         campaign.status = models.CANCELLED
         _set_invitation(db, campaign.id, proposal.influencer_user_id, models.DECLINED)
         notify(
@@ -307,5 +396,6 @@ def expire_stale_orders(db: Session, now=None) -> int:
             link=f"/campaigns/{campaign.id}",
             params={"key": "order_expired_brand", "campaign": campaign.title},
         )
+        expired += 1
     db.commit()
-    return len(stale)
+    return expired

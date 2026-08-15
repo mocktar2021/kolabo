@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
@@ -46,6 +47,12 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The REAL handler, registered from app.core.errors rather than a
+    # lookalike: without it FastAPI renders {"detail": ...} alone and the
+    # `code` assertions below would be reading a key that is not there. The
+    # sentence stays exactly where it was, so the tests that read `detail`
+    # are unaffected. Same registration as test_campaign_write_guards.py.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(campaigns_router, prefix="/campaigns")
     # Accepting an order goes through the existing contracts path, and the
     # tests that check what it produced read it back from there.
@@ -130,6 +137,61 @@ def _age_out(client, proposal_id):
         p = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == proposal_id).first()
         p.expires_at = campaigns.utcnow() - timedelta(hours=1)
         db.commit()
+    finally:
+        db.close()
+
+
+def _outsider(client, phone="+22990000005"):
+    """A verified creator with nothing at all to do with the order under test."""
+    db = client.session_factory()
+    try:
+        user = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        db.add(user); db.commit(); db.refresh(user)
+        return user.id
+    finally:
+        db.close()
+
+
+def _stranger_chain(client, campaign_id, stranger_id, author_role=None, rate=30000, days=7):
+    """A proposal chain opened on somebody else's direct order, seeded directly.
+
+    THIS ROW CAN NO LONGER BE CREATED THROUGH THE API, and it is written here
+    on purpose. submit_proposal used to ask only whether the campaign was
+    published, so any signed-in creator could open a chain on a direct order
+    addressed to somebody else; it now refuses that with board_direct_order
+    (campaigns.service, PR #124). What the guard cannot do is unwrite the rows
+    that landed before it, which is why orders._load_order has to refuse this
+    caller on its own — and the only way to reconstruct that state is to put
+    the row in the database the way the old endpoint did.
+
+    VERSION 1 AND NOT 2, deliberately: latest_in_chain is per creator, so the
+    stranger's chain started over instead of superseding the buyer's offer,
+    leaving two live v1 rows on one campaign. That is the shape the bug had.
+
+    author_role defaults to the creator, which is what the old endpoint wrote.
+    The accept test overrides it, for the reason stated there.
+    """
+    db = client.session_factory()
+    try:
+        buyer_offer = (
+            db.query(campaigns.Proposal)
+            .filter(campaigns.Proposal.campaign_id == campaign_id)
+            .first()
+        )
+        row = campaigns.Proposal(
+            campaign_id=campaign_id,
+            influencer_user_id=stranger_id,
+            version=1,
+            rate_amount=rate,
+            rate_currency="XOF",
+            timeline_days=days,
+            author_role=author_role or campaigns.AUTHOR_INFLUENCER,
+            status=campaigns.SUBMITTED,
+            # The order's own clock, which submit_proposal carried forward.
+            expires_at=buyer_offer.expires_at,
+        )
+        db.add(row); db.commit(); db.refresh(row)
+        return row.id
     finally:
         db.close()
 
@@ -364,6 +426,111 @@ def test_an_answered_order_cannot_be_answered_again(client):
     proposal_id = order["proposal_id"]
     assert client.post(f"/campaigns/orders/{proposal_id}/decline", headers=_headers(creator)).status_code == 200
     assert client.post(f"/campaigns/orders/{proposal_id}/accept", headers=_headers(creator)).status_code == 400
+
+
+# --------------------------------------------------------------------------
+# Who the order was addressed to
+#
+# Answering an order is authorised by the invitation _place_order wrote for
+# the one creator the buyer chose — not by owning a proposal chain, which
+# anybody could open and which before PR #124 anybody could.
+#
+# EVERY REFUSAL HERE IS ASSERTED TWICE: the status and code the caller gets
+# back, and the fact that nothing was written. A guard that answers 403 and
+# cancels the campaign anyway reads as green in a test that only checks the
+# status, and it is the worse of the two bugs — the stranger is told no while
+# the order dies anyway.
+# --------------------------------------------------------------------------
+
+
+def test_a_creator_with_no_invitation_cannot_decline_someone_elses_order(client):
+    """The bug: a stranger's "no" killed an order between two other parties.
+
+    _load_order authorised by the PROPOSAL's creator, so the stranger's own
+    row passed the check. decline_direct_order then ran the whole way through:
+    it cancelled the campaign, _set_invitation silently did nothing (there is
+    no invitation of theirs to move), and the creator the order was actually
+    addressed to lost it with nobody told why.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    stranger = _outsider(client)
+    stranger_proposal = _stranger_chain(client, order["campaign_id"], stranger)
+
+    r = client.post(f"/campaigns/orders/{stranger_proposal}/decline", headers=_headers(stranger))
+    assert r.status_code == 403
+    assert r.json()["code"] == "order_not_yours"
+
+    # AND THE ORDER IS STILL LIVE, which is the half of this that mattered.
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.SUBMITTED
+    # The addressed creator's invitation is untouched: still waiting for them.
+    invitation = _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0]
+    assert invitation.influencer_user_id == creator
+    assert invitation.status == campaigns.INVITED
+    # And the buyer was never told their order had been declined.
+    assert not any("declined" in n.message for n in _rows(client, Notification, user_id=biz))
+
+
+def test_a_creator_with_no_invitation_cannot_accept_someone_elses_order(client):
+    """Accept routes through _load_order too, so the same line guards it.
+
+    The seeded row is BUSINESS-authored here, which is the point of the test.
+    A creator-authored row would be refused by _require_business_offer anyway,
+    for a different reason and with a different code — a 400 that would make
+    this look guarded while the authorisation underneath it was still wrong.
+    This shape reaches the authorisation, and _load_order runs first.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    stranger = _outsider(client)
+    stranger_proposal = _stranger_chain(
+        client, order["campaign_id"], stranger, author_role=campaigns.AUTHOR_BUSINESS
+    )
+
+    r = client.post(f"/campaigns/orders/{stranger_proposal}/accept", headers=_headers(stranger))
+    assert r.status_code == 403
+    assert r.json()["code"] == "order_not_yours"
+
+    # Nothing signed, and the order is still open for the creator it was sent to.
+    assert _rows(client, contracts.Contract) == []
+    assert _rows(client, campaigns.Proposal, id=stranger_proposal)[0].status == campaigns.SUBMITTED
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
+    assert _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0].status == campaigns.INVITED
+
+
+def test_the_addressed_creator_can_still_decline_their_own_order(client):
+    """The feature the fix must not cost: the invited creator's own no.
+
+    The stranger's row is seeded here too, so that what lets this caller
+    through is visibly the invitation and not the absence of anybody else on
+    the campaign.
+    """
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    _stranger_chain(client, order["campaign_id"], _outsider(client))
+
+    r = client.post(f"/campaigns/orders/{order['proposal_id']}/decline", headers=_headers(creator))
+    assert r.status_code == 200
+    assert r.json()["status"] == campaigns.PROPOSAL_DECLINED
+    assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.CANCELLED
+    invitation = _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0]
+    assert invitation.status == campaigns.DECLINED
+    assert any("declined" in n.message for n in _rows(client, Notification, user_id=biz, type="direct_order"))
+
+
+def test_the_addressed_creator_can_still_accept_their_own_order(client):
+    """The same, on the path that writes a contract."""
+    biz, creator, pkg = _setup(client)
+    order = _order(client, biz, pkg).json()
+    _stranger_chain(client, order["campaign_id"], _outsider(client))
+
+    r = client.post(f"/campaigns/orders/{order['proposal_id']}/accept", headers=_headers(creator))
+    assert r.status_code == 201
+    assert r.json()["influencer_user_id"] == creator
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.PROPOSAL_ACCEPTED
+    invitation = _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0]
+    assert invitation.status == campaigns.ACCEPTED
 
 
 # --------------------------------------------------------------------------

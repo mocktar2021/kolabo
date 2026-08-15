@@ -397,6 +397,24 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
 
 def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> dict:
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
+    # PUBLISHING IS A DRAFT'S ONE TRANSITION. Nothing here read the current
+    # status, so `cancelled` -> `published` was a single call: a brief every
+    # invited creator had been told was off came back live with none of them
+    # told, and campaigns.editing's campaign_cancelled_immutable became a lock
+    # the buyer opens by republishing first and editing afterwards. `completed`
+    # -> `published` is the same call on a brief already delivered and paid for.
+    #
+    # Written as "must be DRAFT" rather than "must not be cancelled", which is
+    # the mistake MY_CAMPAIGN_STATUSES made: a status added tomorrow is refused
+    # by this on the day it exists, instead of being publishable until somebody
+    # remembers to come back here. Same shape as
+    # contracts.generate_from_proposal's campaign check.
+    if campaign.status != models.DRAFT:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_publish_not_draft",
+            detail="Only a draft campaign can be published.",
+        )
     if not _publish_ready(campaign):
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
@@ -413,6 +431,28 @@ def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> di
     return _to_out(campaign)
 
 
+def _holds_invitation(db: Session, campaign_id: str, influencer_user_id: str) -> bool:
+    """Whether this creator was addressed by this campaign, in any state.
+
+    ANY invitation row, not only a live one — the same question board._my_state
+    asks for its `is_invited` flag, and the same lookup orders._set_invitation
+    does one at a time. Status is deliberately not consulted: a creator who
+    declined and changed their mind is still somebody the brand asked, and a
+    withdrawn invitation still means this brief was once addressed to them.
+    What the guard needs to know is whether the caller is a STRANGER to the
+    brief, and a stranger has no row here at all.
+    """
+    return (
+        db.query(models.CampaignInvitation)
+        .filter(
+            models.CampaignInvitation.campaign_id == campaign_id,
+            models.CampaignInvitation.influencer_user_id == influencer_user_id,
+        )
+        .first()
+        is not None
+    )
+
+
 def invite_influencer(db: Session, campaign_id: str, business_user_id: str, influencer_user_id: str) -> dict:
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
     if campaign.status != models.PUBLISHED:
@@ -420,6 +460,25 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
             status.HTTP_400_BAD_REQUEST,
             code="campaign_publish_before_inviting",
             detail="Publish the campaign before inviting",
+        )
+    # A direct order is not a brief with an invitation list. It carries exactly
+    # one creator, written by _place_order beside the single offer they are
+    # answering, and a second invitation would put a creator on an order with
+    # no proposal to answer and no way to answer it — /orders/{id}/accept takes
+    # a proposal id, and theirs does not exist.
+    #
+    # campaigns.editing's code, not board's. Both name the same fact, but the
+    # two sentences face opposite sides: board_direct_order tells a CREATOR
+    # they cannot bid, and this is the buyer being told a direct order is not
+    # administered like a brief — which is exactly what editing.py refuses.
+    if campaign.is_direct:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_is_direct_order",
+            detail=(
+                "This is a direct order addressed to one creator, and other "
+                "creators cannot be invited to it."
+            ),
         )
     influencer = db.query(User).filter(User.id == influencer_user_id).first()
     if influencer is None:
@@ -433,6 +492,25 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
             status.HTTP_400_BAD_REQUEST,
             code="campaign_influencer_not_verified",
             detail="This influencer is not verified yet and cannot be invited",
+        )
+    # ONE INVITATION PER CREATOR PER CAMPAIGN. Nothing checked, so a buyer
+    # double-tapping the button — or working a favourites list twice — wrote a
+    # second row and sent a second "you were invited to X", and the creator's
+    # list then showed the same brief twice with one proposal chain between
+    # them. withdraw_invitation takes one id and would leave the other standing.
+    #
+    # Any status counts, not only `invited`. A creator who declined has
+    # answered, and a withdrawn invitation was taken back on purpose; neither
+    # is re-sent by a button that was never meant to ask twice.
+    #
+    # SERVICE-LAYER ONLY, no unique constraint: rows written before this guard
+    # may already hold duplicates, and the migration adding the constraint
+    # would fail on them.
+    if _holds_invitation(db, campaign_id, influencer_user_id):
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="invitation_already_sent",
+            detail="You have already invited this creator to this campaign.",
         )
     invitation = models.CampaignInvitation(
         campaign_id=campaign_id, influencer_user_id=influencer_user_id, status=models.INVITED
@@ -955,6 +1033,51 @@ def submit_proposal(
             detail="Campaign is not open for proposals",
         )
 
+    # WHO MAY BID ON THIS BRIEF AT ALL. The only campaign question asked here
+    # was the status, so any signed-in creator could bid on any published
+    # campaign — including a brief the brand deliberately kept closed, and
+    # including somebody else's direct order, which is a private transaction
+    # between two named parties.
+    #
+    # The invitation is what tells this function's three callers apart. An OPEN
+    # brief takes bids from anybody, which board.apply_to_campaign has always
+    # said; everything else has to have been addressed to this creator. A
+    # direct order carries exactly one invitation, written by _place_order,
+    # which is what keeps the creator's counter working — there is no
+    # creator-side counter endpoint, the next version IS the counter — while a
+    # stranger holding the campaign id is refused.
+    #
+    # THE STRANGER'S BID WAS AN AUTHORISATION HOLE, not noise on the brand's
+    # list: orders._load_order authorises a decline by the PROPOSAL's creator,
+    # so a stranger who opened a chain on somebody else's order could then
+    # decline it and cancel the order out from under both parties.
+    #
+    # board's codes, not new ones: these are board_direct_order's and
+    # board_not_open's rules, and a code names the rule rather than the module
+    # it fired in. The sentences are restated rather than imported because
+    # campaigns.board imports this module.
+    if not campaign.is_open and not _holds_invitation(db, campaign_id, influencer_user_id):
+        if campaign.is_direct:
+            # Inside the branch, and first, for board's reason: a direct order
+            # is never open, and "this brief is not open" would be a true
+            # sentence that explains nothing about what the caller found.
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="board_direct_order",
+                detail=(
+                    "This is a direct order addressed to one creator, not an "
+                    "open brief, and it cannot be bid on."
+                ),
+            )
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="board_not_open",
+            detail=(
+                "This brief is not open to applications. The brand invites "
+                "creators to it directly."
+            ),
+        )
+
     # Before the chain is touched, so a refused note leaves the previous
     # version live rather than superseded by something that was never written.
     note = _checked_note(payload.note)
@@ -1091,6 +1214,24 @@ def reply_to_proposal(
     not a reason to reject a reply.
     """
     campaign = _require_campaign_owner(db, campaign_id, business_user_id)
+    # A dead brief takes no new versions, on either side. submit_proposal has
+    # refused a non-published campaign since it was written; this side never
+    # asked, so a buyer could cancel a brief — telling every invited creator it
+    # was off — and then counter on it, writing a fresh `submitted` version and
+    # notifying the creator of a live offer on a campaign that no longer
+    # exists. Since the terminal state landed, `completed` is the same hole
+    # with worse consequences: the brief is filled and paid, and
+    # completion.close_open_offers has already rejected the chains under it.
+    #
+    # campaign_not_open, the code submit_proposal already refuses with: the
+    # same rule — this campaign is not in a state that takes new proposal
+    # versions — and a reply IS a proposal version.
+    if campaign.status != models.PUBLISHED:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_not_open",
+            detail="Campaign is not open for proposals",
+        )
     proposal = (
         db.query(models.Proposal)
         .filter(models.Proposal.id == proposal_id, models.Proposal.campaign_id == campaign_id)
@@ -1111,6 +1252,21 @@ def reply_to_proposal(
             status.HTTP_400_BAD_REQUEST,
             code="proposal_closed",
             detail="This proposal is closed and cannot be answered",
+        )
+
+    # The window the order was placed under, checked on the buyer's side too.
+    # contracts.generate_from_proposal has this exact check on this exact
+    # column. A counter written after the order lapsed puts a live-looking
+    # offer in front of a creator who can no longer accept it —
+    # accept_direct_order refuses with this same code — and leaves a dead order
+    # reading as a running negotiation on both screens.
+    #
+    # NULL is a brief, which never expires, and that is the common case here.
+    if latest.expires_at is not None and latest.expires_at <= models.utcnow():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_expired",
+            detail="This order has expired.",
         )
 
     # Before the supersede below, for the same reason as in submit_proposal: a

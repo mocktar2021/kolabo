@@ -10,10 +10,15 @@ import { awaitingMyAnswer } from "../lib/disputes";
 import { useMe } from "../lib/me";
 import type { Dispute, MessageThread } from "../lib/types";
 
-function LanguageSwitch() {
+/* The one control that must never end up behind anything: a visitor who
+   landed on the French UI by accident has to be able to find EN, and a
+   francophone one has to be able to find FR. It is rendered twice below 960 px
+   — once inside the collapsible list (hidden there by CSS) and once out in the
+   bar — so exactly one copy is ever in the document flow. */
+function LanguageSwitch({ className }: { className?: string }) {
   const { i18n } = useTranslation();
   return (
-    <div className="lang-switch" role="group" aria-label="Language">
+    <div className={className ? `lang-switch ${className}` : "lang-switch"} role="group" aria-label="Language">
       <button className={i18n.language === "fr" ? "active" : ""} onClick={() => i18n.changeLanguage("fr")}>FR</button>
       <button className={i18n.language === "en" ? "active" : ""} onClick={() => i18n.changeLanguage("en")}>EN</button>
     </div>
@@ -75,10 +80,10 @@ function FeaturesMenu() {
    nav-secondary links hide first at laptop widths (see the nav
    responsiveness rules in theme.css); they stay reachable through the
    footer. */
-function MarketingNav() {
+function MarketingNav({ open }: { open: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="nav-links">
+    <div id="primary-nav" className={open ? "nav-links open" : "nav-links"}>
       <Link className="nav-link" to="/discover">{t("marketingNav.findCreators")}</Link>
       <FeaturesMenu />
       <Link className="nav-link nav-secondary" to="/for-brands">{t("marketingNav.forBrands")}</Link>
@@ -362,7 +367,7 @@ function AccountMenu() {
   );
 }
 
-function AppNav() {
+function AppNav({ open }: { open: boolean }) {
   const { t } = useTranslation();
   /* The two sides of the market get two different menus, from one question.
      Campaigns are a brand-side artifact: only businesses and agencies can own
@@ -388,7 +393,7 @@ function AppNav() {
      four of the nine that made this row wrap. */
   const isBrand = isBusinessLike(getStoredRole());
   return (
-    <div className="nav-links">
+    <div id="primary-nav" className={open ? "nav-links open" : "nav-links"}>
       <LanguageSwitch />
       <Link className="btn btn-ghost" to="/discover">{t("nav.discover")}</Link>
       {!isBrand && <Link className="btn btn-ghost" to="/board">{t("nav.board")}</Link>}
@@ -407,14 +412,44 @@ function AppNav() {
   );
 }
 
+/* The header, and the one thing it has to survive: a 320 px phone.
+
+   The row is a flex line that never wrapped, holding items that never shrink
+   (.btn sets white-space: nowrap, and a flex item's automatic minimum keeps
+   text at its content size). The signed-in French set asks for 760 px of it.
+   On a 360 px screen the destinations therefore ran off the right edge and
+   were simply unreachable — no scrollbar, no wrap, nothing.
+
+   Below 960 px — the width at which the last of them stops fitting, measured,
+   and the breakpoint the nav already used to start shedding links — the list
+   collapses behind one control and the language switch stays out in the bar.
+   Above 960 px both of those are display:none, so they are not flex items and
+   the desktop row is byte-for-byte the row it was. */
 export function Layout({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
+  const [navOpen, setNavOpen] = useState(false);
   return (
     <>
       <header className="nav">
         <div className="container nav-inner">
           <Link to="/" aria-label="Kolabo home"><Logo /></Link>
-          {isAuthenticated ? <AppNav /> : <MarketingNav />}
+          <LanguageSwitch className="lang-switch-bar" />
+          <button
+            type="button"
+            className="btn btn-ghost nav-toggle"
+            aria-expanded={navOpen}
+            aria-controls="primary-nav"
+            aria-label={navOpen ? t("menu.closeNav") : t("menu.openNav")}
+            onClick={() => setNavOpen((o) => !o)}
+          >
+            <span aria-hidden="true" style={{ display: "grid", gap: 3.4 }}>
+              <span style={MENU_DASH} />
+              <span style={MENU_DASH} />
+              <span style={MENU_DASH} />
+            </span>
+          </button>
+          {isAuthenticated ? <AppNav open={navOpen} /> : <MarketingNav open={navOpen} />}
         </div>
       </header>
       {children}

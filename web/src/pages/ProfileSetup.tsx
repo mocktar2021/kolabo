@@ -9,7 +9,7 @@ import { CATEGORIES } from "../lib/categories";
 import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
-import { minPrice } from "../lib/pricing";
+import { MIN_LIVE_PACKAGES, deactivationHidesProfile, minPrice } from "../lib/pricing";
 import { SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
@@ -23,6 +23,12 @@ type SocialAccount = { id: string; platform: string; handle: string; status: str
 const pkgChipStyle: CSSProperties = {
   fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
   background: "var(--surface-2)", color: "var(--muted)", whiteSpace: "nowrap"
+};
+
+/* The same chip outlined rather than filled, so "Inactive" does not read as
+   one more spec sitting alongside ×3 and 30 s. */
+const inactiveChipStyle: CSSProperties = {
+  ...pkgChipStyle, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)"
 };
 
 function PortfolioSection({ userId, token }: { userId: string; token: string | null }) {
@@ -375,6 +381,60 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
     load();
   }
 
+  /* What a buyer can currently order — the same figure onboarding-status
+     reports as active_package_count, counted from the list already on screen
+     so the warning cannot lag a round trip behind the box that changes it. */
+  const activeCount = packages.filter((p) => p.is_active).length;
+
+  /* The Active box. Turning a package off is NOT deleting it: the row keeps
+     its title, its price and its place in this list, stays editable, and is
+     orderable again the moment it goes back on. It only leaves the public
+     page and the buyer-facing search.
+
+     That second half is the dangerous one. Below MIN_LIVE_PACKAGES the
+     creator drops out of discovery entirely and NOTHING SAYS SO — the API
+     does not refuse, the profile simply stops being returned. So the one
+     click that crosses that line states the consequence first, with the
+     threshold interpolated rather than written into the sentence. It states
+     it and does not prevent it: hiding a package is a legitimate thing to
+     want, and cancelling leaves the package exactly as it was. */
+  async function setActive(pkg: Package, isActive: boolean) {
+    if (
+      !isActive && deactivationHidesProfile(activeCount) &&
+      !window.confirm(t("profile.packageDeactivateWarning", { min: MIN_LIVE_PACKAGES }))
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      /* PUT /packages/{id} takes a whole PackageIn rather than a patch, so
+         every field travels as it stands with the one flag flipped: a key left
+         out would be read as a cleared value, not as an unchanged one. */
+      const updated = await api<Package>(`/profiles/${userId}/packages/${pkg.id}`, {
+        method: "PUT",
+        token,
+        body: {
+          platform: pkg.platform,
+          deliverable_type: pkg.deliverable_type,
+          title: pkg.title,
+          description: pkg.description,
+          quantity: pkg.quantity ?? 1,
+          duration_value: pkg.duration_value,
+          duration_unit: pkg.duration_unit,
+          price_amount: pkg.price_amount,
+          currency: pkg.currency,
+          is_active: isActive
+        }
+      });
+      setPackages((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("profile.packages")}</h3>
@@ -384,12 +444,22 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
       {packages.length > 0 && (
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           {packages.map((p) => (
-            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
-              <div>
+            <div key={p.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px",
+              // An inactive package still belongs here, so it is greyed rather
+              // than moved, hidden or struck through.
+              background: p.is_active ? undefined : "var(--surface-2)"
+            }}>
+              <div style={{ opacity: p.is_active ? 1 : 0.6 }}>
                 <strong style={{ fontSize: 14 }}>{p.title}</strong>
                 <div className="muted" style={{ fontSize: 12 }}>{p.platform} - {t(`deliverable.${p.deliverable_type}`, p.deliverable_type)}</div>
-                {((p.quantity ?? 1) > 1 || (p.duration_value != null && p.duration_unit)) && (
+                {(!p.is_active || (p.quantity ?? 1) > 1 || (p.duration_value != null && p.duration_unit)) && (
                   <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {/* Named as well as greyed. A dimmed row on its own reads
+                        as a rendering glitch; the word says which state it is
+                        in, and that the state was chosen. */}
+                    {!p.is_active && <span style={inactiveChipStyle}>{t("profile.packageInactive")}</span>}
                     {(p.quantity ?? 1) > 1 && <span style={pkgChipStyle}>{t("pkg.qty", { n: p.quantity })}</span>}
                     {p.duration_value != null && p.duration_unit && (
                       <span style={pkgChipStyle}>{t(`pkg.duration_${p.duration_unit}`, { n: p.duration_value })}</span>
@@ -398,6 +468,11 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  <input type="checkbox" checked={p.is_active} disabled={busy}
+                    onChange={(e) => setActive(p, e.target.checked)} />
+                  {t("profile.packageActive")}
+                </label>
                 <strong>{p.price_amount} {p.currency}</strong>
                 <button type="button" className="btn btn-ghost" style={{ padding: "5px 9px" }} onClick={() => remove(p.id)}>x</button>
               </div>

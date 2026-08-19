@@ -27,6 +27,9 @@ import "./lib/notificationStrings";
 /* And this one adds profile.noAudienceHint to the profile.* group i18n.ts
    owns, for the same reason and in the same way. */
 import "./lib/socialStrings";
+/* And this one adds the packages section's Active switch to that same
+   profile.* group, so it carries the same ordering constraint. */
+import "./lib/packageStrings";
 /* And this one adds contract.status_cancelled / status_void to the contract.*
    group i18n.ts owns — the two statuses its block never got keys for. */
 import "./lib/statusStrings";

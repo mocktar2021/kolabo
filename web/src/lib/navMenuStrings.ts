@@ -18,12 +18,23 @@ const frMenu = {
      personne n'a pas écrit de profil. On ne remplit jamais ce trou avec le
      numéro de téléphone : c'est la seule colonne lisible de la table users, et
      un numéro n'a rien à faire dans un emplacement d'affichage. */
-  noName: "Votre compte"
+  noName: "Votre compte",
+
+  /* The control that folds the whole navigation away under 960px, where the
+     row cannot hold it. Same reasoning as account above: it is three dashes
+     and nothing else, so the name has to be on the button. Two strings rather
+     than one because the state is what a screen reader is being told — the
+     button says what the next tap does, and aria-expanded says where it is
+     now. */
+  openNav: "Ouvrir le menu de navigation",
+  closeNav: "Fermer le menu de navigation"
 };
 
 const enMenu = {
   account: "Account menu",
-  noName: "Your account"
+  noName: "Your account",
+  openNav: "Open the navigation menu",
+  closeNav: "Close the navigation menu"
 };
 
 /* The cards a role could reach from the nav but not from the dashboard.

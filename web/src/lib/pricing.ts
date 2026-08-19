@@ -12,6 +12,28 @@ export function minPrice(currency: string): number {
   return MIN_PACKAGE_PRICE[currency] ?? 0;
 }
 
+/* Mirror of MIN_LIVE_PACKAGES in backend/app/core/pricing.py: how many active
+   packages a creator needs before they are searchable.
+
+   Mirrored rather than fetched because the API never reports the number.
+   GET /profiles/{id}/onboarding-status answers with active_package_count and
+   the has_pricing verdict it reached — the threshold behind that verdict is
+   not in the payload, so a client that wants to SAY the number has to hold
+   it. Holding it once, here, is the whole point: the copy interpolates it, so
+   the day the storefront rule changes there is one number to change and not
+   four sentences in two languages that quietly became false. */
+export const MIN_LIVE_PACKAGES = 3;
+
+/* Whether turning this one package off takes the creator out of search.
+
+   True only on the crossing — findable now, not findable after. Already below
+   the threshold, the profile is hidden either way, and warning about a
+   consequence that has already happened is how a warning gets ignored the one
+   time it matters. */
+export function deactivationHidesProfile(activePackageCount: number): boolean {
+  return activePackageCount >= MIN_LIVE_PACKAGES && activePackageCount - 1 < MIN_LIVE_PACKAGES;
+}
+
 /* Mirror of settings.commission_bps (1500 = 15 percent).
 
    Duplicated rather than fetched because there is no endpoint that reports

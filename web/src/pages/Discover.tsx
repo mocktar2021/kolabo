@@ -92,7 +92,7 @@ export default function Discover() {
         <p className="muted" style={{ marginTop: -6 }}>{t("discover.sub")}</p>
 
         <form className="card" style={{ marginTop: 16, padding: 18 }} onSubmit={onSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+          <div className="filter-grid">
             <div>
               <label className="label" htmlFor="f-cat">{t("discover.category")}</label>
               <select id="f-cat" className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -119,7 +119,7 @@ export default function Discover() {
               <input id="f-min" className="input" inputMode="numeric" value={minFollowers}
                 onChange={(e) => setMinFollowers(e.target.value.replace(/\D/g, ""))} placeholder="1000" />
             </div>
-            <button className="btn btn-primary" type="submit">{t("discover.searchBtn")}</button>
+            <button className="btn btn-primary filter-submit" type="submit">{t("discover.searchBtn")}</button>
           </div>
         </form>
 

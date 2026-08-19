@@ -105,6 +105,28 @@ a:hover { text-decoration: underline; }
 }
 .hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 
+/* ---- Discovery filter row ----
+   Was an inline grid of "1fr 1fr 1fr 1fr auto" at every width. Inline styles
+   cannot carry a media query, so on a 360px phone it still tried to seat five
+   controls across 284px: the selects resolved to 30-69px and showed "Tc" and
+   "Tou" instead of their values, "Abonnés min." wrapped onto two lines and
+   shoved the row down, and the submit button ended 51px past the right edge.
+   Same track list as before at desktop widths; two tiers under it. */
+.filter-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 12px; align-items: end; }
+/* Grid items default to a min-content floor, which is what let the selects
+   push the row wider than the card in the first place. */
+.filter-grid > * { min-width: 0; }
+
+@media (max-width: 860px) {
+  .filter-grid { grid-template-columns: 1fr 1fr; }
+  .filter-grid > .filter-submit { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  /* One control per row: below this, half a row is too narrow to read a
+     selected value in, which is the failure being fixed. */
+  .filter-grid { grid-template-columns: 1fr; }
+}
+
 /* Card */
 .card {
   background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
@@ -182,6 +204,21 @@ a:hover { text-decoration: underline; }
 .page { padding: 40px 0; }
 .page h1 { font-size: 28px; }
 
+/* .page and .container have the same specificity and .page comes later, so
+   its padding shorthand was resetting the 20px gutter .container sets — on
+   every screen built as <div className="container page">, which is most of
+   the app. Nobody noticed on a desktop because the container's own auto
+   margins are 80px wide there; on a phone the h1, the filter card and every
+   table ran flush into both edges of the glass.
+
+   Restored as longhands on the combined selector, and only below the width at
+   which those auto margins stop covering for it (1120px container + 2x20px),
+   so the desktop content box keeps its full 1120px and nothing above 1160px
+   moves by a pixel. */
+@media (max-width: 1159px) {
+  .container.page { padding-left: 20px; padding-right: 20px; }
+}
+
 @media (max-width: 860px) {
   .hero-grid { grid-template-columns: 1fr; gap: 32px; padding: 48px 0; }
   .hero-art { max-width: 320px; }
@@ -217,10 +254,52 @@ a:hover { text-decoration: underline; }
      to share the row. */
   .nav-links .btn { padding: 8px 12px; font-size: 14px; }
 }
+/* The disclosure control for the collapsed nav. Sized and coloured by
+   .btn.btn-ghost; this only decides when it exists. It has to come after .btn
+   to win the display declaration, which is the whole reason it lives here. */
+.nav-toggle { display: none; }
+/* Its counterpart: the copy of the language switch that sits out in the bar
+   while the rest of the nav is collapsed. Hidden on desktop, where the copy
+   inside .nav-links is the one being used. */
+.lang-switch-bar { display: none; }
+
 @media (max-width: 960px) {
-  /* Below this even the reduced link set cannot share the row with the
-     auth buttons. */
-  .nav-link { display: none; }
+  /* Measured: the signed-in French nav asks for 760px (creator) and 808px
+     (brand) of a row that also has to hold a 141px logo, so it overflows at
+     every width up to 960 and by 581px at 320. Nothing in it shrinks — .btn
+     is white-space: nowrap and .lang-switch is flex: none — so the row cannot
+     absorb the deficit and the links simply left the screen.
+
+     They collapse behind .nav-toggle instead. The language switch stays out
+     in the bar: it is the one control a visitor on the wrong language has to
+     find without knowing where anything is.
+
+     This replaces the old rule that hid .nav-link here — those marketing
+     links are inside the panel now, which is strictly more than the footer
+     link they used to fall back to. */
+  .nav-inner { flex-wrap: wrap; height: auto; min-height: 64px; }
+  .nav-toggle { display: inline-flex; }
+  .lang-switch-bar { display: inline-flex; }
+  .nav-links .lang-switch { display: none; }
+
+  .nav-links {
+    display: none;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .nav-links.open { display: flex; }
+  /* Inside the open panel there is room for the marketing links again — both
+     the ones hidden at 1200px and the ones this breakpoint used to hide — and
+     each of them becomes a 44px row rather than the 34px it is in a desktop
+     row that is being clicked with a mouse. */
+  .nav-links.open .nav-link { display: flex; align-items: center; min-height: 44px; }
+
+  /* The dropdowns inside the panel are wider than a phone: the features menu
+     is a flat 330px and would put the overflow straight back. */
+  .menu-panel { max-width: calc(100vw - 32px); }
 }
 
 /* ---- Features dropdown (marketing nav) ---- */
@@ -622,3 +701,15 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
 }
 /* "A commandé" is the state that pays; it gets the only colour in the table. */
 .ref-chip.ok { background: #e7f6f0; color: var(--teal-600); }
+
+/* ---- Touch targets ----
+   A finger needs about 44px and the phone-sized controls were under it: the
+   language switch buttons were 27px tall, the nav and card buttons 34-40px,
+   the inputs 43px. Only the height changes, only below 860px, and only on
+   controls that are already flex or form elements — so nothing moves at the
+   desktop widths where these are being clicked with a mouse. */
+@media (max-width: 860px) {
+  .btn, .nav-toggle, .wf-tab, .pp-tab { min-height: 44px; }
+  .lang-switch button { min-height: 44px; min-width: 44px; }
+  .input, .select, .search-bar select, .search-bar input { min-height: 44px; }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorCard } from "../components/CreatorCard";
@@ -116,6 +116,7 @@ const TOOL_TILES = [
 export default function Landing() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { hash } = useLocation();
   const [platform, setPlatform] = useState("");
   const [q, setQ] = useState("");
   const [featured, setFeatured] = useState<SearchResult[]>([]);
@@ -141,6 +142,26 @@ export default function Landing() {
        show an error state for an optional proof section. */
     api<SearchResult[]>("/discovery/featured?limit=8").then(setFeatured).catch(() => undefined);
   }, []);
+
+  /* The footer's FAQ link points at "/#faq", and this is the half that makes
+     it arrive. The answers live in the section near the bottom of this page
+     and there is no FAQ page to send anybody to, so the link is an anchor —
+     but react-router does not scroll to a hash on a client-side navigation,
+     which would land the visitor at the top of the landing page with the FAQ
+     eight sections below the fold. That is the same "nothing happened" the
+     wrong link produced, so the section scrolls itself into view.
+
+     prefers-reduced-motion gets an instant jump rather than a smooth one,
+     the same guard the workflow rotation below uses: a page that scrolls
+     itself for several hundred milliseconds is exactly the unrequested
+     movement that setting asks us to stop. */
+  useEffect(() => {
+    if (hash !== "#faq") return;
+    const el = document.getElementById("faq");
+    if (!el) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [hash]);
 
   /* The workflow section walks through its six tabs on its own, so a visitor
      who never clicks still sees that the flow does not stop at discovery.
@@ -537,7 +558,11 @@ export default function Landing() {
         <p className="hint" style={{ marginTop: 14 }}>{t("landing.placeholderNote")}</p>
       </section>
 
-      <section className="section" style={{ background: "var(--surface)" }}>
+      {/* id="faq" is where the footer's "Questions fréquentes" / "FAQ" link
+          lands (SiteFooter in components/Layout.tsx). That link used to point
+          at /pricing, which answers one of the four questions below and none
+          of the other three. Renaming or removing this id breaks it again. */}
+      <section id="faq" className="section" style={{ background: "var(--surface)" }}>
         <div className="container" style={{ maxWidth: 760 }}>
           <h2>{t("landing.faq")}</h2>
           <div style={{ marginTop: 14 }}>

@@ -447,7 +447,14 @@ function SiteFooter() {
         </div>
         <div>
           <h4>{t("footer.support")}</h4>
-          <Link to="/pricing">{t("footer.faq")}</Link>
+          {/* The FAQ answers live in the section at the bottom of the
+              landing page; there is no FAQ page, and inventing one would mean
+              writing content nobody has approved. This pointed at /pricing,
+              which answers one of those four questions and none of the other
+              three. The anchor is id="faq" in pages/Landing.tsx, and that
+              section scrolls itself into view — react-router does not do it
+              for a hash on a client-side navigation. */}
+          <Link to="/#faq">{t("footer.faq")}</Link>
           <a href="mailto:hello@kolaboafrica.com">{t("footer.contact")}</a>
         </div>
       </div>

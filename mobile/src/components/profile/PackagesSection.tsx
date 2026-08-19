@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Switch, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
 import { SELLABLE_PLATFORMS, deliverableLabel, deliverablesFor } from "../../lib/platforms";
-import { minPrice } from "../../lib/pricing";
+import { MIN_LIVE_PACKAGES, deactivationHidesProfile, minPrice } from "../../lib/pricing";
 import type { Package, PackageInput, SocialAccount } from "../../lib/profileTypes";
-import { Banner, ChoiceGroup, Field, Hint, PrimaryButton, SectionTitle, type Choice } from "../ui";
+import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton, SectionTitle, type Choice } from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
+/* Side-effect import: registers profile.packageActive, packageInactive,
+   packageDeactivateWarning and packageDeactivateConfirm on the i18n
+   instance. Same arrangement the payment screens use for paymentStrings —
+   see lib/packageStrings.ts for why the keys live outside strings.ts. */
+import "../../lib/packageStrings";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const UNIT_OPTIONS: Choice[] = [
@@ -43,6 +48,10 @@ export function PackagesSection({
   const [form, setForm] = useState({ ...emptyForm });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Which row is waiting on "turn it off anyway". Null the rest of the
+     time. The switch stays controlled by p.is_active throughout, so a row
+     never reads as off before the change has actually been saved. */
+  const [confirmOffId, setConfirmOffId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -147,6 +156,66 @@ export function PackagesSection({
     await onChanged();
   }
 
+  /* What a buyer can currently order — the same figure onboarding-status
+     reports as active_package_count, counted from the list already on screen
+     so the warning below does not lag a round trip behind the switch that
+     changes it. */
+  const activeCount = packages.filter((p) => p.is_active).length;
+
+  /* The switch. Turning a pack off is not deleting it: the row stays in this
+     list, stays editable, and is orderable again the moment it goes back on.
+     It only leaves the public page.
+
+     Below MIN_LIVE_PACKAGES the creator leaves DISCOVERY as well, and nothing
+     says so — the API does not refuse, the profile simply stops being
+     returned by search. So the one gesture that crosses that line asks first.
+     It asks rather than blocks: hiding a pack is a legitimate thing to want,
+     and "turn it off anyway" is right there next to the sentence. */
+  function askActive(pkg: Package, next: boolean) {
+    if (!next && deactivationHidesProfile(activeCount)) {
+      setConfirmOffId(pkg.id);
+      return;
+    }
+    void setActive(pkg, next);
+  }
+
+  async function setActive(pkg: Package, next: boolean) {
+    setConfirmOffId(null);
+    setBusy(true);
+    setError(null);
+    try {
+      /* PUT /packages/{id} takes a whole PackageIn rather than a patch, so
+         every field travels as it stands with the one flag flipped: a key left
+         out would be read as a cleared value, not as an unchanged one. */
+      const body: PackageInput = {
+        platform: pkg.platform,
+        deliverable_type: pkg.deliverable_type,
+        title: pkg.title,
+        description: pkg.description,
+        price_amount: pkg.price_amount,
+        currency: pkg.currency,
+        quantity: pkg.quantity,
+        duration_value: pkg.duration_value,
+        duration_unit: pkg.duration_unit,
+        is_active: next,
+      };
+      const updated = await api<Package>(`/profiles/${userId}/packages/${pkg.id}`, {
+        method: "PUT",
+        token,
+        body,
+      });
+      setPackages((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      /* The go-live checklist upstairs counts active packages. Without this it
+         would go on claiming the profile is live after the third one went
+         off. */
+      await onChanged();
+    } catch (e) {
+      setError(errorText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <View>
       <SectionTitle>{t("profile.packagesTitle")}</SectionTitle>
@@ -156,22 +225,58 @@ export function PackagesSection({
       {packages.length > 0 ? (
         <View style={{ gap: space(2), marginTop: space(2), marginBottom: space(3) }}>
           {packages.map((p) => (
-            <View key={p.id} style={styles.row}>
-              <View style={{ flexShrink: 1 }}>
-                <Text style={styles.rowTitle}>{p.title}</Text>
-                <Text style={styles.rowSub}>
-                  {p.platform} · {deliverableLabel(p.deliverable_type)}
-                  {p.quantity > 1 ? ` · ×${p.quantity}` : ""}
-                </Text>
+            <View key={p.id}>
+              <View style={[styles.row, !p.is_active && styles.rowOff]}>
+                <View style={{ flexShrink: 1, opacity: p.is_active ? 1 : 0.6 }}>
+                  <Text style={styles.rowTitle}>{p.title}</Text>
+                  <Text style={styles.rowSub}>
+                    {p.platform} · {deliverableLabel(p.deliverable_type)}
+                    {p.quantity > 1 ? ` · ×${p.quantity}` : ""}
+                  </Text>
+                  {/* Named as well as greyed. A dimmed row on its own reads as
+                      a rendering glitch; the word says which state it is in. */}
+                  {!p.is_active ? <Text style={styles.offChip}>{t("profile.packageInactive")}</Text> : null}
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
+                  <Text style={styles.price}>
+                    {p.price_amount} {p.currency}
+                  </Text>
+                  <View style={{ alignItems: "center" }}>
+                    <Text style={styles.switchLabel}>{t("profile.packageActive")}</Text>
+                    <Switch
+                      value={p.is_active}
+                      onValueChange={(v) => askActive(p, v)}
+                      disabled={busy}
+                      accessibilityLabel={t("profile.packageActive")}
+                      trackColor={{ false: colors.line, true: colors.teal }}
+                    />
+                  </View>
+                  <Text style={styles.remove} onPress={() => remove(p.id)}>
+                    {t("profile.remove")}
+                  </Text>
+                </View>
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
-                <Text style={styles.price}>
-                  {p.price_amount} {p.currency}
-                </Text>
-                <Text style={styles.remove} onPress={() => remove(p.id)}>
-                  {t("profile.remove")}
-                </Text>
-              </View>
+              {/* Inline rather than an OS alert, the way AccountScreen asks
+                  before deleting an account: the consequence stays on screen,
+                  under the row it is about, until it is answered. */}
+              {confirmOffId === p.id ? (
+                <View style={{ marginTop: space(2) }}>
+                  <Banner kind="info">
+                    {t("profile.packageDeactivateWarning", { min: MIN_LIVE_PACKAGES })}
+                  </Banner>
+                  <View style={{ flexDirection: "row", gap: space(2) }}>
+                    <View style={{ flex: 1 }}>
+                      <GhostButton title={t("common.cancel")} onPress={() => setConfirmOffId(null)} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <PrimaryButton
+                        title={t("profile.packageDeactivateConfirm")}
+                        onPress={() => void setActive(p, false)}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
@@ -278,7 +383,24 @@ const styles = StyleSheet.create({
     padding: space(3),
     gap: space(2),
   },
+  /* An inactive pack is paused, not gone: it keeps its place in the list and
+     every control on it still works, but the field behind it goes grey. */
+  rowOff: { backgroundColor: colors.surface2 },
   rowTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
+  offChip: {
+    alignSelf: "flex-start",
+    marginTop: space(1),
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.sm,
+    backgroundColor: colors.white,
+    fontSize: font.tiny,
+    fontFamily: family.bodySemi,
+    color: colors.muted,
+  },
+  switchLabel: { fontSize: font.tiny, fontFamily: family.bodySemi, color: colors.muted, marginBottom: 2 },
   rowSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
   price: { fontSize: font.small, fontFamily: family.bodyBold, color: colors.ink },
   remove: { fontSize: font.small, color: colors.danger, fontFamily: family.bodySemi },

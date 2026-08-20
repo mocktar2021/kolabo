@@ -37,6 +37,10 @@ import "./lib/statusStrings";
    when each round of a negotiation was sent, for the thread the creator reads
    on their invitations page. Same ordering constraint, same reason. */
 import "./lib/negotiationStrings";
+/* And this one adds the reject control to the campaign.* group i18n.ts owns —
+   the brand's answer that is a no, on the campaign page's proposal thread.
+   Same ordering constraint, same reason. */
+import "./lib/rejectionStrings";
 /* The deliverables panel on the contract page. Owns the deliv.* group
    outright, so unlike the three above it has no ordering constraint against
    i18n.ts — it sits with the other feature bundles for the reason they all

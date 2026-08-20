@@ -123,6 +123,39 @@ class Settings(BaseSettings):
     # one handset, and a second mechanism with its own arithmetic would be a
     # second thing to reason about the day either number changes.
     otp_max_per_hour: int = 3
+    # How many live verification codes the WHOLE PLATFORM may hold at once.
+    #
+    # THE CAP ABOVE IS NOT A BILL CAP, and that is the hole this closes. It
+    # counts codes per phone, so cycling fresh numbers costs one SMS each and
+    # the total stays unbounded: three per number times as many numbers as an
+    # attacker cares to type. Nothing anywhere counted the total.
+    #
+    # A BACKSTOP, NOT A QUEUE. A global ceiling is itself a denial of service —
+    # whoever reaches it locks out every legitimate signup until the codes
+    # expire — so it is set two orders of magnitude above any plausible
+    # legitimate ten minutes rather than anywhere near real traffic. Five
+    # hundred unconsumed codes alive at once is a launch-day crowd several
+    # times over in five pilot countries; reaching it means something is wrong,
+    # not that the product is popular. What it buys is a bounded worst case:
+    # with a ten-minute OTP lifetime, at most ~3,000 messages an hour instead
+    # of however many an attacker feels like paying us to send. That is a bill
+    # somebody notices and survives.
+    #
+    # A setting rather than a constant precisely because of the DoS side of the
+    # trade: if this ever bites a real burst it has to be raisable with an
+    # environment variable and a restart, not a code change and a new image.
+    #
+    # SAME COUNTING as otp_max_per_hour — live (unconsumed, unexpired, issued
+    # within the hour) rows, not sends per hour — so the two numbers mean the
+    # same kind of thing. With a ten-minute TTL that makes both of them really
+    # "codes in flight", which is the quantity that maps to money spent.
+    #
+    # NOT applied to password reset. That endpoint only ever sends to a number
+    # that already has an account, so its bill is bounded by the user table
+    # rather than by the attacker's imagination — and a global cap there would
+    # let one attacker lock every real user out of recovering their account,
+    # which is a worse outcome than the one it would prevent.
+    otp_global_max_per_hour: int = 500
     # Comma separated phone numbers of the people who may use the admin
     # surface. THIS IS THE ADMIN LIST, and the database is made to agree with
     # it on every boot — listed numbers are granted, unlisted holders are

@@ -453,15 +453,27 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
             <Hint>{t("campaign.noProposals")}</Hint>
           ) : (
             <View>
+              {/* rejectable is campaign.is_direct read backwards, mirroring
+                  campaigns/rejections.py: an order is closed by the creator
+                  declining it, which also cancels it and tells the buyer they
+                  were not charged, so rejecting one version of it would leave
+                  the order half-closed. The server refuses that, and the
+                  control is removed rather than left to earn the refusal.
+
+                  onRejected reloads the campaign for the same reason onReplied
+                  does: the chain the buyer just closed has to come back closed
+                  without them having to pull the screen down to find out. */}
               {chains.map((chain) => (
                 <ProposalThread
                   key={chain.latest.influencer_user_id}
                   campaignId={campaign.id}
                   chain={chain}
                   disabled={busy}
+                  rejectable={!campaign.is_direct}
                   onAccept={(pid) => void acceptProposal(pid)}
                   onViewContract={(pid) => void viewContract(pid)}
                   onReplied={() => void load()}
+                  onRejected={() => void load()}
                 />
               ))}
             </View>

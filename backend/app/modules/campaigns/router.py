@@ -7,7 +7,16 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
-from app.modules.campaigns import board, cart, editing, orders, schemas, service, withdrawals
+from app.modules.campaigns import (
+    board,
+    cart,
+    editing,
+    orders,
+    rejections,
+    schemas,
+    service,
+    withdrawals,
+)
 
 router = APIRouter()
 
@@ -394,3 +403,37 @@ def reply_to_proposal(
     counter on rate or timeline. The answer is the next version in the same
     chain, which is how the negotiation stays on the platform. KOL-23."""
     return service.reply_to_proposal(db, campaign_id, proposal_id, business_user_id, payload)
+
+
+@router.post(
+    "/{campaign_id}/proposals/{proposal_id}/reject",
+    response_model=schemas.ProposalOut,
+)
+def reject_proposal(
+    campaign_id: str,
+    proposal_id: str,
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """Turn a proposal down as the campaign owner, closing that negotiation.
+
+    The counterpart of accepting, and until now the answer a brand did not
+    have: its only exits from a bid it did not want were countering it forever
+    or cancelling the whole brief. The creator is notified, kindly and without
+    a reason attached — there is no field for one, because a rejection is a
+    decision and not a review.
+
+    Owner only (403 otherwise), on a published campaign, against the live
+    submitted version of that creator's chain, and only while no contract has
+    been generated from it (400 otherwise). Not available on a direct order:
+    an order is closed by the creator declining it, which also cancels the
+    order and tells the buyer they were not charged.
+
+    NO NEW VERSION AND NO ROW ADDED, unlike the reply next door — this moves
+    one status — so it answers 200 rather than 201.
+
+    Final for that chain: `rejected` is one of the three terminal resolutions
+    submit_proposal refuses to reopen, so the creator cannot answer it with a
+    new version. That is why the web client confirms before sending it.
+    """
+    return rejections.reject_proposal(db, campaign_id, proposal_id, business_user_id)

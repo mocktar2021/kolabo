@@ -307,25 +307,74 @@ function ReplyForm({ campaignId, latest, onSent }: { campaignId: string; latest:
    bottom carrying the emphasis and the buttons. Only the latest version can be
    accepted — everything above it has already been superseded by whoever wrote
    the row underneath, and signing a withdrawn offer would put terms in a
-   contract that neither side is still standing behind. */
+   contract that neither side is still standing behind.
+
+   THREE ANSWERS, AND THEIR WEIGHTS ARE THE PRODUCT'S OPINION. Accept is
+   primary because it is what a brief is for. Reply is next, because a number
+   that is wrong is usually a number to argue about and every argument that
+   leaves this page leaves the platform. Reject is last and quietest: it is the
+   only one of the three that cannot be undone — the backend writes one of the
+   three terminal statuses submit_proposal refuses to reopen, so that creator
+   cannot come back with another version on this brief — so it is offered
+   plainly, sized down, and behind a confirmation that says so. */
 function ProposalThread({
-  campaignId, chain, disabled, onAccept, onViewContract, onReplied
+  campaignId, chain, disabled, rejectable, onAccept, onViewContract, onReplied, onRejected
 }: {
   campaignId: string;
   chain: ProposalChain;
   disabled: boolean;
+  /* Off campaign.is_direct, mirroring the server. A direct order is closed by
+     the creator declining it — which also cancels the order and tells the
+     buyer they were not charged — so rejecting a version of one would leave it
+     half-closed, and campaigns/rejections.py refuses it. The control is
+     removed rather than left to be refused, the same way the invitation
+     withdraw button is. */
+  rejectable: boolean;
   onAccept: (proposalId: string) => void;
   onViewContract: (proposalId: string) => void;
   onReplied: () => void;
+  onRejected: () => void;
 }) {
   const { t } = useTranslation();
+  const { token } = useAuth();
   const [replyOpen, setReplyOpen] = useState(false);
+  /* Inline confirmation, never window.confirm — the same reason the campaign
+     actions further down the page use one: a native dialog cannot be
+     translated, cannot say what rejecting actually closes, and reads as a
+     browser event rather than as part of the page. Per thread rather than
+     shared, so a buyer with four bids open is never unsure which one they are
+     about to end. */
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const latest = chain.latest;
   // The brand wrote the live version, so the creator is the one being waited
   // on. Derived from author_role rather than stored, for the reason spelled
   // out in MyInvitations.tsx: a stored flag is a second copy of this fact and
   // the copy is the one that goes stale.
   const awaitingCreator = latest.author_role === "business";
+
+  /* Turning the live offer down. Addressed to the latest version's id, which
+     is the only one the server will act on — it rejects the live version of
+     that creator's chain and nothing above it. */
+  async function reject() {
+    setRejectBusy(true);
+    setRejectError(null);
+    try {
+      await api(`/campaigns/${campaignId}/proposals/${latest.id}/reject`, { method: "POST", token });
+      setConfirmingReject(false);
+      onRejected();
+    } catch (e) {
+      /* Off the CODE the refusal carries, through errorText: `proposal_closed`
+         if the chain moved on in another tab, `proposal_has_contract` if it
+         already produced one, `campaign_not_open` on a brief that ended while
+         this page was open. Each of those is a different thing to do next, and
+         the 400 they share names none of them. */
+      setRejectError(errorText(e, t));
+    } finally {
+      setRejectBusy(false);
+    }
+  }
 
   return (
     <div style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}>
@@ -382,17 +431,45 @@ function ProposalThread({
         })}
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
         {latest.status === "submitted" && (
           <>
             <button className="btn btn-primary" disabled={disabled} onClick={() => onAccept(latest.id)}>{t("campaign.accept")}</button>
             <button className="btn btn-ghost" disabled={disabled} onClick={() => setReplyOpen((o) => !o)}>{t("campaign.reply")}</button>
+            {/* Visually secondary to both: smaller and muted, sized like the
+                invitation withdraw button rather than like the two decisions
+                beside it. */}
+            {rejectable && !confirmingReject && (
+              <button type="button" className="btn btn-ghost"
+                style={{ padding: "5px 10px", fontSize: 13, color: "var(--muted)" }}
+                disabled={disabled || rejectBusy}
+                onClick={() => { setConfirmingReject(true); setRejectError(null); }}>
+                {t("campaign.reject")}
+              </button>
+            )}
           </>
         )}
         {latest.status === "accepted" && (
           <button className="btn btn-ghost" disabled={disabled} onClick={() => onViewContract(latest.id)}>{t("campaign.viewContract")}</button>
         )}
       </div>
+
+      {rejectError && <div className="alert alert-error" style={{ marginTop: 10 }}>{rejectError}</div>}
+
+      {confirmingReject && latest.status === "submitted" && (
+        <div style={{ marginTop: 10, borderLeft: "3px solid var(--line)", paddingLeft: 12 }}>
+          <p className="muted" style={{ fontSize: 13.5, margin: "0 0 10px" }}>{t("campaign.rejectConfirm")}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-ghost" disabled={disabled || rejectBusy} onClick={reject}>
+              {t("campaign.rejectYes")}
+            </button>
+            <button type="button" className="btn btn-ghost" disabled={rejectBusy}
+              onClick={() => { setConfirmingReject(false); setRejectError(null); }}>
+              {t("campaign.rejectNo")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {replyOpen && latest.status === "submitted" && (
         <ReplyForm
@@ -811,9 +888,11 @@ export default function CampaignDetailPage() {
                     campaignId={campaign.id}
                     chain={chain}
                     disabled={busy}
+                    rejectable={!campaign.is_direct}
                     onAccept={acceptProposal}
                     onViewContract={viewContract}
                     onReplied={load}
+                    onRejected={load}
                   />
                 ))
               )}

@@ -9,6 +9,11 @@
    reads English forever. No type checker can see across that seam, because one
    side of it is Python.
 
+   A THIRD KIND JOINED THEM: the notification TYPE, which is what the client
+   routes a tap by when the row carries no link. It has the same seam and a
+   worse failure — not a sentence in the wrong language but a tap that goes
+   nowhere, which reads as a broken app rather than as a missing translation.
+
    Mobile was exposed to exactly that for longer than web was, because mobile
    CI ran `tsc --noEmit` and nothing else: there was no test step at all, so a
    missing sentence could not fail anything. These files are that step.
@@ -69,6 +74,31 @@ export const NOTIFICATION_KEY = /(?:["']key["']:\s*|\b[a-z_]*key=)(?<q>["'])(?<n
    past this test while looking translated. Widening can only ever find MORE
    codes, never fewer, so it cannot turn a red build green. */
 export const ERROR_CODE = /(?<![a-z_])code=(?<q>["'])(?<name>[a-z0-9_]+)\k<q>/g;
+
+/* Whitespace or a full-line Python comment — the run of text that can sit
+   between two arguments of a call. It is not decoration: campaigns.completion
+   explains its choice of notification type in a comment written BETWEEN the
+   recipient and the type, so a pattern that only skipped whitespace would miss
+   that call site entirely and report green over it. */
+const BETWEEN_ARGS = String.raw`(?:\s|#[^\n]*)*`;
+
+/* The TYPE argument of a notify() call: the third positional, after the
+   session and the recipient.
+
+   `notify(db, escrow.influencer_user_id, "payment", ...)` and the multi-line
+   form both match. The recipient is allowed to be one nested call —
+   `other_party(escrow, actor_user_id)`, which payments.disputes passes — which
+   is what the `\([^()]*\)` arm is for; commas inside it must not be read as
+   the end of the argument.
+
+   It does NOT match `def notify(` in notifications/service.py (the parameter
+   is `db: Session,`, so the comma does not follow `db` directly) nor the
+   `notify()` written in prose throughout the module docstrings. */
+export const NOTIFICATION_TYPE = new RegExp(
+  String.raw`notify\(${BETWEEN_ARGS}db${BETWEEN_ARGS},${BETWEEN_ARGS}` +
+    String.raw`(?:[^,()#]|\([^()]*\))+,${BETWEEN_ARGS}(?<q>["'])(?<name>[a-z0-9_]+)\k<q>`,
+  "g"
+);
 
 export function pythonFiles(dir: string = MODULES_DIR): string[] {
   const out: string[] = [];

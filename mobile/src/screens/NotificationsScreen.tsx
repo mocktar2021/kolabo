@@ -21,10 +21,16 @@ import type { AppScreenProps } from "../navigation/types";
    notifications raised in the same call cannot make a paged read show a row
    twice and skip another.
 
-   A click marks the row read (optimistically — a failed mark costs a badge
-   count, not data) and opens the item it is about when this app has a screen
-   for it: the contract, the dispute, the campaign, the invitations list.
-   Rows without a mobile destination just mark themselves read. */
+   A tap marks the row read (optimistically — a failed mark costs a badge
+   count, not data) and OPENS THE RECORD THE ROW IS ABOUT: the contract, the
+   order's contract, the campaign, the dispute, the conversation, the payout
+   form. lib/notifications.targetFor decides which, off the backend's link
+   first and the type second.
+
+   The two rows that still open nothing — a verification document decision and
+   a closed report, neither of which has a screen anywhere in this product —
+   are rendered without press feedback, so a tap that cannot go anywhere does
+   not look like a tap that failed. */
 export default function NotificationsScreen({ navigation }: AppScreenProps<"Notifications">) {
   const { t } = useTranslation();
   const { token, role } = useAuth();
@@ -56,6 +62,10 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
     void load();
   }, [load]);
 
+  /* One branch per screen name rather than navigate(target.name). React
+     Navigation types navigate() per route, so a union of names is not
+     assignable to it — the switch is what turns the union back into the
+     literals its typings expect. */
   function go(target: NavTarget) {
     switch (target.name) {
       case "ContractDetail":
@@ -66,6 +76,13 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
         return;
       case "DisputeDetail":
         navigation.navigate("DisputeDetail", { id: target.id });
+        return;
+      case "MessageThread":
+        /* The header names the person everywhere else in the app; a
+           notification knows the user id and not the name, so the thread is
+           opened under the inbox's own title rather than under a blank one.
+           The screen itself only ever reads userId. */
+        navigation.navigate("MessageThread", { userId: target.userId, name: t("msg.title") });
         return;
       case "Contracts":
         navigation.navigate("Contracts");
@@ -82,17 +99,37 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
       case "Spend":
         navigation.navigate("Spend");
         return;
+      case "Messages":
+        navigation.navigate("Messages");
+        return;
+      case "Disputes":
+        navigation.navigate("Disputes");
+        return;
+      case "Account":
+        navigation.navigate("Account");
+        return;
+      case "PayoutMethod":
+        navigation.navigate("PayoutMethod");
+        return;
+      case "CreatorProfile":
+        navigation.navigate("CreatorProfile");
+        return;
+      case "BusinessProfile":
+        navigation.navigate("BusinessProfile");
+        return;
+      case "Dashboard":
+        navigation.navigate("Dashboard");
+        return;
     }
   }
 
-  function openRow(row: AppNotification) {
+  function openRow(row: AppNotification, target: NavTarget | null) {
     if (!row.is_read) {
       setRows((prev) =>
         prev ? prev.map((r) => (r.id === row.id ? { ...r, is_read: true } : r)) : prev
       );
       api(`/notifications/${row.id}/read`, { method: "POST", token }).catch(() => undefined);
     }
-    const target = targetFor(row, isBrand);
     if (target) go(target);
   }
 
@@ -143,14 +180,15 @@ export default function NotificationsScreen({ navigation }: AppScreenProps<"Noti
         <View style={{ gap: space(2) }}>
           {rows.map((row) => {
             const when = relativeParts(row.created_at);
+            const target = targetFor(row, isBrand);
             return (
               <Pressable
                 key={row.id}
-                onPress={() => openRow(row)}
+                onPress={() => openRow(row, target)}
                 style={({ pressed }) => [
                   styles.row,
                   !row.is_read && styles.rowUnread,
-                  pressed && { backgroundColor: colors.surface },
+                  pressed && target ? { backgroundColor: colors.surface } : null,
                 ]}
               >
                 <Text style={[styles.body, !row.is_read && { fontFamily: family.bodySemi }]}>

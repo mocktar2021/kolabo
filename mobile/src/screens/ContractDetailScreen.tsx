@@ -9,6 +9,8 @@ import type { ContractDetail, Escrow } from "../lib/contractTypes";
 import { openDisputeFor, type Dispute } from "../lib/disputeTypes";
 import { DeliverablesPanel } from "../components/contracts/DeliverablesPanel";
 import { RaiseDisputeForm } from "../components/contracts/RaiseDisputeForm";
+/* Side-effect import: registers the undo.* copy for the cancel card below. */
+import "../lib/parityStrings";
 import { Banner, Card, Field, GhostButton, Hint, PrimaryButton, Screen, SectionTitle, Subtitle } from "../components/ui";
 import { colors, family, font, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -35,6 +37,11 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
   const [loading, setLoading] = useState(true);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [raising, setRaising] = useState(false);
+  /* The cancel card's own two pieces of state. Kept apart from the page-level
+     error so a refused cancellation does not replace whatever the rest of the
+     screen was saying, exactly as web keeps them apart. */
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const loadEscrow = useCallback(
     async (contractId: string) => {
@@ -84,9 +91,60 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
     }
   }
 
+  /* Calling off a contract that has not yet bound anybody.
+
+     EITHER PARTY, not just the buyer. Nothing is owed in either direction yet,
+     and a creator who has realised they cannot deliver should be able to say
+     so in the app rather than by not answering — silence is what sends the
+     next conversation to WhatsApp and the one after that off-platform for
+     good. Until this button existed the phone had no exit at all: a creator
+     who had signed had to find a browser or write to support.
+
+     DELIBERATELY NOT THROUGH act(). act() lands its failure in the page-level
+     banner at the top of a long contract screen, which on a phone is several
+     screens above this card — from the reader's seat the button would have
+     done nothing. The refusals go inline, next to the thing that was refused.
+
+     Both refusals arrive with their own code and are already written out in
+     both languages (lib/errorMessages.ts), so errorText tells them apart:
+
+       contract_cancel_funded (409)  money is at the provider, which turns
+            "should this end" into "who is owed what" — the dispute and refund
+            path, which has an audit log and an admin. A cancel button running
+            alongside that would be a second, unaudited way for money to stop
+            moving, and it would be the one somebody reached for first.
+       contract_cancel_signed (400)  both parties put their name to these
+            terms. Walking out of an agreement by pressing something is the
+            thing a contract exists to prevent.
+       contract_already_cancelled (400) a double tap, told plainly rather than
+            silently re-notifying the other party. */
+  async function cancelContract() {
+    if (!contract) return;
+    setBusy(true);
+    setCancelError(null);
+    try {
+      await api(`/contracts/${contract.id}/cancel`, { method: "POST", token });
+      setConfirmingCancel(false);
+      await load();
+    } catch (e) {
+      setCancelError(errorText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const isBusiness = !!contract && userId === contract.business_user_id;
   const alreadySigned = !!contract && (isBusiness ? contract.business_signed : contract.influencer_signed);
   const openDispute = escrow ? openDisputeFor(disputes, escrow.id) : null;
+  /* Offered while the contract binds nobody, mirroring web's placement logic
+     and cancellation.py behind it: TWO conditions and not one. A full
+     signature closes the door, and so does an escrow, separately. In practice
+     they line up today because funding requires a full signature — but they
+     are different facts and the one that matters is the money. A cancelled
+     contract drops the offer too, rather than leaving a button that answers
+     400. */
+  const cancellable =
+    !!contract && !contract.fully_signed && contract.status !== "cancelled" && !escrow;
 
   return (
     <Screen
@@ -159,6 +217,58 @@ export default function ContractDetailScreen({ navigation, route }: AppScreenPro
                       }
                       loading={busy}
                       disabled={!signature.trim()}
+                    />
+                  </>
+                )}
+              </Card>
+            </>
+          ) : null}
+
+          {/* Below the signature block on purpose, as on web: signing is what
+              this screen is for, and the way out should not sit above the way
+              through. */}
+          {cancellable ? (
+            <>
+              <View style={{ height: space(4) }} />
+              <Card>
+                <SectionTitle>{t("undo.contractTitle")}</SectionTitle>
+                {cancelError ? <Banner kind="error">{cancelError}</Banner> : null}
+                {!confirmingCancel ? (
+                  <>
+                    <Hint>{t("undo.contractExplain")}</Hint>
+                    <View style={{ height: space(2) }} />
+                    {/* TWO TAPS, ALWAYS. This ends an agreement and notifies
+                        the other party, and a thumb on a 360 dp screen is not
+                        a precise instrument: the first tap only asks. */}
+                    <GhostButton
+                      title={t("undo.contractCancel")}
+                      onPress={() => {
+                        setConfirmingCancel(true);
+                        setCancelError(null);
+                      }}
+                      disabled={busy}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* The consequence stated before the tap, not after it:
+                        the other party is told, the agreement is over, and
+                        working together again means a new proposal. */}
+                    <Text style={styles.confirm}>{t("undo.contractConfirm")}</Text>
+                    <View style={{ height: space(2) }} />
+                    <PrimaryButton
+                      title={busy ? "…" : t("undo.contractYes")}
+                      onPress={() => void cancelContract()}
+                      loading={busy}
+                    />
+                    <View style={{ height: space(2) }} />
+                    <GhostButton
+                      title={t("undo.contractNo")}
+                      onPress={() => {
+                        setConfirmingCancel(false);
+                        setCancelError(null);
+                      }}
+                      disabled={busy}
                     />
                   </>
                 )}
@@ -276,4 +386,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     lineHeight: 20,
   },
+  /* The confirmation sentence is not a Hint: it is the last thing read before
+     an irreversible tap, so it gets body ink and body size rather than the
+     muted 12 pt every other aside on this screen uses. */
+  confirm: { fontFamily: family.body, fontSize: font.small, color: colors.ink, lineHeight: 20 },
 });

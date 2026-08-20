@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import settings
 from app.core.db import Base, get_db
 from app.core.errors import AppError, app_error_handler
 from app.core.rewards import REFERRAL_CREDIT
@@ -341,12 +342,80 @@ def test_a_refused_registration_does_not_rewrite_the_password(client, sender):
 def test_the_otp_cap_is_per_phone_and_not_a_global_ceiling(client, sender):
     """Counting every registration on the platform instead of every
     registration for one number would make a single looping attacker a denial
-    of service on everybody else's signup."""
+    of service on everybody else's signup.
+
+    THE PLATFORM-WIDE CEILING BELOW DOES NOT CHANGE THAT, and this test is what
+    says so. It sits two orders of magnitude above this one — a backstop on the
+    bill, not a queue for signups — so four codes in flight are nowhere near it
+    and the fourth number still registers. The day somebody tunes
+    otp_global_max_per_hour down towards otp_max_per_hour, this goes red, which
+    is exactly the conversation that change deserves to have.
+    """
     for _ in range(3):
         _register(client)
     assert _register(client).status_code == 429
     assert _register(client, phone="+22990000042").status_code == 201
     assert len(sender.sent) == 4
+
+
+def test_a_platform_wide_ceiling_backstops_the_per_phone_cap(client, sender, monkeypatch):
+    """Fresh numbers cost one SMS each, and until now nothing counted the total.
+
+    The cap above is per phone, which is the right shape for the abuse it was
+    written against and no shape at all for the bill: three codes per number,
+    times as many numbers as somebody feels like typing, has no top to it. A
+    stranger working through a list of phone numbers could spend the whole SMS
+    budget and every single response would be a cheerful 201.
+
+    The ceiling is set absurdly low here so that the assertion is about the
+    MECHANISM rather than about the production number — which is deliberately
+    far too high for a test to reach honestly, because a global limit anywhere
+    near real traffic is a denial of service wearing a safety hat. See
+    settings.otp_global_max_per_hour for the value and the reasoning.
+    """
+    monkeypatch.setattr(settings, "otp_global_max_per_hour", 2)
+    assert _register(client, phone="+22990000201").status_code == 201
+    assert _register(client, phone="+22990000202").status_code == 201
+
+    refused = _register(client, phone="+22990000203")
+    assert refused.status_code == 429
+    # A code of its own rather than auth_otp_too_many. This caller asked for
+    # one verification code; telling them they asked for too many would send
+    # them off to inspect a phone that was never the problem.
+    assert refused.json()["code"] == "auth_otp_capacity"
+
+    # THE HALF THAT IS ACTUALLY ABOUT THE BILL, asserted the way the per-phone
+    # test asserts it: the refusal put nothing on the wire and wrote no third
+    # challenge. And because the ceiling is checked before either branch of
+    # register() writes anything, it left no half-made account behind either.
+    assert len(sender.sent) == 2
+    db = client.session_factory()
+    try:
+        assert db.query(models.OtpChallenge).count() == 2
+        assert db.query(models.User).filter(models.User.phone == "+22990000203").first() is None
+    finally:
+        db.close()
+
+
+def test_the_platform_ceiling_counts_live_codes_and_not_sends(client, sender, monkeypatch):
+    """Spending a code gives its place back, exactly as the per-phone cap does.
+
+    This is what keeps the two numbers meaning the same kind of thing. A code
+    that has been used is not in flight and is not costing anything more, so it
+    must stop occupying the ceiling — otherwise a busy morning would close
+    registration for the rest of the hour even though every one of those
+    signups completed successfully.
+    """
+    monkeypatch.setattr(settings, "otp_global_max_per_hour", 2)
+    _register(client, phone="+22990000211")
+    _register(client, phone="+22990000212")
+    assert _register(client, phone="+22990000213").status_code == 429
+
+    code = _latest_code(client, phone="+22990000211")
+    verified = client.post("/auth/verify-otp", json={"phone": "+22990000211", "code": code})
+    assert verified.status_code == 200
+
+    assert _register(client, phone="+22990000213").status_code == 201
 
 
 def test_password_reset_rate_limited_to_three_per_hour(client):

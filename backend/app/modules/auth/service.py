@@ -93,6 +93,36 @@ def _live_otp_challenges(db: Session, user: User, now):
     )
 
 
+def _live_otp_challenge_count(db: Session, now) -> int:
+    """How many verification codes are alive ACROSS THE WHOLE PLATFORM.
+
+    The same three conditions _live_otp_challenges applies to one account,
+    applied to all of them: issued within the last hour, never consumed, not
+    yet expired. Same table, same query, same notion of "live" — one COUNT
+    rather than the rows, because nothing here reads them and loading every
+    live challenge on the platform in order to call len() on it would be a
+    strange way to ask how many there are.
+
+    LIVE RATHER THAN SENDS-PER-HOUR, deliberately, so this number means the
+    same kind of thing as the per-phone one beside it. With a ten-minute OTP
+    lifetime that makes both of them really "codes in flight" — which is also
+    the quantity that tracks money already spent.
+
+    No new table, no counter store, no middleware: the rows counted here are
+    the rows registration was already writing.
+    """
+    one_hour_ago = now - timedelta(hours=1)
+    return (
+        db.query(OtpChallenge)
+        .filter(
+            OtpChallenge.created_at >= one_hour_ago,
+            OtpChallenge.consumed.is_(False),
+            OtpChallenge.expires_at > now,
+        )
+        .count()
+    )
+
+
 def _generate_referral_code() -> str:
     return "".join(secrets.choice(REFERRAL_ALPHABET) for _ in range(REFERRAL_CODE_LENGTH))
 
@@ -230,6 +260,39 @@ def register(db: Session, payload: RegisterRequest) -> dict:
             # number belongs to an account already.
             code="auth_phone_taken",
             detail="Phone number is already registered",
+        )
+
+    # THE CEILING THAT IS ABOUT THE BILL RATHER THAN ABOUT ONE NUMBER.
+    #
+    # The per-phone cap below stops a loop over ONE handset. It does nothing
+    # about a loop over MANY: three codes per number, times as many numbers as
+    # somebody cares to type, is still an SMS bill with no top to it, and
+    # until this line nothing anywhere counted the total.
+    #
+    # A BACKSTOP, NOT A GATE, and the difference is the whole design. Whoever
+    # fills this ceiling locks out every legitimate signup until those codes
+    # expire, so a global limit is a denial of service in its own right and
+    # the number has to sit far above any plausible honest burst rather than
+    # anywhere near real traffic — see settings.otp_global_max_per_hour for
+    # the value and the arithmetic behind it. Reaching it should mean
+    # something is wrong, never that a good afternoon was busy.
+    #
+    # CHECKED HERE, after the duplicate-phone 409 and before either branch
+    # below writes anything, for exactly the reason the per-phone cap is
+    # checked before the credentials are rewritten: a refused request must
+    # change nothing. A caller over both ceilings is told about this one,
+    # which is the honest answer — it is the condition that will still be true
+    # when they try again from a different number.
+    if _live_otp_challenge_count(db, utcnow()) >= settings.otp_global_max_per_hour:
+        raise AppError(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            # Not auth_otp_too_many. That sentence tells the reader they have
+            # asked for too many codes, and this reader may have asked for
+            # none: the ceiling that stopped them is the platform's, not
+            # theirs, and a refusal that blames the wrong party sends somebody
+            # off to check a phone that was never the problem.
+            code="auth_otp_capacity",
+            detail="Verification codes are temporarily unavailable, try again in a few minutes",
         )
 
     if existing is not None:

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { api } from "../../lib/api";
+import { api, mediaSrc, type MediaOut } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { errorText } from "../../lib/errorMessages";
 import {
@@ -9,14 +9,37 @@ import {
   openSubmission,
   type DeliverableSubmission,
 } from "../../lib/contractTypes";
+import { EvidencePicker } from "../disputes/EvidencePicker";
+/* Side-effect import: registers deliv.attachments and the corrected
+   deliv.needSomething on the i18n instance. Without it this panel renders the
+   raw keys. */
+import "../../lib/parityStrings";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
+
+/* Mirrors MAX_ATTACHMENTS in backend/app/modules/deliverables/service.py, so
+   the eleventh file is a disabled button rather than a 400 after the upload.
+   Kept beside the panel rather than in contractTypes.ts because this is the
+   only screen that can attach one — the same call PortfolioSection makes with
+   its own MAX_BATCH. It is a DIFFERENT constant from the dispute evidence cap
+   and only happens to be the same number, which is why it is passed in. */
+const MAX_ATTACHMENTS = 10;
 
 /* The work, on the contract it was agreed in — the mobile twin of web's
    DeliverablesPanel. Approving a submission RELEASES the escrow (the D2 rule),
    so approve is one tap with the consequence stated next to it, and request-
    changes needs a reason. There is no standalone release button anywhere: on
-   both clients, confirming delivery IS approving the open submission. */
+   both clients, confirming delivery IS approving the open submission.
+
+   THE PHONE CAN NOW HAND THE FILE OVER. This panel used to post
+   `media_ids: []` with no picker at all, which quietly narrowed the server's
+   rule — a submission needs a link, a file, or both — down to "link
+   required". On a marketplace whose packages are photos and videos shot on a
+   phone, that pushed every creator to upload somewhere else and paste a link:
+   exactly the off-platform hop that escrow and the contact guard exist to
+   discourage. The picker is the dispute EvidencePicker with a different
+   label, so there is still one uploader, one cap and one ownership
+   guarantee. */
 export function DeliverablesPanel({
   contractId,
   isBusiness,
@@ -31,7 +54,7 @@ export function DeliverablesPanel({
   onChanged: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { userId, token } = useAuth();
   const [rows, setRows] = useState<DeliverableSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -39,6 +62,10 @@ export function DeliverablesPanel({
 
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
+  /* The files ALREADY UPLOADED, not the ones picked: EvidencePicker uploads on
+     selection and reports ids back, so sending the submission never waits on a
+     transfer and a failed upload costs the photo rather than the note. */
+  const [files, setFiles] = useState<MediaOut[]>([]);
   const [asking, setAsking] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
 
@@ -77,7 +104,9 @@ export function DeliverablesPanel({
   const open = openSubmission(rows);
   const canSubmit = !isBusiness && escrowHeld && !open;
   const canReview = isBusiness && escrowHeld && !!open;
-  const nothingToSend = !link.trim();
+  /* The server's rule, stated by the form instead of discovered as a 400:
+     link OR file OR both (deliverables.service.EMPTY_DETAIL). */
+  const nothingToSend = !link.trim() && files.length === 0;
 
   return (
     <View>
@@ -181,6 +210,21 @@ export function DeliverablesPanel({
                 multiline
                 numberOfLines={3}
               />
+              {/* Only with a userId: the upload goes to the caller's own
+                  /profiles/{userId}/media, which is what makes the server's
+                  ownership check on the ids pass by construction. A signed-in
+                  creator always has one; the guard is for the instant before
+                  the session is read. */}
+              {userId ? (
+                <EvidencePicker
+                  userId={userId}
+                  token={token}
+                  value={files}
+                  onChange={setFiles}
+                  label={t("deliv.attachments")}
+                  max={MAX_ATTACHMENTS}
+                />
+              ) : null}
               {nothingToSend ? <Hint>{t("deliv.needSomething")}</Hint> : null}
               <Hint>{t("deliv.submitHint", { n: REVIEW_WINDOW_DAYS })}</Hint>
               <View style={{ height: space(2) }} />
@@ -195,11 +239,12 @@ export function DeliverablesPanel({
                         contract_id: contractId,
                         link_url: link.trim() || null,
                         note: note.trim() || null,
-                        media_ids: [],
+                        media_ids: files.map((f) => f.id),
                       },
                     });
                     setLink("");
                     setNote("");
+                    setFiles([]);
                   })
                 }
                 loading={busy}
@@ -220,6 +265,20 @@ export function DeliverablesPanel({
                     </Text>
                   ) : null}
                   {r.note ? <Text style={styles.note}>{r.note}</Text> : null}
+                  {/* Through mediaSrc: the API returns a bare
+                      "/profiles/media/{id}" path and the API origin is not the
+                      app, so used raw these would resolve against nothing. A
+                      submission the phone can now make is a submission the
+                      phone has to be able to SHOW — otherwise a creator sends
+                      four photos and neither side can see them on the device
+                      they were shot on. */}
+                  {r.attachments.length > 0 ? (
+                    <View style={styles.thumbs}>
+                      {r.attachments.map((url) => (
+                        <Image key={url} source={{ uri: mediaSrc(url) }} style={styles.thumb} />
+                      ))}
+                    </View>
+                  ) : null}
                   {r.review_note ? (
                     <Text style={styles.reviewNote}>
                       <Text style={{ fontFamily: family.bodyBold }}>{t("deliv.reviewNoteShown")}</Text> {r.review_note}
@@ -255,5 +314,14 @@ const styles = StyleSheet.create({
   },
   link: { color: colors.teal600, fontFamily: family.bodySemi, fontSize: font.small, marginTop: space(2) },
   note: { fontFamily: family.body, color: colors.ink, fontSize: font.small, marginTop: space(2) },
+  thumbs: { flexDirection: "row", flexWrap: "wrap", gap: space(2), marginTop: space(2) },
+  thumb: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
   reviewNote: { fontFamily: family.body, color: colors.muted, fontSize: font.small, marginTop: space(2) },
 });

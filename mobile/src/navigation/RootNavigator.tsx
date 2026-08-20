@@ -1,13 +1,15 @@
-import type { ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { ActivityIndicator, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import { isBusinessLike, useAuth } from "../lib/auth";
 import { colors, family } from "../theme";
 import { HeaderBell } from "../components/shell/HeaderBell";
+import { Splash } from "../components/landing";
+import { landingSeenCached, loadLandingSeen } from "../lib/onboarding";
+import LandingScreen from "../screens/LandingScreen";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterScreen from "../screens/RegisterScreen";
 import VerifyOtpScreen from "../screens/VerifyOtpScreen";
@@ -41,6 +43,14 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 const Tab = createBottomTabNavigator();
 
+/* How long the splash is held AFTER the keystore has answered, and only on
+   the way to the intro. Without a floor it is a two-frame flicker on a fast
+   handset, which is worse than no splash at all; with one the brand mark
+   actually lands before the carousel does. A signed-in reader waits for none
+   of it — a returning user's cold start is the wrong place to spend most of a
+   second on a logo. */
+const SPLASH_FLOOR_MS = 700;
+
 /* Screens are typed with AppScreenProps (native-stack props over the shared
    param list); the ones hosted on a tab receive bottom-tab props instead.
    Everything they actually use — navigate, goBack, addListener("focus") —
@@ -50,9 +60,17 @@ const Tab = createBottomTabNavigator();
    props type by where it happens to be mounted. */
 const asTab = (c: unknown) => c as ComponentType;
 
-function AuthNavigator() {
+/* The signed-out tree, rooted on the intro carousel the first time this
+   handset opens the app and on Login every time after. Landing stays
+   registered either way: keeping the route table the same shape whichever
+   branch was taken means nothing else has to know which one it was. */
+function AuthNavigator({ startAtLanding }: { startAtLanding: boolean }) {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={startAtLanding ? "Landing" : "Login"}
+    >
+      <AuthStack.Screen name="Landing" component={LandingScreen} />
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="VerifyOtp" component={VerifyOtpScreen} />
@@ -214,18 +232,40 @@ function AppNavigator() {
    signed-in screens. */
 export default function RootNavigator() {
   const { loading, isAuthenticated } = useAuth();
+  /* Has this handset already been through the pre-auth intro? Read once at
+     boot from the same keystore the token lives in, then held in a module
+     cache so this component can consult it DURING RENDER — a logout later in
+     the same session has to land on Login, and it would not if the decision
+     were waiting on a fresh asynchronous read while the stack was already
+     mounting. See lib/onboarding.ts. */
+  const [introRead, setIntroRead] = useState(landingSeenCached() !== null);
+  const [floorPassed, setFloorPassed] = useState(false);
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface }}>
-        <ActivityIndicator color={colors.indigo} size="large" />
-      </View>
-    );
-  }
+  useEffect(() => {
+    let active = true;
+    void loadLandingSeen().then(() => {
+      if (active) setIntroRead(true);
+    });
+    const id = setTimeout(() => {
+      if (active) setFloorPassed(true);
+    }, SPLASH_FLOOR_MS);
+    return () => {
+      active = false;
+      clearTimeout(id);
+    };
+  }, []);
+
+  const restoring = loading || !introRead;
+  const startAtLanding = !restoring && !isAuthenticated && landingSeenCached() === false;
+
+  /* The splash stands where a bare ActivityIndicator used to: it covers the
+     keystore reads for everybody, and is held a beat longer only on the way
+     to the intro. */
+  if (restoring || (startAtLanding && !floorPassed)) return <Splash />;
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+      {isAuthenticated ? <AppNavigator /> : <AuthNavigator startAtLanding={startAtLanding} />}
     </NavigationContainer>
   );
 }

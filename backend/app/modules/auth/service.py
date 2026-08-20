@@ -22,6 +22,7 @@ from datetime import timedelta
 from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.country_config import get_enabled_countries
 from app.core.errors import AppError
 from app.core.security import (
@@ -68,6 +69,28 @@ def _issue_otp(db: Session, user: User) -> None:
     db.add(challenge)
     db.commit()
     _sender.send(user.phone, f"Your Kolabo verification code is {code}")
+
+
+def _live_otp_challenges(db: Session, user: User, now):
+    """Verification codes for this account that a caller could still use.
+
+    Live means the same three things it means for a reset code — see
+    auth.account._live_reset_tokens, which this is deliberately a copy of:
+    issued within the last hour, never consumed, and not yet expired. Counting
+    rows by age alone would keep punishing somebody an hour after codes that
+    lasted ten minutes had already died.
+    """
+    one_hour_ago = now - timedelta(hours=1)
+    return (
+        db.query(OtpChallenge)
+        .filter(
+            OtpChallenge.user_id == user.id,
+            OtpChallenge.created_at >= one_hour_ago,
+            OtpChallenge.consumed.is_(False),
+            OtpChallenge.expires_at > now,
+        )
+        .all()
+    )
 
 
 def _generate_referral_code() -> str:
@@ -210,6 +233,31 @@ def register(db: Session, payload: RegisterRequest) -> dict:
         )
 
     if existing is not None:
+        # THE SAME CAP THE RESET ENDPOINT ENFORCES, for the same reason and by
+        # the same means — see auth.account.request_password_reset. Registering
+        # a number that already has an unverified row RE-SENDS the code, so
+        # /auth/register is the resend endpoint too, and it had no ceiling at
+        # all: looping it over one phone was an SMS bill a stranger could run
+        # up on us. Growth does not look like the same number four times in
+        # ten minutes; abuse does.
+        #
+        # CHECKED BEFORE THE CREDENTIALS BELOW ARE REWRITTEN, so a refused
+        # request changes nothing. Re-registering overwrites the password on
+        # an unverified account, and a 429 that still wrote would hand whoever
+        # ran the cap out a free way to take over somebody's half-finished
+        # signup.
+        #
+        # It says out loud that this number has a registration pending, which
+        # is a narrower disclosure than the 409 three lines above already
+        # makes for a verified one. The reset endpoint pays a real privacy
+        # cost for its 429 and takes it deliberately; this one pays nothing it
+        # was not already paying.
+        if len(_live_otp_challenges(db, existing, utcnow())) >= settings.otp_max_per_hour:
+            raise AppError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                code="auth_otp_too_many",
+                detail="Too many verification codes requested, try again later",
+            )
         # Unverified registration for this phone. Refresh credentials and resend.
         existing.password_hash = hash_password(payload.password)
         existing.country_code = payload.country_code

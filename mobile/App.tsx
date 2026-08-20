@@ -12,6 +12,7 @@ import {
 import { useEffect } from "react";
 import i18n from "./src/i18n";
 import { AuthProvider } from "./src/lib/auth";
+import { CartProvider } from "./src/lib/cart";
 import { getStoredLanguage } from "./src/lib/language";
 import RootNavigator from "./src/navigation/RootNavigator";
 
@@ -46,8 +47,16 @@ export default function App() {
     <SafeAreaProvider>
       <I18nextProvider i18n={i18n}>
         <AuthProvider>
-          <StatusBar style="dark" />
-          <RootNavigator />
+          {/* Inside AuthProvider and outside the navigator, because both the
+              tab headers and the screens read the basket and neither is a
+              child of the other. It holds client state only — there is no cart
+              on the server (backend/app/modules/campaigns/cart.py says why),
+              so this provider is not waiting on anything and is not a reason
+              to delay the first frame. */}
+          <CartProvider>
+            <StatusBar style="dark" />
+            <RootNavigator />
+          </CartProvider>
         </AuthProvider>
       </I18nextProvider>
     </SafeAreaProvider>

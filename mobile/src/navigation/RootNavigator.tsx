@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
+import { View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -7,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { isBusinessLike, useAuth } from "../lib/auth";
 import { colors, family } from "../theme";
 import { HeaderBell } from "../components/shell/HeaderBell";
+import { HeaderCart } from "../components/shell/HeaderCart";
 import { Splash } from "../components/landing";
 import { landingSeenCached, loadLandingSeen } from "../lib/onboarding";
 import LandingScreen from "../screens/LandingScreen";
@@ -29,6 +31,7 @@ import CampaignsListScreen from "../screens/CampaignsListScreen";
 import CampaignNewScreen from "../screens/CampaignNewScreen";
 import DiscoverScreen from "../screens/DiscoverScreen";
 import CreatorPublicScreen from "../screens/CreatorPublicScreen";
+import CartScreen from "../screens/CartScreen";
 import InvitationsScreen from "../screens/InvitationsScreen";
 import CampaignDetailScreen from "../screens/CampaignDetailScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
@@ -93,7 +96,11 @@ function AuthNavigator({ startAtLanding }: { startAtLanding: boolean }) {
    resolves a name across nested navigators.
 
    THE BELL RIDES EVERY TAB HEADER, with its unread badge — the web nav's
-   NotificationsBell, in the place a phone reader expects it. */
+   NotificationsBell, in the place a phone reader expects it. THE BASKET RIDES
+   BESIDE IT FOR A BRAND, and for a brand only: mobile has no route guards, so
+   an entry point that must not exist for a creator has to simply not be
+   rendered. The API applies the same rule from the other side — checkout
+   answers 403 (campaign_author_only) to a creator whatever the client shows. */
 function TabNavigator() {
   const { t } = useTranslation();
   const { role } = useAuth();
@@ -106,7 +113,12 @@ function TabNavigator() {
         headerTitleStyle: { fontFamily: family.displaySemi, fontSize: 17, color: colors.ink },
         headerStyle: { backgroundColor: colors.white },
         headerShadowVisible: false,
-        headerRight: () => <HeaderBell nav={navigation} />,
+        headerRight: () => (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {brand ? <HeaderCart nav={navigation} /> : null}
+            <HeaderBell nav={navigation} />
+          </View>
+        ),
         tabBarActiveTintColor: colors.indigo,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontFamily: family.bodySemi, fontSize: 11 },
@@ -209,6 +221,14 @@ function AppNavigator() {
       <AppStack.Screen name="CampaignDetail" component={CampaignDetailScreen} options={{ title: "" }} />
       <AppStack.Screen name="CampaignNew" component={CampaignNewScreen} options={{ title: t("campaign.title") }} />
       <AppStack.Screen name="CreatorPublic" component={CreatorPublicScreen} options={{ title: "" }} />
+      {/* Registered for everybody and reachable only by a brand: the header
+          button and the storefront's Add are both behind isBusinessLike, and
+          the screen itself says whose the cart is if anyone lands here anyway.
+          Its title comes from the cart.* bundle, which CartScreen registers as
+          a side effect of its own import — the import above is what puts those
+          keys on i18n before this renders, exactly as the payment screens
+          do. */}
+      <AppStack.Screen name="Cart" component={CartScreen} options={{ title: t("cart.title") }} />
       <AppStack.Screen name="DisputeDetail" component={DisputeDetailScreen} options={{ title: t("dispute.formTitle") }} />
       <AppStack.Screen name="Earnings" component={EarningsScreen} options={{ title: t("earn.title") }} />
       <AppStack.Screen name="Spend" component={SpendScreen} options={{ title: t("spend.title") }} />

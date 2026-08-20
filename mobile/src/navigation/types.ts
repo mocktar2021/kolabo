@@ -44,6 +44,10 @@ export type AppStackParamList = {
   CampaignDetail: { id: string };
   Discover: undefined;
   CreatorPublic: { userId: string };
+  /* The basket. No param: the basket is client state (lib/cart.tsx), not
+     something a route carries — a navigation param holding a list of packages
+     would be a second copy of it, and the copy is the one that goes stale. */
+  Cart: undefined;
   Invitations: undefined;
   Notifications: undefined;
   Messages: undefined;

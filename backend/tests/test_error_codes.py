@@ -173,7 +173,36 @@ def test_the_declared_surfaces_are_all_used():
 
 
 PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
-TEMPLATE = re.compile(r'^  ([a-z][a-z0-9_]*): "((?:[^"\\]|\\.)*)",?$', re.MULTILINE)
+
+# One entry of errorMessages.ts: `  code: "sentence",` at the file's two-space
+# entry indent.
+#
+# BOTH QUOTE STYLES, and that is a repair rather than a flourish. This pattern
+# accepted double quotes only. Web's catalog happens to be uniformly
+# double-quoted, so it read every entry and nothing was wrong yet — but the
+# MOBILE catalog already writes four English sentences with single quotes,
+# because those four embed a double quote of their own
+# (profile_social_method_unknown, deliverable_not_on_platform,
+# admin_decision_unknown, report_decision_unknown). The day that habit is
+# copied into the file this test reads, a double-quote-only pattern stops
+# seeing those entries and says nothing about it: the code drops out of
+# _templates(), test_every_placeholder_has_a_value_behind_it finds no
+# placeholders to be missing, and the build goes green over a sentence nobody
+# checked. A reader that silently covers less is worse than no reader, because
+# it still reports success.
+TEMPLATE = re.compile(
+    r"""^  ([a-z][a-z0-9_]*): (["'])((?:(?!\2)[^\\]|\\.)*)\2,?$""",
+    re.MULTILINE,
+)
+
+# The same entry seen by its KEY alone, with no opinion whatever about how the
+# value beside it is written. Comparing what this finds with what TEMPLATE
+# manages to parse is what turns "the reader can see everything" from an
+# assumption into an assertion — see
+# test_every_sentence_written_down_was_actually_read. The mirror of
+# declaredKeys() in mobile/tests/backendKeys.ts, which exists for exactly this
+# reason on the other side.
+DECLARED = re.compile(r"^  ([a-z][a-z0-9_]*):", re.MULTILINE)
 
 MESSAGES_TS = Path(__file__).resolve().parents[2] / "web" / "src" / "lib" / "errorMessages.ts"
 
@@ -195,9 +224,25 @@ def _templates() -> dict[str, set[str]]:
     """
     source = MESSAGES_TS.read_text(encoding="utf-8")
     wanted: dict[str, set[str]] = {}
-    for code, template in TEMPLATE.findall(source):
+    for code, _quote, template in TEMPLATE.findall(source):
         wanted.setdefault(code, set()).update(PLACEHOLDER.findall(template))
     return wanted
+
+
+def _map_block(source: str, map_name: str) -> str:
+    """The text of ONE of the catalog's two maps.
+
+    Bounded to the map rather than run over the whole file, so a `key: value`
+    line elsewhere in the module — the PREPARE table, say — is not mistaken
+    for a sentence that should have been translated, and so the two languages
+    can be checked SEPARATELY. That separation is the point: a code written in
+    French and lost in English is exactly the failure worth catching, and a
+    check that unions the two maps together would see the French copy and
+    report nothing.
+    """
+    start = source.index(f"export const {map_name}")
+    end = source.index("\n};", start)
+    return source[start:end]
 
 
 def _values_sent() -> dict[str, set[str]]:
@@ -259,6 +304,40 @@ def test_the_templates_were_actually_found():
     assert len(templates) > 100, f"only {len(templates)} templates parsed out of {MESSAGES_TS}"
     assert "deliverable_note_too_long" in templates
     assert templates["deliverable_note_too_long"] == {"max"}
+
+
+def test_every_sentence_written_down_was_actually_read():
+    """A key the reader cannot see is a hole it reports GREEN over.
+
+    The test above catches a pattern that matches nothing at all. This one
+    catches the far more likely failure: a pattern that matches almost
+    everything. TEMPLATE is a regular expression over TypeScript, so it can
+    miss an individual entry for reasons that have nothing to do with whether
+    that entry is correct — the quote style around the value, a wrapped line,
+    a changed indent — and every one of those misses is SILENT. The code drops
+    out of _templates(), test_every_placeholder_has_a_value_behind_it finds
+    nothing to complain about, and a sentence nobody checked ships.
+
+    Counting the keys with a pattern that never looks at the values is what
+    makes that impossible: the two disagree, or the reader is complete.
+
+    PER MAP, NOT OVER THE FILE. Almost every code appears in both languages,
+    so a check that pooled them would still find a code whose English had
+    become unreadable — it would see the French one and say nothing. The
+    languages are counted apart precisely so one of them going quiet is loud.
+    """
+    source = MESSAGES_TS.read_text(encoding="utf-8")
+    unread = []
+    for map_name in ("error_fr", "error_en"):
+        block = _map_block(source, map_name)
+        declared = {m.group(1) for m in DECLARED.finditer(block)}
+        read = {code for code, _quote, _template in TEMPLATE.findall(block)}
+        assert len(declared) > 100, f"only {len(declared)} keys found in {map_name}"
+        unread += [f"{map_name}.{code}" for code in sorted(declared - read)]
+    assert unread == [], (
+        "These entries are written down in errorMessages.ts but TEMPLATE could not "
+        "read them, so nothing checked their placeholders:\n" + "\n".join(unread)
+    )
 
 
 def test_the_whole_app_still_imports():

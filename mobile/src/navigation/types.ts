@@ -1,8 +1,14 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 /* The signed-out stack. Register can be entered with a role preselected (e.g.
-   from a future deep link); undefined means "no preselection". */
+   from a future deep link); undefined means "no preselection".
+
+   Landing is the pre-auth ROOT — the carousel a fresh install opens on — and
+   it is first here because it is first on screen. It is registered on every
+   mount of this stack but is only the initial route the first time round; see
+   lib/onboarding.ts and RootNavigator for what decides that. */
 export type AuthStackParamList = {
+  Landing: undefined;
   Login: undefined;
   Register: { role?: string } | undefined;
   VerifyOtp: { phone: string };

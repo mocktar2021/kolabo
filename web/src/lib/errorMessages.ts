@@ -297,7 +297,6 @@ export const error_fr = {
      contactDetails() below from the tokens the backend sends, because French
      does not build a list the way English does and a sentence assembled in
      Python could only ever be assembled in one language. */
-  contact_details_found: "Ce {{surface}} semble contenir {{what}}. Kolabo garde la conversation, le contrat et l'argent au même endroit : un accord conclu ailleurs n'a ni contrat ni séquestre derrière lui, donc aucune des deux parties n'a de recours si ça tourne mal. Retirez-le et renvoyez votre {{surface}} — rien n'a été enregistré et rien n'a été modifié.",
   kind_email: "une adresse e-mail",
   kind_phone: "un numéro de téléphone",
   kind_handle: "un identifiant de messagerie",
@@ -530,7 +529,6 @@ export const error_en = {
   dispute_amount_negative: "Neither amount can be negative.",
   dispute_amounts_must_balance: "{{released}} released and {{refunded}} refunded add up to {{total}}, but the escrow holds {{amount}} {{currency}}. Money must not be invented or destroyed.",
 
-  contact_details_found: "This {{surface}} looks like it contains {{what}}. Kolabo keeps the conversation, the contract and the money in one place: a deal agreed elsewhere has no contract and no escrow behind it, so neither side has any recourse if it goes wrong. Take it out and send the {{surface}} again — nothing was saved and nothing was edited.",
   kind_email: "an email address",
   kind_phone: "a phone number",
   kind_handle: "a messaging app handle",

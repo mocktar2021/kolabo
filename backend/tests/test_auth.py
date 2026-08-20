@@ -12,8 +12,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.core.rewards import REFERRAL_CREDIT
-from app.modules.auth import models
+from app.modules.auth import models, service
 from app.modules.auth.router import router as auth_router
 
 PHONE = "+22990000001"
@@ -43,11 +44,42 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The REAL error handler, because the rate limit test below asserts on the
+    # `code` in the body and AppError subclasses HTTPException — without this,
+    # FastAPI's own handler renders {"detail": ...} alone and the assertion
+    # fails on a missing key rather than on a wrong answer. `detail` keeps its
+    # name, its position and its type either way, so every existing assertion
+    # in this file reads the same response it always did. Same reason and same
+    # registration as tests/test_admin_auth.py.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(auth_router, prefix="/auth")
     app.dependency_overrides[get_db] = override_get_db
     test_client = TestClient(app)
     test_client.session_factory = testing_session
     return test_client
+
+
+class _RecordingSender:
+    """Stands in for the SMS sender and counts what it was asked to send.
+
+    A rate limit on a send endpoint is about MONEY, not about status codes, so
+    the assertion that matters is that the refused request put nothing on the
+    wire. Swapped onto the service the same way test_bio_ai.py swaps the bio
+    generator: a module level name, reassigned for the duration of one test.
+    """
+
+    def __init__(self):
+        self.sent = []
+
+    def send(self, phone, message):
+        self.sent.append((phone, message))
+
+
+@pytest.fixture()
+def sender(monkeypatch):
+    spy = _RecordingSender()
+    monkeypatch.setattr(service, "_sender", spy)
+    return spy
 
 
 def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD, **extra):
@@ -257,6 +289,64 @@ def test_delete_account_with_contract_history_409(client):
         assert db.query(models.User).filter(models.User.id == user_id).first() is not None
     finally:
         db.close()
+
+
+def test_registration_otp_is_rate_limited_per_phone(client, sender):
+    """Every registration sends an SMS and every SMS costs money.
+
+    Re-registering an unverified number RESENDS the code, so /auth/register is
+    the resend endpoint as well — and an uncapped resend is a bill a stranger
+    can run up on us in a loop. Same ceiling, and the same shape, as the reset
+    limit below.
+    """
+    for _ in range(3):
+        assert _register(client).status_code == 201
+    refused = _register(client)
+    assert refused.status_code == 429
+    assert refused.json()["code"] == "auth_otp_too_many"
+
+    # THE HALF THAT IS ACTUALLY ABOUT THE BILL: the refusal sent nothing, and
+    # wrote no fourth challenge either. Both are asserted because a future
+    # _issue_otp could write the row without sending, or send without writing.
+    assert len(sender.sent) == 3
+    db = client.session_factory()
+    try:
+        assert db.query(models.OtpChallenge).count() == 3
+    finally:
+        db.close()
+
+
+def test_a_refused_registration_does_not_rewrite_the_password(client, sender):
+    """The cap is checked before the credentials are refreshed.
+
+    Registering a phone that already has an unverified row overwrites its
+    password, so a 429 that still wrote would let whoever ran the cap out take
+    over a half-finished signup for free. The original password still logs in
+    once the account is verified; the one the refused request carried does not.
+    """
+    for _ in range(3):
+        _register(client)
+    assert _register(client, password="attackerpass9").status_code == 429
+
+    code = _latest_code(client)
+    assert client.post("/auth/verify-otp", json={"phone": PHONE, "code": code}).status_code == 200
+    assert client.post(
+        "/auth/login", json={"phone": PHONE, "password": PASSWORD}
+    ).status_code == 200
+    assert client.post(
+        "/auth/login", json={"phone": PHONE, "password": "attackerpass9"}
+    ).status_code == 401
+
+
+def test_the_otp_cap_is_per_phone_and_not_a_global_ceiling(client, sender):
+    """Counting every registration on the platform instead of every
+    registration for one number would make a single looping attacker a denial
+    of service on everybody else's signup."""
+    for _ in range(3):
+        _register(client)
+    assert _register(client).status_code == 429
+    assert _register(client, phone="+22990000042").status_code == 201
+    assert len(sender.sent) == 4
 
 
 def test_password_reset_rate_limited_to_three_per_hour(client):

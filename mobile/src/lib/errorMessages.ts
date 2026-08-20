@@ -47,6 +47,7 @@ export const error_fr: Record<string, string> = {
   auth_token_invalid: "Votre session a expiré. Reconnectez-vous.",
   auth_account_nothing_to_change: "Indiquez un nouveau numéro, un nouveau mot de passe, ou les deux.",
   auth_reset_too_many: "Trop de demandes de réinitialisation. Réessayez plus tard.",
+  auth_otp_too_many: "Trop de codes de vérification demandés. Réessayez plus tard.",
   auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
 
   profile_not_found: "Profil introuvable.",
@@ -291,6 +292,7 @@ export const error_en: Record<string, string> = {
   auth_token_invalid: "Your session has expired. Please sign in again.",
   auth_account_nothing_to_change: "Send a new phone number, a new password, or both.",
   auth_reset_too_many: "Too many reset requests. Try again later.",
+  auth_otp_too_many: "Too many verification codes requested. Try again later.",
   auth_reset_code_invalid: "That reset code is invalid or expired.",
 
   profile_not_found: "Profile not found.",

@@ -108,6 +108,21 @@ class Settings(BaseSettings):
     # us by looping over a phone number. It also caps how many valid codes are
     # in flight for one account at once.
     password_reset_max_per_hour: int = 3
+    # How many live (unconsumed, unexpired) verification codes one phone may
+    # hold within an hour.
+    #
+    # THE REGISTRATION OTP HAD NO CEILING AT ALL, which is the gap this closes.
+    # POST /auth/register re-sends the code when the number already has an
+    # unverified row, so it is the resend endpoint as well as the signup one,
+    # and a loop over a single phone number was an unbounded SMS bill anybody
+    # on the internet could run up on us. SMS is the most expensive thing this
+    # product does per request in the launch markets.
+    #
+    # Same number and same shape as password_reset_max_per_hour above,
+    # deliberately: there is ONE rule about how many codes may be in flight to
+    # one handset, and a second mechanism with its own arithmetic would be a
+    # second thing to reason about the day either number changes.
+    otp_max_per_hour: int = 3
     # Comma separated phone numbers of the people who may use the admin
     # surface. THIS IS THE ADMIN LIST, and the database is made to agree with
     # it on every boot — listed numbers are granted, unlisted holders are

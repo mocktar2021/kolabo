@@ -62,6 +62,11 @@ export const body_fr = {
      brief est simplement pourvu — et la phrase ne nomme pas la campagne, comme
      l'anglaise, parce que le lien ouvre déjà ses invitations. */
   brief_filled: "Ce brief a été pourvu : votre proposition est maintenant close.",
+  /* La troisième façon dont une proposition se termine, et la seule où
+     quelqu'un a décidé : la marque a dit non. Sans reproche et sans motif —
+     il n'y a pas de champ pour en donner un — et sans nommer la campagne,
+     comme brief_filled, parce que le lien ouvre déjà ses invitations. */
+  proposal_rejected: "Votre proposition n'a pas été retenue.",
 
   invitation_received: "Vous avez été invité(e) à la campagne {{campaign}}.",
   order_custom_offer: "Une marque vous a envoyé une offre personnalisée : {{title}}. Vous avez {{hours}} h pour accepter ou refuser.",
@@ -141,6 +146,11 @@ export const body_en = {
      it names no campaign, so the two languages ask for the same (empty) set of
      interpolation values. */
   brief_filled: "This brief has been filled, so your proposal is now closed.",
+  /* The third way a proposal ends, and the only one somebody chose: the
+     brand said no. No blame and no reason — there is no field to put one
+     in — and no campaign named, like brief_filled, so the two languages ask
+     for the same (empty) set of interpolation values. */
+  proposal_rejected: "Your proposal was not selected.",
 
   invitation_received: "You were invited to the campaign {{campaign}}.",
   order_custom_offer: "A brand sent you a custom offer: {{title}}. You have {{hours}} hours to accept or decline.",

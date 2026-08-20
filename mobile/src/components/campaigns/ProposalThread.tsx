@@ -5,6 +5,9 @@ import { api } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
 import { useAuth } from "../../lib/auth";
 import type { ProposalChain } from "../../lib/campaignTypes";
+/* Side-effect import: registers the campaign.reject* copy the control
+   below reads. Without it this thread renders raw keys at the buyer. */
+import "../../lib/rejectionStrings";
 import { Banner, Field, GhostButton, Hint, PrimaryButton } from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
 
@@ -105,19 +108,74 @@ function ReplyForm({ campaignId, latestId, ratePlaceholder, daysPlaceholder, onS
 
    The turn badge is the mirror image of the one the creator reads on their
    invitations page, off the same author_role field: "the creator replied" is
-   this reader's turn to act, "waiting on the creator" is not. */
-export function ProposalThread({ campaignId, chain, disabled, onAccept, onViewContract, onReplied }: {
+   this reader's turn to act, "waiting on the creator" is not.
+
+   THREE ANSWERS, AND THEIR WEIGHTS ARE THE PRODUCT'S OPINION, the same one
+   web/src/pages/CampaignDetail.tsx states. Accept is primary because it is
+   what a brief is for. Reply is next, because a number that is wrong is
+   usually a number to argue about and every argument that leaves this screen
+   leaves the platform. Reject is last and quietest — a text link rather than
+   a third full-width button — because it is the least-used of the three and
+   the only one that cannot be undone, so it is offered plainly, sized down,
+   and behind a confirmation that says so. */
+export function ProposalThread({ campaignId, chain, disabled, rejectable, onAccept, onViewContract, onReplied, onRejected }: {
   campaignId: string;
   chain: ProposalChain;
   disabled: boolean;
+  /* Off campaign.is_direct, mirroring the server. A direct order is closed by
+     the creator declining it — which also cancels the order and tells the
+     buyer they were not charged — so rejecting a version of one would leave
+     it half-closed, and campaigns/rejections.py refuses it with
+     proposal_is_direct_order. The control is removed rather than left to be
+     refused, exactly as the invitation withdraw link is. */
+  rejectable: boolean;
   onAccept: (proposalId: string) => void;
   onViewContract: (proposalId: string) => void;
   onReplied: () => void;
+  onRejected: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const { token } = useAuth();
   const [replyOpen, setReplyOpen] = useState(false);
+  /* Per thread rather than shared, so a buyer with four bids open is never
+     unsure which one they are about to end. */
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [rejectBusy, setRejectBusy] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
   const latest = chain.latest;
   const awaitingCreator = latest.author_role === "business";
+
+  /* Turning the live offer down. Addressed to the latest version's id, which
+     is the only one the server will act on: it closes the live version of
+     this creator's chain and nothing above it.
+
+     ITS OWN BUSY AND ERROR STATE, not the screen's — the reason
+     ContractDetailScreen keeps its cancel card out of the page banner. That
+     banner sits at the top of a long campaign screen, several thumb scrolls
+     above this thread, so a refusal landing up there would read from this
+     seat as a control that did nothing. */
+  async function reject() {
+    setRejectBusy(true);
+    setRejectError(null);
+    try {
+      await api(`/campaigns/${campaignId}/proposals/${latest.id}/reject`, { method: "POST", token });
+      setConfirmingReject(false);
+      /* The screen reloads the campaign, so this thread comes straight back
+         with the chain closed — no turn badge, no answers — rather than
+         waiting for a pull-to-refresh to admit what just happened. */
+      onRejected();
+    } catch (e) {
+      /* Off the CODE the refusal carries, through errorText, and every one of
+         them is already written in both languages: `proposal_closed` if the
+         chain moved on in another session, `proposal_has_contract` if it has
+         already produced one, `campaign_not_open` on a brief that ended while
+         this screen was open. Each is a different thing to do next, and the
+         400 they share names none of them. */
+      setRejectError(errorText(e, t));
+    } finally {
+      setRejectBusy(false);
+    }
+  }
 
   return (
     <View style={styles.wrap}>
@@ -158,18 +216,69 @@ export function ProposalThread({ campaignId, chain, disabled, onAccept, onViewCo
       </View>
 
       {latest.status === "submitted" ? (
-        <View style={{ marginTop: space(3), gap: space(2) }}>
-          <PrimaryButton
-            title={t("campaign.accept")}
-            onPress={() => onAccept(latest.id)}
-            disabled={disabled}
-          />
-          <GhostButton
-            title={t("campaign.reply")}
-            onPress={() => setReplyOpen((o) => !o)}
-            disabled={disabled}
-          />
-        </View>
+        confirmingReject ? (
+          /* The confirmation REPLACES the answers rather than sitting under
+             them, which is how both of this negotiation's other inline
+             confirmations behave — the campaign acts on CampaignDetailScreen
+             and decline/withdraw in the creator's Negotiation. On a 360 dp
+             screen a question with the answers to something else still live
+             beside it is a question somebody taps past. */
+          <View style={{ marginTop: space(3) }}>
+            {rejectError ? <Banner kind="error">{rejectError}</Banner> : null}
+            {/* Not a Hint: this is the last thing read before an irreversible
+                tap, so it gets body ink and body size rather than the muted
+                12 pt every other aside on this screen uses. */}
+            <Text style={styles.confirm}>{t("campaign.rejectConfirm")}</Text>
+            <View style={{ height: space(2) }} />
+            <PrimaryButton
+              title={rejectBusy ? t("common.working") : t("campaign.rejectYes")}
+              onPress={() => void reject()}
+              loading={rejectBusy}
+              disabled={disabled}
+            />
+            <View style={{ height: space(2) }} />
+            <GhostButton
+              title={t("campaign.rejectNo")}
+              onPress={() => {
+                setConfirmingReject(false);
+                setRejectError(null);
+              }}
+              disabled={rejectBusy}
+            />
+          </View>
+        ) : (
+          <View style={{ marginTop: space(3), gap: space(2) }}>
+            <PrimaryButton
+              title={t("campaign.accept")}
+              onPress={() => onAccept(latest.id)}
+              disabled={disabled}
+            />
+            <GhostButton
+              title={t("campaign.reply")}
+              onPress={() => setReplyOpen((o) => !o)}
+              disabled={disabled}
+            />
+            {/* TWO TAPS, ALWAYS: the first one only asks. This ends the
+                negotiation for good and tells the creator, and a thumb on a
+                phone is not a precise instrument. */}
+            {rejectable ? (
+              <Text
+                style={[styles.reject, disabled && styles.rejectOff]}
+                accessibilityRole="button"
+                onPress={
+                  disabled
+                    ? undefined
+                    : () => {
+                        setConfirmingReject(true);
+                        setRejectError(null);
+                      }
+                }
+              >
+                {t("campaign.reject")}
+              </Text>
+            ) : null}
+          </View>
+        )
       ) : latest.status === "accepted" ? (
         <View style={{ marginTop: space(3) }}>
           <GhostButton
@@ -222,6 +331,23 @@ const styles = StyleSheet.create({
   versionMeta: { fontSize: font.tiny, color: colors.indigo, fontFamily: family.bodySemi },
   versionTerms: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginTop: 2 },
   versionNote: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
+  /* Visually secondary to Accept and Reply, as on web, and a text link rather
+     than a third GhostButton for the reason web sizes its own reject button
+     down: a control shaped like the two decisions beside it reads as a third
+     decision of equal weight. Muted rather than the withdraw link's red — a
+     rejection is an answer, not a warning — and the vertical padding is the
+     touch target, because a line of 14 pt text is not one. */
+  reject: {
+    fontSize: font.small,
+    fontFamily: family.bodySemi,
+    color: colors.muted,
+    textAlign: "center",
+    paddingVertical: space(2),
+  },
+  rejectOff: { opacity: 0.6 },
+  /* The confirmation sentence, in ink at body size: see the comment where it
+     is rendered. */
+  confirm: { fontFamily: family.body, fontSize: font.small, color: colors.ink, lineHeight: 20 },
   replyBox: {
     backgroundColor: colors.surface,
     borderWidth: 1,

@@ -188,9 +188,24 @@ class Settings(BaseSettings):
     #   the token is present, while Facebook still works on the token alone.
     # meta_graph_version: the pinned Graph API version, overridable as Meta ages
     #   versions out from under a fixed string.
+    #
+    #   THIS DEFAULT HAS AN EXPIRY DATE, which is the point of the note. Meta
+    #   keeps each Graph API version for AT LEAST TWO YEARS from release and
+    #   then stops answering it, so a version pinned here is correct when it is
+    #   written and silently wrong later: calls to a retired version fail, and
+    #   the enrichers turn that into a logged warning and a None, which reads
+    #   like a bad token rather than a stale string. This sat on v19.0
+    #   (released 23 January 2024) until three months past its 21 May 2026
+    #   expiry, and nothing said so because no deployment had a token set.
+    #
+    #   v26.0 was released 29 July 2026. Its two removals — root GET /?ids=
+    #   batch lookups and legacy ETag handling — are not used by either
+    #   enricher, which fetch one node at a time with a fields parameter. Put
+    #   the release date beside the next value too, so the next person can tell
+    #   at a glance how much runway is left.
     meta_graph_token: str = ""
     instagram_business_account_id: str = ""
-    meta_graph_version: str = "v19.0"
+    meta_graph_version: str = "v26.0"
     # Anthropic API key for AI drafted profile bios. Unset means the feature is
     # reported as unavailable rather than half working.
     anthropic_api_key: str = ""

@@ -299,7 +299,7 @@ function AccountMenu() {
         onClick={() => setOpen((o) => !o)}
         style={{ display: "inline-flex", alignItems: "center", gap: 9, borderRadius: 999, padding: "3px 4px 3px 12px" }}
       >
-        <span aria-hidden="true" style={{ display: "grid", gap: 3.4 }}>
+        <span aria-hidden="true" className="menu-dashes">
           <span style={MENU_DASH} />
           <span style={MENU_DASH} />
           <span style={MENU_DASH} />
@@ -325,9 +325,17 @@ function AccountMenu() {
             </svg>
           )}
         </span>
+        {/* The name of the control, shown only where it is needed: below
+            960 px this button and the nav toggle end up one under the other,
+            both drawn as three dashes, and the second one reads as the first
+            one repeated. There the dashes come off this one (see
+            .menu-dashes in theme.css) and the label goes on. It is the
+            aria-label the button already carried, so there is no new string
+            to translate. */}
+        <span className="nav-item-label">{t("menu.account")}</span>
       </button>
       {open && (
-        <div className="menu-panel" role="menu" style={{ left: "auto", right: 0, width: 240 }}>
+        <div className="menu-panel menu-panel-end menu-panel-account" role="menu">
           {/* Who is signed in, at the top of the menu that is about them. The
               name only — NOT the phone number, which /auth/me does carry and
               which belongs on the account screen where somebody is checking
@@ -424,7 +432,11 @@ function AppNav({ open }: { open: boolean }) {
    and the breakpoint the nav already used to start shedding links — the list
    collapses behind one control and the language switch stays out in the bar.
    Above 960 px both of those are display:none, so they are not flex items and
-   the desktop row is byte-for-byte the row it was. */
+   the desktop row is byte-for-byte the row it was.
+
+   What the control OPENS is a column: one destination per row. It used to be
+   this same flex line re-flowed, which wrapped onto three lines of pills and
+   does not read as a menu — see the nav rules in theme.css. */
 export function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
@@ -443,7 +455,7 @@ export function Layout({ children }: { children: ReactNode }) {
             aria-label={navOpen ? t("menu.closeNav") : t("menu.openNav")}
             onClick={() => setNavOpen((o) => !o)}
           >
-            <span aria-hidden="true" style={{ display: "grid", gap: 3.4 }}>
+            <span aria-hidden="true" className="menu-dashes">
               <span style={MENU_DASH} />
               <span style={MENU_DASH} />
               <span style={MENU_DASH} />

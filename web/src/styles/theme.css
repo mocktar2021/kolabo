@@ -262,6 +262,20 @@ a:hover { text-decoration: underline; }
    while the rest of the nav is collapsed. Hidden on desktop, where the copy
    inside .nav-links is the one being used. */
 .lang-switch-bar { display: none; }
+/* The three dashes drawn on the two menu controls in the header: the nav
+   toggle out in the bar, and the account button at the end of the nav. Class
+   rather than an inline style because the collapsed header has to be able to
+   hide one of them — two identical hamburgers stacked one under the other read
+   as the same control drawn twice, which is exactly what a phone shows once
+   the nav is open. */
+.menu-dashes { display: grid; gap: 3.4px; }
+/* The name of a nav control that is otherwise only a glyph — the account
+   button and the notifications bell. Both already carry the word as an
+   aria-label or an existing nav key; below 960px it is shown as well, because
+   that is where each of them stops being a pill in a row of pills and becomes
+   a full-width row, and where the account button ends up stacked directly
+   under a nav toggle drawn with the same three dashes. */
+.nav-item-label { display: none; }
 
 @media (max-width: 960px) {
   /* Measured: the signed-in French nav asks for 760px (creator) and 808px
@@ -285,21 +299,42 @@ a:hover { text-decoration: underline; }
   .nav-links {
     display: none;
     width: 100%;
-    flex-wrap: wrap;
     justify-content: flex-start;
     gap: 8px;
     margin-bottom: 12px;
   }
-  .nav-links.open { display: flex; }
-  /* Inside the open panel there is room for the marketing links again — both
-     the ones hidden at 1200px and the ones this breakpoint used to hide — and
-     each of them becomes a 44px row rather than the 34px it is in a desktop
-     row that is being clicked with a mouse. */
-  .nav-links.open .nav-link { display: flex; align-items: center; min-height: 44px; }
 
-  /* The dropdowns inside the panel are wider than a phone: the features menu
-     is a flat 330px and would put the overflow straight back. */
-  .menu-panel { max-width: calc(100vw - 32px); }
+  /* ONE ENTRY PER ROW, which is the half of the collapse that was missing.
+
+     Closed, the list is display:none and the bar keeps its 64px — that part
+     worked. What the control OPENED was the desktop row re-flowed: a flex
+     line of nowrap pills that wrapped onto three lines (Découvrir / Briefs /
+     Invitations, then Contrats / Messages / Litiges / the bell, then the
+     account button), 154px of grid that does not read as a menu, with the
+     account control landing beside the bell where its three dashes look like
+     a second copy of the toggle just pressed.
+
+     The rule meant to give a panel entry a finger-sized row named .nav-link,
+     which is the MARKETING link class. Every destination in the signed-in nav
+     is a .btn, so it matched none of them and the wrap was never addressed.
+     A column, with every entry stretched across it, is what the control opens
+     now — and it costs the closed header nothing, because the closed header
+     is still one row. */
+  .nav-links.open { display: flex; flex-direction: column; align-items: stretch; }
+  .nav-links.open > a,
+  .nav-links.open > div,
+  .nav-links.open > div > .btn,
+  .nav-links.open > div > .nav-link { width: 100%; }
+  .nav-links.open .btn,
+  .nav-links.open .nav-link {
+    display: flex; align-items: center; justify-content: flex-start; min-height: 44px;
+  }
+
+  /* Exactly one hamburger on the screen. The dashes belong to the control
+     that opens the navigation; the account button keeps its avatar and says
+     what it is instead, and the bell says what it is for the same reason. */
+  .nav-links.open .menu-dashes { display: none; }
+  .nav-links.open .nav-item-label { display: inline; }
 }
 
 /* ---- Features dropdown (marketing nav) ---- */
@@ -313,6 +348,42 @@ button.nav-link { background: none; border: none; cursor: pointer; font-family: 
 .menu-item:hover { background: var(--surface); text-decoration: none; }
 .menu-item .t { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
 .menu-item .d { display: block; font-size: 12.5px; color: var(--muted); margin-top: 1px; white-space: normal; }
+
+/* The two panels that hang from the RIGHT edge of their trigger rather than
+   its left — the account menu and the notifications bell, both of which sit at
+   the end of the nav where a left-anchored panel would run off the right of
+   the screen. These three declarations were inline styles on the elements
+   themselves, which is precisely why the failure below could not be fixed in
+   CSS: a media query cannot reach an inline style. */
+.menu-panel-end { left: auto; right: 0; }
+.menu-panel-account { width: 240px; }
+.menu-panel-notifications { width: 330px; max-width: 92vw; }
+
+@media (max-width: 960px) {
+  /* KEEP THE PANEL ON THE SCREEN.
+
+     A panel anchored to the right edge of its trigger extends LEFTWARD. Once
+     it is wider than the distance from that edge to the left of the screen its
+     left edge goes negative, and a viewport clips what is past zero rather
+     than scrolling to it. Measured on this build: at 412px the account panel
+     opened at left:-150px — 150 of its 240px off the screen, the four entries
+     gone entirely, and the page heading behind what was left. At 360px the
+     notifications panel opened at left:-124px, taking the panel title and the
+     first word of every notification with it. Two panels, one rule.
+
+     In the collapsed header every trigger is a full-width row, so pinning the
+     panel to both edges of that row gives it the container's 20px gutter on
+     each side and no way to leave the viewport. This replaces the max-width
+     the nav block used to set here: a maximum bounds the width, and the width
+     was never what went off the screen. */
+  .menu-panel,
+  .menu-panel-end {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+}
 
 /* ---- Dark marketing hero ---- */
 .hero-dark { background: #14161f; color: #fff; padding: 64px 0 56px; }

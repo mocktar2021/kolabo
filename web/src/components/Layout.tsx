@@ -470,6 +470,89 @@ export function Layout({ children }: { children: ReactNode }) {
   );
 }
 
+/* PARENT-COMPANY ATTRIBUTION, and the last thing on every page.
+
+   Kolabo is one of two products built by Mocktar Technologies — Mocktar
+   Technologies (Benin) and Mocktar Technologies LLC (North Carolina) —
+   FastaNow being the other. The strip states that relationship once, at the
+   bottom, in the same muted grey the rest of the footer's small print already
+   uses: it is provenance rather than promotion, and it earns none of the
+   footer's emphasis.
+
+   WHAT IS NOT HERE, AND WHY. The strip this follows carries Privacy and Terms
+   beside Support. Kolabo has neither. App.tsx declares no /privacy and no
+   /terms, there is no catch-all route to catch the miss, and a link to either
+   would drop a visitor on a blank document — worse than the placeholder that
+   PR #131 removed from this same footer, because a placeholder at least says
+   something. Writing the pages here was the other option and it is the worse
+   one: a privacy policy is a legal undertaking about what this platform does
+   with a creator's phone number, their audience figures and their money, and
+   it belongs to a lawyer rather than to a footer commit. They join this row
+   the day they exist — and they are already on the critical path, since
+   TikTok's developer review wants both reachable without opening a menu.
+
+   Support therefore points where support actually happens today: the address
+   the Support column above already publishes. Not a help centre that has not
+   been built.
+
+   THE LAYOUT IS ONE WRAPPING FLEX LINE with no media query, which is what
+   keeps it safe below 400 px. The brand and the links are two groups sharing
+   a row for as long as both fit; the links drop to a second row when they do
+   not. Nothing in it is nowrap and nothing carries a fixed width, so there is
+   no viewport at which this row can demand more than the container gives it —
+   which is the property PRs #133 and #142 bought for the header and that this
+   must not spend. */
+
+/* A link in the strip. Ink-dark and bold against the muted attribution beside
+   it, and 44 px tall because a footer link is still a thumb target. Focus and
+   hover are left to the stylesheet: an <a> keeps the browser's focus ring
+   (nothing in theme.css clears it) and picks up the global a:hover underline,
+   which is exactly what the other links in this footer do.
+
+   600 rather than 700 because index.html loads Inter at 400, 500 and 600 and
+   at no other weight: 700 would resolve to the 600 face anyway on a device
+   that has the webfont, and to a synthesised faux-bold on one that fell back
+   to the system stack — two different renderings of one declaration. */
+const PARENT_LINK: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", minHeight: 44,
+  fontSize: 13.5, fontWeight: 600, color: "var(--ink)", textDecoration: "none"
+};
+
+function ParentCompanyStrip() {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="container"
+      style={{
+        borderTop: "1px solid var(--line)", marginTop: 18, paddingTop: 12, paddingBottom: 12,
+        display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between",
+        columnGap: 24, rowGap: 6
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        {/* The mark without the wordmark: "Kolabo" is already set in type at
+            the top of this footer, and repeating it here would make the strip
+            about Kolabo when the sentence beside it is about its publisher. */}
+        <span style={{ display: "inline-flex", flexShrink: 0 }}>
+          <Logo size={26} withWordmark={false} />
+        </span>
+        <span style={{ fontSize: 13.5, color: "var(--muted)", minWidth: 0 }}>
+          {t("footer.parentProduct")}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 22 }}>
+        <a href="mailto:hello@kolaboafrica.com" style={PARENT_LINK}>{t("footer.support")}</a>
+        {/* The one link in this footer that leaves the product, hence the
+            noopener/noreferrer pair on the new tab. The company name is a
+            proper noun and is not translated in either bundle. */}
+        <a href="https://mocktar.com" target="_blank" rel="noopener noreferrer" style={PARENT_LINK}>
+          Mocktar Technologies
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function SiteFooter() {
   const { t } = useTranslation();
   return (
@@ -508,6 +591,7 @@ function SiteFooter() {
       <div className="container" style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 24, fontSize: 13, color: "var(--muted)" }}>
         Kolabo. {new Date().getFullYear()}. {t("footer.rights")}
       </div>
+      <ParentCompanyStrip />
     </footer>
   );
 }

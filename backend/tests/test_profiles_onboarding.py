@@ -68,7 +68,12 @@ def test_enricher_fills_only_empty_fields(client, monkeypatch):
     uid = _user(client, "+22990000021")
     # The creator already wrote their own bio; it must not be overwritten.
     client.put(f"/profiles/influencer/{uid}", json={"bio": "My own bio", "categories": [], "rate_card": {}})
-    client.post(f"/profiles/{uid}/social-accounts", json={"platform": "youtube", "handle": "ama", "method": "oauth"})
+    # Connected the way the web app connects — enrichment has never cared
+    # which method was used, only about the platform and the handle.
+    client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "youtube", "handle": "ama", "method": "manual",
+        "proof_url": "https://youtube.com/@ama",
+    })
 
     prof = client.get(f"/profiles/influencer/{uid}").json()
     assert prof["bio"] == "My own bio"               # preserved

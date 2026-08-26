@@ -25,7 +25,14 @@ const fr = {
   footer: {
     tagline: "La plateforme de marketing d'influence pour l'Afrique. Collaborations sécurisées, paiements protégés.",
     discover: "Découvrir", company: "Kolabo", support: "Support",
-    faq: "Questions fréquentes", contact: "Nous contacter", rights: "Tous droits réservés."
+    faq: "Questions fréquentes", contact: "Nous contacter", rights: "Tous droits réservés.",
+    /* Parent-company attribution, at the very bottom of every page. Brand
+       apposition rather than "un produit de Mocktar Technologies": French
+       reads a company name straight after the noun the same way it reads
+       "une voiture Renault", and it is the shorter of the two on a 320 px
+       phone. "Mocktar Technologies" is a company name and stays untranslated
+       in both bundles. */
+    parentProduct: "Un produit Mocktar Technologies."
   },
   landing: {
     heroA: "Le marketing d'influence en Afrique, de la", heroAccent: "recherche", heroB: "au paiement.",
@@ -137,7 +144,8 @@ const en = {
   footer: {
     tagline: "The influencer marketing platform for Africa. Secure collaborations, protected payments.",
     discover: "Discover", company: "Kolabo", support: "Support",
-    faq: "FAQ", contact: "Contact us", rights: "All rights reserved."
+    faq: "FAQ", contact: "Contact us", rights: "All rights reserved.",
+    parentProduct: "A Mocktar Technologies product."
   },
   landing: {
     heroA: "Influencer marketing in Africa, from", heroAccent: "first search", heroB: "to final payment.",

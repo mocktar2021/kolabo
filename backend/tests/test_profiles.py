@@ -73,6 +73,28 @@ def _add_packages(client, uid, n=3):
         assert r.status_code == 201, r.text
 
 
+def _verify_social_account(client, account_id):
+    """Put an account into the state only an admin decision can reach.
+
+    THROUGH THE DATABASE, DELIBERATELY. No request can produce a verified
+    account any more — that was the hole — so a test that needs one either
+    drives the whole admin decision flow or writes the row. The tests that use
+    this are about what EDITING a verified account does; how it earned the
+    badge is admin.service.decide_social's business and is covered where that
+    is tested. Same shape as the direct row writes further down this file.
+    """
+    from app.modules.profiles.models import SocialAccount, VERIFIED
+
+    db = client.session_factory()
+    try:
+        account = db.query(SocialAccount).filter(SocialAccount.id == account_id).first()
+        assert account is not None, "no such social account"
+        account.status = VERIFIED
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_influencer_profile_completion_and_searchable(client):
     uid = _make_user(client)
     # Partial profile is not searchable and under 100 percent.
@@ -187,11 +209,21 @@ def test_verification_document_under_the_ceiling_still_uploads(client):
     db.close()
 
 
-def test_social_oauth_is_verified_manual_is_pending(client):
+def test_no_connection_arrives_verified(client):
+    """A badge is not something a request body can ask for.
+
+    This test used to assert the opposite — that `"method": "oauth"` came back
+    "verified" — which is exactly the hole that was closed: there is no OAuth
+    in this codebase, so the string proved nothing, and it skips the proof_url
+    requirement that `manual` has to satisfy. Both methods now start pending
+    and are verified by admin review.
+    """
     uid = _make_user(client, phone="+22990000004")
     r = client.post(f"/profiles/{uid}/social-accounts", json={"platform": "instagram", "handle": "me", "method": "oauth"})
     assert r.status_code == 201
-    assert r.json()["status"] == "verified"
+    assert r.json()["status"] == "pending"
+    # The method is still recorded — it is what the creator says they did.
+    assert r.json()["method"] == "oauth"
     r = client.post(
         f"/profiles/{uid}/social-accounts",
         json={"platform": "tiktok", "handle": "me", "method": "manual", "proof_url": "https://proof"},
@@ -210,9 +242,10 @@ def test_social_account_edit_round_trips_and_resets_verification(client):
     the badge was earned by the old handle, not whatever it now points at."""
     uid = _make_user(client, phone="+22990000030")
     acc = client.post(f"/profiles/{uid}/social-accounts", json={
-        "platform": "instagram", "handle": "old_handle", "method": "oauth",
+        "platform": "instagram", "handle": "old_handle", "method": "manual",
+        "proof_url": "https://instagram.com/old_handle",
     }).json()
-    assert acc["status"] == "verified"
+    _verify_social_account(client, acc["id"])
     r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"handle": "new_handle"})
     assert r.status_code == 200
     assert r.json()["handle"] == "new_handle"
@@ -227,8 +260,10 @@ def test_social_account_edit_without_handle_change_keeps_verification(client):
     the verified badge survives."""
     uid = _make_user(client, phone="+22990000031")
     acc = client.post(f"/profiles/{uid}/social-accounts", json={
-        "platform": "instagram", "handle": "ama", "method": "oauth",
+        "platform": "instagram", "handle": "ama", "method": "manual",
+        "proof_url": "https://instagram.com/ama",
     }).json()
+    _verify_social_account(client, acc["id"])
     r = client.put(f"/profiles/{uid}/social-accounts/{acc['id']}", json={"follower_count": 9000})
     assert r.status_code == 200
     assert r.json()["status"] == "verified"
@@ -268,10 +303,10 @@ def test_social_account_delete_removes_it_from_the_list(client):
 
 
 def test_public_profile_shows_pending_accounts_with_status(client):
-    """During the pilot every manual connection is pending (OAuth verification
-    has not shipped), so a verified-only filter emptied the audience section
-    for everyone. The page now shows every connected account with its status
-    and the frontend badges the verified ones."""
+    """During the pilot every connection is pending until an admin reviews it,
+    so a verified-only filter emptied the audience section for everyone. The
+    page now shows every connected account with its status and the frontend
+    badges the verified ones."""
     uid = _make_user(client, phone="+22990000035")
     client.put(f"/profiles/influencer/{uid}", json={
         "bio": "Hi", "categories": ["fashion"], "rate_card": {"post": 100},
@@ -313,6 +348,36 @@ def test_admin_can_approve_document_and_decision_is_logged(client, admin_headers
     db.close()
     assert log.admin_id == admin_user_id
     assert log.target_id == doc_id
+
+
+def test_admin_approval_is_the_only_way_an_account_gets_verified(client, admin_headers, admin_user_id):
+    """The other half of test_no_connection_arrives_verified.
+
+    Closing the shortcut is only safe if the honest path still works, so this
+    walks it end to end: connect, find the row in the queue, approve it, and
+    see the badge on the account the creator can read back.
+    """
+    uid = _make_user(client, phone="+22990000037")
+    acc = client.post(f"/profiles/{uid}/social-accounts", json={
+        "platform": "tiktok", "handle": "ama", "method": "manual",
+        "proof_url": "https://tiktok.com/@ama",
+    }).json()
+    assert acc["status"] == "pending"
+
+    queue = client.get("/admin/verification-queue", headers=admin_headers).json()
+    assert [s["id"] for s in queue["social_accounts"]] == [acc["id"]]
+
+    r = client.post(
+        f"/admin/social-accounts/{acc['id']}/decision",
+        json={"decision": "approved"},
+        headers=admin_headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "verified"
+    assert r.json()["reviewer_id"] == admin_user_id
+
+    listed = client.get(f"/profiles/{uid}/social-accounts").json()
+    assert listed[0]["status"] == "verified"
 
 
 def test_document_rejection_requires_reason(client, admin_headers):

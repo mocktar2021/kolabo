@@ -151,6 +151,12 @@ export function NotificationsBell() {
           <path d="M18 8.4a6 6 0 1 0-12 0c0 6-2.4 7.2-2.4 7.2h16.8S18 14.4 18 8.4" />
           <path d="M13.7 19.2a2 2 0 0 1-3.4 0" />
         </svg>
+        {/* The name of the control, shown only below 960px — where this stops
+            being a pill in a row of pills and becomes a full-width row of its
+            own, and a lone bell at the left of one is not a label. It is the
+            key notificationStrings.ts already registers for the nav, so there
+            is no new string to translate. */}
+        <span className="nav-item-label">{t("nav.notifications")}</span>
         {unread > 0 && (
           <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--indigo)", borderRadius: 999, padding: "1px 7px" }}>
             {/* Past three digits the badge stops being a number and starts
@@ -161,7 +167,7 @@ export function NotificationsBell() {
       </button>
 
       {open && (
-        <div className="menu-panel" role="menu" style={{ left: "auto", right: 0, width: 330, maxWidth: "92vw" }}>
+        <div className="menu-panel menu-panel-end menu-panel-notifications" role="menu">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "4px 12px 8px" }}>
             <strong style={{ fontFamily: "var(--font-display)", fontSize: 14.5 }}>{t("notif.panelTitle")}</strong>
             {/* Offered only when it would do something. A live "tout marquer

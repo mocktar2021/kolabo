@@ -149,7 +149,12 @@ def onboarding_status(user_id: str, db: Session = Depends(get_db)):
 def connect_social_account(
     user_id: str, payload: schemas.SocialAccountConnect, db: Session = Depends(get_db)
 ):
-    """Connect a social account via OAuth (verified) or manual proof (pending). KOL-17."""
+    """Connect a social account. KOL-17.
+
+    Every connection starts PENDING, whatever `method` the client sends: OAuth
+    is not built, so it cannot verify anything. The badge comes from admin
+    review — see service.connect_social_account.
+    """
     return service.connect_social_account(db, user_id, payload)
 
 

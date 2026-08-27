@@ -3,7 +3,9 @@
 KOL-15: influencer profile with required fields enforced before it is
 searchable, and a completion percentage.
 KOL-16: business verification document upload, stored encrypted.
-KOL-17: connect a social account (OAuth verified, manual pending).
+KOL-17: connect a social account. EVERY connection starts pending; the badge
+comes from admin review, never from what the client says the method was —
+see connect_social_account for why.
 
 Packages, portfolio images, and a public profile aggregate support the
 instant-hire model and the shareable creator page.
@@ -305,7 +307,28 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
     # a figure the platform itself cannot confirm.
     follower_count = payload.follower_count if payload.platform in PLATFORMS_WITH_AUDIENCE else None
 
-    new_status = models.VERIFIED if payload.method == "oauth" else models.PENDING
+    # OAUTH IS NOT BUILT, SO IT CANNOT CONFER A BADGE. This line used to read
+    #
+    #     models.VERIFIED if payload.method == "oauth" else models.PENDING
+    #
+    # which made the string "oauth" in a request body the entire proof. There
+    # is no authorisation URL, no callback, no token exchange and no stored
+    # token anywhere in this repo — nothing had verified anything. The oauth
+    # branch also skips the proof_url requirement three lines above, so it did
+    # not even need a link; and this router has no authentication yet (see its
+    # module docstring), so the request did not have to come from the creator
+    # either. One POST minted a verified account, with whatever follower count
+    # the caller fancied, on anybody's profile.
+    #
+    # Every connection now starts pending and earns its badge the one way that
+    # is actually checked: admin review, in admin.service.decide_social, which
+    # stamps the reviewer, writes the audit row and tells the creator.
+    #
+    # `method` is still recorded, because it is what the creator says they did
+    # and it is what the OAuth path will set the day it ships. It no longer
+    # decides the status. The conditional comes back next to a callback that
+    # can honestly justify it, not here.
+    new_status = models.PENDING
     account = models.SocialAccount(
         user_id=user_id,
         platform=payload.platform,
@@ -821,12 +844,12 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
             .filter(models.InfluencerProfile.user_id.in_(reviewer_ids))
             .all()
         )
-    # Every connected account is shown, not only verified ones. Manual
-    # connections stay pending until OAuth verification ships, so during the
-    # pilot a verified-only filter emptied the audience section and follower
-    # chips for every single creator. Product decision: show them all with
-    # their status, and let the frontend badge the verified ones. The filter
-    # can come back the day verification is real.
+    # Every connected account is shown, not only verified ones. Connections
+    # stay pending until an admin reviews them, so during the pilot a
+    # verified-only filter emptied the audience section and follower chips for
+    # every single creator. Product decision: show them all with their status,
+    # and let the frontend badge the verified ones. The filter can come back
+    # the day verification is real.
     social = (
         db.query(models.SocialAccount)
         .filter(models.SocialAccount.user_id == user_id)

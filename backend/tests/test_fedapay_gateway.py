@@ -9,6 +9,16 @@ mapping that reads "declined" as success funds an escrow nobody paid for.
 Every FedaPay response body below is shaped from their published examples. The
 client never touches the network: httpx.MockTransport answers, which means the
 tests assert on the exact request we would really send.
+
+AND WHERE THE EXAMPLES RAN OUT, THIS FILE ONCE GUESSED — which is worth
+recording, because the guess passed for months. FedaPay does not document the
+raw response of POST /transactions/{id}/token, so the mock returned
+{"v1/token": {...}}, matching the envelope the transaction and payout
+endpoints use. The real endpoint answers FLAT: {"token": ..., "url": ...}.
+The suite was green against an API nobody had observed, and every checkout
+against the real sandbox failed on the first attempt. A mock is only as good
+as the observation behind it; where a shape is asserted here and not published
+by the vendor, say so in the test.
 """
 import json
 import time
@@ -30,6 +40,12 @@ from app.modules.payments.gateways.base import (
 )
 
 SECRET = "wh_sandbox_testsecret"
+
+# The token endpoint's real answer, observed against the FedaPay sandbox on
+# 27 August 2026. Flat — no resource envelope. Kept as a module constant so
+# the next person can see at a glance which shapes here are observed and which
+# are inferred from the docs.
+TOKEN_RESPONSE = {"token": "tok", "url": "https://process.fedapay.com/tok"}
 
 
 def _sign(body: bytes, secret: str = SECRET, timestamp: int | None = None) -> str:
@@ -133,21 +149,24 @@ def _gateway(handler) -> fp.FedaPayGateway:
     )
 
 
-def test_start_collection_sends_the_right_body_and_returns_a_url():
-    seen = {}
+def _collection_handler(token_response, seen=None):
+    """A two-call collection: create the transaction, then fetch its token."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/transactions"):
-            seen["create"] = json.loads(request.content)
-            seen["auth"] = request.headers["authorization"]
+            if seen is not None:
+                seen["create"] = json.loads(request.content)
+                seen["auth"] = request.headers["authorization"]
             return httpx.Response(201, json={"v1/transaction": {"id": 4242, "status": "pending"}})
         if request.url.path.endswith("/transactions/4242/token"):
-            return httpx.Response(
-                200, json={"v1/token": {"token": "tok", "url": "https://pay.fedapay.com/tok"}}
-            )
+            return httpx.Response(200, json=token_response)
         raise AssertionError(f"unexpected {request.url}")
 
-    started = _gateway(handler).start_collection(
+    return handler
+
+
+def _start(gateway):
+    return gateway.start_collection(
         amount=50000,
         currency="XOF",
         description="Kolabo contract abcd1234",
@@ -160,8 +179,21 @@ def test_start_collection_sends_the_right_body_and_returns_a_url():
         merchant_reference="i1",
     )
 
+
+def test_start_collection_sends_the_right_body_and_returns_a_url():
+    """The happy path, against the token shape FedaPay really sends.
+
+    TOKEN_RESPONSE is flat. This assertion used to run against a wrapped
+    {"v1/token": {...}} body that FedaPay does not produce, which is why the
+    suite stayed green while every real checkout raised "Could not find a
+    resource in the response (keys: ['token', 'url'])".
+    """
+    seen = {}
+    started = _start(_gateway(_collection_handler(TOKEN_RESPONSE, seen)))
+
     assert started.reference == "4242"
-    assert started.checkout_url == "https://pay.fedapay.com/tok"
+    assert started.checkout_url == "https://process.fedapay.com/tok"
+    assert started.expires_in_seconds == 24 * 3600
     assert seen["auth"] == "Bearer sk_test"
     body = seen["create"]
     # XOF has no minor unit and FedaPay takes whole numbers, so the integer we
@@ -173,6 +205,40 @@ def test_start_collection_sends_the_right_body_and_returns_a_url():
     assert body["currency"] == {"iso": "XOF"}
     assert body["customer"]["phone_number"] == {"number": "+22997000000", "country": "bj"}
     assert body["merchant_reference"] == "i1"
+
+
+def test_wrapped_token_response_is_still_accepted():
+    """Tolerated, not expected.
+
+    The envelope is not a documented contract on any FedaPay endpoint and their
+    own SDKs differ on whether they see it, so a wrapped token body must not
+    break a checkout if it ever appears. This is the shape the suite used to
+    assert as the only one; it is kept as the variant it always was.
+    """
+    handler = _collection_handler({"v1/token": {"token": "tok", "url": "https://pay/x"}})
+    assert _start(_gateway(handler)).checkout_url == "https://pay/x"
+
+
+@pytest.mark.parametrize(
+    "token_response",
+    [
+        {"token": "tok"},          # flat, but no url
+        {"v1/token": {"token": "tok"}},   # wrapped, but no url
+        {},
+        {"url": ""},
+    ],
+)
+def test_token_response_without_a_url_is_refused(token_response):
+    """No url means no checkout, and the failure has to say THAT.
+
+    The transaction already exists at FedaPay when this raises, so the message
+    names it — an orphan transaction with no local checkout url is the state a
+    human has to reconcile, and the id is the only handle they have on it.
+    """
+    with pytest.raises(GatewayError) as exc:
+        _start(_gateway(_collection_handler(token_response)))
+    assert "checkout url" in str(exc.value)
+    assert "4242" in str(exc.value)
 
 
 @pytest.mark.parametrize(

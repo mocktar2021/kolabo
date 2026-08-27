@@ -89,6 +89,8 @@ docker compose -f docker-compose.prod.yml logs -f
 
 The first build takes a few minutes (the web image runs `tsc && vite build`, so a type error fails the build rather than shipping a broken bundle). Watch for Caddy reporting `certificate obtained successfully` for both hostnames.
 
+> **`deploy/.env` is the one the server reads**, not `backend/.env`. The prod compose injects it through `env_file:` into the `backend` **and** `sweeps` containers. Editing `backend/.env` on your laptop changes nothing about what this box serves — and the symptom is `/payments/config` answering `"enabled": false` while you stare at a file that looks correct.
+
 ### What each service does
 
 | Service | Role |
@@ -105,15 +107,21 @@ The first build takes a few minutes (the web image runs `tsc && vite build`, so 
 
 Do this at [sandbox.fedapay.com](https://sandbox.fedapay.com). All of it is on their side, none of it is in code.
 
-1. **Whitelist `kolabo.mocktar.com`** under the account's allowed domains. **Skip this and payers are redirected to a FedaPay signup page instead of a payment form.** It is the single most common first-launch failure and it looks like a bug in your app.
-2. Copy the sandbox **secret** and **public** keys into `deploy/.env`.
-3. Add a webhook:
-   - URL `https://api.kolabo.mocktar.com/webhooks/fedapay`
-   - Events: `transaction.approved`, `transaction.declined`, `transaction.canceled`, `transaction.transferred`, plus the payout events
-   - Copy the endpoint secret — it is prefixed **`wh_`** — into `FEDAPAY_WEBHOOK_SECRET`
-4. `docker compose -f docker-compose.prod.yml up -d backend sweeps` to pick up the new values.
+1. Copy the sandbox **secret** and **public** keys into `deploy/.env`.
+2. Add a webhook. The form has more on it than the URL, and three of the defaults are wrong for us:
+   - **URL** `https://api.kolabo.mocktar.com/webhooks/fedapay`
+   - **Type d'événements → "Recevoir tous les événements".** FedaPay's documentation does not enumerate the `payout.*` events at all, so a hand-picked list risks silently missing the notifications that say a creator was paid. Receiving everything is safe by construction: `webhooks.py` records and acknowledges event types it does not act on rather than erroring, which also turns `gateway_events` into a complete delivery log.
+   - **"Désactiver la vérification SSL sur les requêtes HTTP ?" → off.** Caddy serves a real Let's Encrypt certificate. There is no reason to let FedaPay skip validating it, and this is a payments webhook.
+   - **"Désactiver le webhook lorsque l'application génère des erreurs ?" → off.** Leave it on and FedaPay switches the endpoint off the first time it sees errors — which it will during setup, because every delivery returns 400 until `FEDAPAY_WEBHOOK_SECRET` is set. In production it is worse: this webhook is the safety net for a payer who pays and then closes the tab, so a transient outage auto-disabling it means escrows that silently never fund.
+   - **Entêtes http → none.** Authentication is the HMAC signature over the raw body; a custom header would not be covered by it and would add nothing.
+   - Copy the endpoint secret into `FEDAPAY_WEBHOOK_SECRET`. It is prefixed **`wh_`** (with the environment in it, e.g. `wh_sandbox…`) and is retrievable at any time from the webhook's own view via **Copy key** — it is not a one-time reveal.
+3. `docker compose -f docker-compose.prod.yml up -d backend sweeps` to pick up the new values.
 
 > `FEDAPAY_WEBHOOK_SECRET` is **not** `FEDAPAY_SECRET_KEY`. They are different values from different screens, and signing with the wrong one rejects every webhook with an error that reads like a network fault rather than a configuration one.
+
+> **Nothing reports a missing webhook secret.** `GET /payments/config` derives `enabled` from the secret key alone and never mentions the webhook secret, so the deployment looks entirely healthy until the first webhook arrives and is rejected. Check it directly — see §7.
+
+**There is no domain to whitelist.** An earlier version of this section said `kolabo.mocktar.com` had to be whitelisted under the account's allowed domains, and called that the single most common first-launch failure. It was wrong, and it sent somebody looking for a screen that does not exist. Verified 27 August 2026 against FedaPay's documentation: `callback_url` is sent **per transaction** in the create-transaction call, is documented as **optional**, and needs no pre-registration anywhere. The dashboard's sections are Accueil, Clients, Collectes, Remboursements, Retenues, Page de Paiement, Paiement, Paramètres d'Entreprise, Préférences, Gestion des Utilisateurs, API keys and Webhooks et Évènements — there is no allowed-domains screen among them.
 
 ---
 
@@ -128,7 +136,24 @@ curl https://api.kolabo.mocktar.com/payments/config
 #  "countries":["BJ","CI","TG"],"mock_payments":false}
 ```
 
-`"enabled": false` with `"countries": []` means `FEDAPAY_SECRET_KEY` did not reach the container. Check `deny`/typo in `.env`, then `docker compose -f docker-compose.prod.yml up -d backend` — the settings are read at import, so a running process will not pick up an edited `.env`.
+`"enabled": false` with `"countries": []` means `FEDAPAY_SECRET_KEY` did not reach the **container**. Work inward — whichever of these first comes back empty is the answer:
+
+```bash
+grep -E '^FEDAPAY_' .env | sed 's/=.\+/=<set>/'                     # the file
+docker compose -f docker-compose.prod.yml exec backend \
+  printenv | grep -E '^FEDAPAY_' | sed 's/=.\+/=<set>/'             # the container
+docker compose -f docker-compose.prod.yml exec backend \
+  python -c "from app.core.config import settings; print(bool(settings.fedapay_secret_key))"
+```
+
+Set in the file but not in the container means it was not recreated: settings are read at import, and Compose does not always recreate on an `env_file` change. `up -d --force-recreate backend sweeps`. Two formatting traps survive the first check unnoticed — **no spaces around `=`** (`KEY = value` makes the key `KEY␣`, which never matches) and **no quotes or inline comments** on the value.
+
+And the one `/payments/config` cannot tell you:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend \
+  python -c "from app.core.config import settings; print('webhook secret:', bool(settings.fedapay_webhook_secret))"
+```
 
 Then walk the money path end to end:
 
@@ -193,10 +218,12 @@ docker compose -f docker-compose.prod.yml exec -T db \
 | Symptom | Cause |
 |---|---|
 | Caddy loops on certificates | DNS not resolving to this box yet, or 80/443 blocked. Fix DNS **first** — retries burn the Let's Encrypt rate limit. |
-| `payments_gateway_not_configured` | `FEDAPAY_SECRET_KEY` unset or the backend was not restarted after editing `.env`. |
+| `payments_gateway_not_configured` | `FEDAPAY_SECRET_KEY` unset, or the containers were not recreated after editing `deploy/.env`. |
+| `/payments/config` says `enabled: false` while `deploy/.env` looks right | You edited `backend/.env`, or Compose did not recreate. See §7. |
 | `payments_country_unsupported` for Benin | Should now be impossible with keys loaded — it means the registry is populated but has no `BJ`. Check `/payments/config`. |
-| Payer lands on a FedaPay signup page | The domain is not whitelisted in the dashboard (§6.1). |
-| Webhooks all rejected | `FEDAPAY_WEBHOOK_SECRET` holds the API key instead of the `wh_` endpoint secret. Also check the server clock — verification allows 300 s of drift. |
+| Config healthy but no payment ever settles from a webhook | `FEDAPAY_WEBHOOK_SECRET` unset or holding the API key instead of the `wh_` endpoint secret. Nothing surfaces this — check it directly (§7). Also check the server clock: verification allows 300 s of drift, so `timedatectl` before anything else. |
+| Webhook stopped being delivered at all | The webhook's "disable on errors" toggle is on and FedaPay switched it off. Turn the toggle off (§6.2) and re-enable the endpoint. |
+| Checkout link no longer works | The token is single-use and expires after 24 hours. Start a new checkout rather than reusing the URL. |
 | CORS errors in the browser | `CORS_ORIGINS` must be exactly `https://kolabo.mocktar.com`, scheme included, no trailing slash. |
 | Escrow funded but stuck `pending` | Webhook not reaching you *and* the payer never returned. Check the webhook URL and the dashboard's delivery log. |
 | Creator never paid after release | Check the `payouts` table and the `sweeps` logs. `awaiting_method` means no wallet on file — expected, not an error. |

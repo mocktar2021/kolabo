@@ -13,6 +13,12 @@ COLLECTION IS A HOSTED REDIRECT, in three calls:
     POST /v1/transactions/{id}/token get a single-use 24h checkout url
     GET  /v1/transactions/{id}       later, ask what actually happened
 
+THE TWO POST RESPONSES ARE NOT THE SAME SHAPE, which is worth stating up front
+because assuming they were is what broke the first real sandbox checkout. The
+transaction is wrapped in a resource envelope ({"v1/transaction": {...}}); the
+token is FLAT ({"token": ..., "url": ...}). _unwrap handles the first,
+_checkout_url the second, and neither is a general-purpose reader.
+
 PAYOUT IS TWO STEPS ON PURPOSE:
 
     POST /v1/payouts                 create it. NOTHING IS SENT YET.
@@ -115,6 +121,10 @@ def _unwrap(payload: Any, *keys: str) -> dict:
     whether they see it. So: look for the keys we expect, and fall back to the
     body itself if it already looks like the resource. Defensive rather than
     clever, because the alternative is a KeyError in the middle of a payment.
+
+    FOR RESOURCES ONLY — transactions and payouts. The token endpoint is not
+    one and must not be read with this; see _checkout_url for what went wrong
+    when it was.
     """
     if not isinstance(payload, dict):
         raise GatewayError(f"Unexpected response body: {type(payload).__name__}")
@@ -125,6 +135,48 @@ def _unwrap(payload: Any, *keys: str) -> dict:
     if "id" in payload or "status" in payload:
         return payload
     raise GatewayError(f"Could not find a resource in the response (keys: {list(payload)[:8]})")
+
+
+def _checkout_url(payload: Any) -> str | None:
+    """The hosted checkout url out of a token response, or None.
+
+    DELIBERATELY NOT _unwrap, and the distinction cost a full sandbox session
+    to find. The token endpoint does not answer with the resource envelope the
+    rest of the API uses. It answers FLAT:
+
+        {"token": "...", "url": "https://process.fedapay.com/..."}
+
+    Handed that, _unwrap looks for a dict under "v1/token" (absent), then under
+    "token" — which IS present but is a STRING, so it is skipped — then finds
+    neither "id" nor "status" to fall back on, and raises:
+
+        Could not find a resource in the response (keys: ['token', 'url'])
+
+    Which is exactly what every checkout against the real sandbox did, after
+    the transaction had already been created at FedaPay. The unit test did not
+    catch it because its mock returned the wrapped shape: the fixture encoded a
+    GUESS about FedaPay rather than an observation of it, and the guess was
+    wrong. That is the general lesson and it is why the test now asserts both
+    shapes explicitly.
+
+    Reads the flat shape first, because that is what FedaPay actually sends,
+    and still accepts a wrapped one — the envelope is not a documented contract
+    either way, and their own SDKs differ on whether they see it. Returns None
+    rather than raising so the caller can give the failure a sentence about
+    checkout urls instead of one about resources.
+    """
+    if not isinstance(payload, dict):
+        return None
+    url = payload.get("url")
+    if isinstance(url, str) and url:
+        return url
+    for key in ("v1/token", "token"):
+        inner = payload.get(key)
+        if isinstance(inner, dict):
+            nested = inner.get("url")
+            if isinstance(nested, str) and nested:
+                return nested
+    return None
 
 
 class FedaPayGateway:
@@ -263,14 +315,20 @@ class FedaPayGateway:
         if transaction_id is None:
             raise GatewayError("FedaPay created a transaction with no id")
 
-        token_body = _unwrap(
-            self._request("POST", f"/transactions/{transaction_id}/token", {}),
-            "v1/token",
-            "token",
+        # NOT _unwrap — the token body is flat, not an enveloped resource. See
+        # _checkout_url, which exists because reading it with _unwrap failed
+        # every checkout against the real sandbox while the unit test passed.
+        checkout_url = _checkout_url(
+            self._request("POST", f"/transactions/{transaction_id}/token", {})
         )
-        checkout_url = token_body.get("url")
         if not checkout_url:
-            raise GatewayError("FedaPay returned no checkout url for the transaction")
+            # The transaction EXISTS at this point, which is why the caller
+            # commits the intent row before calling us: an orphan transaction
+            # at FedaPay with no local record is the one state nobody can
+            # reconcile.
+            raise GatewayError(
+                f"FedaPay returned no checkout url for transaction {transaction_id}"
+            )
 
         return CollectionStart(
             reference=str(transaction_id),

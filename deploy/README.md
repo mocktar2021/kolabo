@@ -115,7 +115,8 @@ Do this at [sandbox.fedapay.com](https://sandbox.fedapay.com). All of it is on t
    - **"Désactiver le webhook lorsque l'application génère des erreurs ?" → off.** Leave it on and FedaPay switches the endpoint off the first time it sees errors — which it will during setup, because every delivery returns 400 until `FEDAPAY_WEBHOOK_SECRET` is set. In production it is worse: this webhook is the safety net for a payer who pays and then closes the tab, so a transient outage auto-disabling it means escrows that silently never fund.
    - **Entêtes http → none.** Authentication is the HMAC signature over the raw body; a custom header would not be covered by it and would add nothing.
    - Copy the endpoint secret into `FEDAPAY_WEBHOOK_SECRET`. It is prefixed **`wh_`** (with the environment in it, e.g. `wh_sandbox…`) and is retrievable at any time from the webhook's own view via **Copy key** — it is not a one-time reveal.
-3. `docker compose -f docker-compose.prod.yml up -d backend sweeps` to pick up the new values.
+3. **Préférences → Frais: turn both fee options off.** With "frais à la charge du client" on, FedaPay adds its own fee to the payer's total — a 25,000 XOF contract is presented as 26,042 — and `checkout.settle_intent` compares what arrived against what was asked for and refuses the difference. The payment succeeds at FedaPay and **no escrow is created**, which looks exactly like a bug in the app. Turning it off means the fee comes out of the merchant balance instead, which is the correct behaviour here and changes the platform's effective commission — see *Where the commission actually is* in `docs/PAYMENTS_FEDAPAY.md`.
+4. `docker compose -f docker-compose.prod.yml up -d backend sweeps` to pick up the new values.
 
 > `FEDAPAY_WEBHOOK_SECRET` is **not** `FEDAPAY_SECRET_KEY`. They are different values from different screens, and signing with the wrong one rejects every webhook with an error that reads like a network fault rather than a configuration one.
 
@@ -159,13 +160,29 @@ Then walk the money path end to end:
 
 | Step | Expected |
 |---|---|
-| Brand funds a signed contract, pays with MTN Benin **`97000000`** | Return page settles, escrow `held` |
-| Same, with **`97000002`** (insufficient funds) | Intent `failed`, **`GET /payments/escrow/by-contract/{id}` → 404**. No escrow is the correct outcome. |
-| Creator saves a wallet at `/settings/payouts` (`mtn_open`, `97000000`) | Masked number shown back |
+| Brand funds a signed contract, pays with **`0166000001`** | Return page settles, escrow `held` |
+| Same, with **`0166000000`** — or any number that is not one of the two below | Intent `failed`, **`GET /payments/escrow/by-contract/{id}` → 404**. No escrow is the correct outcome. |
+| Creator saves a wallet at `/settings/payouts` (`mtn_open`, `0166000001`) | Masked number shown back |
 | Creator submits a deliverable, brand approves | Escrow `released`, `Payout` row `sent` |
 | Approve with no wallet saved | Escrow still `released`, payout `awaiting_method` — owed, tracked, paid by the sweep once they add one |
 
-Sandbox numbers: `97000000` / `61000000` succeed, `…001` processing error, `…002` insufficient funds. Moov: `95000000` / `68000000`, same pattern.
+### Sandbox numbers: exactly two succeed
+
+FedaPay's sandbox runs a single **`momo_test`** operator rather than per-network test numbers, and its documentation is explicit:
+
+> Scénario de succès : utilisez uniquement les numéros **64000001** et **66000001**
+
+**Any other number fails.** There is no "insufficient funds" code, no "processing error" code, and no per-operator pattern — failure is simply the default for everything that is not one of those two.
+
+Enter them with Benin's `01` prefix, because the hosted checkout page expects a full ten-digit national number:
+
+| Number | Outcome |
+|---|---|
+| **`0166000001`** | success — **confirmed against this deployment, 28 August 2026** |
+| `0164000001` | success (documented; not yet exercised here) |
+| `0166000000`, or anything else | failure |
+
+> An earlier version of this section listed `97000000` / `97000002` and a "processing error / insufficient funds" scheme. **No such numbers or scheme are documented by FedaPay** — that text came from an unverified source, and it cost a real hour at a checkout page that kept declining. If a number here is ever changed, change it because a payment was actually run with it.
 
 Watch a payment arrive:
 
@@ -222,6 +239,8 @@ docker compose -f docker-compose.prod.yml exec -T db \
 | `/payments/config` says `enabled: false` while `deploy/.env` looks right | You edited `backend/.env`, or Compose did not recreate. See §7. |
 | `payments_country_unsupported` for Benin | Should now be impossible with keys loaded — it means the registry is populated but has no `BJ`. Check `/payments/config`. |
 | Config healthy but no payment ever settles from a webhook | `FEDAPAY_WEBHOOK_SECRET` unset or holding the API key instead of the `wh_` endpoint secret. Nothing surfaces this — check it directly (§7). Also check the server clock: verification allows 300 s of drift, so `timedatectl` before anything else. |
+| **Payment succeeds at FedaPay but no escrow appears** | The amount that arrived is not the amount that was asked for, so `settle_intent` refuses and the intent goes `amount_mismatch` — by design, because paying 500 against a 50,000 contract is the cheapest fraud there is. Almost always **Préférences → Frais** with the client-bears-fee option on: FedaPay adds its fee to the payer's total. Turn both off (§6.3). Confirm in the backend log, which names the two amounts. |
+| The checkout page declines every payment | The test number is not one of the two that succeed. `0166000001` or `0164000001`; everything else fails by design. See §7. |
 | Webhook stopped being delivered at all | The webhook's "disable on errors" toggle is on and FedaPay switched it off. Turn the toggle off (§6.2) and re-enable the endpoint. |
 | Checkout link no longer works | The token is single-use and expires after 24 hours. Start a new checkout rather than reusing the URL. |
 | CORS errors in the browser | `CORS_ORIGINS` must be exactly `https://kolabo.mocktar.com`, scheme included, no trailing slash. |

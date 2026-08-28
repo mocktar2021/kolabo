@@ -3,6 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Favicons, in the order browsers should prefer them.
+
+         The SVG is the real one: a single file that stays crisp at 16 px in a
+         tab and at 512 in a launcher, and the only format that does not need
+         a rebuild to change. Every current engine reads it.
+
+         The .ico is not redundant. Some clients ask for /favicon.ico by path
+         without ever reading this file — and until now the SPA fallback
+         answered that with index.html, so the browser got a 200 holding HTML
+         where it expected an image and fell back to its generic globe.
+
+         apple-touch-icon is required because iOS reads no SVG here; without
+         it, a page saved to a home screen gets a screenshot of itself.
+
+         theme-color is white to match the nav (.nav is #fff), so the mobile
+         browser chrome runs into the app header instead of stopping at a
+         coloured band above it. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#ffffff" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

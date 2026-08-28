@@ -348,12 +348,32 @@ def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
             detail=INVALID_CODE_DETAIL,
         )
 
-    token = next((t for t in _live_reset_tokens(db, user, now) if t.token == payload.code), None)
+    live = _live_reset_tokens(db, user, now)
+    token = next((t for t in live if t.token == payload.code), None)
     if token is None:
+        # A WRONG GUESS NOW COSTS SOMETHING, and it matters more here than on
+        # the registration challenge: spending a reset code CHANGES THE
+        # PASSWORD, so unlimited guesses against six digits is a takeover
+        # rather than a nuisance. Nothing counted before, and there is no rate
+        # limiting anywhere in the application to fall back on.
+        #
+        # Charged against every live code for this account and they are all
+        # spent together when the allowance runs out — see otp.spend_attempt.
+        # `failed` is None because no row matched, so there is no single row
+        # to blame; the account's whole allowance is what moves. Committed
+        # before the refusal so the count survives it.
+        if otp.spend_attempt(live, None):
+            for spent in live:
+                spent.consumed = True
+        db.commit()
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
             # One code for "no such code" and for "expired", exactly as the
-            # one shared English sentence already refuses to distinguish them.
+            # one shared English sentence already refuses to distinguish them
+            # — and now for "you have used up your guesses" as well, which is
+            # the same decision for the same reason. A distinct sentence there
+            # would tell an attacker precisely when to stop and ask for a
+            # fresh code.
             code="auth_reset_code_invalid",
             detail=INVALID_CODE_DETAIL,
         )

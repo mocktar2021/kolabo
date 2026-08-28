@@ -175,6 +175,12 @@ defence is comparing two integers on the way in. On mismatch the intent fails,
 support — never a success screen, and never "nothing was charged", because money
 may really have moved.
 
+**This guard fires on a correct payment too, if the dashboard is configured to
+add FedaPay's fee to the payer's total.** A 25,000 XOF contract is then
+presented as 26,042, 26,042 arrives, and the comparison refuses it — payment
+taken, no escrow, and it looks like an application bug. See *Where the
+commission actually is* below, and `deploy/README.md` §6.3.
+
 ### Release and payout are separate events
 
 This is the most important design decision in the change.
@@ -193,6 +199,65 @@ row records what happened to the **money**. `payouts.disburse` cannot raise. A
 failed payout is retried by `payouts.run_pending_payouts`; above
 `PAYOUT_MAX_ATTEMPTS` it stops and becomes a support queue item, with the
 creator still visibly owed. That state is honest and recoverable.
+
+### Where the commission actually is
+
+**There is no separate escrow account.** Every collection lands in the one
+FedaPay merchant balance, and "escrow" is a row in the `escrows` table recording
+that some of that balance is spoken for. No money is segregated, moved or
+sub-accounted at any point — `sub_accounts_commisssions`, FedaPay's native split
+field, is deliberately not used (see §6).
+
+**The commission never moves either.** `service._release` computes
+`commission_for(amount)`, stamps it on `escrow.commission_amount`, and disburses
+only `amount − commission` to the creator. What is left is simply not sent. On a
+25,000 XOF contract at `COMMISSION_BPS=1500`:
+
+| | XOF |
+|---|---|
+| Brand pays | 25,000 |
+| FedaPay collection fee, **borne by the merchant** | −1,042 |
+| Lands in the merchant balance | 23,958 |
+| `payouts.disburse` sends to the creator (`amount − commission`) | −21,250 |
+| **Stays behind — this is the platform's revenue** | **2,708** |
+
+So there is no "release to Kolabo" step to build, and there should not be one.
+The revenue is the residue in the merchant balance, and taking it out is a
+FedaPay **Retraits** withdrawal to the company account — a dashboard action on
+the treasury side, not something this codebase does or should do.
+
+**The nominal rate is not the realised rate.** 15% of 25,000 is 3,750; 2,708
+actually stayed, an effective **10.8%** — and that is before the disbursement
+fee on the outbound leg, which comes off the same balance and is unverified for
+these markets. Whoever sets `COMMISSION_BPS` should be setting it against the
+realised number, not the nominal one.
+
+The alternative — charging FedaPay's fee to the payer — restores the full 3,750
+but trips the amount check described above. That guard is right and should not
+be loosened; supporting payer-borne fees means teaching the `PaymentIntent` what
+surcharge to expect, which is a real change and not a configuration one.
+
+**Nothing in the product reports this yet.** `escrow.commission_amount` is
+stamped at release and returned to both parties on the escrow payload, and
+`/payments/earnings` shows a creator their own gross / commission / net — but
+there is no platform-revenue endpoint, screen or total anywhere under
+`modules/admin/`. Until there is, the number comes from the FedaPay balance or
+from SQL:
+
+```sql
+SELECT currency,
+       count(*)                                     AS released,
+       sum(amount)                                  AS gross,
+       sum(coalesce(commission_amount, 0))          AS platform,
+       sum(amount - coalesce(commission_amount, 0)) AS paid_out
+FROM escrows
+WHERE status = 'released'
+GROUP BY currency;
+```
+
+`commission_amount` is nullable — it is written at release, so a `held` escrow
+has none, and rows released before the column existed have none either. The
+`coalesce` is what keeps the total honest rather than null.
 
 ### Why the payout network is asked for, not inferred
 
@@ -244,19 +309,24 @@ has not seen a PIN prompt yet.
 ## 5. Going live — the checklist
 
 1. **Register** at fedapay.com, complete KYC for the operating entity.
-2. **Whitelist the web domain** in the FedaPay dashboard. Without this, payers
-   are redirected to a FedaPay signup page instead of a payment form. This is
-   the single most common first-launch failure.
-3. **Sandbox keys** → `backend/.env`:
+2. **Sandbox keys** → `deploy/.env` on a server, `backend/.env` on a laptop:
    ```
    FEDAPAY_SECRET_KEY=<sandbox secret>
    FEDAPAY_PUBLIC_KEY=<sandbox public>
    FEDAPAY_SANDBOX=true
    ```
-4. **Configure the webhook**: URL `https://<api-host>/webhooks/fedapay`, subscribe
-   to `transaction.approved`, `transaction.declined`, `transaction.canceled`,
-   `transaction.transferred` and the payout events. Copy the endpoint secret
-   (prefix `wh_`) into `FEDAPAY_WEBHOOK_SECRET`. **It is not the API secret key.**
+   On the VPS the compose file injects `deploy/.env` and nothing reads
+   `backend/.env` at all — see `deploy/README.md` §5.
+3. **Configure the webhook**: URL `https://<api-host>/webhooks/fedapay`, and
+   choose *Recevoir tous les événements* rather than a hand-picked list — the
+   `payout.*` event names are not enumerated in FedaPay's documentation, so
+   picking by hand risks missing the notifications that say a creator was paid.
+   Copy the endpoint secret (prefix `wh_`) into `FEDAPAY_WEBHOOK_SECRET`.
+   **It is not the API secret key.**
+4. **Préférences → Frais: both options off**, so the payer is charged exactly the
+   contract amount. With them on, FedaPay adds its fee to the payer's total and
+   `settle_intent` refuses the mismatch — payment taken, no escrow. This changes
+   who bears the fee, and therefore the realised commission; see §3.
 5. **Set `PAYMENT_RETURN_URL`** to the deployed web origin's `/checkout/return`.
 6. **Run a sandbox pass** end to end: fund → deliver → approve → confirm the
    payout reaches a sandbox wallet.
@@ -268,10 +338,33 @@ has not seen a PIN prompt yet.
 8. **Go live**: live keys, `FEDAPAY_SANDBOX=false`, a fresh webhook secret from
    the live dashboard, and a small real transaction as a smoke test.
 
+> **There is no domain to whitelist.** An earlier version of this checklist said
+> the web domain had to be registered under the account's allowed domains and
+> called it the most common first-launch failure. That was wrong and it sent
+> somebody looking for a screen that does not exist. `callback_url` is sent per
+> transaction, is documented as optional, and needs no pre-registration.
+
 ### Sandbox test numbers
 
-MTN Benin `97000000` / `61000000` succeed; `…001` processing error;
-`…002` insufficient funds. Moov `95000000` / `68000000` follow the same pattern.
+FedaPay's sandbox runs a single **`momo_test`** operator rather than per-network
+test numbers, and its documentation is explicit:
+
+> Scénario de succès : utilisez uniquement les numéros **64000001** et **66000001**
+
+**Any other number fails.** There is no "insufficient funds" or "processing
+error" code and no per-operator pattern. Enter them with Benin's `01` prefix,
+because the hosted page expects a full ten-digit national number:
+
+| Number | Outcome |
+|---|---|
+| `0166000001` | success — **confirmed against the dev deployment, 28 August 2026** |
+| `0164000001` | success (documented; not yet exercised) |
+| anything else | failure |
+
+> A previous version of this section listed `97000000` / `61000000` / `95000000`
+> / `68000000` and a `…001` / `…002` outcome scheme. **None of that is
+> documented by FedaPay.** It came from an unverified source and cost real time
+> at a checkout page that kept declining.
 
 ---
 
@@ -281,15 +374,19 @@ Verify these against FedaPay before go-live rather than trusting this document:
 
 - **Payout webhook event names** are not enumerated in FedaPay's docs. The
   handler matches any `payout.*` prefix, which is defensive but unconfirmed.
+- **The disbursement fee** on the outbound leg, per country and per network. It
+  comes out of the same merchant balance the commission sits in, so it reduces
+  realised revenue directly and is currently absent from every model here.
 - **`sub_accounts_commisssions`** (FedaPay's native split-payment field, and yes
   it is spelled with three `s` in their docs) appears only on the legacy docs
   site. This integration deliberately does **not** use it: escrow is operated by
   us, with collection into the merchant balance and an explicit payout at
   release. That is the more certain mechanism and it keeps the commission rule
-  in `core/pricing.py` where it is tested.
+  in one tested place.
 - **Response envelope.** FedaPay returns resources keyed by name
-  (`{"v1/transaction": {...}}`), but this is not a documented contract. The
-  client accepts both the envelope and a bare resource.
+  (`{"v1/transaction": {...}}`) on some endpoints and bare on others — the token
+  endpoint returns a flat `{"token", "url"}`. The client accepts both, which is
+  what it needed to learn the hard way.
 - **Per-country pricing** for Togo and Côte d'Ivoire.
 - **Card `mode` string** — cards appear to go through the hosted page only.
 
@@ -298,8 +395,10 @@ Verify these against FedaPay before go-live rather than trusting this document:
 ## 7. Legal and compliance — not addressed here
 
 Flagged, not resolved. Qualified local advice is needed on: PSP agreement terms
-and settlement timing; who bears transaction fees (currently the platform, on
-both legs); refund and chargeback policy; escrow and money-transmission
-characterisation in each market; tax treatment of the commission; cross-border
-XOF settlement between the three countries; and data protection for the payment
-identifiers stored in `payment_intents` and `payout_methods`.
+and settlement timing; **who bears transaction fees — currently the platform, on
+both legs, which is now a deliberate configuration rather than a default (§3)**;
+refund and chargeback policy; escrow and money-transmission characterisation in
+each market; tax treatment of the commission, including whether it is realised
+when stamped or when withdrawn; cross-border XOF settlement between the three
+countries; and data protection for the payment identifiers stored in
+`payment_intents` and `payout_methods`.

@@ -91,6 +91,13 @@ class OtpChallenge(Base):
     code: Mapped[str] = mapped_column(String, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     consumed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Wrong guesses spent against this code. Six digits stays guessable for
+    # the whole of a ten minute life unless something counts, and nothing did:
+    # a wrong code neither incremented anything nor consumed the challenge,
+    # and there is no rate limiting anywhere in the app. See
+    # app.modules.auth.otp.MAX_ATTEMPTS, and spend_attempt for why the count
+    # is charged to every live code for the account rather than only this row.
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
@@ -111,6 +118,11 @@ class PasswordResetToken(Base):
     was sent to (see auth.account.confirm_password_reset), so the pair is what
     identifies it, and a bare code on its own is not meant to be an
     identifier at all.
+
+    Six digits also means it has to be guess-proofed the same way the
+    registration challenge is, and more urgently: spending a reset code
+    changes the password, so an unlimited guess is a takeover rather than a
+    nuisance. Hence `attempts` below.
     """
 
     __tablename__ = "password_reset_tokens"
@@ -120,4 +132,6 @@ class PasswordResetToken(Base):
     token: Mapped[str] = mapped_column(String, index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     consumed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # See OtpChallenge.attempts. Same allowance, same helper, higher stakes.
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)

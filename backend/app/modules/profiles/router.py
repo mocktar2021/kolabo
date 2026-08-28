@@ -1,29 +1,79 @@
 """Epic B (KOL-2): Profiles and Verification, plus packages and profile media.
 
-Admin/RBAC is still the placeholder from Epic B, so these endpoints identify the
-profile owner by the user id in the path rather than a bearer token. Real auth
-replaces this in a later epic.
+AUTHENTICATION, AND WHY THE PATH `user_id` IS NOW IGNORED ON WRITES.
+
+Until this change every endpoint here identified the profile owner by the id in
+the URL and asked for nothing else. There was no bearer token, no ownership
+check, no dependency of any kind on seventeen endpoints — so an anonymous
+request could rewrite any creator's profile, and, worse, their PACKAGE PRICES,
+which is the number a brand pays at checkout. That is a money defect, not a
+data one, and it was reachable by anyone who could guess a uuid.
+
+The fix does not compare the path id against the token and refuse a mismatch.
+It takes the owner from the token and never reads the path id at all, which is
+a stronger property: a comparison can be forgotten on the eighteenth endpoint,
+whereas an id that is never consulted cannot be spoofed on any of them. Acting
+on somebody else is not refused here — it is unrepresentable.
+
+The `{user_id}` segment stays in the route for URL compatibility, so no web or
+mobile call site changes in this PR. It is now decoration. Removing it is a
+follow-up that touches both clients and belongs in its own change.
+
+WHAT IS DELIBERATELY LEFT PUBLIC, and it is not an oversight:
+
+  * `GET /influencer/{user_id}/public` — the creator's storefront. Discovery is
+    public because a storefront exists to be seen; requiring a token here would
+    mean a brand had to sign up before it could look at anybody, which is the
+    opposite of the funnel.
+  * `GET /media/{media_id}` — serves the images those public pages reference.
+  * The three list reads (`packages`, `portfolio`, `social-accounts`) — every
+    one of them returns what the public profile already renders, so a token
+    would buy nothing and would break the pages that read them.
+
+`onboarding-status` is NOT in that list. "What is still missing before you can
+go live" is a private answer about somebody's account, not part of the
+storefront.
 """
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.modules.auth.deps import get_current_user_id
 from app.modules.profiles import schemas, service
 
 router = APIRouter()
 
 
+def profile_owner(caller_id: str = Depends(get_current_user_id)) -> str:
+    """The account being written to: always the bearer of the token.
+
+    A one line indirection rather than using `get_current_user_id` directly,
+    for two reasons. It names the rule at every call site — the parameter reads
+    `owner_id: str = Depends(profile_owner)`, which says whose profile is being
+    changed rather than merely who is calling. And it is the single seam the
+    test suite overrides, so the 168 existing profile tests keep exercising
+    profile BEHAVIOUR without each of them having to mint a token; see
+    backend/conftest.py, and test_profiles_auth.py for the guard's own tests.
+    """
+    return caller_id
+
+
 @router.put("/influencer/{user_id}", response_model=schemas.InfluencerProfileOut)
 def upsert_influencer_profile(
-    user_id: str, payload: schemas.InfluencerProfileIn, db: Session = Depends(get_db)
+    user_id: str,
+    payload: schemas.InfluencerProfileIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
 ):
     """Create or update an influencer profile. See KOL-15."""
-    return service.upsert_influencer_profile(db, user_id, payload)
+    return service.upsert_influencer_profile(db, owner_id, payload)
 
 
 @router.get("/influencer/{user_id}/public", response_model=schemas.PublicProfileOut)
 def public_influencer_profile(user_id: str, language: str | None = None, db: Session = Depends(get_db)):
     """Public creator page: profile, packages, portfolio, rating, socials.
+
+    Unauthenticated on purpose — see the module docstring.
 
     `language` (fr or en) picks which bio to show, falling back to the other
     when the creator has only filled one.
@@ -32,76 +82,127 @@ def public_influencer_profile(user_id: str, language: str | None = None, db: Ses
 
 
 @router.get("/influencer/{user_id}", response_model=schemas.InfluencerProfileOut)
-def get_influencer_profile(user_id: str, db: Session = Depends(get_db)):
-    return service.get_influencer_profile(db, user_id)
+def get_influencer_profile(
+    user_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """Load your own creator profile for editing.
+
+    The editing view, not the storefront: `/public` above is what a visitor
+    reads. A creator only ever loads their own here.
+    """
+    return service.get_influencer_profile(db, owner_id)
 
 
 @router.put("/business/{user_id}", response_model=schemas.BusinessProfileOut)
 def upsert_business_profile(
-    user_id: str, payload: schemas.BusinessProfileIn, db: Session = Depends(get_db)
+    user_id: str,
+    payload: schemas.BusinessProfileIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
 ):
     """Create or update a business profile."""
-    return service.upsert_business_profile(db, user_id, payload)
+    return service.upsert_business_profile(db, owner_id, payload)
 
 
 @router.get("/business/{user_id}", response_model=schemas.BusinessProfileOut)
-def get_business_profile(user_id: str, db: Session = Depends(get_db)):
+def get_business_profile(
+    user_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
     """Load a business profile for editing.
 
     The profile was write-only until now: the PUT existed without a GET, so
     the settings page had nothing to prefill and came up blank on every visit.
     """
-    return service.get_business_profile(db, user_id)
+    return service.get_business_profile(db, owner_id)
 
 
 @router.get("/media/{media_id}")
 def serve_media(media_id: str, db: Session = Depends(get_db)):
-    """Serve a stored profile image."""
+    """Serve a stored profile image.
+
+    Unauthenticated: these are the images the public creator pages render.
+    """
     asset = service.get_media(db, media_id)
     return Response(content=asset.data, media_type=asset.content_type)
 
 
 @router.post("/{user_id}/media", response_model=schemas.MediaOut, status_code=status.HTTP_201_CREATED)
-async def upload_media(user_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_media(
+    user_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
     """Upload a profile image (avatar or portfolio)."""
     content = await file.read()
-    return service.save_media(db, user_id, file.content_type or "application/octet-stream", content)
+    return service.save_media(db, owner_id, file.content_type or "application/octet-stream", content)
 
 
 @router.get("/{user_id}/packages", response_model=list[schemas.PackageOut])
 def list_packages(user_id: str, active_only: bool = False, db: Session = Depends(get_db)):
-    """List a creator's fixed-price packages."""
+    """List a creator's fixed-price packages. Public — the storefront shows these."""
     return service.list_packages(db, user_id, active_only)
 
 
 @router.post("/{user_id}/packages", response_model=schemas.PackageOut, status_code=status.HTTP_201_CREATED)
-def create_package(user_id: str, payload: schemas.PackageIn, db: Session = Depends(get_db)):
-    return service.create_package(db, user_id, payload)
+def create_package(
+    user_id: str,
+    payload: schemas.PackageIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    return service.create_package(db, owner_id, payload)
 
 
 @router.put("/{user_id}/packages/{package_id}", response_model=schemas.PackageOut)
-def update_package(user_id: str, package_id: str, payload: schemas.PackageIn, db: Session = Depends(get_db)):
-    return service.update_package(db, package_id, user_id, payload)
+def update_package(
+    user_id: str,
+    package_id: str,
+    payload: schemas.PackageIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    return service.update_package(db, package_id, owner_id, payload)
 
 
 @router.delete("/{user_id}/packages/{package_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_package(user_id: str, package_id: str, db: Session = Depends(get_db)):
-    service.delete_package(db, package_id, user_id)
+def delete_package(
+    user_id: str,
+    package_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    service.delete_package(db, package_id, owner_id)
 
 
 @router.get("/{user_id}/portfolio", response_model=list[schemas.PortfolioItemOut])
 def list_portfolio(user_id: str, db: Session = Depends(get_db)):
+    """Public — the storefront renders these."""
     return service.list_portfolio(db, user_id)
 
 
 @router.post("/{user_id}/portfolio", response_model=schemas.PortfolioItemOut, status_code=status.HTTP_201_CREATED)
-def add_portfolio_item(user_id: str, payload: schemas.PortfolioItemIn, db: Session = Depends(get_db)):
-    return service.add_portfolio_item(db, user_id, payload.media_id)
+def add_portfolio_item(
+    user_id: str,
+    payload: schemas.PortfolioItemIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    return service.add_portfolio_item(db, owner_id, payload.media_id)
 
 
 @router.delete("/{user_id}/portfolio/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_portfolio_item(user_id: str, item_id: str, db: Session = Depends(get_db)):
-    service.remove_portfolio_item(db, item_id, user_id)
+def remove_portfolio_item(
+    user_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    service.remove_portfolio_item(db, item_id, owner_id)
 
 
 @router.post(
@@ -114,31 +215,51 @@ async def upload_verification_document(
     doc_type: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
 ):
-    """Upload a verification document, stored encrypted with status pending. KOL-16."""
+    """Upload a verification document, stored encrypted with status pending. KOL-16.
+
+    The one endpoint here where the old behaviour was worst: an identity
+    document could be filed against somebody else's account by anybody.
+    """
     content = await file.read()
-    return service.upload_verification_document(db, user_id, doc_type, file.filename, content)
+    return service.upload_verification_document(db, owner_id, doc_type, file.filename, content)
 
 
 @router.post("/{user_id}/bio/generate", response_model=schemas.BioGenerateOut)
-def generate_bio(user_id: str, payload: schemas.BioGenerateIn, db: Session = Depends(get_db)):
+def generate_bio(
+    user_id: str,
+    payload: schemas.BioGenerateIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
     """Draft a bio in French or English from the creator's own profile facts.
 
     Returns a draft; nothing is written to the profile until the creator saves.
+    Authenticated also because it is rate limited per account and costs money
+    to serve — an open endpoint that spends is an endpoint that gets spent.
     """
-    return service.generate_bio(db, user_id, payload)
+    return service.generate_bio(db, owner_id, payload)
 
 
 @router.get("/{user_id}/social-accounts", response_model=list[schemas.SocialAccountOut])
 def list_social_accounts(user_id: str, db: Session = Depends(get_db)):
-    """Social accounts connected to this profile."""
+    """Social accounts connected to this profile. Public — the storefront shows them."""
     return service.list_social_accounts(db, user_id)
 
 
 @router.get("/{user_id}/onboarding-status", response_model=schemas.OnboardingStatusOut)
-def onboarding_status(user_id: str, db: Session = Depends(get_db)):
-    """What is still missing before the creator profile can go live."""
-    return service.onboarding_status(db, user_id)
+def onboarding_status(
+    user_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """What is still missing before the creator profile can go live.
+
+    Private, unlike the three lists above: this is a checklist about somebody's
+    account, not part of what a visitor is shown.
+    """
+    return service.onboarding_status(db, owner_id)
 
 
 @router.post(
@@ -147,7 +268,10 @@ def onboarding_status(user_id: str, db: Session = Depends(get_db)):
     status_code=status.HTTP_201_CREATED,
 )
 def connect_social_account(
-    user_id: str, payload: schemas.SocialAccountConnect, db: Session = Depends(get_db)
+    user_id: str,
+    payload: schemas.SocialAccountConnect,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
 ):
     """Connect a social account. KOL-17.
 
@@ -155,19 +279,28 @@ def connect_social_account(
     is not built, so it cannot verify anything. The badge comes from admin
     review — see service.connect_social_account.
     """
-    return service.connect_social_account(db, user_id, payload)
+    return service.connect_social_account(db, owner_id, payload)
 
 
 @router.put("/{user_id}/social-accounts/{account_id}", response_model=schemas.SocialAccountOut)
 def update_social_account(
-    user_id: str, account_id: str, payload: schemas.SocialAccountUpdate, db: Session = Depends(get_db)
+    user_id: str,
+    account_id: str,
+    payload: schemas.SocialAccountUpdate,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
 ):
     """Edit a connected account. Changing the handle of a verified account
     resets it to pending: the badge was earned by the old handle."""
-    return service.update_social_account(db, user_id, account_id, payload)
+    return service.update_social_account(db, owner_id, account_id, payload)
 
 
 @router.delete("/{user_id}/social-accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_social_account(user_id: str, account_id: str, db: Session = Depends(get_db)):
+def delete_social_account(
+    user_id: str,
+    account_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
     """Disconnect a social account from the profile."""
-    service.delete_social_account(db, user_id, account_id)
+    service.delete_social_account(db, owner_id, account_id)

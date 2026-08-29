@@ -95,7 +95,7 @@ class TestNoTokenIsRefused:
         uid = _user(auth_client, "+22990001003")
         r = auth_client.post(
             f"/profiles/{uid}/verification-documents",
-            data={"doc_type": "id_card"},
+            data={"doc_type": "identity"},
             files={"file": ("id.jpg", b"\xff\xd8\xff", "image/jpeg")},
         )
         assert r.status_code == 401
@@ -130,6 +130,16 @@ class TestTheTokenDecidesWhoIsWrittenTo:
         alice = _user(auth_client, "+22990001010")
         bob = _user(auth_client, "+22990001011")
 
+        # Alice writes her own profile FIRST, so that "untouched" is something
+        # this test can actually read back. Without it the GET below answers
+        # 404 for a creator who has no profile, and the assertion reads a key
+        # off an error body instead of testing anything.
+        assert auth_client.put(
+            f"/profiles/influencer/{alice}",
+            json={**PROFILE, "bio": "Alice original"},
+            headers=_headers(alice),
+        ).status_code == 200
+
         r = auth_client.put(
             f"/profiles/influencer/{alice}",
             json={"bio": "Bob was here", "categories": [], "rate_card": {}},
@@ -140,7 +150,7 @@ class TestTheTokenDecidesWhoIsWrittenTo:
         # Alice is untouched. Read each profile as its owner.
         alice_bio = auth_client.get(f"/profiles/influencer/{alice}", headers=_headers(alice)).json()["bio"]
         bob_bio = auth_client.get(f"/profiles/influencer/{bob}", headers=_headers(bob)).json()["bio"]
-        assert alice_bio != "Bob was here"
+        assert alice_bio == "Alice original"
         assert bob_bio == "Bob was here"
 
     def test_a_creator_cannot_reprice_another_creators_package(self, auth_client):
@@ -173,7 +183,7 @@ class TestTheTokenDecidesWhoIsWrittenTo:
         bob = _user(auth_client, "+22990001015")
         r = auth_client.post(
             f"/profiles/{alice}/verification-documents",
-            data={"doc_type": "id_card"},
+            data={"doc_type": "identity"},
             files={"file": ("id.jpg", b"\xff\xd8\xff", "image/jpeg")},
             headers=_headers(bob),
         )

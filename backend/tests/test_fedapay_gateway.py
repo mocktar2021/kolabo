@@ -286,6 +286,72 @@ def test_bare_body_without_envelope_is_understood():
     assert state.status == SUCCEEDED and state.amount == 25000
 
 
+def test_a_collection_records_what_the_gateway_charged_us():
+    """`fees` is on the transaction resource, and it is the platform's cost.
+
+    Commission is taken on the gross, so this comes out of Kolabo's cut rather
+    than the creator's. Reading it off the transaction is the only way anyone
+    can answer what a month actually netted without opening the FedaPay
+    dashboard and adding it up by hand.
+    """
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "v1/transaction": {
+                    "id": 1,
+                    "status": "approved",
+                    "amount": 50000,
+                    "currency": {"iso": "XOF"},
+                    "fees": 600,
+                }
+            },
+        )
+
+    assert _gateway(handler).read_collection("1").fee == 600
+
+
+def test_a_collection_with_no_reported_fee_is_none_and_not_zero():
+    """The distinction the whole field exists to keep.
+
+    A gateway that says nothing about a fee has not told us the movement was
+    free. Zero here would make an unknown cost look like no cost, which is an
+    error that only ever runs in our own favour and would be invisible in the
+    exact report this is for.
+    """
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={"v1/transaction": {"id": 1, "status": "approved", "amount": 50000}},
+        )
+
+    assert _gateway(handler).read_collection("1").fee is None
+
+
+def test_a_fee_that_will_not_coerce_is_none_rather_than_a_crash():
+    """Same answer as an absent key, because it carries the same information.
+
+    Nothing here has been observed answering with a non-numeric fee. The point
+    is that a read of a payment must not raise on an unexpected shape: the
+    caller is mid-settlement, and losing the whole state over one junk field
+    would cost more than not knowing the fee.
+    """
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "v1/transaction": {
+                    "id": 1,
+                    "status": "approved",
+                    "amount": 50000,
+                    "fees": "not a number",
+                }
+            },
+        )
+
+    assert _gateway(handler).read_collection("1").fee is None
+
+
 def test_send_payout_creates_then_starts_then_reads():
     calls = []
 
@@ -334,6 +400,30 @@ def test_payout_processing_is_pending_not_sent():
         target=PayoutTarget(phone="97000000", country="BJ", mode="mtn_open"),
     )
     assert state.status == PAYOUT_PENDING
+
+
+def test_a_payout_records_what_the_gateway_charged_us():
+    """`fees` is on the payout resource too, so one reader covers both legs.
+
+    Note what is NOT asserted: whether that fee was taken out of `amount` or
+    charged on top of it. That has not been observed against a real sandbox
+    payout, so this test pins down only what the gateway states.
+    """
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "v1/payout": {
+                    "id": 99,
+                    "status": "sent",
+                    "amount": 42500,
+                    "currency": {"iso": "XOF"},
+                    "fees": 425,
+                }
+            },
+        )
+
+    assert _gateway(handler).read_payout("99").fee == 425
 
 
 def test_4xx_is_not_retryable_and_5xx_is():

@@ -28,16 +28,16 @@
    read, and they are the one place in the product where French punctuation is
    worth the trouble. Do not normalise them away.
 
-   THE NON-BREAKING SPACES ARE WRITTEN   RATHER THAN AS THE CHARACTER, and
-   that is not fussiness. U+00A0 is invisible in every editor and diff viewer,
-   indistinguishable from the ordinary space beside it, and it does not
-   survive round trips: pushing this file with the characters in it silently
-   delivered twenty ordinary spaces, and the build stayed green because
-   nothing about a space is a type error. The escape is ASCII, so it cannot be
-   normalised by anything between here and the repo; it renders as a real
-   U+00A0 in the browser, which is the only place it has to be one; and it is
-   visible to a reviewer, who can count them. The curly apostrophes are left
-   as characters because they are visible and survive on their own.
+   THE TWENTY NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
+   ARE INVISIBLE. An editor, a diff and a code review all draw one exactly like
+   the ordinary space beside it, and nothing in the toolchain will tell you
+   when one is lost: a space is not a type error, so tsc, vitest and the build
+   all stay green over French punctuation that has quietly stopped being
+   French. One round trip through a tool that normalises whitespace is enough
+   to lose the lot. So if you edit these strings, check the result the way this
+   change was checked — in a browser, on the rendered page, counting U+00A0 —
+   and not by eye. There are twelve of them on /legal/privacy and eight on
+   /legal/terms.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
    BOTH LANGUAGES. RB/COT/26 A 119654 and 1200900488800 identify a company in

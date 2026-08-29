@@ -92,6 +92,15 @@ class CollectionState:
     for — a webhook that says "approved" for a transaction whose amount is a
     tenth of the contract is the single cheapest fraud against a marketplace,
     and the only defence is comparing the two numbers on the way in.
+
+    `fee` is what the GATEWAY charged US to move this money, in the same units
+    as `amount`. NONE IS NOT ZERO, and the distance between them is the whole
+    point of the field: None means the gateway did not report a fee, zero means
+    it reported that this movement cost us nothing. A reconciliation that reads
+    a missing fee as free understates our own cost, and does it silently, and
+    does it further the more rows it meets — which is exactly the failure this
+    field exists to prevent. So a gateway that says nothing leaves this None
+    and nothing downstream is entitled to guess on its behalf.
     """
 
     reference: str
@@ -101,16 +110,26 @@ class CollectionState:
     raw_status: str = ""
     failure_reason: str | None = None
     metadata: dict = field(default_factory=dict)
+    fee: int | None = None
 
 
 @dataclass(frozen=True)
 class PayoutState:
+    """What the gateway says about one payout, right now.
+
+    `fee` carries the same meaning and the same None-is-not-zero rule it has on
+    CollectionState above, and is here for the same reason: sending money out
+    costs us something too, so neither leg on its own says what the platform
+    kept.
+    """
+
     reference: str
     status: str
     amount: int
     currency: str
     raw_status: str = ""
     failure_reason: str | None = None
+    fee: int | None = None
 
 
 @dataclass(frozen=True)

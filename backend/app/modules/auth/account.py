@@ -128,6 +128,11 @@ def _me_out(db: Session, user: User) -> dict:
     exclude list silently starts leaking the moment a new secret is stored on
     the users row and nobody remembers this function exists.
 
+    Which is also why is_admin had to be added here deliberately rather than
+    appearing on its own. It is the one thing the frontend could not ask —
+    admin is a flag beside a role, not a role, so getStoredRole cannot answer
+    for it and no route guard had an input. See MeOut in schemas.py.
+
     Takes the session because two of the fields are not on the users row at
     all — see _own_identity for why they are answered here anyway.
     """
@@ -138,6 +143,7 @@ def _me_out(db: Session, user: User) -> dict:
         "role": user.role,
         "country_code": user.country_code,
         "is_verified": user.is_verified,
+        "is_admin": user.is_admin,
         "created_at": user.created_at,
         "display_name": display_name,
         "avatar_url": avatar_url,
@@ -201,6 +207,11 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     Phone numbers really do change here — a better tariff, a lost handset, a
     move between countries — so this has to exist rather than being a support
     ticket. What it must not become is a way to take somebody else's number.
+
+    NOTHING HERE CAN TOUCH is_admin. AccountPatch has three fields and that is
+    not one of them, and pydantic drops unknown keys rather than refusing
+    them, so a client posting it gets a 200 and no privilege. The flag comes
+    from deployment configuration only — see app.modules.auth.admins.
     """
     user = _require_user(db, user_id)
 

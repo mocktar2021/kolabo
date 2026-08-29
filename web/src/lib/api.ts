@@ -1,5 +1,7 @@
 /* Tiny fetch wrapper around the Kolabo API. The base URL comes from
    VITE_API_URL so the same build points at local, staging, or production. */
+import { getStoredToken } from "./auth";
+
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const API_BASE = BASE;
@@ -46,12 +48,34 @@ export class ApiError extends Error {
    backend/app/modules/auth/admins.py. The dispute queue reads from both
    /admin and /payments through this one helper, because a second fetch
    helper for the same API is how two of them end up disagreeing about error
-   parsing. */
+   parsing.
+
+   PASSING IT IS NOW OPTIONAL, AND THAT IS THE POINT — see authFor below. */
 type Options = {
   method?: string;
   body?: unknown;
   token?: string | null;
 };
+
+/* The token to send: the caller's if they gave one, otherwise the session's.
+
+   THIS USED TO BE "the caller's, or nothing", and it made remembering into a
+   security dependency. When the profiles router grew real authentication,
+   seven existing call sites turned out to have simply not passed a token —
+   four in ProfileSetup.tsx and three in Onboarding.tsx — which would have
+   broken the profile editor and the onboarding wizard outright. One of them
+   swallows its errors, so it would have failed silently rather than loudly.
+
+   Seven forgot; an eighth would. Falling back to the stored session removes
+   the whole class: a signed-in caller sends a token whether or not they asked
+   to, and there is nothing left to forget.
+
+   Explicit still wins, so nothing that works today changes. A signed-out
+   caller still sends nothing, and a token sent to a public endpoint is
+   ignored by it — the dependency only runs where the route declares it. */
+function authFor(token?: string | null): string | null {
+  return token ?? getStoredToken();
+}
 
 function parseError(status: number, data: unknown, fallback: string): ApiError {
   const record = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
@@ -71,7 +95,8 @@ function parseError(status: number, data: unknown, fallback: string): ApiError {
 
 export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  const token = authFor(opts.token);
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, {
     method: opts.method || "GET",
@@ -89,7 +114,8 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
    the multipart boundary. */
 export async function uploadFile<T>(path: string, file: File, token?: string | null): Promise<T> {
   const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const bearer = authFor(token);
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: form });

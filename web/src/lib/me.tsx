@@ -25,6 +25,16 @@ export type Me = {
   role: string;
   country_code: string;
   is_verified: boolean;
+  /* Whether this account may reach the admin surface.
+
+     NOT DERIVABLE FROM `role`, which is why it has to be transmitted: admin
+     is a flag beside a role rather than a fourth role, so an admin is also an
+     ordinary marketplace user and getStoredRole answers "influencer |
+     business | agency" for them like anybody else. Until this field existed
+     the frontend could not ask the question at all, which is why
+     /admin/disputes was declared with no guard on it. App.tsx's AdminOnly is
+     the reader. */
+  is_admin: boolean;
   created_at: string;
   display_name: string | null;
   avatar_url: string | null;
@@ -34,7 +44,13 @@ type MeValue = {
   me: Me | null;
   /* True only while the first request for a given token is in flight. The nav
      uses it to avoid flashing a fallback name for a frame before the real one
-     lands. */
+     lands.
+
+     NOT A SUFFICIENT "still loading" TEST ON ITS OWN — it starts false and
+     only becomes true once the effect below runs, so the very first render of
+     any consumer sees loading:false with me:null. A guard that keys on it
+     alone will fall through on that frame; see AdminOnly in App.tsx, which
+     waits on `me` instead. */
   loading: boolean;
 };
 

@@ -21,14 +21,23 @@
    exactly the ordering the paragraph above depends on.
 
    FRENCH TYPOGRAPHY, AND IT IS DIFFERENT FROM THE REST OF THE APP. The French
-   below uses the curly apostrophe and a non-breaking space before : ; ? and !
+   below sets the curly apostrophe and a non-breaking space before : ; ? and !
    No other bundle here does — they all use the straight apostrophe and an
    ordinary space. The divergence is deliberate and confined to these two
    documents: they are what a regulator, an app-store reviewer and a lawyer
-   read, and they are the one place in the product where correct French
-   punctuation is worth characters you cannot see in an editor. Do not
-   normalise them back, and do not spread them to the other bundles in the
-   same pass.
+   read, and they are the one place in the product where French punctuation is
+   worth the trouble. Do not normalise them away.
+
+   THE NON-BREAKING SPACES ARE WRITTEN   RATHER THAN AS THE CHARACTER, and
+   that is not fussiness. U+00A0 is invisible in every editor and diff viewer,
+   indistinguishable from the ordinary space beside it, and it does not
+   survive round trips: pushing this file with the characters in it silently
+   delivered twenty ordinary spaces, and the build stayed green because
+   nothing about a space is a type error. The escape is ASCII, so it cannot be
+   normalised by anything between here and the repo; it renders as a real
+   U+00A0 in the browser, which is the only place it has to be one; and it is
+   visible to a reviewer, who can count them. The curly apostrophes are left
+   as characters because they are visible and survive on their own.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
    BOTH LANGUAGES. RB/COT/26 A 119654 and 1200900488800 identify a company in
@@ -82,24 +91,24 @@ const fr = {
       who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées sur mocktar.com/legal/entities/.",
 
       collectTitle: "Ce que nous collectons",
-      collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une : elle est facultative.",
+      collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une : elle est facultative.",
       collectVerify: "**Pour vérifier que c’est bien vous.** Les codes à usage unique que nous envoyons sur votre téléphone. Ils expirent, ils ne fonctionnent qu’une fois, et un code erroné coûte une tentative.",
-      collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
+      collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
       collectSocial: "**Vos comptes de réseaux sociaux connectés.** La plateforme et le pseudonyme que vous connectez, ainsi que les chiffres d’audience que nous récupérons pour ce compte — nombre d’abonnés, taux d’engagement et composition de l’audience — que nous obtenons depuis l’API publique de la plateforme elle-même. Nous ne recevons pas le mot de passe de votre compte social et nous ne pouvons pas publier en votre nom.",
       collectDocs: "**Documents de vérification.** Si vous demandez à être vérifié, la pièce d’identité ou le document d’immatriculation que vous téléversez. Ces documents sont **chiffrés au repos** et ne sont visibles que par le personnel qui les examine.",
-      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
+      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
       collectWork: "**Le travail en commun.** Les messages et les pièces jointes que vous échangez avec l’autre partie à un contrat, le travail que vous soumettez et, si quelque chose tourne mal, la réclamation et les preuves versées à un litige.",
-      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner : adresse IP, type d’appareil et de navigateur, horodatages.",
+      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner : adresse IP, type d’appareil et de navigateur, horodatages.",
 
       whyTitle: "Pourquoi nous les collectons",
       why: "Pour faire fonctionner votre compte et prouver qu’il est le vôtre. Pour permettre aux marques et aux créateurs de se trouver. Pour conserver l’argent en sécurité sous séquestre, puis le libérer ou le rembourser. Pour vérifier que les personnes sont bien celles qu’elles disent être, ce qui est tout l’objet d’une place de marché où des inconnus paient des inconnus. Pour résoudre les litiges. Pour respecter nos obligations légales et fiscales. Pour garder la plateforme libre de fraude et de faux comptes.",
       whyNoSale: "**Nous ne vendons pas vos données à caractère personnel et nous ne les utilisons pas à des fins publicitaires.**",
 
       sharedTitle: "Qui d’autre y a accès",
-      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige : le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
+      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige : le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
       sharedSms: "**Notre prestataire SMS** reçoit votre numéro de téléphone afin de vous livrer un code.",
       sharedSocial: "**Les plateformes sociales** (YouTube, Meta, et les autres à mesure que nous les ajoutons) reçoivent une requête portant sur les données publiques du compte que vous avez connecté.",
-      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative « rédiger ma bio » : les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
+      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative « rédiger ma bio » : les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
       sharedHosting: "**Nos hébergeurs et fournisseurs d’infrastructure**, qui stockent et servent les données sur nos instructions.",
       sharedCounterparty: "**L’autre partie à un contrat**, qui voit votre profil public, ce que vous avez convenu, vos messages et le travail que vous soumettez. **Elle ne voit jamais votre numéro de versement, ni vos documents, ni votre mot de passe.**",
       sharedAuthorities: "**Les autorités**, lorsque la loi l’exige.",
@@ -108,11 +117,11 @@ const fr = {
       where: "Sur des serveurs que nous exploitons et sur l’infrastructure de nos prestataires, qui peuvent se trouver hors de votre pays. Les données de paiement et de versement sont traitées par FedaPay dans les marchés qu’il dessert.",
 
       retentionTitle: "Combien de temps nous les conservons",
-      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons : les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation ; lorsque nous en fixerons un, il figurera ici.",
+      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons : les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation ; lorsque nous en fixerons un, il figurera ici.",
 
       rightsTitle: "Vos choix et vos droits",
       rightsEdit: "Vous pouvez modifier ou supprimer la plus grande partie de votre profil depuis l’application à tout moment. Selon le lieu où vous vivez, vous pouvez disposer d’un droit d’accès, de rectification et d’effacement des données que nous détenons sur vous, du droit de vous opposer à l’usage que nous en faisons, ou d’en recevoir une copie. **Pour fermer votre compte ou formuler l’une de ces demandes, écrivez-nous** à l’adresse ci-dessous et nous vous répondrons.",
-      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande : un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
+      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande : un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
 
       securityTitle: "Sécurité",
       security: "Les mots de passe sont hachés. Les documents de vérification sont chiffrés au repos. Les numéros de versement sont masqués dans l’application. L’accès aux documents et aux litiges est limité au personnel qui les examine. Aucun système n’est parfaitement sûr, et nous ne prétendons pas le contraire.",
@@ -125,7 +134,7 @@ const fr = {
 
       contactTitle: "Nous contacter",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
+      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
     },
 
     terms: {
@@ -134,19 +143,19 @@ const fr = {
       intro: "Les présentes conditions constituent un accord entre vous et Mocktar Technologies au sujet de votre utilisation de Kolabo.",
 
       whatTitle: "Ce qu’est Kolabo",
-      what: "Une place de marché où des entreprises et des agences engagent des créateurs pour des collaborations rémunérées, et où l’argent de ce travail est conservé sous séquestre (escrow) jusqu’à ce que le travail soit livré et accepté. **Kolabo n’est pas partie à la collaboration elle-même.** L’accord d’exécution du travail lie la marque et le créateur ; nous fournissons la plateforme, nous conservons l’argent, et nous tranchons les litiges conformément aux présentes conditions.",
+      what: "Une place de marché où des entreprises et des agences engagent des créateurs pour des collaborations rémunérées, et où l’argent de ce travail est conservé sous séquestre (escrow) jusqu’à ce que le travail soit livré et accepté. **Kolabo n’est pas partie à la collaboration elle-même.** L’accord d’exécution du travail lie la marque et le créateur ; nous fournissons la plateforme, nous conservons l’argent, et nous tranchons les litiges conformément aux présentes conditions.",
 
       whoTitle: "Qui peut l’utiliser",
-      who: "Vous devez avoir 18 ans ou plus et être capable de contracter. Un seul compte par personne ou par entreprise. Vous êtes responsable de ce qui se passe sous votre compte : gardez donc votre mot de passe et vos codes à usage unique pour vous.",
+      who: "Vous devez avoir 18 ans ou plus et être capable de contracter. Un seul compte par personne ou par entreprise. Vous êtes responsable de ce qui se passe sous votre compte : gardez donc votre mot de passe et vos codes à usage unique pour vous.",
 
       accountTitle: "Votre compte",
       account: "Inscrivez-vous avec des informations exactes et tenez-les à jour. Nous pouvons vous demander de vérifier votre identité ou l’immatriculation de votre entreprise, et nous pouvons suspendre un compte qui refuse de se vérifier, dont nous avons des motifs raisonnables de penser qu’il est frauduleux, ou qui sert à enfreindre les présentes conditions.",
 
       creatorsTitle: "Créateurs",
-      creators: "Vous fixez vos tarifs, votre disponibilité et le travail que vous acceptez. Ce que vous publiez doit vous appartenir. Lorsque vous acceptez un contrat, vous vous engagez à livrer ce qu’il décrit, à la date qu’il indique. Il vous revient de signaler les partenariats rémunérés partout où la loi ou la plateforme sur laquelle vous publiez l’exige : cette obligation est la vôtre, pas la nôtre.",
+      creators: "Vous fixez vos tarifs, votre disponibilité et le travail que vous acceptez. Ce que vous publiez doit vous appartenir. Lorsque vous acceptez un contrat, vous vous engagez à livrer ce qu’il décrit, à la date qu’il indique. Il vous revient de signaler les partenariats rémunérés partout où la loi ou la plateforme sur laquelle vous publiez l’exige : cette obligation est la vôtre, pas la nôtre.",
 
       businessesTitle: "Entreprises",
-      businesses: "Décrivez le travail avec exactitude, y compris tout ce qui pourrait changer la décision d’un créateur de l’accepter. Approvisionnez le séquestre avant le début du travail. Examinez rapidement le travail soumis ; à défaut, le séquestre se libère automatiquement à l’expiration du délai d’examen.",
+      businesses: "Décrivez le travail avec exactitude, y compris tout ce qui pourrait changer la décision d’un créateur de l’accepter. Approvisionnez le séquestre avant le début du travail. Examinez rapidement le travail soumis ; à défaut, le séquestre se libère automatiquement à l’expiration du délai d’examen.",
 
       moneyTitle: "Argent, séquestre et commission",
       moneyFund: "La marque approvisionne un séquestre avant le début du travail.",
@@ -164,7 +173,7 @@ const fr = {
       disputes: "Chacune des parties peut ouvrir un litige tant que le séquestre est retenu. L’autre partie dispose d’un délai pour répondre. À défaut de réponse, ou si aucun accord n’est trouvé, nous tranchons, et notre décision sur la libération ou le remboursement du séquestre est définitive entre nous. Cela ne vous retire aucun droit de saisir un tribunal.",
 
       ownershipTitle: "Contenu et propriété",
-      ownership: "Vous conservez la propriété de ce que vous créez et téléversez. Vous nous accordez la licence dont nous avons besoin pour l’afficher sur Kolabo et pour promouvoir la plateforme. Les droits sur le travail livré au titre d’un contrat se règlent entre la marque et le créateur, et devraient être écrits dans le contrat : Kolabo ne les tranche pas à votre place.",
+      ownership: "Vous conservez la propriété de ce que vous créez et téléversez. Vous nous accordez la licence dont nous avons besoin pour l’afficher sur Kolabo et pour promouvoir la plateforme. Les droits sur le travail livré au titre d’un contrat se règlent entre la marque et le créateur, et devraient être écrits dans le contrat : Kolabo ne les tranche pas à votre place.",
 
       prohibitedTitle: "Ce qui est interdit",
       prohibited: "Les faux comptes, les abonnés achetés ou les chiffres d’audience fabriqués. L’identité ou les documents d’autrui. Le harcèlement, les discours haineux ou les contenus illégaux. Le paiement hors plateforme d’un travail trouvé sur celle-ci. Le scraping, le sondage ou l’attaque du service.",
@@ -173,17 +182,17 @@ const fr = {
       availability: "Kolabo est fourni en l’état. Nous ne promettons pas qu’il sera ininterrompu ni exempt d’erreurs, et les fonctionnalités évoluent.",
 
       liabilityTitle: "Notre responsabilité",
-      liability: "Nous ne sommes pas responsables de la qualité, de la légalité ou de la ponctualité du travail convenu entre une marque et un créateur : nous ne sommes pas partie à cet accord. Dans la mesure permise par la loi, notre responsabilité envers vous au titre de Kolabo est limitée à la commission que nous avons perçue sur la transaction à laquelle se rapporte la réclamation. Rien ici ne limite une responsabilité qui ne peut pas légalement l’être.",
+      liability: "Nous ne sommes pas responsables de la qualité, de la légalité ou de la ponctualité du travail convenu entre une marque et un créateur : nous ne sommes pas partie à cet accord. Dans la mesure permise par la loi, notre responsabilité envers vous au titre de Kolabo est limitée à la commission que nous avons perçue sur la transaction à laquelle se rapporte la réclamation. Rien ici ne limite une responsabilité qui ne peut pas légalement l’être.",
 
       endingTitle: "Y mettre fin",
-      ending: "Vous pouvez fermer votre compte à tout moment ; les contrats et les séquestres déjà en cours doivent d’abord aller à leur terme. Nous pouvons suspendre ou fermer un compte qui enfreint les présentes conditions, et nous libérerons toute somme régulièrement due.",
+      ending: "Vous pouvez fermer votre compte à tout moment ; les contrats et les séquestres déjà en cours doivent d’abord aller à leur terme. Nous pouvons suspendre ou fermer un compte qui enfreint les présentes conditions, et nous libérerons toute somme régulièrement due.",
 
       changesTitle: "Modifications",
       changes: "Nous pouvons modifier les présentes conditions. Les modifications importantes seront notifiées dans l’application avant leur entrée en vigueur.",
 
       contactTitle: "Nous contacter",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
+      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
     }
   },
 

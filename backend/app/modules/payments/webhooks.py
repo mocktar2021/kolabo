@@ -199,7 +199,9 @@ def _handle(db: Session, event_name: str, entity: dict) -> None:
         state = gateway.read_payout(reference)
         payout.provider_status = state.raw_status
         mapped = payouts._PAYOUT_STATUS.get(state.status, gmodels.PAYOUT_PENDING)
-        payouts._mark(payout, mapped, provider="fedapay", reason=state.failure_reason)
+        payouts._mark(
+            payout, mapped, provider="fedapay", reason=state.failure_reason, fee=state.fee
+        )
         if mapped == gmodels.PAYOUT_SENT:
             payouts._notify_paid(db, payout)
         db.commit()

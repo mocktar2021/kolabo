@@ -74,6 +74,23 @@ class MeOut(BaseModel):
     role: str
     country_code: str
     is_verified: bool
+    # WHETHER THIS ACCOUNT MAY REACH THE ADMIN SURFACE, and the reason it is
+    # here rather than derivable from `role` above: admin is NOT a role. It is
+    # a flag beside one, so that every existing role check keeps working and
+    # an admin is also an ordinary marketplace user (see User.is_admin).
+    #
+    # Which left the frontend unable to ask the question at all. getStoredRole
+    # answers "influencer | business | agency" and nothing else, so there was
+    # no input a route guard could read — which is precisely why /admin/disputes
+    # is declared in App.tsx with no guard on it. The page was reachable, every
+    # request on it 403'd, and it rendered empty.
+    #
+    # READ-ONLY, AND SETTABLE NOWHERE IN THE API. app.modules.auth.admins
+    # reconciles this from a configured list of phone numbers on every boot,
+    # granting and revoking, because deployment configuration is the one
+    # channel an attacker who has reached the API does not automatically have.
+    # AccountPatch below cannot carry it either.
+    is_admin: bool = False
     created_at: datetime
     # WHO THE CALLER IS TO LOOK AT, which nothing else on this row answers: a
     # phone number, a role and a country are not things a person recognises
@@ -102,6 +119,10 @@ class AccountPatch(BaseModel):
     Partial like every other patch here: a field the client did not send is
     left alone. Neither field sent is refused in the service with a sentence,
     rather than silently succeeding at nothing.
+
+    NOTHING HERE TOUCHES is_admin, and nothing ever should. Pydantic ignores
+    unknown keys, so a client posting one is not refused — it is simply not
+    read, which test_me_is_admin.py asserts rather than assumes.
     """
 
     current_password: str = Field(min_length=1)

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import { getStoredRole, isBusinessLike } from "./lib/auth";
+import { getStoredRole, isBusinessLike, useAuth } from "./lib/auth";
+import { useMe } from "./lib/me";
 import { CartProvider } from "./lib/cart";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -85,6 +86,38 @@ function CreatorOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/* The admin surface. The comment that used to sit on the route below said
+   "Admin is not a role in this app — there is no admin login and
+   getStoredRole cannot answer for one — so there is nothing here to ask."
+
+   The first clause is still true: admin is a FLAG beside a role, not a fourth
+   role, so an admin is also an ordinary marketplace user and getStoredRole
+   answers "business" or "influencer" for them like anybody else. The rest was
+   only true for as long as the frontend had no other source. There is an
+   admin login — get_current_admin has required a real bearer token belonging
+   to a user with is_admin ever since the X-Admin-Id header was removed — and
+   /auth/me now reports the flag. So the question can be asked, and this asks
+   it instead of letting the page render empty against a wall of 403s.
+
+   THE ORDER OF THESE THREE CHECKS IS THE DESIGN, and it is the same trap
+   PR #148 fixed in AuthProvider. MeProvider starts with me = null AND
+   loading = false, only setting loading true once its effect runs — so a
+   guard keyed on `loading` would fall through on the very first render, find
+   no me, and bounce an admin away from a page they are entitled to. Waiting
+   on `me` itself covers both that pre-effect frame and the request in flight.
+
+   Rendering null while we do not yet know is deliberate. Every alternative
+   guesses, and both guesses are wrong: sending an admin to the dashboard, or
+   showing a non-admin the dispute queue for a frame. */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
+  const { me } = useMe();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (me === null) return null;
+  if (!me.is_admin) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     /* The cart wraps the router rather than living on the cart page: the nav
@@ -161,14 +194,11 @@ export default function App() {
               /payments answers 403 to anybody else. */}
           <Route path="/disputes" element={<DisputesPage />} />
           <Route path="/disputes/:id" element={<DisputeDetailPage />} />
-          {/* Unguarded on purpose, and it is not an oversight. Admin is not a
-              role in this app — there is no admin login and getStoredRole
-              cannot answer for one — so there is nothing here to ask. The
-              gate is the X-Admin-Id header the page sends, which the API
-              checks; without it every request on this screen answers 401 and
-              the page shows nothing. Replace both when real admin auth
-              lands. */}
-          <Route path="/admin/disputes" element={<AdminDisputesPage />} />
+          {/* Guarded on is_admin — see AdminOnly above. The server gate has
+              not changed and is still the real one: every request this page
+              makes carries a bearer token that get_current_admin checks. This
+              only stops the page being reachable by somebody it will refuse. */}
+          <Route path="/admin/disputes" element={<AdminOnly><AdminDisputesPage /></AdminOnly>} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
           <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
           <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />

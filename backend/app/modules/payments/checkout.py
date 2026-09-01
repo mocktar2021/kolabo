@@ -34,6 +34,7 @@ The first is the cheapest fraud against a marketplace — pay 500 against a
 comparing two integers on the way in.
 """
 import logging
+from urllib.parse import urlsplit
 
 from fastapi import status
 from sqlalchemy.orm import Session
@@ -57,6 +58,59 @@ _INTENT_STATUS = {
     gwbase.FAILED: gmodels.INTENT_FAILED,
     gwbase.CANCELED: gmodels.INTENT_CANCELED,
 }
+
+# The only schemes a payment gateway will accept as a place to send a payer
+# back to. Everything else is a deep link into an app, which is a URL to an
+# operating system and not to the internet.
+_WEB_SCHEMES = ("http", "https")
+
+
+def _gateway_return_url(requested: str | None) -> str:
+    """The return url the GATEWAY will accept, which is not always the one asked for.
+
+    THIS IS WHY EVERY MOBILE PAYMENT FAILED. CheckoutScreen.tsx passes
+    Linking.createURL("payment-return") — `kolabo://payment-return` in a real
+    build, `exp://10.0.0.5:8081/--/payment-return` under Expo Go — and that
+    went to FedaPay verbatim as callback_url. FedaPay validates that field and
+    refuses a custom scheme outright:
+
+        400 {"errors":{"callback_url":["n'est pas une URL valide"]}}
+
+    which surfaced as a GatewayError, a 502, and a banner telling the payer the
+    payment service was unreachable. It was reachable. We were sending it
+    something it will not take, on every single mobile attempt since the screen
+    was written.
+
+    So a caller's return url is now a REQUEST rather than an instruction. An
+    http(s) url with a host passes through untouched, which is every web call
+    and leaves that path exactly as it was. Anything else falls back to the
+    configured return page, which PAYMENT_RETURN_URL points at the web app.
+
+    WHAT THE MOBILE PAYER LOSES BY THIS, stated plainly because it is a real
+    cost and not nothing: openAuthSessionAsync dismisses the in-app browser
+    when the gateway redirects to the app's own scheme, and an https return url
+    does not match, so they tap Done instead of it closing itself. What they do
+    NOT lose is the payment. CheckoutScreen polls every three seconds, re-reads
+    on AppState "active", and re-reads once more when the browser session
+    resolves however it ended — the deep link was a convenience on top of that,
+    never the mechanism. Giving it back needs an https bridge that 302s to the
+    app scheme, and a bridge that redirects to a url someone else supplied is
+    an open redirect unless its whitelist is right, so it is its own change.
+
+    The scheme is logged and the url is not. A return url is caller-supplied
+    and can carry a query string; there is no reason for a value we are
+    discarding to end up in a log file.
+    """
+    if requested:
+        parts = urlsplit(requested)
+        if parts.scheme in _WEB_SCHEMES and parts.netloc:
+            return requested
+        logger.warning(
+            "Ignoring a return url the gateway will not accept (scheme %r); "
+            "falling back to the configured return page",
+            parts.scheme or "",
+        )
+    return settings.payment_return_url
 
 
 def _intent_out(intent: gmodels.PaymentIntent) -> dict:
@@ -142,7 +196,11 @@ def start_checkout(
     db.commit()
     db.refresh(intent)
 
-    callback_url = return_url or settings.payment_return_url
+    # NOT `return_url or settings.payment_return_url`, which is what this was
+    # and what broke every mobile payment: the caller's value was taken on
+    # trust and handed to a gateway that refuses anything but an http(s) url.
+    # See _gateway_return_url.
+    callback_url = _gateway_return_url(return_url)
     try:
         started = gateway.start_collection(
             amount=intent.amount,

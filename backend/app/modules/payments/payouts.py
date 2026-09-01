@@ -242,7 +242,7 @@ def _send(db: Session, payout: gmodels.Payout, gateway, method, escrow) -> str |
     payout.provider_ref = state.reference
     payout.provider_status = state.raw_status
     mapped = _PAYOUT_STATUS.get(state.status, gmodels.PAYOUT_PENDING)
-    _mark(payout, mapped, provider=gateway.name, reason=state.failure_reason)
+    _mark(payout, mapped, provider=gateway.name, reason=state.failure_reason, fee=state.fee)
     return state.reference
 
 
@@ -253,6 +253,7 @@ def _mark(
     provider: str,
     ref: str | None = None,
     reason: str | None = None,
+    fee: int | None = None,
 ) -> None:
     payout.status = status_value
     payout.provider = provider
@@ -260,6 +261,13 @@ def _mark(
         payout.provider_ref = ref
     if reason:
         payout.failure_reason = reason[:400]
+    if fee is not None:
+        # Guarded, and the guard is the point. A payout is read more than once
+        # — the send, the sweep, the webhook — and a later read that does not
+        # mention a fee is the gateway staying silent, not the gateway telling
+        # us the fee is gone. Assigning unconditionally would let the quietest
+        # of those reads erase a cost we had already recorded.
+        payout.gateway_fee = fee
     if status_value == gmodels.PAYOUT_SENT:
         payout.sent_at = gmodels.utcnow()
     payout.updated_at = gmodels.utcnow()
@@ -315,7 +323,13 @@ def run_pending_payouts(db: Session, limit: int = 100) -> dict:
             continue
         payout.provider_status = state.raw_status
         mapped = _PAYOUT_STATUS.get(state.status, gmodels.PAYOUT_PENDING)
-        _mark(payout, mapped, provider=payout.provider, reason=state.failure_reason)
+        _mark(
+            payout,
+            mapped,
+            provider=payout.provider,
+            reason=state.failure_reason,
+            fee=state.fee,
+        )
         if mapped == gmodels.PAYOUT_SENT:
             sent += 1
             _notify_paid(db, payout)

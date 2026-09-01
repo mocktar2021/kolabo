@@ -212,6 +212,11 @@ def settle_intent(db: Session, intent: gmodels.PaymentIntent) -> gmodels.Payment
 
     state = gateway.read_collection(intent.provider_ref)
     intent.provider_status = state.raw_status
+    # Recorded before the branch, so it lands on every terminal path and not
+    # only on the happy one. A collection that failed can still have cost us
+    # something, and a fee we only store when the money arrived is a fee that
+    # is missing from exactly the rows an unprofitable month is hiding in.
+    intent.gateway_fee = state.fee
     mapped = _INTENT_STATUS.get(state.status, gmodels.INTENT_PENDING)
 
     if mapped != gmodels.INTENT_SUCCEEDED:

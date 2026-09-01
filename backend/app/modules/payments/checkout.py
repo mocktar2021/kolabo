@@ -216,7 +216,27 @@ def settle_intent(db: Session, intent: gmodels.PaymentIntent) -> gmodels.Payment
     # only on the happy one. A collection that failed can still have cost us
     # something, and a fee we only store when the money arrived is a fee that
     # is missing from exactly the rows an unprofitable month is hiding in.
-    intent.gateway_fee = state.fee
+    #
+    # GUARDED, AND THE GUARD IS THE POINT. payouts._mark has carried the same
+    # `if fee is not None` since it was written, for the same reason; this
+    # function was the copy that did not, and it needs it slightly more often
+    # than the payout leg does.
+    #
+    # A PENDING INTENT IS SETTLED MORE THAN ONCE, by design and by the
+    # docstring above: the webhook and the return page both land here, and
+    # get_intent settles on every poll while the payer is still deciding. Each
+    # of those is a fresh read_collection, and a read that does not mention a
+    # fee is the gateway staying silent — not the gateway telling us the fee is
+    # gone. Assigning unconditionally let the quietest read in that sequence
+    # delete a cost already recorded, and since the last read before the intent
+    # turns terminal is the one that sticks, the deletion was permanent.
+    #
+    # None is not zero here, and it is not "unchanged" either. It means we
+    # learned nothing this time, so we keep what we knew. A reported number
+    # still wins, including a corrected one — the guard is on the gateway's
+    # silence, not on whether we already hold a value.
+    if state.fee is not None:
+        intent.gateway_fee = state.fee
     mapped = _INTENT_STATUS.get(state.status, gmodels.INTENT_PENDING)
 
     if mapped != gmodels.INTENT_SUCCEEDED:

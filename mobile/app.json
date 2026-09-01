@@ -5,7 +5,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "kolabo",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.kolabo.app",
@@ -30,7 +33,10 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://api.kolabo.mocktar.com"
+      "apiBaseUrl": "https://api.kolabo.mocktar.com",
+      "eas": {
+        "projectId": "aacd1962-68bf-4700-a0cc-f1b33c6cfc6f"
+      }
     }
   }
 }

@@ -30,7 +30,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install
+      # `npm ci`, not `npm install`. install RESOLVES the ranges in
+      # package.json afresh on every run, so each build got a slightly
+      # different dependency tree and "green" described a tree that existed
+      # for the length of one job. ci installs package-lock.json exactly, and
+      # refuses outright when the lockfile and package.json disagree rather
+      # than quietly reconciling them, so a dependency change has to arrive as
+      # a reviewable diff instead of as weather.
+      - run: npm ci
       - run: npm run build
       # After the build, so a type error is reported as a type error rather
       # than as a wall of failing tests. Vitest reads the project's own Vite
@@ -47,7 +54,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install
+      # Same change and the same reason as the web job above. It matters a
+      # little more here: this is the tree an `eas build` installs from too,
+      # so an unpinned mobile dependency is a difference between what CI
+      # checked and what ends up on a phone.
+      - run: npm ci
       # The mobile app has no simulator in CI, so on-device behaviour is
       # verified manually in Expo Go; what this guards is that the TypeScript
       # across screens, navigation and the API layer stays sound.

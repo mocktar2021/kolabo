@@ -15,6 +15,52 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 ADMIN_PHONE = "+22999000001"
 
 
+@pytest.fixture(autouse=True)
+def profile_owner_from_path(request):
+    """Keep the 168 existing profile tests testing PROFILES, not tokens.
+
+    The profiles router used to take the account being written to straight out
+    of the URL, with no authentication anywhere on it. It now takes it from the
+    bearer token and ignores the path entirely — see the module docstring in
+    app/modules/profiles/router.py for why that is stronger than comparing the
+    two and refusing a mismatch.
+
+    Five test files make 168 calls to that router and not one of them sends a
+    token, because until now there was nothing to send one to. Rewriting all
+    168 to mint a token each would be a very large diff whose only effect is to
+    re-state, 168 times, a rule that has exactly one place worth testing. So
+    the seam is overridden here instead: `profile_owner` resolves to the id in
+    the path, which is precisely what those tests assumed before this change.
+    Their behaviour is unchanged, including the ones that assert a 403 when one
+    creator touches another's package — that check lives in the service and is
+    untouched.
+
+    The guard itself is tested properly, without this override, in
+    test_profiles_auth.py. It gets there by naming its fixture `auth_client`
+    rather than `client`, which is what the guard below keys on.
+
+    Migrating the five files to real tokens is worth doing and is deliberately
+    not in the same change as the security fix.
+    """
+    if "client" not in request.fixturenames:
+        yield
+        return
+
+    client = request.getfixturevalue("client")
+    app = getattr(client, "app", None)
+    if app is None:
+        yield
+        return
+
+    from app.modules.profiles.router import profile_owner
+
+    app.dependency_overrides[profile_owner] = lambda user_id: user_id
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(profile_owner, None)
+
+
 @pytest.fixture()
 def admin_user_id(client):
     """A real admin account, in whatever database the test's client is using.

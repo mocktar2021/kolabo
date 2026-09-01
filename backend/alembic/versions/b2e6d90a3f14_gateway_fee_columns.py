@@ -1,7 +1,7 @@
 """gateway fee columns
 
 Revision ID: b2e6d90a3f14
-Revises: 4423dba6754c
+Revises: a1c5e8b30f7d
 Create Date: 2026-08-29
 
 Two nullable columns, so that "what did we actually keep" is a query.
@@ -26,12 +26,25 @@ silent. A zero default would have claimed those movements were free, which is
 a claim we cannot support and one that only ever errs in our own favour. There
 is no backfill for the historical rows because there is no honest value to put
 in them; they stay null, and a report that needs them can say so.
+
+WRITTEN OFF 4423dba6754c, RE-PARENTED ONTO a1c5e8b30f7d. This revision and the
+OTP attempt counters in a1c5e8b30f7d were authored against the same parent, on
+branches open at the same time that could not see each other. Two revisions
+sharing a parent are two heads once both are on main, and `upgrade head` then
+refuses to run at all — which is a failure that appears on main and on nobody's
+branch. a1c5e8b30f7d merged first, so this is the file that moves.
+
+The order asserted here is arbitrary and that is the honest description of it.
+The two migrations touch disjoint tables — otp_challenges and
+password_reset_tokens there, payment_intents and payouts here — so they commute,
+and nothing in this file depends on anything in that one. Alembic needs a total
+order; this is one, not a dependency.
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "b2e6d90a3f14"
-down_revision = "4423dba6754c"
+down_revision = "a1c5e8b30f7d"
 branch_labels = None
 depends_on = None
 

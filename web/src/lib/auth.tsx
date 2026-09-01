@@ -37,6 +37,20 @@ function writeStored(key: string, value: string | null): void {
   }
 }
 
+/* THE SESSION TOKEN, FOR CODE THAT IS NOT A COMPONENT.
+
+   Exists for exactly one caller: lib/api.ts, which needs a token in a plain
+   async function where no hook can run. Everything inside the tree should
+   keep using useAuth() — this is not a second source of truth, it reads the
+   same key the provider does.
+
+   Why api.ts needs it at all: attaching the header only when a caller
+   remembered to pass opts.token turned "did you remember?" into a security
+   dependency, and seven call sites had not. See the fallback there. */
+export function getStoredToken(): string | null {
+  return readStored(KEY);
+}
+
 /* Agencies buy creator services the same way businesses do, so they get the
    business UX (business profile form, business dashboard, business routing)
    until agency specific tooling exists. Every role branch in the app goes

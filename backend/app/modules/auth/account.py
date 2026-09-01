@@ -128,6 +128,11 @@ def _me_out(db: Session, user: User) -> dict:
     exclude list silently starts leaking the moment a new secret is stored on
     the users row and nobody remembers this function exists.
 
+    Which is also why is_admin had to be added here deliberately rather than
+    appearing on its own. It is the one thing the frontend could not ask —
+    admin is a flag beside a role, not a role, so getStoredRole cannot answer
+    for it and no route guard had an input. See MeOut in schemas.py.
+
     Takes the session because two of the fields are not on the users row at
     all — see _own_identity for why they are answered here anyway.
     """
@@ -138,6 +143,7 @@ def _me_out(db: Session, user: User) -> dict:
         "role": user.role,
         "country_code": user.country_code,
         "is_verified": user.is_verified,
+        "is_admin": user.is_admin,
         "created_at": user.created_at,
         "display_name": display_name,
         "avatar_url": avatar_url,
@@ -201,6 +207,11 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     Phone numbers really do change here — a better tariff, a lost handset, a
     move between countries — so this has to exist rather than being a support
     ticket. What it must not become is a way to take somebody else's number.
+
+    NOTHING HERE CAN TOUCH is_admin. AccountPatch has three fields and that is
+    not one of them, and pydantic drops unknown keys rather than refusing
+    them, so a client posting it gets a 200 and no privilege. The flag comes
+    from deployment configuration only — see app.modules.auth.admins.
     """
     user = _require_user(db, user_id)
 
@@ -348,12 +359,32 @@ def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
             detail=INVALID_CODE_DETAIL,
         )
 
-    token = next((t for t in _live_reset_tokens(db, user, now) if t.token == payload.code), None)
+    live = _live_reset_tokens(db, user, now)
+    token = next((t for t in live if t.token == payload.code), None)
     if token is None:
+        # A WRONG GUESS NOW COSTS SOMETHING, and it matters more here than on
+        # the registration challenge: spending a reset code CHANGES THE
+        # PASSWORD, so unlimited guesses against six digits is a takeover
+        # rather than a nuisance. Nothing counted before, and there is no rate
+        # limiting anywhere in the application to fall back on.
+        #
+        # Charged against every live code for this account and they are all
+        # spent together when the allowance runs out — see otp.spend_attempt.
+        # `failed` is None because no row matched, so there is no single row
+        # to blame; the account's whole allowance is what moves. Committed
+        # before the refusal so the count survives it.
+        if otp.spend_attempt(live, None):
+            for spent in live:
+                spent.consumed = True
+        db.commit()
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
             # One code for "no such code" and for "expired", exactly as the
-            # one shared English sentence already refuses to distinguish them.
+            # one shared English sentence already refuses to distinguish them
+            # — and now for "you have used up your guesses" as well, which is
+            # the same decision for the same reason. A distinct sentence there
+            # would tell an attacker precisely when to stop and ask for a
+            # fresh code.
             code="auth_reset_code_invalid",
             detail=INVALID_CODE_DETAIL,
         )

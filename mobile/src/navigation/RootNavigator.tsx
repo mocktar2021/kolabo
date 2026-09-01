@@ -46,13 +46,30 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 const Tab = createBottomTabNavigator();
 
-/* How long the splash is held AFTER the keystore has answered, and only on
-   the way to the intro. Without a floor it is a two-frame flicker on a fast
-   handset, which is worse than no splash at all; with one the brand mark
-   actually lands before the carousel does. A signed-in reader waits for none
-   of it — a returning user's cold start is the wrong place to spend most of a
-   second on a logo. */
-const SPLASH_FLOOR_MS = 700;
+/* How long the splash is held AFTER the keystore has answered, on every cold
+   start that lands SIGNED OUT — the intro carousel on a fresh install, and the
+   Login screen every launch after that.
+
+   IT USED TO COVER ONLY THE FIRST OF THOSE and that was the wrong half. The
+   floor was gated on `startAtLanding`, which is true exactly once per handset:
+   the moment a reader taps Login or Register, markLandingSeen fires and every
+   launch afterwards went to Login with no floor at all. The brand mark got its
+   beat on the one launch that already showed three slides of branding, and
+   none on the launch that actually repeats — where the keystore answers in a
+   few milliseconds and the logo is gone inside two frames. That flicker is
+   worse than no splash, which the note here always said; it was just pointing
+   at the wrong launch.
+
+   700ms became 1500 for the same reason: the old number was picked to cover a
+   gap before a carousel rather than to be a length anybody would look at.
+
+   A SIGNED-IN READER STILL WAITS FOR NONE OF IT. That is why the condition
+   below tests `!isAuthenticated` rather than the timer alone — opening an app
+   you are already logged into is the launch that happens every day, and a
+   second and a half of logo is a tax on the people who use this most. The same
+   test keeps a mid-session logout from flashing a splash on the way to Login:
+   the timer started at boot, so it is long since expired by then. */
+const SPLASH_FLOOR_MS = 1500;
 
 /* Screens are typed with AppScreenProps (native-stack props over the shared
    param list); the ones hosted on a tab receive bottom-tab props instead.
@@ -279,9 +296,15 @@ export default function RootNavigator() {
   const startAtLanding = !restoring && !isAuthenticated && landingSeenCached() === false;
 
   /* The splash stands where a bare ActivityIndicator used to: it covers the
-     keystore reads for everybody, and is held a beat longer only on the way
-     to the intro. */
-  if (restoring || (startAtLanding && !floorPassed)) return <Splash />;
+     keystore reads for everybody, and is then held to the floor for anyone
+     arriving signed out — whether that is the intro carousel on a fresh
+     install or the Login screen on every launch after it.
+
+     `!isAuthenticated` rather than `!floorPassed` alone is what keeps a
+     returning signed-in reader out of the wait entirely, and what stops a
+     mid-session logout flashing a splash: by then the timer set at boot has
+     long since fired. See SPLASH_FLOOR_MS. */
+  if (restoring || (!isAuthenticated && !floorPassed)) return <Splash />;
 
   return (
     <NavigationContainer>

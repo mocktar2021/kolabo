@@ -359,6 +359,7 @@ class FedaPayGateway:
             raw_status=raw_status,
             failure_reason=body.get("last_error_code") or body.get("mode"),
             metadata=body.get("custom_metadata") or {},
+            fee=_fee_amount(body),
         )
 
     # ---------------------------------------------------------------- payout
@@ -424,6 +425,7 @@ class FedaPayGateway:
             currency=_currency_iso(body),
             raw_status=raw_status,
             failure_reason=body.get("last_error_code"),
+            fee=_fee_amount(body),
         )
 
     # --------------------------------------------------------------- webhook
@@ -460,6 +462,36 @@ def _currency_iso(body: dict) -> str:
     if isinstance(currency, str) and currency:
         return currency
     return "XOF"
+
+
+def _fee_amount(body: dict) -> int | None:
+    """What FedaPay charged us for this movement, or None if it did not say.
+
+    `fees` is confirmed present on both the transaction resource and the payout
+    resource, so one reader covers both legs. It is still read defensively: an
+    absent key, a null, or a value that will not coerce all mean the same
+    thing — the gateway did not tell us — and THAT IS A FACT WORTH STORING as
+    None rather than guessing at. Zero is a different fact. Returning 0 for an
+    absent key would quietly turn "we do not know what this cost" into "this
+    cost nothing", which is the one error a fee column exists to prevent.
+
+    WE DELIBERATELY DO NOT DERIVE THE FEE from `amount_transferred` or
+    `amount_debited`, though both are sitting right there in the same body. The
+    arithmetic runs in different directions on the two legs: a collection has
+    the fee taken out of `amount` before what is left reaches our balance,
+    while whether a payout's fee is deducted from the amount or charged on top
+    of it is NOT YET CONFIRMED — nobody has watched a real sandbox payout
+    settle and checked which it is. A derivation would bake that unverified
+    assumption about money into every row it wrote. It is an open question, not
+    a settled one, so we record what the gateway states and nothing else.
+    """
+    raw = body.get("fees")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_int(reference: str) -> int | str:

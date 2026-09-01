@@ -57,7 +57,9 @@ class FakeGateway:
         self.collection_status = gwbase.SUCCEEDED
         self.collection_amount = None  # None -> echo whatever was asked for
         self.collection_currency = "XOF"
+        self.collection_fee = None  # None -> the gateway reported no fee
         self.payout_status = gwbase.PAYOUT_SENT
+        self.payout_fee = None  # ditto, and NOT the same claim as a fee of 0
         self.payout_raises = False
         self.payouts_sent = []
         self.started = []
@@ -79,6 +81,7 @@ class FakeGateway:
             else getattr(self, "_last_amount", 0),
             currency=self.collection_currency,
             raw_status="approved",
+            fee=self.collection_fee,
         )
 
     def send_payout(self, *, amount, currency, description, target, merchant_reference=None):
@@ -91,11 +94,16 @@ class FakeGateway:
             amount=amount,
             currency=currency,
             raw_status="sent",
+            fee=self.payout_fee,
         )
 
     def read_payout(self, reference):
         return PayoutState(
-            reference=reference, status=self.payout_status, amount=0, currency="XOF"
+            reference=reference,
+            status=self.payout_status,
+            amount=0,
+            currency="XOF",
+            fee=self.payout_fee,
         )
 
     def verify_webhook(self, raw_body, headers):
@@ -453,6 +461,58 @@ def test_webhook_for_an_unknown_transaction_is_acknowledged(client, gateway):
     assert client.post("/webhooks/fedapay", content=body, headers=_signed_headers(body)).status_code == 200
 
 
+def test_a_settled_collection_records_what_the_gateway_charged_us(client, gateway):
+    """The first of the two costs between the gross and what Kolabo keeps.
+
+    Commission is 15 percent of the gross, and the gateway takes its own cut of
+    the same money on the way in. Until this was stored, that cut lived only in
+    the raw webhook body on gateway_events and no query against our own tables
+    could reach it, so "how much did we net" was a monthly reconciliation
+    against the FedaPay dashboard rather than a SELECT.
+    """
+    brand, _creator, contract = _seed(client)
+    gateway.collection_fee = 600
+
+    intent = client.post(
+        "/payments/checkout/start", json={"contract_id": contract}, headers=_headers(brand)
+    ).json()
+    client.get(f"/payments/checkout/{intent['id']}", headers=_headers(brand))
+
+    db = client.session_factory()
+    try:
+        row = db.query(gmodels.PaymentIntent).filter(
+            gmodels.PaymentIntent.id == intent["id"]
+        ).one()
+        assert row.status == gmodels.INTENT_SUCCEEDED
+        assert row.gateway_fee == 600
+    finally:
+        db.close()
+
+
+def test_a_collection_the_gateway_charged_nothing_for_stays_unknown(client, gateway):
+    """No fee reported means no fee KNOWN, and the column says so with null.
+
+    Defaulting this to zero would let a gateway that simply did not answer look
+    like a gateway that worked for free, in the one report where that error
+    always flatters us.
+    """
+    brand, _creator, contract = _seed(client)
+
+    intent = client.post(
+        "/payments/checkout/start", json={"contract_id": contract}, headers=_headers(brand)
+    ).json()
+    client.get(f"/payments/checkout/{intent['id']}", headers=_headers(brand))
+
+    db = client.session_factory()
+    try:
+        row = db.query(gmodels.PaymentIntent).filter(
+            gmodels.PaymentIntent.id == intent["id"]
+        ).one()
+        assert row.gateway_fee is None
+    finally:
+        db.close()
+
+
 # ------------------------------------------------------------------- payouts
 
 
@@ -576,6 +636,66 @@ def test_the_sweep_pays_a_creator_who_adds_their_wallet_later(client, gateway):
         assert result["retried"] == 1
         payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
         assert payout.status == gmodels.PAYOUT_SENT
+    finally:
+        db.close()
+
+
+def test_a_sent_payout_records_what_the_gateway_charged_us(client, gateway):
+    """The second cost, and the reason one leg alone cannot state the margin.
+
+    Kolabo's commission on 50000 is 7500, and both gateway fees come out of
+    THAT rather than out of the creator's 42500, because commission is computed
+    on the gross before either movement happens.
+    """
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, gateway, brand, creator, contract)
+    _set_method(client, creator)
+    gateway.payout_fee = 425
+
+    assert client.post(
+        f"/payments/escrow/{escrow_id}/release", headers=_headers(brand)
+    ).status_code == 200
+
+    db = client.session_factory()
+    try:
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.status == gmodels.PAYOUT_SENT
+        assert payout.gateway_fee == 425
+    finally:
+        db.close()
+
+
+def test_a_later_read_that_reports_no_fee_does_not_erase_the_one_we_have(client, gateway):
+    """A payout is read more than once, and silence is not a correction.
+
+    The send records the fee. The sweep then reads the same payout again, and
+    if that read carries no fee it means the gateway did not mention one — not
+    that the movement turned out to be free. Overwriting here would quietly
+    delete a real cost every time a re-read happened to be quieter than the
+    first one, which on a retried payout is most of them.
+    """
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, gateway, brand, creator, contract)
+    _set_method(client, creator)
+    # Still in flight after the send, so the sweep will re-read it.
+    gateway.payout_status = gwbase.PAYOUT_PENDING
+    gateway.payout_fee = 425
+    client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+
+    db = client.session_factory()
+    try:
+        from app.modules.payments import payouts as payouts_module
+
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.gateway_fee == 425
+
+        gateway.payout_fee = None
+        gateway.payout_status = gwbase.PAYOUT_SENT
+        payouts_module.run_pending_payouts(db)
+
+        db.refresh(payout)
+        assert payout.status == gmodels.PAYOUT_SENT
+        assert payout.gateway_fee == 425
     finally:
         db.close()
 

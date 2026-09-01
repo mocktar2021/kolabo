@@ -7,6 +7,10 @@ KOL-17: connect a social account. EVERY connection starts pending; the badge
 comes from admin review, never from what the client says the method was —
 see connect_social_account for why.
 
+A media id in a request body is a CLAIM, never a permission. Every one of
+them is checked against its owner before it is attached to anything — see
+_checked_own_media for the storefront theft that closes.
+
 Packages, portfolio images, and a public profile aggregate support the
 instant-hire model and the shareable creator page.
 """
@@ -111,6 +115,57 @@ def _media_url(media_id: str | None) -> str | None:
     return f"/profiles/media/{media_id}" if media_id else None
 
 
+def _checked_own_media(db: Session, owner_user_id: str, media_id: str) -> models.MediaAsset:
+    """An image that exists AND that the caller uploaded.
+
+    THE RULE THIS ADDS. A media id arriving in a request body is a claim, not
+    a permission. Both places in this module that accept one — a portfolio
+    item and an avatar — used to resolve the row and attach it, so the only
+    thing standing between an id and somebody else's storefront was knowing
+    the id. Nothing here was enumeration-hard either: _portfolio_out hands
+    media_id straight back, and GET /profiles/{user_id}/portfolio and
+    GET /profiles/influencer/{user_id}/public are both unauthenticated. The
+    theft needed no guessing at all — read the victim's own public page, copy
+    the ids, post them to your own profile. The portfolio IS the sales asset
+    on this marketplace, and the avatar is the face a brand thinks it is
+    hiring; republishing either as your own is not a data defect, it is the
+    product working for the wrong person.
+
+    WORSE, AND WHY THIS IS URGENT. A dispute counterparty is HANDED the other
+    side's private evidence media ids by payments.disputes.dispute_out —
+    legitimately, they are a party to the case and have to see the evidence.
+    Nothing then stopped them pinning those private screenshots to their own
+    PUBLIC storefront, where the whole internet reads them. The images were
+    never meant to leave the case file.
+
+    404 FOR BOTH BRANCHES, AND THE SAME CODE, which is the one place this
+    deliberately parts from disputes.checked_media and
+    deliverables._checked_media. Those answer 403 "not yours", and they are
+    right to: their caller is already a party to the case, so the refusal is
+    about the image rather than about their standing. Here the caller may be a
+    total stranger holding an id they lifted off a public page, and a 403
+    would confirm that the id resolves to a real asset owned by somebody else.
+    One answer covers both cases — "there is no image here that you may
+    use" — and it is exactly the answer this rule already gave for an id that
+    did not exist, so no client learns a new response shape.
+
+    A dedicated `profile_image_not_yours` would read better in the UI, and it
+    is the right follow-up. It is deliberately not in this change: a new code
+    needs a French and an English sentence in web/src/lib/errorMessages.ts and
+    in mobile/src/lib/errorMessages.ts or CI fails (backend/tests/
+    test_error_codes.py and its frontend mirror), and a security fix should
+    not sit behind two translation catalogs.
+    """
+    asset = db.query(models.MediaAsset).filter(models.MediaAsset.id == media_id).first()
+    if asset is None or asset.owner_user_id != owner_user_id:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="profile_image_not_found",
+            detail="Image not found",
+        )
+    return asset
+
+
 def _active_package_count(db: Session, user_id: str) -> int:
     return (
         db.query(models.Package)
@@ -183,6 +238,21 @@ def upsert_influencer_profile(db: Session, user_id: str, payload: schemas.Influe
     # resubmitting the form cannot bypass a value that is already saved.
     if data.get("birth_date") is not None:
         _require_adult(data["birth_date"])
+    # avatar_media_id is a media REFERENCE, and the only field in this payload
+    # that can name a row belonging to somebody else. It used to ride the blind
+    # setattr loop below like any other column, so nothing ever asked whose
+    # image it was: a creator could open a rival's public page, lift the id out
+    # of avatar_url, PUT it here, and wear that person's face — or take a
+    # private dispute screenshot and make it their public avatar. The router
+    # fix in #151 settled WHOSE profile is written; it could not see one layer
+    # down to WHAT that profile points at.
+    #
+    # `is not None` rather than `in data`, deliberately, and it matches the
+    # birth_date line above: sending an explicit null is how a creator REMOVES
+    # their photo, and clearing a field is nobody's image to steal. Only a real
+    # id is checked. See _checked_own_media for why the refusal is a 404.
+    if data.get("avatar_media_id") is not None:
+        _checked_own_media(db, user_id, data["avatar_media_id"])
     for field, value in data.items():
         setattr(profile, field, value)
     db.commit()
@@ -392,6 +462,9 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, acc
         downloaded = enrichment.fetch_image(data["avatar_image_url"])
         if downloaded:
             content, content_type = downloaded
+            # No ownership check on this path, and it needs none: the asset is
+            # created HERE, owned by this creator, from bytes the platform just
+            # downloaded. Nobody handed us an id to trust.
             asset = models.MediaAsset(owner_user_id=user_id, content_type=content_type, data=content)
             db.add(asset)
             db.flush()
@@ -596,6 +669,18 @@ def save_media(db: Session, user_id: str, content_type: str, data: bytes) -> dic
 
 
 def get_media(db: Session, media_id: str) -> models.MediaAsset:
+    """Serve the bytes behind a media id. DELIBERATELY NOT OWNER-CHECKED.
+
+    This is the route the public creator pages render their images through, so
+    a token here would blank every storefront. _checked_own_media guards the
+    other direction — what may be ATTACHED to a profile — and the two are not
+    the same question.
+
+    That leaves a known, accepted gap: anybody holding a media id can read the
+    bytes, including a dispute evidence id. Closing it needs a coordinated
+    client release, because both clients render thumbnails through plain
+    unauthenticated <img>/<Image> tags. Tracked separately.
+    """
     asset = db.query(models.MediaAsset).filter(models.MediaAsset.id == media_id).first()
     if asset is None:
         raise AppError(
@@ -772,13 +857,13 @@ def list_portfolio(db: Session, user_id: str) -> list[dict]:
 
 def add_portfolio_item(db: Session, user_id: str, media_id: str) -> dict:
     _require_user(db, user_id)
-    asset = db.query(models.MediaAsset).filter(models.MediaAsset.id == media_id).first()
-    if asset is None:
-        raise AppError(
-            status.HTTP_404_NOT_FOUND,
-            code="profile_image_not_found",
-            detail="Image not found",
-        )
+    # The check that used to stand here asked only "does this image exist",
+    # and that missing half is the whole defect: any id that resolved could be
+    # pinned to the caller's own storefront, whoever had uploaded it. The ids
+    # were not even secret — _portfolio_out returns media_id and the portfolio
+    # list is public — so the theft needed no enumeration, just a look at the
+    # victim's page. See _checked_own_media.
+    _checked_own_media(db, user_id, media_id)
     count = db.query(models.PortfolioItem).filter(models.PortfolioItem.user_id == user_id).count()
     item = models.PortfolioItem(user_id=user_id, media_id=media_id, position=count)
     db.add(item)

@@ -368,8 +368,31 @@ def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
             detail="Verification code has expired, request a new one",
         )
     if challenge.code != payload.code:
+        # A WRONG GUESS NOW COSTS SOMETHING. It used to cost nothing at all:
+        # the challenge stayed live, nothing was counted, and with no rate
+        # limiting anywhere in the application a script could spend a code's
+        # entire ten minute life guessing it, in parallel. Six digits is a
+        # million values; ten minutes of unmetered parallel guessing is not.
+        #
+        # Charged against every live code for this account rather than only
+        # the one tried, and all of them are spent together when the allowance
+        # runs out — see otp.spend_attempt for why per-row counting would be a
+        # loophole. Committed before the refusal, so the count survives it.
+        live = _live_otp_challenges(db, user, utcnow())
+        if otp.spend_attempt(live, challenge):
+            for spent in live:
+                spent.consumed = True
+            challenge.consumed = True
+        db.commit()
         raise AppError(
             status.HTTP_401_UNAUTHORIZED,
+            # Unchanged, and deliberately the same sentence whether this was
+            # guess one or guess five. "Too many attempts" would tell an
+            # attacker exactly when to stop guessing and request a fresh code,
+            # which is the one thing the allowance exists to prevent. A
+            # locked-out user's next request finds no live challenge and gets
+            # auth_code_expired — "request a new one" — which is the
+            # instruction they actually need.
             code="auth_code_invalid",
             detail="Invalid verification code",
         )

@@ -94,6 +94,21 @@ class PaymentIntent(Base):
     business_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String, nullable=False)
+    # What the gateway charged US to collect this money, in the same units as
+    # `amount`. Nullable because None means the gateway did not report a fee,
+    # and that has to stay distinguishable from a reported zero: one is
+    # ignorance, the other is a free movement, and a report that treats them
+    # alike is a report that lies in our favour.
+    #
+    # On a collection the fee is taken out of `amount` before what is left
+    # reaches the merchant balance, so the platform's true margin on a contract
+    # is escrow.commission_amount - payment_intent.gateway_fee
+    # - payout.gateway_fee. Commission is computed on the GROSS, which is what
+    # makes that subtraction correct: the gateway's cut comes out of the
+    # platform's, never out of the creator's. Read the payout term as
+    # provisional — the direction of a payout fee is unconfirmed until someone
+    # watches a real sandbox payout settle.
+    gateway_fee: Mapped[int | None] = mapped_column(Integer, nullable=True)
     country: Mapped[str] = mapped_column(String, nullable=False)
     provider: Mapped[str] = mapped_column(String, nullable=False)
     # The gateway's id for this transaction. Nullable for the instant between
@@ -144,6 +159,20 @@ class Payout(Base):
     kind: Mapped[str] = mapped_column(String, default=PAYOUT_KIND_RELEASE, nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String, nullable=False)
+    # What the gateway charged US to push this money out, in the same units as
+    # `amount`, and nullable for the reason it is nullable on PaymentIntent:
+    # None means the gateway reported no fee, which is not the same claim as a
+    # fee of zero and must not be flattened into one.
+    #
+    # This is the second subtrahend in
+    # escrow.commission_amount - payment_intent.gateway_fee - payout.gateway_fee,
+    # the platform's true margin on a contract. The fee lands on the platform's
+    # cut rather than the creator's because commission was already taken on the
+    # gross, before either leg moved. UNCONFIRMED, and it matters here: whether
+    # FedaPay deducts a payout fee from `amount` or charges it on top has not
+    # been observed against a real sandbox payout, so nobody should read that
+    # subtraction as settled for this leg until it has been.
+    gateway_fee: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider: Mapped[str] = mapped_column(String, nullable=False)
     provider_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String, default=PAYOUT_PENDING, nullable=False, index=True)

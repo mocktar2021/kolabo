@@ -87,11 +87,27 @@ app.include_router(payments_router, prefix="/payments", tags=["payments"])
 # change together; FastAPI does not mind sharing a prefix, and one 350-line
 # router would have hidden the seam.
 app.include_router(payments_gateway_router, prefix="/payments", tags=["payments"])
-# THE ONLY UNAUTHENTICATED WRITE PATH IN THE API, and mounted at the top level
-# rather than under /payments to make that obvious in the route table. There is
-# no bearer token on these requests because the caller is a machine at the
-# gateway; what stands in for one is an HMAC signature, a replay window and an
-# idempotency key, all of which live in payments/webhooks.py.
+# ONE OF THE TWO UNAUTHENTICATED WRITE PATHS IN THE API, and mounted at the top
+# level rather than under /payments to make that obvious in the route table.
+#
+# THIS COMMENT USED TO SAY "THE ONLY", and that was wrong twice over. It was
+# already wrong about reads — the whole public creator storefront and three
+# list endpoints in profiles/router.py answer with no token at all — and it is
+# now wrong about writes: GET /profiles/oauth/{platform}/callback creates a
+# social account and stores credentials without one. Both of those requests
+# arrive from somewhere that cannot hold a bearer token, and each stands on
+# something else instead:
+#
+#   * the gateway webhooks below: an HMAC signature over the raw body, a replay
+#     window and an idempotency key, all in payments/webhooks.py. The caller is
+#     a machine at FedaPay, and the signature is what says so.
+#   * the OAuth callback: a state row that is unguessable, single-use and ten
+#     minutes old at most, carrying the user id that a real token wrote when
+#     the creator STARTED the authorization. See
+#     profiles/oauth_service.complete_authorization.
+#
+# Anything that joins this list needs its own answer to "what stands in for the
+# token", written down where somebody auditing the route table will find it.
 app.include_router(payment_webhooks_router, prefix="/webhooks", tags=["webhooks"])
 app.include_router(trust_safety_router, prefix="/trust-safety", tags=["trust_safety"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])

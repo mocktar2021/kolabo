@@ -11,6 +11,10 @@ A media id in a request body is a CLAIM, never a permission. Every one of
 them is checked against its owner before it is attached to anything — see
 _checked_own_media for the storefront theft that closes.
 
+A follower number is a CLAIM too, until a platform says otherwise. Every
+account records where its count came from — see _apply_enrichment for why the
+platform is allowed to correct the creator on this one field and on no other.
+
 Packages, portfolio images, and a public profile aggregate support the
 instant-hire model and the shareable creator page.
 """
@@ -59,6 +63,29 @@ PUBLIC_REVIEWS_LIMIT = 20
 
 social_enricher = enrichment.default_enricher
 bio_generator = bio_ai.default_generator
+
+
+def _social_out(account: models.SocialAccount) -> dict:
+    """One connected account as every caller here returns it.
+
+    Written when the provenance columns arrived: connect, list, update and the
+    public profile each had their own hand-built dict of the same six fields,
+    so two new ones meant editing four literals and hoping none was missed —
+    and a missed one is not a crash, it is a client that silently never learns
+    where a number came from. One shape, four call sites.
+    """
+    return {
+        "id": account.id,
+        "platform": account.platform,
+        "handle": account.handle,
+        "method": account.method,
+        "status": account.status,
+        "follower_count": account.follower_count,
+        # Public on purpose, on the public page too: "self-reported" is what a
+        # brand most needs to know before it treats the number as a fact.
+        "follower_source": account.follower_source,
+        "follower_verified_at": account.follower_verified_at,
+    }
 
 
 def _any_bio(profile: models.InfluencerProfile) -> str | None:
@@ -407,6 +434,18 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
         status=new_status,
         proof_url=payload.proof_url,
         follower_count=follower_count,
+        # THE NUMBER CAME FROM A FORM, so say so. Nothing has checked it: the
+        # creator typed it, and until _apply_enrichment below hears otherwise
+        # from the platform that is the whole provenance of it.
+        #
+        # No count means NO source, not a source of nothing. Null across both
+        # columns reads as "no number is recorded", which is the truth for an
+        # account on a platform with no public metric as much as for one the
+        # creator simply left blank; writing SELF_REPORTED next to a null
+        # count would claim a report nobody made.
+        follower_source=models.SELF_REPORTED if follower_count is not None else None,
+        # Only a platform earns a date. See _apply_enrichment.
+        follower_verified_at=None,
     )
     db.add(account)
     db.commit()
@@ -414,20 +453,24 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
 
     enriched = _apply_enrichment(db, user_id, payload.platform, payload.handle, account)
     db.refresh(account)
-    return {
-        "id": account.id,
-        "platform": account.platform,
-        "handle": account.handle,
-        "method": account.method,
-        "status": account.status,
-        "follower_count": account.follower_count,
-        "enriched": enriched,
-    }
+    return {**_social_out(account), "enriched": enriched}
 
 
 def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, account=None) -> bool:
-    """Fill empty profile fields from the platform, never overwriting the
-    creator's own edits. Returns whether anything was filled."""
+    """Fill profile fields from the platform. Returns whether anything changed.
+
+    THE CREATOR'S WORDS ARE NEVER OVERWRITTEN. A bio, a display name and an
+    avatar are things a person chose to say about themselves, and a platform's
+    version of them is only ever a fallback for a field left empty. Every one
+    of those guards below is deliberate and stays.
+
+    A NUMBER IS NOT A WORD. A follower count is a fact about the platform's own
+    account, and the platform is the one party that can state it
+    authoritatively — so on the connected account the platform's figure wins,
+    and the provenance columns record that it did. See the follower_count
+    branch for the guard that was removed and the one that deliberately was
+    not.
+    """
     data = social_enricher.fetch(platform, handle)
     if not data:
         return False
@@ -450,11 +493,37 @@ def _apply_enrichment(db: Session, user_id: str, platform: str, handle: str, acc
             profile.bio_fr = data["bio"]
         filled = True
     if data.get("follower_count") is not None:
-        # The count belongs to the platform account; the profile keeps a total
-        # only as a fallback for creators who never connected an account.
-        if account is not None and account.follower_count is None:
+        # THE PLATFORM WINS ON THE ACCOUNT'S OWN NUMBER. This branch used to
+        # read `if account is not None and account.follower_count is None:`,
+        # and that single `is None` was the defect: a count the creator had
+        # typed could never be corrected. The platform's real figure was
+        # fetched over the network, compared against the claim, and thrown
+        # away — so the one path in this codebase that knows the truth was the
+        # only one forbidden from fixing an inflated number, and inflating
+        # your count was strictly safer than leaving it blank. A figure the
+        # platform states about its own account beats a figure the creator
+        # typed about it, every time, so it overwrites.
+        #
+        # Nothing is lost by overwriting: the columns below record which of
+        # the two the buyer is now looking at, which is more than the old
+        # behaviour preserved. A creator who disagrees can edit the number
+        # back, and update_social_account will honestly mark it self-reported
+        # again.
+        if account is not None:
             account.follower_count = data["follower_count"]
+            account.follower_source = models.PLATFORM_API
+            account.follower_verified_at = models.utcnow()
             filled = True
+        # profile.follower_count KEEPS ITS NO-OVERWRITE GUARD, and that is not
+        # an oversight in an otherwise-changed function. It is a CROSS-PLATFORM
+        # TOTAL — the audience the creator has everywhere, which is what the
+        # public page prints — and one connected account cannot state it. A
+        # creator with 200k on TikTok and 4k on YouTube would have their total
+        # rewritten to 4k by whichever account happened to enrich last, which
+        # is not a correction, it is a deletion. It stays a fallback: filled
+        # only when empty, for creators who never connected an account at all,
+        # and carrying no provenance columns because no source can be named
+        # for a number nobody computed.
         if profile.follower_count is None:
             profile.follower_count = data["follower_count"]
             filled = True
@@ -548,13 +617,7 @@ def list_social_accounts(db: Session, user_id: str) -> list[dict]:
         .order_by(models.SocialAccount.created_at.asc())
         .all()
     )
-    return [
-        {
-            "id": a.id, "platform": a.platform, "handle": a.handle, "method": a.method,
-            "status": a.status, "follower_count": a.follower_count,
-        }
-        for a in accounts
-    ]
+    return [_social_out(a) for a in accounts]
 
 
 def _require_own_social_account(db: Session, user_id: str, account_id: str) -> models.SocialAccount:
@@ -589,17 +652,34 @@ def update_social_account(db: Session, user_id: str, account_id: str, payload: s
     if "follower_count" in data:
         # Same rule as connect: platforms without a public audience metric
         # cannot back the number, so it is discarded rather than displayed.
-        account.follower_count = (
-            data["follower_count"] if account.platform in PLATFORMS_WITH_AUDIENCE else None
-        )
+        new_count = data["follower_count"] if account.platform in PLATFORMS_WITH_AUDIENCE else None
+        if new_count != account.follower_count:
+            # THE SAME RULE AS THE HANDLE ABOVE, APPLIED TO THE NUMBER. A
+            # verified badge does not survive being pointed at a different
+            # account, and a platform's confirmation does not survive being
+            # pointed at a different number: whatever the platform said, it
+            # said about the figure the creator has just replaced. So the edit
+            # goes back to self-reported and loses the date — otherwise a
+            # creator could connect, collect a real platform_api stamp, then
+            # quietly type a bigger number and keep the verification badge
+            # sitting next to it, which is a worse lie than the one this whole
+            # change exists to stop.
+            #
+            # Only on an actual CHANGE. Re-submitting the identical number
+            # (any form that PUTs every field it renders does this) has not
+            # replaced anything, so a platform's confirmation still describes
+            # exactly the figure on show and survives untouched.
+            #
+            # Clearing the count clears the source with it: null count, null
+            # provenance — "no number recorded", never "a report of nothing".
+            account.follower_source = models.SELF_REPORTED if new_count is not None else None
+            account.follower_verified_at = None
+        account.follower_count = new_count
     if "proof_url" in data:
         account.proof_url = data["proof_url"]
     db.commit()
     db.refresh(account)
-    return {
-        "id": account.id, "platform": account.platform, "handle": account.handle,
-        "method": account.method, "status": account.status, "follower_count": account.follower_count,
-    }
+    return _social_out(account)
 
 
 def delete_social_account(db: Session, user_id: str, account_id: str) -> None:
@@ -957,6 +1037,9 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         "bio_en": profile.bio_en,
         "categories": profile.categories,
         "languages": profile.languages or [],
+        # The cross-platform total, and the one follower number on this page
+        # with no source attached — see _apply_enrichment for why nothing can
+        # honestly claim one. The per-account numbers below carry theirs.
         "follower_count": profile.follower_count,
         "is_searchable": _influencer_completion(profile, _active_package_count(db, user_id))[1],
         # Only the answers the creator wrote: an empty answer is an unanswered
@@ -975,11 +1058,8 @@ def get_public_profile(db: Session, user_id: str, language: str | None = None) -
         ],
         "packages": list_packages(db, user_id, active_only=True),
         "portfolio": list_portfolio(db, user_id),
-        "social_accounts": [
-            {
-                "id": s.id, "platform": s.platform, "handle": s.handle, "method": s.method,
-                "status": s.status, "follower_count": s.follower_count,
-            }
-            for s in social
-        ],
+        # Provenance rides onto the public page with the number it describes:
+        # this is the page a brand reads before it spends, so it is the one
+        # place where "self-reported" most needs to be sayable.
+        "social_accounts": [_social_out(s) for s in social],
     }

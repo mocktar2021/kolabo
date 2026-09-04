@@ -62,6 +62,9 @@ class InfluencerProfileOut(BaseModel):
     categories: list[str]
     rate_card: dict
     faq: dict = {}
+    # The cross-platform total, and deliberately the one follower number with
+    # no source of its own: no single connected account can state it. The
+    # per-platform numbers carry their provenance on SocialAccountOut.
     follower_count: int | None = None
     # Owner-facing only: birth_date and gender prefill the edit form here but
     # are deliberately absent from PublicProfileOut.
@@ -110,6 +113,21 @@ class SocialAccountOut(BaseModel):
     method: str
     status: str
     follower_count: int | None = None
+    # WHERE follower_count CAME FROM: "self_reported" (the creator typed it)
+    # or "platform_api" (the platform stated it) — see
+    # app.modules.profiles.models.FOLLOWER_SOURCES. Null means no number is
+    # recorded, or that the row predates these columns and its origin is
+    # genuinely unknown; a client should say nothing about a null rather than
+    # assume the creator typed it.
+    #
+    # NOT A SECOND `status`. That field is about the handle — whether the
+    # creator controls the account — and a verified handle can perfectly well
+    # carry a self-reported number. A client that wants one badge must decide
+    # which question it is answering.
+    follower_source: str | None = None
+    # Stamped only for platform_api, so a client can render "verified on
+    # <date>" rather than an undated claim that quietly ages.
+    follower_verified_at: datetime | None = None
     enriched: bool = False
 
 
@@ -218,4 +236,7 @@ class PublicProfileOut(BaseModel):
     reviews: list[ReviewOut] = []
     packages: list[PackageOut]
     portfolio: list[PortfolioItemOut]
+    # Carries follower_source and follower_verified_at with each account, so
+    # the page a brand reads before it spends can say which numbers on it have
+    # been checked and which are the creator's own word.
     social_accounts: list[SocialAccountOut]

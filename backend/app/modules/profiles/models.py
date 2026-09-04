@@ -29,6 +29,29 @@ APPROVED = "approved"
 REJECTED = "rejected"
 VERIFIED = "verified"
 
+# Where a follower number came from, which until now nothing recorded at all.
+#
+#   None            no number is recorded — nobody has claimed anything, and
+#                   that includes every row written before these columns
+#                   existed, because we genuinely do not know where those
+#                   numbers came from and a guess would read as a fact.
+#   SELF_REPORTED   the creator typed it. Nothing has checked it.
+#   PLATFORM_API    the platform itself stated it, in an API response about
+#                   its own account. This is the only source that earns a
+#                   follower_verified_at timestamp.
+#
+# THIS IS NOT `status`, AND THE SEPARATION IS THE POINT. `status` above
+# answers "does this creator control this handle" — the question an admin
+# actually decides in admin.service.decide_social by looking at a proof link.
+# These constants answer "who supplied this number", which nobody decides by
+# looking at a link. A VERIFIED handle whose count is still SELF_REPORTED is a
+# real and common state — it is, in fact, the normal state of every reviewed
+# account on the platform today — and collapsing the two would hang a
+# verified-looking provenance on a figure nobody has ever counted.
+SELF_REPORTED = "self_reported"
+PLATFORM_API = "platform_api"
+FOLLOWER_SOURCES = {SELF_REPORTED, PLATFORM_API}
+
 
 class InfluencerProfile(Base):
     __tablename__ = "influencer_profiles"
@@ -68,6 +91,12 @@ class InfluencerProfile(Base):
     languages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     # Self reported for now; to be replaced by verified analytics from
     # connected social accounts in a later epic.
+    #
+    # A CROSS-PLATFORM TOTAL, which is why it carries no provenance columns of
+    # its own and why enrichment never overwrites it: no single connected
+    # account can state a creator's whole audience, so there is no source to
+    # name. The per-platform numbers, which CAN be sourced, live on
+    # SocialAccount below.
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -96,6 +125,14 @@ class SocialAccount(Base):
     # Audience on this specific platform. Self reported until the platform
     # API confirms it; None where the platform exposes no public metric.
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Where that number came from: one of FOLLOWER_SOURCES, or None when no
+    # number is recorded. See the constants above for why this is a separate
+    # question from `status` below.
+    follower_source: Mapped[str | None] = mapped_column(String, nullable=True)
+    # When a platform API stated the number. Set only alongside PLATFORM_API,
+    # so a client can render "verified on <date>" instead of an undated claim,
+    # and so a stale verification can be told from a fresh one.
+    follower_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[str] = mapped_column(String, default=PENDING, nullable=False)
     proof_url: Mapped[str | None] = mapped_column(String, nullable=True)
     reviewer_id: Mapped[str | None] = mapped_column(String, nullable=True)

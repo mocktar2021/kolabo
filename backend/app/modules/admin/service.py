@@ -131,6 +131,21 @@ def decide_social(db: Session, admin_id: str, social_id: str, decision: str, rea
     account.status = profiles.VERIFIED if decision == "approved" else profiles.REJECTED
     account.reviewer_id = admin_id
     account.reviewed_at = utcnow()
+    # THIS DECISION DELIBERATELY WRITES NO follower_source. What an admin
+    # checks here is the HANDLE — that the proof link shows the creator can
+    # post from the account they claim. Nobody has counted their followers,
+    # and nothing on this screen could: the queue row does not even carry the
+    # number. Stamping a provenance from an approval would put a
+    # verified-looking source on a figure no one has ever checked, which is
+    # exactly the confusion profiles.models.FOLLOWER_SOURCES exists to end —
+    # and it would do it at the moment a creator's account looks MOST
+    # trustworthy, which is the worst possible moment to overstate.
+    #
+    # A count earns profiles.PLATFORM_API in
+    # profiles.service._apply_enrichment, where a platform API actually
+    # answered about its own account, and nowhere else. A verified handle
+    # sitting beside a self-reported number is not an inconsistency to tidy
+    # up; it is the honest description of what has and has not been checked.
     _log(db, admin_id, f"social_{decision}", "social_account", account.id, reason)
     # The platform and the handle are both named because a creator can have
     # several accounts in this queue at once, and "your account was verified"

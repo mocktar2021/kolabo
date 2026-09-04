@@ -29,6 +29,10 @@ WHAT IS DELIBERATELY LEFT PUBLIC, and it is not an oversight:
   * The three list reads (`packages`, `portfolio`, `social-accounts`) — every
     one of them returns what the public profile already renders, so a token
     would buy nothing and would break the pages that read them.
+  * `GET /oauth/{platform}/callback` — a redirect arriving from a social
+    platform, which CANNOT carry a token. It is the only unauthenticated WRITE
+    in this router, and it is authenticated by something else entirely; see the
+    block at the bottom of this file.
 
 `onboarding-status` is NOT in that list. "What is still missing before you can
 go live" is a private answer about somebody's account, not part of the
@@ -39,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.modules.auth.deps import get_current_user_id
-from app.modules.profiles import schemas, service
+from app.modules.profiles import oauth_service, schemas, service
 
 router = APIRouter()
 
@@ -304,3 +308,78 @@ def delete_social_account(
 ):
     """Disconnect a social account from the profile."""
     service.delete_social_account(db, owner_id, account_id)
+
+
+# --------------------------------------------------------------------------
+# OAuth: connecting an account the platform itself vouches for.
+#
+# TWO ROUTES WITH DELIBERATELY DIFFERENT AUTHENTICATION, which is the whole
+# reason this block carries a comment rather than sitting quietly above.
+#
+#   `start` is the ordinary rule of this router: the account being connected is
+#   the bearer of the token, taken from `profile_owner`, and no path id is
+#   consulted. That is where the handshake's identity is DECIDED, and it is the
+#   only step at which a token exists.
+#
+#   `callback` cannot be authenticated and never will be. It is a redirect the
+#   platform sends the creator's BROWSER to, so there is no Authorization
+#   header to read: everything about the request is attacker-controllable
+#   except the state row it names. What stands in for a token is that row —
+#   unguessable, single-use, ten minutes long — and the identity it carries is
+#   the one `start` wrote there under a real token. See
+#   oauth_service.complete_authorization and models.OAuthState.
+#
+# THAT MAKES main.py's CLAIM ABOUT WEBHOOKS WRONG, and it was already wrong
+# before this change: the comment above the webhook router calls it "THE ONLY
+# UNAUTHENTICATED WRITE PATH IN THE API" while several unauthenticated reads
+# and the whole public storefront sit in this file. This route makes it a
+# second unauthenticated WRITE, so the comment is corrected in the same PR
+# rather than left to age — a comment that names an invariant is only worth
+# anything while it is true.
+#
+# ROUTE ORDER: both begin with the literal segment `oauth`, so none of the
+# `/{user_id}/...` routes above can shadow them (a two-segment pattern cannot
+# match a three-segment path, and `/{user_id}/bio/generate` needs `bio` in the
+# middle). They sit at the bottom because they are new, not because the order
+# matters.
+# --------------------------------------------------------------------------
+
+
+@router.post("/oauth/{platform}/start", response_model=schemas.OAuthStartOut)
+def start_social_oauth(
+    platform: str,
+    payload: schemas.OAuthStartIn | None = None,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """Begin connecting a social account: mint a state row, return where to go.
+
+    Answers `oauth_platform_unsupported` for every platform today, because no
+    provider has credentials or an approved developer app — see
+    oauth.build_default_providers. That is the honest answer: a redirect to a
+    URL that will bounce would be worse.
+
+    The body is optional; it carries only `redirect_to`.
+    """
+    return oauth_service.start_authorization(
+        db, owner_id, platform, payload.redirect_to if payload else None
+    )
+
+
+@router.get("/oauth/{platform}/callback", response_model=schemas.OAuthCallbackOut)
+def finish_social_oauth(
+    platform: str,
+    code: str,
+    state: str,
+    db: Session = Depends(get_db),
+):
+    """Finish the handshake the platform is redirecting a creator back from.
+
+    UNAUTHENTICATED BY NECESSITY, and identified entirely by `state`. No token
+    is read, no caller identity is consulted, and passing one would change
+    nothing: whose profile the account lands on was decided by `start` and is
+    written on the state row. A creator holding somebody else's callback URL
+    connects an account to THEM, not to themselves — which is why the state has
+    to be unguessable and is spent on first use.
+    """
+    return oauth_service.complete_authorization(db, platform, code, state)

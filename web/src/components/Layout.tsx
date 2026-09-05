@@ -479,21 +479,35 @@ export function Layout({ children }: { children: ReactNode }) {
    uses: it is provenance rather than promotion, and it earns none of the
    footer's emphasis.
 
-   WHAT IS NOT HERE, AND WHY. The strip this follows carries Privacy and Terms
-   beside Support. Kolabo has neither. App.tsx declares no /privacy and no
-   /terms, there is no catch-all route to catch the miss, and a link to either
-   would drop a visitor on a blank document — worse than the placeholder that
-   PR #131 removed from this same footer, because a placeholder at least says
-   something. Writing the pages here was the other option and it is the worse
-   one: a privacy policy is a legal undertaking about what this platform does
-   with a creator's phone number, their audience figures and their money, and
-   it belongs to a lawyer rather than to a footer commit. They join this row
-   the day they exist — and they are already on the critical path, since
-   TikTok's developer review wants both reachable without opening a menu.
+   PRIVACY LEADS THE ROW, which is what this comment used to say was missing.
+   It was absent because the page was: App.tsx declared no route for it, there
+   was no catch-all to catch the miss, and a link would have dropped a visitor
+   on a blank document — worse than the placeholder PR #131 removed from this
+   same footer, because a placeholder at least says something. The page now
+   exists at /legal/privacy, unguarded, so a signed-out visitor and an
+   app-store reviewer typing the URL cold both reach it.
 
-   Support therefore points where support actually happens today: the address
-   the Support column above already publishes. Not a help centre that has not
-   been built.
+   TERMS ARE STILL NOT IN THIS ROW, and that is a decision rather than an
+   oversight. /legal/terms does not exist yet: the copy is drafted, and it is
+   blocked on which entity contracts with users and under whose law — a Terms
+   page naming the wrong forum is a representation made to everyone who
+   accepted it, while a missing one is merely incomplete. Nothing in the
+   privacy policy turns on that answer, so the policy is not made to wait for
+   it. This row is nonetheless UNFINISHED until the Terms link joins it, since
+   TikTok's developer review wants both reachable without opening a menu. See
+   pages/LegalPage.tsx.
+
+   THE COPY IS STILL A DRAFT AWAITING A LAWYER. It was written from what the
+   code actually does rather than from a template. Linking it here does not
+   make it approved; see lib/legalStrings.ts.
+
+   Privacy is a <Link> while Support is a mailto and Mocktar Technologies is
+   an external anchor, which is the same distinction the rest of this footer
+   makes: inside the app, react-router; outside it, an <a>.
+
+   Support points where support actually happens today: the address the
+   Support column above already publishes. Not a help centre that has not been
+   built.
 
    THE LAYOUT IS ONE WRAPPING FLEX LINE with no media query, which is what
    keeps it safe below 400 px. The brand and the links are two groups sharing
@@ -541,6 +555,7 @@ function ParentCompanyStrip() {
         </span>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 22 }}>
+        <Link to="/legal/privacy" style={PARENT_LINK}>{t("footer.privacy")}</Link>
         <a href="mailto:hello@kolaboafrica.com" style={PARENT_LINK}>{t("footer.support")}</a>
         {/* The one link in this footer that leaves the product, hence the
             noopener/noreferrer pair on the new tab. The company name is a

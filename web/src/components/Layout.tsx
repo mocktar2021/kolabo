@@ -487,22 +487,23 @@ export function Layout({ children }: { children: ReactNode }) {
    exists at /legal/privacy, unguarded, so a signed-out visitor and an
    app-store reviewer typing the URL cold both reach it.
 
-   TERMS ARE STILL NOT IN THIS ROW, and that is a decision rather than an
-   oversight. /legal/terms does not exist yet: the copy is drafted, and it is
-   blocked on which entity contracts with users and under whose law — a Terms
-   page naming the wrong forum is a representation made to everyone who
-   accepted it, while a missing one is merely incomplete. Nothing in the
-   privacy policy turns on that answer, so the policy is not made to wait for
-   it. This row is nonetheless UNFINISHED until the Terms link joins it, since
-   TikTok's developer review wants both reachable without opening a menu. See
-   pages/LegalPage.tsx.
+   TERMS JOIN IT HERE, which is what the previous version of this comment
+   said was still missing. The row is now what TikTok's developer review asks
+   for: a privacy policy and a set of terms, both reachable without opening a
+   menu.
 
-   THE COPY IS STILL A DRAFT AWAITING A LAWYER. It was written from what the
-   code actually does rather than from a template. Linking it here does not
-   make it approved; see lib/legalStrings.ts.
+   THE TERMS ARE NOT APPROVED TO GO LIVE, and linking them here does not make
+   them so. /legal/terms carries no governing-law clause, because which entity
+   contracts with users and under whose law is an open founder decision — see
+   the note on TERMS_DOCUMENT in pages/LegalPage.tsx. This link and that route
+   ship together or not at all; do not merge one without the other.
 
-   Privacy is a <Link> while Support is a mailto and Mocktar Technologies is
-   an external anchor, which is the same distinction the rest of this footer
+   THE COPY IS STILL A DRAFT AWAITING A LAWYER. Both documents were written
+   from what the code actually does rather than from a template, and re-read
+   against the code again before they were linked; see lib/legalStrings.ts.
+
+   Both are <Link>s while Support is a mailto and Mocktar Technologies is an
+   external anchor, which is the same distinction the rest of this footer
    makes: inside the app, react-router; outside it, an <a>.
 
    Support points where support actually happens today: the address the
@@ -556,6 +557,7 @@ function ParentCompanyStrip() {
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 22 }}>
         <Link to="/legal/privacy" style={PARENT_LINK}>{t("footer.privacy")}</Link>
+        <Link to="/legal/terms" style={PARENT_LINK}>{t("footer.terms")}</Link>
         <a href="mailto:hello@kolaboafrica.com" style={PARENT_LINK}>{t("footer.support")}</a>
         {/* The one link in this footer that leaves the product, hence the
             noopener/noreferrer pair on the new tab. The company name is a

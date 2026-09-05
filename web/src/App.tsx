@@ -31,6 +31,7 @@ import AdminDisputesPage from "./pages/AdminDisputes";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
+import LegalPage, { PRIVACY_DOCUMENT } from "./pages/LegalPage";
 
 /* Campaigns are a brand-side artifact. The API answers 403 ("Only businesses
    and agencies can create campaigns.") to a creator, so hiding the create
@@ -203,6 +204,20 @@ export default function App() {
           <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
           <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />
           <Route path="/pricing" element={<MarketingPage titleKey="marketingPage.pricingTitle" bodyKey="marketingPage.pricingBody" />} />
+          {/* THE PRIVACY POLICY, AND IT IS UNWRAPPED ON PURPOSE — unlike
+              /admin/disputes above, whose lack of a guard is a gap waiting on
+              an input. Nothing about a privacy policy is role-specific or
+              account-specific: the people who most need to read it are
+              deciding whether to make an account at all, and an app-store
+              reviewer types the URL cold with no session. Wrapping it would
+              make the page unreachable to exactly the audience it exists for.
+
+              Under /legal/ rather than at /privacy because this will not be
+              the last document to live here: the terms of service, entity
+              details, cookies and an acceptable-use page all belong in the
+              same place, and a prefix claimed now costs nothing while a
+              redirect later does. */}
+          <Route path="/legal/privacy" element={<LegalPage doc={PRIVACY_DOCUMENT} />} />
         </Routes>
       </BrowserRouter>
     </CartProvider>

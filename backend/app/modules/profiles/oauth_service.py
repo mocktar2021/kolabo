@@ -16,18 +16,29 @@ THE THREE RULES THAT ARE EASY TO GET WRONG, and where each is enforced:
      than a read-then-write racing itself), and ten minutes long.
      See complete_authorization, and models.OAuthState.
 
-  2. A REFRESH MAY HAND BACK A DIFFERENT REFRESH TOKEN. TikTok rotates on every
-     refresh: the response carries a new refresh_token and retires the one just
-     used. Storing the old one back is a failure with NO symptom today — no
-     exception, no log line, no failed request — and a creator whose connection
-     silently dies at the next renewal. See save_tokens.
+  2. A REFRESH MAY HAND BACK A DIFFERENT REFRESH TOKEN — OR THERE MAY BE NO
+     REFRESH TOKEN AT ALL. TikTok rotates on every refresh: the response
+     carries a new refresh_token and retires the one just used. Storing the old
+     one back is a failure with NO symptom today — no exception, no log line,
+     no failed request — and a creator whose connection silently dies at the
+     next renewal. Meta is the other end of the same axis: it issues no refresh
+     token ever, so its TokenSet carries None and load_access_token refuses on
+     a null column rather than renewing. Both are handled in save_tokens, and
+     the rule that covers both is "absent means unchanged, present means
+     replace".
 
-  3. NOTHING HERE VERIFIES ANYTHING YET. There is no provider implemented (see
-     oauth.build_default_providers), so every account this creates is PENDING,
-     exactly like a manual one. The `status = VERIFIED` conditional that
-     service.connect_social_account removed belongs beside a callback talking
-     to a REAL, reviewed platform app — which is the follow-up that adds one,
-     not this change. A badge is only worth what the thing behind it checked.
+  3. NOTHING HERE VERIFIES A HANDLE, EVEN NOW THAT A REAL PROVIDER EXISTS.
+     There is a Meta provider (see oauth.MetaOAuthProvider), so a Facebook
+     connection is a genuine authorization by the creator against a real app —
+     and every account this creates is still PENDING, exactly like a manual
+     one. The `status = VERIFIED` conditional that service.connect_social_account
+     removed is NOT restored here. A reviewed provider is a much better
+     argument for a badge than a string in a request body ever was, and the
+     case for turning it on is made in the pull request that added the
+     provider; but a badge is a product promise about who somebody is, and
+     switching it on is a decision to take deliberately rather than to inherit
+     from a plumbing change. What the provider DOES earn honestly is the
+     follower number: see _apply_audience.
 """
 import logging
 from datetime import timedelta
@@ -38,6 +49,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.crypto import decrypt_bytes, encrypt_bytes
 from app.core.errors import AppError
+from app.core.platforms import PLATFORMS_WITH_AUDIENCE
 from app.modules.profiles import models, oauth, service
 
 _log = logging.getLogger("kolabo.profiles.oauth")
@@ -86,6 +98,12 @@ def redirect_uri(platform: str) -> str:
     authorization request must equal the one sent to the token endpoint, and
     both must equal what is registered in the platform's console. One function,
     called from both places, is what makes that a fact rather than a habit.
+
+    IT IS ONLY AS RIGHT AS settings.api_public_base_url, whose default is the
+    local dev API. A deployed server that never sets API_PUBLIC_BASE_URL builds
+    every redirect_uri against localhost:8000, which no platform will accept
+    and which Meta refuses as `redirect_uri_mismatch` — an error that names
+    neither this function nor that setting.
     """
     return f"{settings.api_public_base_url.rstrip('/')}/profiles/oauth/{platform}/callback"
 
@@ -100,6 +118,14 @@ def start_authorization(
     path. That is what puts a trustworthy `user_id` on the row the callback
     will later read — the whole handshake's identity is decided here, where
     there IS a token, and merely looked up there, where there is not.
+
+    A VERIFIER IS MINTED FOR EVERY PLATFORM, INCLUDING THOSE THAT IGNORE IT.
+    PKCE is offered to the provider rather than imposed on it: authorize_url is
+    handed the verifier and decides what to send, and the Meta provider sends
+    nothing because Meta's manual login flow does not document PKCE. The
+    unused row costs one short string that is discarded within ten minutes,
+    which is a far better trade than making the shape of the state row depend
+    on which platform it was minted for.
     """
     service._require_user(db, user_id)
     provider = _provider(platform)
@@ -209,6 +235,12 @@ def complete_authorization(db: Session, platform: str, code: str, state: str) ->
 
     account = _account_for(db, user_id, platform, tokens.provider_user_id)
     save_tokens(db, account.id, tokens)
+    # AFTER THE TOKENS ARE STORED, AND NEVER BEFORE. This is the best-effort
+    # half of a connection: it may fail, and the connection it describes has to
+    # survive it failing. Ordering it here rather than earlier is what makes
+    # that true rather than hopeful — by the time it runs, everything that
+    # matters is already committed.
+    _apply_audience(db, account, provider, tokens)
     db.refresh(account)
     # service._social_out rather than a dict written out again here. It exists
     # precisely so a new column on SocialAccount does not have to be remembered
@@ -235,15 +267,19 @@ def _account_for(
     nothing here can prove the two are the same account: the token exchange
     returns an ID, not a handle, so "adopt the one manual instagram row" would
     be a guess that could quietly attach one account's credentials to another
-    account's name. Merging them belongs with the first real provider, which
-    will have a user-info call and can compare something.
+    account's name. Merging them belongs with a provider that has a user-info
+    call and can compare something — the Meta provider now has one, and doing
+    the merge is still its own change rather than a side effect of this one.
 
-    THE HANDLE IS A PLACEHOLDER, and the follow-up is named. The exchange gives
-    us `provider_user_id` and nothing human-readable; the display handle comes
-    from the platform's user-info endpoint, which is enrichment's job and lands
-    with the provider that can call it. Until then the id stands in, and the
-    account stays PENDING so nothing on a storefront is badged off the back of
-    it.
+    THE HANDLE STARTS AS THE ID AND MAY NOT STAY THAT WAY. The exchange gives
+    us `provider_user_id` and nothing human-readable, so the id stands in.
+    _apply_audience below replaces it the moment a provider can name the
+    account unambiguously — for Meta, when the creator manages exactly one
+    Page. Where it cannot, the id remains on show, which is ugly and honest and
+    is fixed by the creator choosing a Page in the app.
+
+    The account stays PENDING either way, so nothing on a storefront is badged
+    off the back of it.
     """
     if provider_user_id:
         existing = (
@@ -268,12 +304,14 @@ def _account_for(
         handle=provider_user_id or platform,
         method="oauth",
         # PENDING, like every other connection. See this module's docstring:
-        # the badge belongs beside a provider that has actually been reviewed,
-        # and there is no provider yet.
+        # a real reviewed provider is a better argument for a badge than
+        # anything that came before it, and turning one on is still a decision
+        # somebody makes rather than a consequence of adding a provider.
         status=models.PENDING,
         # No number is claimed by an authorization, so no provenance is
         # recorded — the rule connect_social_account already follows: null
-        # count means null source, never "a report of nothing".
+        # count means null source, never "a report of nothing". If the provider
+        # can read one, _apply_audience fills all three columns together.
         follower_count=None,
         follower_source=None,
         follower_verified_at=None,
@@ -282,6 +320,80 @@ def _account_for(
     db.commit()
     db.refresh(account)
     return account
+
+
+def _apply_audience(
+    db: Session,
+    account: models.SocialAccount,
+    provider: oauth.OAuthProvider,
+    tokens: oauth.TokenSet,
+) -> None:
+    """Ask a provider what the account it just connected actually shows.
+
+    THIS IS THE FIRST PLACE IN THE CODEBASE THAT EARNS models.PLATFORM_API
+    HONESTLY, which is worth stating plainly because the constant already
+    existed. #161 defined it as "the platform itself stated it, in an API
+    response about its own account" — and until now the only thing that could
+    set it was service._apply_enrichment, reading a handle the creator TYPED
+    through a Graph token belonging to Kolabo. That is the platform speaking
+    about an account nobody proved the creator owns. Here the creator
+    authorised us on the platform's own consent screen, the token is theirs,
+    and the number is their own Page's. Same constant, much better claim.
+
+    So all three provenance columns are written together, per #161's rule: the
+    count, PLATFORM_API, and a follower_verified_at date, which only a platform
+    ever earns.
+
+    BEST EFFORT, ALWAYS. Every failure is a log line and a return. This runs
+    after the tokens are stored and the connection exists, so nothing it does
+    may undo that — the same contract enrichment.py keeps, for the same reason:
+    a follower count is worth a great deal less than a connection.
+
+    OPT IN BY getattr, NOT BY PROTOCOL. oauth.AudienceReader is a Protocol of
+    its own and this looks for the method rather than requiring it. Making it a
+    fourth method on OAuthProvider would have meant every provider grew one
+    whether or not its platform has anything to read — including the
+    FakeProvider that pins this entire mechanism in test_social_oauth.py, which
+    would then have had to be edited to accommodate a real provider arriving.
+    A provider opts IN by implementing it; nothing has to change to opt out.
+    """
+    read = getattr(provider, "read_audience", None)
+    if read is None:
+        return
+    try:
+        snapshot = read(tokens)
+    except Exception as exc:
+        # A provider is supposed to swallow its own failures — oauth.
+        # AudienceReader says "NEVER RAISES" — and this catch is for the one
+        # that forgets. Belt and braces is right here specifically because the
+        # cost of being wrong is asymmetric: the account is already connected
+        # and its tokens are already saved, so an exception escaping this
+        # function would turn a completed handshake into `oauth_exchange_failed`
+        # for a creator whose connection actually worked.
+        _log.warning("Audience read failed for %s: %s", account.platform, exc)
+        return
+    if snapshot is None:
+        return
+
+    changed = False
+    if snapshot.handle and snapshot.handle != account.handle:
+        # The numeric id _account_for stood in with, replaced by something a
+        # brand can read. The id is not lost — it lives on the token row, which
+        # is what a re-authorisation is matched against.
+        account.handle = snapshot.handle
+        changed = True
+    # THE SAME RULE connect_social_account AND update_social_account FOLLOW: a
+    # platform that publishes no audience metric cannot back a number, so one
+    # is not recorded for it however it arrived. Facebook is in this set; the
+    # guard is here for the providers that come next, so that the rule lives in
+    # every path that can write the column rather than in two of the three.
+    if snapshot.follower_count is not None and account.platform in PLATFORMS_WITH_AUDIENCE:
+        account.follower_count = snapshot.follower_count
+        account.follower_source = models.PLATFORM_API
+        account.follower_verified_at = models.utcnow()
+        changed = True
+    if changed:
+        db.commit()
 
 
 def save_tokens(
@@ -308,6 +420,13 @@ def save_tokens(
     the connections this rule exists to protect. Absent means "unchanged";
     present means "replace", whether or not it looks the same. That asymmetry
     is deliberate and is the only exception.
+
+    IT IS ALSO WHAT MAKES META SAFE TO STORE. Meta issues no refresh token at
+    any point, so every Meta TokenSet carries None and lands in the "absent"
+    branch — on the first authorization there is nothing to blank, and on a
+    reconnection the column is null already. A provider with no refresh token
+    therefore needs no special case here, which is the whole reason its
+    provider could be written without touching this function.
     """
     now = models.utcnow()
     row = (
@@ -355,6 +474,13 @@ def load_access_token(db: Session, social_account_id: str) -> str:
     YouTube Analytics — so that none of them separately decides what "expired"
     means, and none of them has to remember to write the refreshed credentials
     back. Ask for a token; get one that works, or a refusal to show the creator.
+
+    A PLATFORM WITH NO REFRESH TOKEN NEEDS NO CODE HERE, and Meta proves it.
+    Its rows have a null refresh_token_ciphertext, so an expired Meta token
+    reaches the `_reconnect_needed()` below and the creator is asked to
+    reconnect — several lines before this function would look up a provider or
+    call refresh(). That is why oauth.MetaOAuthProvider.refresh can raise
+    rather than pretend: it is unreachable through the only path that calls it.
     """
     row = (
         db.query(models.SocialToken)

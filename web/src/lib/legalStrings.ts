@@ -28,20 +28,16 @@
    the one place in the product where French punctuation is worth the trouble.
    Do not normalise it away.
 
-   THE TWELVE NON-BREAKING SPACES BELOW ARE WRITTEN AS   ESCAPES AND NOT
-   AS LITERAL U+00A0 CHARACTERS, which is the one deliberate departure from the
-   way these strings were drafted. A literal U+00A0 is invisible: an editor, a
-   diff and a code review all draw one exactly like the ordinary space beside
-   it, and nothing in the toolchain will tell you when one is lost — a space is
-   not a type error, so tsc, vitest and the build all stay green over French
-   punctuation that has quietly stopped being French. One round trip through
-   anything that normalises whitespace is enough to lose the lot, and that is
-   not hypothetical: every one of these twelve was flattened to an ordinary
-   space on the way into the repository, and the only thing that caught it was
-   a byte count. The escape renders identically — i18next interpolates the
-   string VALUE, and " " IS a non-breaking space at runtime — while
-   leaving the source pure ASCII, where a normaliser has nothing to normalise
-   and a reviewer can see all twelve. Write new ones the same way. All twelve
+   THE TWELVE NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
+   ARE INVISIBLE. An editor, a diff and a code review all draw one exactly like
+   the ordinary space beside it, and nothing in the toolchain will tell you
+   when one is lost: a space is not a type error, so tsc, vitest and the build
+   all stay green over French punctuation that has quietly stopped being
+   French. One round trip through a tool that normalises whitespace is enough
+   to lose the lot — this file lost all twelve of them exactly that way while
+   being committed, and the only thing that noticed was a byte count. So if you
+   edit these strings, check the result the way this change was checked — by
+   hashing the file and counting U+00A0 — and not by eye. All twelve of them
    are on /legal/privacy.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN

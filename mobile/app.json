@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "kolabo",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/kolabo-icon-1024.png",
     "platforms": [
       "ios",
       "android"
@@ -19,8 +19,8 @@
       "package": "com.kolaboafrica.app",
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon-foreground.png",
-        "backgroundImage": "./assets/adaptive-icon-background.png"
+        "foregroundImage": "./assets/kolabo-adaptive-foreground.png",
+        "backgroundImage": "./assets/kolabo-adaptive-background.png"
       }
     },
     "locales": {

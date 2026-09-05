@@ -28,7 +28,7 @@
    the one place in the product where French punctuation is worth the trouble.
    Do not normalise it away.
 
-   THE FOURTEEN NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
+   THE FIFTEEN NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
    ARE INVISIBLE. An editor, a diff and a code review all draw one exactly like
    the ordinary space beside it, and nothing in the toolchain will tell you
    when one is lost: a space is not a type error, so tsc, vitest and the build
@@ -37,7 +37,7 @@
    to lose the lot — this file lost all of them exactly that way while
    being committed, and the only thing that noticed was a byte count. So if you
    edit these strings, check the result the way this change was checked — by
-   hashing the file and counting U+00A0 — and not by eye. All fourteen of
+   hashing the file and counting U+00A0 — and not by eye. All fifteen of
    them are on /legal/privacy.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
@@ -45,6 +45,25 @@
    a register; they are not words. The address is left unlocalised for the
    same reason and to match lib/countries.ts, which spells every country in
    English in both bundles.
+
+   SO IS THE ONE URL, AND ITS href IS NOT IN THIS FILE AT ALL. whoLink and
+   contactRegistrationLink hold the VISIBLE TEXT of a link — the address
+   without its scheme — and the https:// target lives beside the block in
+   pages/LegalPage.tsx. A URL inside translated copy is a URL a translator can
+   mangle, and it would have to be written identically in both bundles anyway,
+   which is the same argument as the identifiers above. The page renders it
+   through a declared `link` block; nothing here is parsed.
+
+   THE ADDRESS CARRIES NO TRAILING SLASH, and that changed with this note. The
+   policy used to print mocktar.com/legal/entities/ as plain text in four
+   places. BOTH FORMS RESOLVE TODAY: /legal/entities and /legal/entities/ were
+   both fetched and both returned the "Company details" page, and a 404
+   reported against the sibling /legal/privacy/ did not reproduce either. So
+   this is NOT the repair of a broken link, and nobody should record it as
+   one. It is the canonical form — the one the site's own navigation uses —
+   rather than a form that depends on the host continuing to forgive a slash,
+   in the document where a reviewer follows the link to confirm who they are
+   dealing with.
 
    WHY THE PRIVACY POLICY SHIPS ALONE, WITHOUT THE TERMS OF SERVICE. The two
    documents were drafted together, and the Terms are blocked on one thing:
@@ -102,10 +121,11 @@ const fr = {
       intro: "Kolabo est exploité par Mocktar Technologies, responsable du traitement. Cette politique explique ce que nous collectons lorsque vous utilisez Kolabo, pourquoi, qui d’autre y a accès, et ce que vous pouvez nous demander à ce sujet. Elle couvre le site web et les applications mobiles Kolabo. Elle ne couvre pas mocktar.com ni nos autres produits, qui ont leurs propres politiques.",
 
       whoTitle: "Qui nous sommes",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées sur mocktar.com/legal/entities/.",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante :",
+      whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "Ce que nous collectons",
-      collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une : elle est facultative.",
+      collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une : elle est facultative.",
 
       /* THE SMS SENTENCES, AND WHY THEY NO LONGER SAY WHAT THEY SAID.
 
@@ -142,21 +162,21 @@ const fr = {
          part of shipping it, not a follow-up. */
       collectVerify: "**Pour vérifier que c’est bien vous.** Les codes à usage unique rattachés à votre numéro de téléphone. Ils expirent, ils ne fonctionnent qu’une fois, et un code erroné coûte une tentative.",
 
-      collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
+      collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
       collectSocial: "**Vos comptes de réseaux sociaux connectés.** La plateforme et le pseudonyme que vous connectez, ainsi que les chiffres d’audience que nous récupérons pour ce compte — nombre d’abonnés, taux d’engagement et composition de l’audience — que nous obtenons depuis l’API publique de la plateforme elle-même. Nous ne recevons pas le mot de passe de votre compte social et nous ne pouvons pas publier en votre nom.",
       collectDocs: "**Documents de vérification.** Si vous demandez à être vérifié, la pièce d’identité ou le document d’immatriculation que vous téléversez. Ces documents sont **chiffrés au repos** et ne sont visibles que par le personnel qui les examine.",
-      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
+      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
       collectWork: "**Le travail en commun.** Les messages et les pièces jointes que vous échangez avec l’autre partie à un contrat, le travail que vous soumettez et, si quelque chose tourne mal, la réclamation et les preuves versées à un litige.",
-      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner : adresse IP, type d’appareil et de navigateur, horodatages.",
+      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner : adresse IP, type d’appareil et de navigateur, horodatages.",
 
       whyTitle: "Pourquoi nous les collectons",
       why: "Pour faire fonctionner votre compte et prouver qu’il est le vôtre. Pour permettre aux marques et aux créateurs de se trouver. Pour conserver l’argent en sécurité sous séquestre, puis le libérer ou le rembourser. Pour vérifier que les personnes sont bien celles qu’elles disent être, ce qui est tout l’objet d’une place de marché où des inconnus paient des inconnus. Pour résoudre les litiges. Pour respecter nos obligations légales et fiscales. Pour garder la plateforme libre de fraude et de faux comptes.",
       whyNoSale: "**Nous ne vendons pas vos données à caractère personnel et nous ne les utilisons pas à des fins publicitaires.**",
 
       sharedTitle: "Qui d’autre y a accès",
-      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige : le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
+      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige : le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
       sharedSocial: "**Les plateformes sociales** (YouTube, Meta, et les autres à mesure que nous les ajoutons) reçoivent une requête portant sur les données publiques du compte que vous avez connecté.",
-      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative « rédiger ma bio » : les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
+      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative « rédiger ma bio » : les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
       sharedHosting: "**Nos hébergeurs et fournisseurs d’infrastructure**, qui stockent et servent les données sur nos instructions.",
       sharedCounterparty: "**L’autre partie à un contrat**, qui voit votre profil public, ce que vous avez convenu, vos messages et le travail que vous soumettez. **Elle ne voit jamais votre numéro de versement, ni vos documents, ni votre mot de passe.**",
       sharedAuthorities: "**Les autorités**, lorsque la loi l’exige.",
@@ -165,11 +185,11 @@ const fr = {
       where: "Sur des serveurs que nous exploitons et sur l’infrastructure de nos prestataires, qui peuvent se trouver hors de votre pays. Les données de paiement et de versement sont traitées par FedaPay dans les marchés qu’il dessert.",
 
       retentionTitle: "Combien de temps nous les conservons",
-      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons : les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation ; lorsque nous en fixerons un, il figurera ici.",
+      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons : les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation ; lorsque nous en fixerons un, il figurera ici.",
 
       rightsTitle: "Vos choix et vos droits",
-      rightsEdit: "Vous pouvez modifier ou supprimer la plus grande partie de votre profil depuis l’application à tout moment. Selon le lieu où vous vivez, vous pouvez disposer d’un droit d’accès, de rectification et d’effacement des données que nous détenons sur vous, du droit de vous opposer à l’usage que nous en faisons, ou d’en recevoir une copie. **Vous pouvez fermer votre compte vous-même, dans les paramètres de votre compte, sur le site web Kolabo.** Nous vous demandons alors votre mot de passe : une session ouverte ne doit pas suffire, à elle seule, à supprimer un compte. **Un compte rattaché à un contrat ou à un séquestre ne peut pas être fermé de cette manière**, et le formulaire vous l’indiquera : l’autre partie à une collaboration en conserve sa propre trace, et nous n’effaçons pas l’historique des sommes qui ont circulé. Pour fermer un tel compte, ou pour formuler l’une des autres demandes ci-dessus, **écrivez-nous** à l’adresse ci-dessous et nous vous répondrons.",
-      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande : un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
+      rightsEdit: "Vous pouvez modifier ou supprimer la plus grande partie de votre profil depuis l’application à tout moment. Selon le lieu où vous vivez, vous pouvez disposer d’un droit d’accès, de rectification et d’effacement des données que nous détenons sur vous, du droit de vous opposer à l’usage que nous en faisons, ou d’en recevoir une copie. **Vous pouvez fermer votre compte vous-même, dans les paramètres de votre compte, sur le site web Kolabo.** Nous vous demandons alors votre mot de passe : une session ouverte ne doit pas suffire, à elle seule, à supprimer un compte. **Un compte rattaché à un contrat ou à un séquestre ne peut pas être fermé de cette manière**, et le formulaire vous l’indiquera : l’autre partie à une collaboration en conserve sa propre trace, et nous n’effaçons pas l’historique des sommes qui ont circulé. Pour fermer un tel compte, ou pour formuler l’une des autres demandes ci-dessus, **écrivez-nous** à l’adresse ci-dessous et nous vous répondrons.",
+      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande : un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
 
       securityTitle: "Sécurité",
       security: "Les mots de passe sont hachés. Les documents de vérification sont chiffrés au repos. Les numéros de versement sont masqués dans l’application. L’accès aux documents et aux litiges est limité au personnel qui les examine. Aucun système n’est parfaitement sûr, et nous ne prétendons pas le contraire.",
@@ -182,7 +202,8 @@ const fr = {
 
       contactTitle: "Nous contacter",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
+      contactRegistration: "Informations d’immatriculation :",
+      contactRegistrationLink: "mocktar.com/legal/entities"
     }
   },
 
@@ -204,7 +225,8 @@ const en = {
       intro: "Kolabo is operated by Mocktar Technologies. This policy explains what we collect when you use Kolabo, why, who else sees it, and what you can ask us to do about it. It covers the Kolabo website and mobile apps. It does not cover mocktar.com or our other products, which have their own policies.",
 
       whoTitle: "Who we are",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at mocktar.com/legal/entities/.",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at:",
+      whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "What we collect",
       collectAccount: "**To create your account.** Your phone number, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. An email address if you choose to give one — it is optional.",
@@ -254,7 +276,8 @@ const en = {
 
       contactTitle: "Contact",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Registration details: mocktar.com/legal/entities/"
+      contactRegistration: "Registration details:",
+      contactRegistrationLink: "mocktar.com/legal/entities"
     }
   },
 

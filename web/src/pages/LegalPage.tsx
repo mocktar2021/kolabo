@@ -59,7 +59,16 @@ export const LEGAL_EFFECTIVE_DATE = "2026-09-05";
 export type LegalBlock =
   | { kind: "heading"; key: string }
   | { kind: "para"; key: string }
-  | { kind: "list"; keys: readonly string[] };
+  | { kind: "list"; keys: readonly string[] }
+  /* A link — and THE href LIVES HERE, IN CODE, NOT IN THE COPY. A URL inside
+     a translated string is a URL a translator can mangle, and it would have to
+     be written identically in both bundles anyway: exactly the argument
+     lib/legalStrings.ts already makes for keeping the registration identifiers
+     and the postal address out of translation. `key` resolves to the VISIBLE
+     TEXT, which is the address without its scheme; `href` carries the full
+     https:// one. A wrong URL is therefore a one-line diff in this file rather
+     than something hiding in the middle of a paragraph in two languages. */
+  | { kind: "link"; key: string; href: string };
 
 export type LegalDocument = {
   /* The i18n group this document's copy lives under. */
@@ -78,6 +87,17 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
     { kind: "para", key: "intro" },
     { kind: "heading", key: "whoTitle" },
     { kind: "para", key: "who" },
+    /* THE ENTITY REGISTER, AND IT IS A LINK NOW RATHER THAN PRINTED TEXT.
+       Both places this document points at mocktar.com used to render the bare
+       address, so a Meta or App Store reviewer checking who they are dealing
+       with had to select it and paste it — and the sentence-ending full stop
+       sat directly against it, which is a copy-paste error waiting to happen.
+
+       NO TRAILING SLASH. The copy used to print /legal/entities/. Both forms
+       were fetched and both resolve, so dropping it repairs nothing that is
+       broken today; it is the canonical form rather than one that depends on
+       the host continuing to forgive a slash. See lib/legalStrings.ts. */
+    { kind: "link", key: "whoLink", href: "https://mocktar.com/legal/entities" },
     { kind: "heading", key: "collectTitle" },
     { kind: "para", key: "collectAccount" },
     { kind: "para", key: "collectVerify" },
@@ -125,7 +145,12 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
     { kind: "para", key: "changes" },
     { kind: "heading", key: "contactTitle" },
     { kind: "para", key: "contactAddress" },
-    { kind: "para", key: "contactRegistration" }
+    { kind: "para", key: "contactRegistration" },
+    /* The same address as whoLink above, and deliberately repeated: a reader
+       who opened the policy at "Contact" must not have to scroll back to the
+       top to find where the registration details are published. One href,
+       written twice here, rather than one string carrying a URL. */
+    { kind: "link", key: "contactRegistrationLink", href: "https://mocktar.com/legal/entities" }
   ]
 };
 
@@ -152,9 +177,19 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
    The whole of the emphasis support, and it stays that small on purpose:
    splitting on the marker means an odd number of markers can only ever
    emphasise the tail of a sentence, never leak a literal ** onto the page or
-   swallow text. Nothing else about markdown is understood here, and nothing
-   else should be — the moment this parses links, a legal document's rendering
-   depends on a parser. */
+   swallow text.
+
+   THIS IS STILL THE ONLY THING PARSED, AND THE PAGE NOW HAS LINKS ON IT. That
+   is not a contradiction. This comment used to end "the moment this parses
+   links, a legal document's rendering depends on a parser", and that objection
+   stands word for word — which is precisely why the links are NOT parsed out
+   of the copy. The renderer understands four DECLARED block kinds — heading,
+   para, list and link — and a link is an entry in the outline carrying its own
+   href, not syntax discovered inside a translated sentence. The copy still
+   contains no markup at all beyond the bold marker, so there is still nothing
+   a parser could misread, mis-nest or silently drop. Anything else this page
+   ever needs to render should arrive the same way: as a block kind, not as a
+   character sequence somebody has to remember to escape. */
 function Emphasised({ text }: { text: string }) {
   return (
     <>
@@ -188,6 +223,19 @@ export default function LegalPage({ doc }: { doc: LegalDocument }) {
               <h2 key={block.key} style={HEADING}>
                 {t(`${doc.ns}.${block.key}`)}
               </h2>
+            );
+          }
+          if (block.kind === "link") {
+            /* Wrapped in a paragraph so it keeps the document's vertical
+               rhythm rather than running into the sentence above it, and
+               target/rel because this is the one thing on the page that
+               leaves the product. */
+            return (
+              <p key={block.key} style={PARA}>
+                <a href={block.href} target="_blank" rel="noreferrer">
+                  {t(`${doc.ns}.${block.key}`)}
+                </a>
+              </p>
             );
           }
           if (block.kind === "list") {

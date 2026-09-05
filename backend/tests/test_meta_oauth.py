@@ -508,11 +508,21 @@ def _connect(client, monkeypatch, phone):
         f"/profiles/oauth/{PLATFORM}/start", json={}, headers=_headers(uid)
     )
     assert started.status_code == 200, started.text
-    url = started.json()["authorize_url"]
+    query = parse_qs(urlparse(started.json()["authorize_url"]).query)
     # The callback URL the provider was told to send the creator back to is
     # built from settings, not from the request, so it can be checked here.
-    assert oauth_service.redirect_uri(PLATFORM) in url
-    state = parse_qs(urlparse(url).query)["state"][0]
+    #
+    # COMPARED AS A DECODED PARAMETER, NOT AS A SUBSTRING OF THE URL, and the
+    # difference is a real one rather than a style preference. A substring
+    # check passes for test_social_oauth.py's FakeProvider only because that
+    # fake interpolates the redirect_uri into its URL raw; a provider that
+    # builds its query properly percent-encodes it ("://" becomes "%3A%2F%2F"),
+    # so the plain string is not in the URL at all and the check fails against
+    # correct code. What actually matters is that the value Meta receives
+    # equals the one the token exchange will send, and that is what this
+    # compares.
+    assert query["redirect_uri"] == [oauth_service.redirect_uri(PLATFORM)]
+    state = query["state"][0]
     done = client.get(
         f"/profiles/oauth/{PLATFORM}/callback", params={"code": "the-code", "state": state}
     )

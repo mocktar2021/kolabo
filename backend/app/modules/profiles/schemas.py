@@ -131,6 +131,51 @@ class SocialAccountOut(BaseModel):
     enriched: bool = False
 
 
+class OAuthStartIn(BaseModel):
+    """Everything a client may say about an authorization it is starting.
+
+    WHICH IS ALMOST NOTHING, AND THAT IS THE DESIGN. The platform is a path
+    parameter and the creator comes from the bearer token, so there is no field
+    in this body that could name somebody else's account or another platform's
+    provider. The only thing the client gets to choose is where its own user
+    ends up afterwards.
+    """
+
+    # Where to send the creator's browser once the callback has finished: a web
+    # route, or a kolabo:// deep link on mobile. Stored on the state row and
+    # echoed back by the callback rather than being carried through the
+    # platform's `state`, which has to stay an opaque unguessable token.
+    #
+    # NOT VALIDATED AS AN ALLOWED DESTINATION HERE, and that is a gap worth
+    # naming: the day this value is turned into an actual 302 it becomes an
+    # open-redirect surface, and the fix is an allowlist of prefixes at that
+    # point. Today it is only ever echoed in a JSON body, where it can redirect
+    # nobody.
+    redirect_to: str | None = None
+
+
+class OAuthStartOut(BaseModel):
+    """Where to send the creator. The state and the challenge are inside the
+    URL the provider built; nothing about the row is exposed."""
+
+    authorize_url: str
+
+
+class OAuthCallbackOut(BaseModel):
+    """What the callback answers once the account is connected.
+
+    JSON RATHER THAN A 302, for now. There is no client in this change to
+    redirect to — no web page and no mobile screen — and a payload is what
+    makes the handshake testable end to end. `redirect_to` is echoed so that
+    turning this into a browser hop, when there is somewhere to hop to, is a
+    change to this one function rather than to the state row, the service or
+    the schema.
+    """
+
+    account: SocialAccountOut
+    redirect_to: str | None = None
+
+
 class OnboardingStatusOut(BaseModel):
     has_bio: bool
     has_categories: bool

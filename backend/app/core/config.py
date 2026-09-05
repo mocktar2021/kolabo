@@ -169,6 +169,23 @@ class Settings(BaseSettings):
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.
     cors_origins: str = "http://localhost:5173,http://localhost:4173,http://localhost:3000"
+    # Where this API is reachable from the public internet, with no trailing
+    # slash. Used to build the OAuth redirect_uri
+    # (<base>/profiles/oauth/<platform>/callback) that a social platform sends
+    # a creator's browser back to.
+    #
+    # A SETTING RATHER THAN SOMETHING DERIVED FROM THE REQUEST, and the reason
+    # is that OAuth compares this string BYTE FOR BYTE. It has to match what is
+    # registered in the platform's developer console, and it has to be the same
+    # value at the authorization step and again at the token exchange — the
+    # providers reject a mismatch outright. Building it from the incoming Host
+    # header would make a creator's ability to connect their account depend on
+    # which proxy header survived the last infrastructure change, and the
+    # failure ("redirect_uri_mismatch") names none of that.
+    #
+    # Not a credential and not in .env.example: it is a URL, and the default is
+    # the local dev API.
+    api_public_base_url: str = "http://localhost:8000"
     # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
     # no app review), so setting this turns on YouTube profile auto fill.
     youtube_api_key: str = ""

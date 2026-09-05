@@ -140,6 +140,121 @@ class SocialAccount(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class SocialToken(Base):
+    """The OAuth credentials behind one connected social account.
+
+    A SEPARATE TABLE, NOT COLUMNS ON SocialAccount, and the reason is the read
+    path rather than tidiness. SocialAccount is loaded on every public profile
+    view — get_public_profile returns one row per connected account, to anybody,
+    with no token anywhere in the request — so token ciphertext hung on that
+    model would be SELECTed and carried through the ORM on every storefront hit
+    by a stranger, into every log line that prints a row and every future
+    `.dict()` somebody writes in a hurry. A separate table means the bytes are
+    only ever loaded by code that asks for them by name.
+
+    CIPHERTEXT, NEVER PLAINTEXT, with the same Fernet helpers and the same
+    document_encryption_key as VerificationDocument.ciphertext — the pattern
+    this module already established for bytes that must not be readable in a
+    database dump. An access token is a bearer credential for somebody else's
+    account on somebody else's platform: leaking one is not leaking data about
+    a creator, it is handing over the ability to act as them.
+
+    ONE ROW PER ACCOUNT (social_account_id is unique). Re-authorising REPLACES
+    the credentials rather than appending to a history of them: a superseded
+    token is not evidence of anything, and keeping it is keeping another live
+    secret alive for as long as the platform honours it.
+
+    NO relationship() BACK TO SocialAccount, deliberately. A relationship is an
+    invitation to lazy-load, and the one thing this table exists to prevent is
+    tokens arriving somewhere nobody asked for them.
+    """
+
+    __tablename__ = "social_tokens"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    # Unique AND indexed, which SQLAlchemy emits as one unique index named
+    # ix_social_tokens_social_account_id — the same name the migration creates,
+    # so a create_all schema and a migrated schema agree.
+    social_account_id: Mapped[str] = mapped_column(
+        ForeignKey("social_accounts.id"), unique=True, index=True, nullable=False
+    )
+    access_token_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    # Nullable because not every provider issues one: an implicit-style grant,
+    # or a platform whose access token simply outlives the connection, leaves
+    # this empty and the creator re-authorises when it lapses.
+    refresh_token_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    access_expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Nullable for the same reason, and separately from the access expiry
+    # because the two run on very different clocks — hours against months.
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # The scopes the platform actually granted, which is not always what was
+    # asked for. Stored so a failure can be read as "the creator declined the
+    # stats permission" rather than as a broken integration.
+    scope: Mapped[str | None] = mapped_column(String, nullable=True)
+    # The platform's own id for the account (TikTok's open_id, Google's sub).
+    # It is what identifies the SAME account across re-authorisations, since a
+    # handle can be changed by its owner at any time and an id cannot.
+    provider_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class OAuthState(Base):
+    """One authorization attempt in flight: the CSRF state and the PKCE verifier.
+
+    THE STATE ROW IS THE AUTHENTICATION FOR THE CALLBACK, and that sentence is
+    the entire security surface of this feature. The callback is a browser
+    redirect arriving from the platform: it cannot carry a bearer token, there
+    is no Authorization header to read, and the caller is — as far as the API
+    can tell — an anonymous stranger holding a URL. The only thing that says
+    WHOSE profile the resulting account attaches to is `user_id` on the row
+    this `state` resolves to. Everything else about the request is attacker
+    controlled.
+
+    So the row is written to three rules, all of which are load-bearing:
+
+      * UNGUESSABLE. `state` is secrets.token_urlsafe(32) — 256 bits from a
+        CSPRNG. Anything shorter, anything sequential, and anything derived
+        from the user id is an account takeover: guess a live state and the
+        platform account you just authorised lands on somebody else's profile.
+      * SINGLE USE. `consumed` is flipped ATOMICALLY (a conditional UPDATE, not
+        a read-then-write) the moment the callback claims it, so a replayed
+        callback URL — out of a browser history, a referer header, a shared
+        screenshot — is refused rather than replayed.
+      * SHORT LIVED. Ten minutes, which is longer than any real authorization
+        takes and short enough that a leaked URL is stale before it is read.
+
+    The verifier is PKCE (RFC 7636): the challenge goes out with the
+    authorization request and the verifier is presented at the exchange, so an
+    authorization code intercepted in transit cannot be redeemed without this
+    row. It is stored in plaintext ON PURPOSE and is not a credential: it is
+    worthless without the code, worthless after `consumed`, and worthless ten
+    minutes from now.
+
+    Rows are not deleted after use. A consumed state is the record that this
+    connection happened, and expiry plus a sweep is a better answer than a
+    delete that erases the only evidence of a replay attempt.
+    """
+
+    __tablename__ = "oauth_states"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
+    # Unique and indexed: the callback's only lookup, and the uniqueness is
+    # what makes "resolves to exactly one creator" a property of the schema
+    # rather than of the query that happens to be written above it.
+    state: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    code_verifier: Mapped[str] = mapped_column(String, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    platform: Mapped[str] = mapped_column(String, nullable=False)
+    # Where to send the creator's browser once the callback has finished — a
+    # web page or a mobile deep link. Nullable: an API client that just wants
+    # the result does not need one.
+    redirect_to: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    consumed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class VerificationDocument(Base):
     __tablename__ = "verification_documents"
 

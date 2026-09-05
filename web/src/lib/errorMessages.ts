@@ -163,6 +163,16 @@ export const error_fr = {
   profile_portfolio_item_not_found: "Élément de portfolio introuvable.",
   profile_portfolio_not_yours: "Ce portfolio n'est pas le vôtre.",
 
+  /* Connecter un compte social via OAuth. Toutes ces phrases pointent vers la
+     même suite, parce qu'il n'y en a qu'une : recommencer depuis le profil. Un
+     lien de connexion ne sert qu'une fois et vit dix minutes, donc « réessayez »
+     serait un conseil qui ne peut pas marcher. */
+  oauth_platform_unsupported: "Cette plateforme ne peut pas encore être connectée automatiquement.",
+  oauth_state_invalid: "Ce lien de connexion n'est pas valide. Recommencez depuis votre profil.",
+  oauth_state_expired: "Ce lien de connexion a expiré. Recommencez depuis votre profil.",
+  oauth_exchange_failed: "La plateforme a refusé la connexion. Rien n'a été enregistré.",
+  oauth_token_expired: "Votre connexion à cette plateforme a expiré. Reconnectez-la depuis votre profil.",
+
   /* Campaigns: writing a brief, inviting, bidding, negotiating, taking an
      offer back. The un-prefixed codes above and below — deliverable_not_on_-
      platform, price_below_floor, package_not_found, campaign_not_yours — are
@@ -425,6 +435,16 @@ export const error_en = {
   profile_package_not_yours: "That package is not yours.",
   profile_portfolio_item_not_found: "Portfolio item not found.",
   profile_portfolio_not_yours: "That portfolio is not yours.",
+
+  /* Connecting a social account over OAuth. All five point at the same next
+     step, because there is only one: start again from your profile. A
+     connection link is single-use and ten minutes old, so "try again" would
+     be advice that cannot work. */
+  oauth_platform_unsupported: "This platform cannot be connected automatically yet.",
+  oauth_state_invalid: "This connection link is not valid. Start again from your profile.",
+  oauth_state_expired: "This connection link has expired. Start again from your profile.",
+  oauth_exchange_failed: "The platform refused the connection. Nothing was saved.",
+  oauth_token_expired: "Your connection to this platform has expired. Reconnect it from your profile.",
 
   campaign_not_found: "Campaign not found.",
   campaign_not_yours: "This campaign is not yours.",

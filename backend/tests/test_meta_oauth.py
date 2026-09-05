@@ -1,0 +1,713 @@
+"""The Meta provider, proved against a fake Graph API.
+
+NO NETWORK, NO APP, NO REVIEW. httpx.get is monkeypatched with canned
+responses shaped like the real ones — the same treatment test_enrichment.py
+gives the enrichers, and the same reason: none of this should need a Meta app
+to stay honest in CI.
+
+A SEPARATE FILE FROM test_social_oauth.py ON PURPOSE. That one pins the
+MECHANISM — the state row, the encryption, the rotation rule — against a
+FakeProvider, and it is unchanged by this PR: a real provider arriving must not
+require editing the fake that guards the rules it obeys. This one pins ONE
+PLATFORM's endpoints and quirks. When Meta changes something, exactly one of
+these two files should go red, and it should be this one.
+
+WHAT IS ACTUALLY BEING GUARDED, in rough order of how quietly it fails:
+
+  * THE SHORT-LIVED TOKEN BEING WHAT GETS STORED. Meta answers an
+    authorization code with a token that expires "in hours". Storing it is a
+    connection that dies before onboarding finishes, and it fails with no
+    symptom at all: the exchange SUCCEEDED, nothing throws, nothing logs. Only
+    the second call — fb_exchange_token — produces the ~60 day token, and
+    test_the_short_lived_token_is_never_what_gets_stored is the line that says
+    so.
+  * A MISSING REFRESH TOKEN BLANKING SOMETHING. Meta issues none, ever, so
+    every TokenSet it produces carries None. save_tokens reads absent as
+    "unchanged" rather than "revoked", which is what makes that safe rather
+    than destructive.
+  * A MULTI-PAGE CREATOR HAVING A PAGE PICKED FOR THEM. Three Pages is a
+    question, not a fact, and answering it by taking the first or the biggest
+    is us deciding which of somebody's businesses is their identity.
+"""
+from datetime import timedelta
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from app.core.crypto import decrypt_bytes
+from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
+from app.core.security import create_access_token
+from app.modules.auth.models import User
+from app.modules.profiles import models, oauth, oauth_service
+from app.modules.profiles.router import router as profiles_router
+
+PLATFORM = "facebook"
+VERSION = "v26.0"
+APP_ID = "1888079209231475"
+APP_SECRET = "not-a-real-secret"
+
+SHORT_LIVED = "SHORT-lived-token-that-dies-in-hours"
+LONG_LIVED = "LONG-lived-token-good-for-sixty-days"
+ME_ID = "app-scoped-user-id-1"
+
+ONE_PAGE = [{"id": "page-1", "name": "Chez Adjo", "followers_count": 12400, "fan_count": 11900}]
+TWO_PAGES = [
+    {"id": "page-1", "name": "Chez Adjo", "followers_count": 12400},
+    {"id": "page-2", "name": "Adjo Traiteur", "followers_count": 800},
+]
+
+
+# --------------------------------------------------------------------------
+# The fake Graph
+# --------------------------------------------------------------------------
+
+
+class FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+class FakeGraph:
+    """Everything Meta would answer, and a record of what it was asked.
+
+    Routed on the URL rather than on call order, so a test that asserts about
+    the fb_exchange_token call is asserting about the RIGHT call even if the
+    provider's internal ordering changes.
+    """
+
+    def __init__(self, *, pages=None, expires_in=5184000, fail=(), raise_on=()):
+        self.calls = []
+        self.pages = list(pages) if pages is not None else list(ONE_PAGE)
+        self.expires_in = expires_in
+        # Step names that answer with a Meta error envelope and a 400.
+        self.fail = set(fail)
+        # Step names whose socket falls over before an answer exists at all.
+        self.raise_on = set(raise_on)
+
+    def params_for(self, step: str) -> dict:
+        """The params of the one call for a step, so a test can read them."""
+        matches = [params for name, _url, params in self.calls if name == step]
+        assert len(matches) == 1, f"expected exactly one {step} call, got {len(matches)}"
+        return matches[0]
+
+    def steps(self) -> list:
+        return [name for name, _url, _params in self.calls]
+
+    def __call__(self, url, params=None, timeout=None):
+        params = dict(params or {})
+        step = self._step(url, params)
+        self.calls.append((step, url, params))
+        if step in self.raise_on:
+            raise RuntimeError("connection reset")
+        if step in self.fail:
+            return FakeResponse(
+                {
+                    "error": {
+                        "message": "Invalid OAuth access token.",
+                        "type": "OAuthException",
+                        "code": 190,
+                        "fbtrace_id": "AbC123",
+                    }
+                },
+                status_code=400,
+            )
+        if step == "short":
+            return FakeResponse(
+                {"access_token": SHORT_LIVED, "token_type": "bearer", "expires_in": 3600}
+            )
+        if step == "long":
+            body = {"access_token": LONG_LIVED, "token_type": "bearer"}
+            if self.expires_in is not None:
+                body["expires_in"] = self.expires_in
+            return FakeResponse(body)
+        if step == "me":
+            return FakeResponse({"id": ME_ID})
+        if step == "accounts":
+            return FakeResponse({"data": self.pages})
+        raise AssertionError(f"unexpected Graph call: {url}")
+
+    @staticmethod
+    def _step(url, params):
+        if url.endswith("/oauth/access_token"):
+            return "long" if params.get("grant_type") == "fb_exchange_token" else "short"
+        if url.endswith("/me"):
+            return "me"
+        if url.endswith("/accounts"):
+            return "accounts"
+        return "unknown"
+
+
+@pytest.fixture()
+def graph(monkeypatch):
+    """A fake Graph installed over httpx, returned so tests can inspect it."""
+    fake = FakeGraph()
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    return fake
+
+
+def _provider():
+    return oauth.MetaOAuthProvider(APP_ID, APP_SECRET, VERSION)
+
+
+# --------------------------------------------------------------------------
+# Registration: nothing changes for a deployment with no credentials
+# --------------------------------------------------------------------------
+
+
+def test_no_meta_credentials_still_means_no_provider_at_all(monkeypatch):
+    """THE UNCHANGED-BEHAVIOUR TEST, and the reason this PR is inert until
+    somebody configures it. With no app id and no secret the registry is empty,
+    exactly as #162 shipped it, and every platform still answers
+    oauth_platform_unsupported."""
+    monkeypatch.setattr(oauth.settings, "meta_app_id", "")
+    monkeypatch.setattr(oauth.settings, "meta_app_secret", "")
+    assert oauth.build_default_providers() == {}
+
+
+def test_both_credentials_register_the_facebook_provider(monkeypatch):
+    monkeypatch.setattr(oauth.settings, "meta_app_id", APP_ID)
+    monkeypatch.setattr(oauth.settings, "meta_app_secret", APP_SECRET)
+    monkeypatch.setattr(oauth.settings, "meta_graph_version", VERSION)
+    built = oauth.build_default_providers()
+    assert set(built) == {"facebook"}
+    assert isinstance(built["facebook"], oauth.MetaOAuthProvider)
+    # The pinned version reaches the provider rather than being defaulted
+    # inside it, so ageing it out is one setting rather than a code change.
+    assert built["facebook"].version == VERSION
+
+
+@pytest.mark.parametrize(
+    "app_id,app_secret", [(APP_ID, ""), ("", APP_SECRET)]
+)
+def test_half_configured_is_treated_as_unconfigured(monkeypatch, app_id, app_secret):
+    """An app id with no secret cannot complete a token exchange. Registering
+    on the id alone would only move the failure to AFTER the creator has
+    granted permissions on Meta's consent screen, which is the worst available
+    moment to discover a server is misconfigured."""
+    monkeypatch.setattr(oauth.settings, "meta_app_id", app_id)
+    monkeypatch.setattr(oauth.settings, "meta_app_secret", app_secret)
+    assert oauth.build_default_providers() == {}
+
+
+# --------------------------------------------------------------------------
+# The authorization URL
+# --------------------------------------------------------------------------
+
+
+def test_the_authorize_url_is_on_facebook_com_and_names_both_permissions():
+    """The dialog is on www.facebook.com; everything else is graph.facebook.com.
+    Sending the dialog to the Graph host does not error, it serves a page that
+    is not a consent screen.
+
+    The two scopes are asserted by name because App Review grants them one at a
+    time against a demonstrated use: a scope here that the demo video does not
+    show being used is a rejected submission.
+    """
+    url = _provider().authorize_url("the-state", "the-verifier", "https://api.example/cb")
+    parsed = urlparse(url)
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "www.facebook.com"
+    assert parsed.path == f"/{VERSION}/dialog/oauth"
+
+    query = parse_qs(parsed.query)
+    assert query["client_id"] == [APP_ID]
+    assert query["state"] == ["the-state"]
+    assert query["redirect_uri"] == ["https://api.example/cb"]
+    assert query["response_type"] == ["code"]
+    # Comma separated, which is Meta's spelling and not OAuth's space. A
+    # space-joined string is read as one permission with an odd name, granted
+    # to nobody, and the handshake then succeeds with nothing at all.
+    assert query["scope"] == ["pages_show_list,pages_read_engagement"]
+
+
+def test_no_pkce_parameter_reaches_either_meta_endpoint(graph):
+    """THE PKCE DECISION, WRITTEN AS A TEST.
+
+    The service mints a verifier for every authorization and hands it to both
+    provider methods. This provider accepts both and forwards neither: Meta
+    does not document PKCE for the manual login flow these endpoints belong to
+    (its PKCE documentation is scoped to the OIDC/limited-login flow, which is
+    a different handshake), so a challenge here is a parameter nobody has
+    agreed to remember and a verifier at the token endpoint is one nobody has
+    agreed to check.
+
+    Sending them anyway would not break anything. It would be worse than that:
+    it would make this code look PKCE-protected when the other side has not
+    agreed to protect it. What actually protects the exchange is client_secret,
+    which a browser never sees.
+    """
+    url = _provider().authorize_url("the-state", "the-verifier", "https://api.example/cb")
+    assert "code_challenge" not in url
+    assert "code_challenge_method" not in url
+    assert "the-verifier" not in url
+
+    _provider().exchange_code("the-code", "the-verifier", "https://api.example/cb")
+    for _step, _url, params in graph.calls:
+        assert "code_verifier" not in params
+        assert "code_challenge" not in params
+        assert "the-verifier" not in params.values()
+
+
+# --------------------------------------------------------------------------
+# The exchange, and the second call that is the whole point of it
+# --------------------------------------------------------------------------
+
+
+def test_the_exchange_spends_the_short_lived_token_on_a_long_lived_one(graph):
+    """Two calls to the token endpoint, in order, and the second one carries
+    the first one's answer as fb_exchange_token."""
+    tokens = _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+
+    assert graph.steps() == ["short", "long", "me"]
+
+    first = graph.params_for("short")
+    assert first["client_id"] == APP_ID
+    assert first["client_secret"] == APP_SECRET
+    assert first["code"] == "the-code"
+    # Byte for byte the same string the authorize URL carried. Meta compares
+    # them and answers redirect_uri_mismatch, which names neither of them.
+    assert first["redirect_uri"] == "https://api.example/cb"
+
+    second = graph.params_for("long")
+    assert second["grant_type"] == "fb_exchange_token"
+    assert second["fb_exchange_token"] == SHORT_LIVED
+    assert second["client_id"] == APP_ID
+    assert second["client_secret"] == APP_SECRET
+
+    assert tokens.access_token == LONG_LIVED
+    assert tokens.access_expires_in == 5184000
+    assert tokens.provider_user_id == ME_ID
+
+
+def test_the_exchange_returns_no_refresh_token_and_claims_no_scope(graph):
+    """Meta issues no refresh token, so None is the honest answer rather than a
+    gap somebody fills in later.
+
+    Scope is None for a related reason: Meta's token response carries none, so
+    the only string available is the one we ASKED for, and SocialToken.scope
+    means what was GRANTED. Writing the request into that column would turn a
+    question into an answer — and it is exactly the question somebody needs
+    answered honestly the first time a creator unticks a permission.
+    """
+    tokens = _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+    assert tokens.refresh_token is None
+    assert tokens.refresh_expires_in is None
+    assert tokens.scope is None
+
+
+def test_a_token_response_with_no_expiry_falls_back_to_sixty_days(monkeypatch):
+    """Erring short is the safe direction: understating it asks a creator to
+    reconnect a little early, overstating it leaves a connection reporting
+    itself healthy while every call it makes is refused."""
+    fake = FakeGraph(expires_in=None)
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    tokens = _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+    assert tokens.access_expires_in == oauth.META_LONG_LIVED_FALLBACK_SECONDS
+
+
+def test_a_refused_exchange_raises_rather_than_returning_something_empty(monkeypatch):
+    """The protocol's rule: providers RAISE on failure. oauth_service turns
+    that into oauth_exchange_failed; returning a half-built TokenSet would let
+    a failure be stored as a connection."""
+    fake = FakeGraph(fail={"short"})
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    with pytest.raises(oauth.MetaOAuthError) as raised:
+        _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+    # fbtrace_id is the one string Meta support asks for, so it has to survive
+    # into the message that reaches the log.
+    assert "AbC123" in str(raised.value)
+    assert fake.steps() == ["short"], "nothing is attempted after a refusal"
+
+
+def test_a_failed_long_lived_exchange_is_not_quietly_downgraded(monkeypatch):
+    """The failure mode this whole two-call dance exists to prevent: falling
+    back to the short-lived token when the second call fails would store a
+    credential that dies in hours, and the connection would look fine."""
+    fake = FakeGraph(fail={"long"})
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    with pytest.raises(oauth.MetaOAuthError):
+        _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+
+
+def test_a_network_failure_is_a_meta_error_not_a_stray_exception(monkeypatch):
+    fake = FakeGraph(raise_on={"short"})
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    with pytest.raises(oauth.MetaOAuthError):
+        _provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+
+
+# --------------------------------------------------------------------------
+# Refresh: there is none
+# --------------------------------------------------------------------------
+
+
+def test_meta_refresh_says_out_loud_that_it_cannot_be_done():
+    """DOCUMENTATION WITH TEETH. Meta's renewal is fb_exchange_token with the
+    current ACCESS token, so `refresh(refresh_token)` is handed the one thing
+    that does not exist. Raising makes wiring Meta into a renewal loop fail
+    loudly instead of silently doing nothing."""
+    with pytest.raises(NotImplementedError):
+        _provider().refresh("there-is-no-such-thing")
+
+
+# --------------------------------------------------------------------------
+# The Pages read
+# --------------------------------------------------------------------------
+
+
+def _tokens():
+    return oauth.TokenSet(
+        access_token=LONG_LIVED,
+        refresh_token=None,
+        access_expires_in=5184000,
+        refresh_expires_in=None,
+        scope=None,
+        provider_user_id=ME_ID,
+    )
+
+
+def test_one_page_is_a_fact_and_is_reported(graph):
+    snapshot = _provider().read_audience(_tokens())
+    assert snapshot.handle == "Chez Adjo"
+    assert snapshot.follower_count == 12400
+    # Read with the LONG-LIVED user token, against the verified node.
+    params = graph.params_for("accounts")
+    assert params["access_token"] == LONG_LIVED
+    assert graph.calls[-1][1].endswith(f"/{ME_ID}/accounts")
+
+
+def test_a_page_reporting_only_likes_falls_back_to_fan_count(monkeypatch):
+    """followers_count is the number to show; fan_count is Page likes and is
+    kept only for Pages that still report the two separately. Same order and
+    same reason as enrichment.FacebookEnricher."""
+    fake = FakeGraph(pages=[{"id": "p", "name": "Chez Adjo", "fan_count": 900}])
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    assert _provider().read_audience(_tokens()).follower_count == 900
+
+
+def test_a_page_with_no_followers_yet_reports_zero_rather_than_nothing(monkeypatch):
+    """Zero is a fact about that Page and a brand is entitled to see it. It
+    must not be swallowed as if it were a missing field."""
+    fake = FakeGraph(pages=[{"id": "p", "name": "New Page", "followers_count": 0}])
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    assert _provider().read_audience(_tokens()).follower_count == 0
+
+
+def test_several_pages_answers_nothing_rather_than_guessing(monkeypatch):
+    """THE MULTI-PAGE DECISION, WRITTEN AS A TEST.
+
+    A creator managing a restaurant Page, a side project and a client's account
+    has not said which one is the audience they are selling, and nothing in the
+    response says either. "The first one" is ordered by Meta for Meta's reasons
+    and can change between calls. "The biggest one" is us deciding which of
+    somebody's businesses is their identity, and it is precisely wrong for the
+    creator whose largest Page belongs to a client.
+
+    So: no number. The connection still succeeds — see the end-to-end test
+    below — and the creator picks a Page in the app.
+    """
+    fake = FakeGraph(pages=TWO_PAGES)
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    assert _provider().read_audience(_tokens()) is None
+
+
+def test_no_pages_answers_nothing(monkeypatch):
+    """A creator who has not made a Page, or who declined pages_show_list on
+    the consent screen. Both are ordinary and neither is an error."""
+    fake = FakeGraph(pages=[])
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    assert _provider().read_audience(_tokens()) is None
+
+
+def test_a_failed_pages_lookup_returns_none_and_never_raises(monkeypatch):
+    """The AudienceReader contract. This runs after the tokens are stored, so
+    an exception escaping it would turn a completed connection into a failed
+    one over a follower count."""
+    fake = FakeGraph(raise_on={"accounts"})
+    monkeypatch.setattr(oauth.httpx, "get", fake)
+    assert _provider().read_audience(_tokens()) is None
+
+    refused = FakeGraph(fail={"accounts"})
+    monkeypatch.setattr(oauth.httpx, "get", refused)
+    assert _provider().read_audience(_tokens()) is None
+
+
+# --------------------------------------------------------------------------
+# End to end, through the router
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def auth_client():
+    """Named `auth_client`, not `client`, and that is load-bearing.
+
+    The autouse fixture in backend/conftest.py rebinds `profile_owner` to
+    `lambda user_id: user_id` for any test using a fixture named `client`, and
+    POST /profiles/oauth/{platform}/start has no `user_id` in its path: under
+    that override FastAPI turns `user_id` into a required QUERY parameter and
+    the route answers 422. Same trick, and same reason, as test_social_oauth.py.
+    """
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool, future=True
+    )
+    ts = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    from app.core.db import import_all_models
+
+    import_all_models()
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db():
+        db = ts()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app = FastAPI()
+    app.include_router(profiles_router, prefix="/profiles")
+    app.dependency_overrides[get_db] = override_get_db
+    app.add_exception_handler(AppError, app_error_handler)
+    c = TestClient(app)
+    c.session_factory = ts
+    return c
+
+
+def _user(client, phone):
+    db = client.session_factory()
+    try:
+        u = User(
+            phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True
+        )
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u.id
+    finally:
+        db.close()
+
+
+def _headers(user_id):
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
+def _connect(client, monkeypatch, phone):
+    """Register the real Meta provider and run one whole handshake through it."""
+    monkeypatch.setattr(oauth_service, "providers", {PLATFORM: _provider()})
+    uid = _user(client, phone)
+    started = client.post(
+        f"/profiles/oauth/{PLATFORM}/start", json={}, headers=_headers(uid)
+    )
+    assert started.status_code == 200, started.text
+    url = started.json()["authorize_url"]
+    # The callback URL the provider was told to send the creator back to is
+    # built from settings, not from the request, so it can be checked here.
+    assert oauth_service.redirect_uri(PLATFORM) in url
+    state = parse_qs(urlparse(url).query)["state"][0]
+    done = client.get(
+        f"/profiles/oauth/{PLATFORM}/callback", params={"code": "the-code", "state": state}
+    )
+    return uid, done
+
+
+def _stored_token(client, account_id):
+    db = client.session_factory()
+    try:
+        row = (
+            db.query(models.SocialToken)
+            .filter(models.SocialToken.social_account_id == account_id)
+            .first()
+        )
+        if row is None:
+            return None
+        return {
+            "access_ciphertext": row.access_token_ciphertext,
+            "refresh_ciphertext": row.refresh_token_ciphertext,
+            "access_expires_at": row.access_expires_at,
+            "refresh_expires_at": row.refresh_expires_at,
+            "scope": row.scope,
+            "provider_user_id": row.provider_user_id,
+        }
+    finally:
+        db.close()
+
+
+def test_the_short_lived_token_is_never_what_gets_stored(auth_client, monkeypatch, graph):
+    """THE REGRESSION GUARD FOR THE WHOLE PROVIDER.
+
+    Meta answers an authorization code with a token that expires in hours. If
+    that is what lands in the database, the exchange still SUCCEEDED — nothing
+    throws, nothing logs, the creator sees a connected account — and the
+    connection is dead by the next morning. Drop the fb_exchange_token call, or
+    return the first response's token, and this goes red here rather than in a
+    support queue.
+    """
+    _uid, done = _connect(auth_client, monkeypatch, "+22990003001")
+    assert done.status_code == 200, done.text
+    account = done.json()["account"]
+
+    stored = _stored_token(auth_client, account["id"])
+    assert decrypt_bytes(stored["access_ciphertext"]).decode() == LONG_LIVED
+    assert SHORT_LIVED.encode() not in stored["access_ciphertext"]
+    # And it is stored as a credential with a real life ahead of it, not one
+    # that expires this afternoon.
+    assert stored["access_expires_at"] > models.utcnow() + timedelta(days=30)
+    assert stored["provider_user_id"] == ME_ID
+
+
+def test_nothing_is_blanked_by_a_provider_that_has_no_refresh_token(
+    auth_client, monkeypatch, graph
+):
+    """Meta's TokenSet carries refresh_token=None on every single exchange.
+    save_tokens reads absent as "unchanged" rather than "revoked", so a null
+    column stays null and nothing that WAS there is destroyed. Reconnecting
+    exercises the second half of that: the same account, refreshed
+    credentials, and still nothing in the refresh column."""
+    uid, done = _connect(auth_client, monkeypatch, "+22990003002")
+    account = done.json()["account"]
+    first = _stored_token(auth_client, account["id"])
+    assert first["refresh_ciphertext"] is None
+    assert first["refresh_expires_at"] is None
+    # Nothing is claimed about what was granted — see the exchange test.
+    assert first["scope"] is None
+
+    # Reconnect. Matched on provider_user_id, so it is the same row.
+    monkeypatch.setattr(oauth_service, "providers", {PLATFORM: _provider()})
+    again = auth_client.post(
+        f"/profiles/oauth/{PLATFORM}/start", json={}, headers=_headers(uid)
+    )
+    state = parse_qs(urlparse(again.json()["authorize_url"]).query)["state"][0]
+    second = auth_client.get(
+        f"/profiles/oauth/{PLATFORM}/callback", params={"code": "code-2", "state": state}
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["account"]["id"] == account["id"]
+    assert _stored_token(auth_client, account["id"])["refresh_ciphertext"] is None
+    assert len(auth_client.get(f"/profiles/{uid}/social-accounts").json()) == 1
+
+
+def test_a_lapsed_meta_connection_asks_for_a_reconnection_and_never_calls_refresh(
+    auth_client, monkeypatch, graph
+):
+    """THE RENEWAL DECISION, WRITTEN AS A TEST.
+
+    Meta connections simply expire and the creator reconnects. There is no
+    refresh token, so load_access_token refuses on the null column several
+    lines before it would look up a provider — which is why
+    MetaOAuthProvider.refresh can raise NotImplementedError rather than
+    pretend. If that were ever reached, this test would see NotImplementedError
+    instead of a readable refusal, and a fourth Graph call in the log.
+    """
+    _uid, done = _connect(auth_client, monkeypatch, "+22990003003")
+    account_id = done.json()["account"]["id"]
+
+    db = auth_client.session_factory()
+    try:
+        row = (
+            db.query(models.SocialToken)
+            .filter(models.SocialToken.social_account_id == account_id)
+            .first()
+        )
+        row.access_expires_at = models.utcnow() - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+
+    calls_before = len(graph.calls)
+    db = auth_client.session_factory()
+    try:
+        with pytest.raises(AppError) as raised:
+            oauth_service.load_access_token(db, account_id)
+    finally:
+        db.close()
+    assert raised.value.code == "oauth_token_expired"
+    assert len(graph.calls) == calls_before, "nothing was asked of Meta"
+
+
+def test_one_page_stamps_the_count_as_the_platforms_own_word(
+    auth_client, monkeypatch, graph
+):
+    """All three provenance columns together, per #161.
+
+    This is the first place in the codebase that earns PLATFORM_API honestly:
+    the creator authorised us on Meta's own consent screen, the token is
+    theirs, and the number is their own Page's — rather than an app-owned token
+    reading a handle somebody typed.
+    """
+    uid, done = _connect(auth_client, monkeypatch, "+22990003004")
+    account = done.json()["account"]
+
+    assert account["follower_count"] == 12400
+    assert account["follower_source"] == "platform_api"
+    assert account["follower_verified_at"] is not None
+    # The numeric app-scoped id the exchange returned, replaced by something a
+    # brand can read.
+    assert account["handle"] == "Chez Adjo"
+    # PENDING. A reviewed provider is a better argument for a badge than
+    # anything before it, and turning one on is still somebody's decision
+    # rather than a consequence of adding a provider.
+    assert account["status"] == "pending"
+    assert account["method"] == "oauth"
+
+    listed = auth_client.get(f"/profiles/{uid}/social-accounts").json()
+    assert listed[0]["follower_count"] == 12400
+    assert listed[0]["follower_source"] == "platform_api"
+
+
+def test_several_pages_connects_the_account_but_records_no_number(
+    auth_client, monkeypatch
+):
+    """The connection is worth having on its own. What is missing is a number
+    nobody can supply without guessing which Page the creator meant — and a
+    null count keeps a null source with it, because a source beside no number
+    would claim a report nobody made."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=TWO_PAGES))
+    uid, done = _connect(auth_client, monkeypatch, "+22990003005")
+    assert done.status_code == 200, done.text
+    account = done.json()["account"]
+
+    assert account["follower_count"] is None
+    assert account["follower_source"] is None
+    assert account["follower_verified_at"] is None
+    # The account exists and its credentials are stored: nothing about the
+    # ambiguity cost the creator the connection.
+    assert account["platform"] == PLATFORM
+    assert _stored_token(auth_client, account["id"]) is not None
+    assert len(auth_client.get(f"/profiles/{uid}/social-accounts").json()) == 1
+
+
+def test_a_failed_pages_lookup_leaves_the_connection_standing(auth_client, monkeypatch):
+    """Best effort, always. The audience read runs after the tokens are stored
+    precisely so that this is true rather than hopeful."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(raise_on={"accounts"}))
+    _uid, done = _connect(auth_client, monkeypatch, "+22990003006")
+    assert done.status_code == 200, done.text
+    account = done.json()["account"]
+    assert account["follower_count"] is None
+    assert account["follower_source"] is None
+    assert decrypt_bytes(
+        _stored_token(auth_client, account["id"])["access_ciphertext"]
+    ).decode() == LONG_LIVED
+
+
+def test_a_meta_refusal_reaches_the_creator_as_one_readable_sentence(
+    auth_client, monkeypatch
+):
+    """Meta's own error text names client ids and is written for a developer.
+    It goes to the log; the creator gets oauth_exchange_failed and the promise
+    that nothing was saved."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(fail={"short"}))
+    uid, done = _connect(auth_client, monkeypatch, "+22990003007")
+    assert done.status_code == 502
+    assert done.json()["code"] == "oauth_exchange_failed"
+    assert "OAuthException" not in done.text
+    assert auth_client.get(f"/profiles/{uid}/social-accounts").json() == []

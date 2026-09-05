@@ -28,7 +28,7 @@
    the one place in the product where French punctuation is worth the trouble.
    Do not normalise it away.
 
-   THE FOURTEEN NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
+   THE FIFTEEN NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
    ARE INVISIBLE. An editor, a diff and a code review all draw one exactly like
    the ordinary space beside it, and nothing in the toolchain will tell you
    when one is lost: a space is not a type error, so tsc, vitest and the build
@@ -37,7 +37,7 @@
    to lose the lot — this file lost all of them exactly that way while
    being committed, and the only thing that noticed was a byte count. So if you
    edit these strings, check the result the way this change was checked — by
-   hashing the file and counting U+00A0 — and not by eye. All fourteen of
+   hashing the file and counting U+00A0 — and not by eye. All fifteen of
    them are on /legal/privacy.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
@@ -45,6 +45,25 @@
    a register; they are not words. The address is left unlocalised for the
    same reason and to match lib/countries.ts, which spells every country in
    English in both bundles.
+
+   SO IS THE ONE URL, AND ITS href IS NOT IN THIS FILE AT ALL. whoLink and
+   contactRegistrationLink hold the VISIBLE TEXT of a link — the address
+   without its scheme — and the https:// target lives beside the block in
+   pages/LegalPage.tsx. A URL inside translated copy is a URL a translator can
+   mangle, and it would have to be written identically in both bundles anyway,
+   which is the same argument as the identifiers above. The page renders it
+   through a declared `link` block; nothing here is parsed.
+
+   THE ADDRESS CARRIES NO TRAILING SLASH, and that changed with this note. The
+   policy used to print mocktar.com/legal/entities/ as plain text in four
+   places. BOTH FORMS RESOLVE TODAY: /legal/entities and /legal/entities/ were
+   both fetched and both returned the "Company details" page, and a 404
+   reported against the sibling /legal/privacy/ did not reproduce either. So
+   this is NOT the repair of a broken link, and nobody should record it as
+   one. It is the canonical form — the one the site's own navigation uses —
+   rather than a form that depends on the host continuing to forgive a slash,
+   in the document where a reviewer follows the link to confirm who they are
+   dealing with.
 
    WHY THE PRIVACY POLICY SHIPS ALONE, WITHOUT THE TERMS OF SERVICE. The two
    documents were drafted together, and the Terms are blocked on one thing:
@@ -102,7 +121,8 @@ const fr = {
       intro: "Kolabo est exploité par Mocktar Technologies, responsable du traitement. Cette politique explique ce que nous collectons lorsque vous utilisez Kolabo, pourquoi, qui d’autre y a accès, et ce que vous pouvez nous demander à ce sujet. Elle couvre le site web et les applications mobiles Kolabo. Elle ne couvre pas mocktar.com ni nos autres produits, qui ont leurs propres politiques.",
 
       whoTitle: "Qui nous sommes",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées sur mocktar.com/legal/entities/.",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante :",
+      whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "Ce que nous collectons",
       collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une : elle est facultative.",
@@ -182,7 +202,8 @@ const fr = {
 
       contactTitle: "Nous contacter",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Informations d’immatriculation : mocktar.com/legal/entities/"
+      contactRegistration: "Informations d’immatriculation :",
+      contactRegistrationLink: "mocktar.com/legal/entities"
     }
   },
 
@@ -204,7 +225,8 @@ const en = {
       intro: "Kolabo is operated by Mocktar Technologies. This policy explains what we collect when you use Kolabo, why, who else sees it, and what you can ask us to do about it. It covers the Kolabo website and mobile apps. It does not cover mocktar.com or our other products, which have their own policies.",
 
       whoTitle: "Who we are",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at mocktar.com/legal/entities/.",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at:",
+      whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "What we collect",
       collectAccount: "**To create your account.** Your phone number, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. An email address if you choose to give one — it is optional.",
@@ -254,7 +276,8 @@ const en = {
 
       contactTitle: "Contact",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Registration details: mocktar.com/legal/entities/"
+      contactRegistration: "Registration details:",
+      contactRegistrationLink: "mocktar.com/legal/entities"
     }
   },
 

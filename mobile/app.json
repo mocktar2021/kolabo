@@ -5,18 +5,23 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "kolabo",
+    "icon": "./assets/kolabo-icon-1024.png",
     "platforms": [
       "ios",
       "android"
     ],
     "newArchEnabled": true,
     "ios": {
-      "bundleIdentifier": "com.kolabo.app",
+      "bundleIdentifier": "com.kolaboafrica.app",
       "supportsTablet": false
     },
     "android": {
-      "package": "com.kolabo.app",
-      "edgeToEdgeEnabled": true
+      "package": "com.kolaboafrica.app",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/kolabo-adaptive-foreground.png",
+        "backgroundImage": "./assets/kolabo-adaptive-background.png"
+      }
     },
     "locales": {
       "en": "./locales/en.json",

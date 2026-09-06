@@ -183,8 +183,12 @@ class Settings(BaseSettings):
     # which proxy header survived the last infrastructure change, and the
     # failure ("redirect_uri_mismatch") names none of that.
     #
-    # Not a credential and not in .env.example: it is a URL, and the default is
-    # the local dev API.
+    # Not a credential. It IS in .env.example, and the note beside it there
+    # says why: this default is the local dev API, so a deployed server that
+    # never sets it sends every creator to a callback on localhost:8000 and
+    # Meta refuses the handshake before the consent screen is even drawn. That
+    # is a one-line misconfiguration whose error message names nothing, which
+    # is exactly the kind that belongs in the example file.
     api_public_base_url: str = "http://localhost:8000"
     # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
     # no app review), so setting this turns on YouTube profile auto fill.
@@ -220,9 +224,40 @@ class Settings(BaseSettings):
     #   enricher, which fetch one node at a time with a fields parameter. Put
     #   the release date beside the next value too, so the next person can tell
     #   at a glance how much runway is left.
+    #
+    #   IT NOW PINS THE OAUTH PROVIDER TOO, which raises the cost of letting it
+    #   go stale. A retired version does not merely stop enriching profiles: it
+    #   stops the consent dialog and the token exchange, so nobody can connect
+    #   an account at all.
     meta_graph_token: str = ""
     instagram_business_account_id: str = ""
     meta_graph_version: str = "v26.0"
+    # The Meta APP's own credentials, for the OAuth handshake in
+    # profiles/oauth.py that connects a creator's Facebook Page.
+    #
+    # A DIFFERENT THING FROM meta_graph_token ABOVE, and the distinction is
+    # what earns them separate settings rather than a reused one.
+    # meta_graph_token is a token belonging to KOLABO, used to read public data
+    # about a handle the creator typed — nobody authorised anything. These two
+    # are the app's identity in a handshake where the CREATOR authorises US,
+    # and what comes back is a token belonging to them, over their own Page.
+    # One is a key we hold; the other is how we ask permission.
+    #
+    # UNSET MEANS THE PROVIDER IS NOT REGISTERED, the same rule as
+    # youtube_api_key and fedapay_secret_key. With neither set,
+    # oauth.build_default_providers() returns the empty registry it always
+    # returned and POST /profiles/oauth/facebook/start answers
+    # `oauth_platform_unsupported`, exactly as it did before the provider
+    # existed. BOTH are required: an app id with no secret cannot complete a
+    # token exchange, so half-configured is treated as unconfigured rather than
+    # as a consent screen that ends in a 502.
+    #
+    # THE SECRET IS A SECRET, and it is not the kind that only embarrasses us.
+    # Anyone holding it can mint tokens as the Kolabo app. It belongs in
+    # deploy/.env on the server and never in this repository, an image, or a
+    # screenshot.
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
     # Anthropic API key for AI drafted profile bios. Unset means the feature is
     # reported as unavailable rather than half working.
     anthropic_api_key: str = ""

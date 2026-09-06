@@ -42,7 +42,7 @@ const fr = {
   colGross: "Brut",
   colCommission: "Commission",
   colNet: "Net",
-  noDate: "—",
+  noDate: "Sans date",
   untitled: "Campagne sans titre",
   unknownBrand: "Marque",
   viewContract: "Voir le contrat",
@@ -54,7 +54,7 @@ const fr = {
   clientAll: "Tous les clients",
 
   empty: "Aucun paiement pour l'instant.",
-  emptyHint: "Un paiement apparaît ici quand une marque bloque l'argent en séquestre — après la signature, pas à la signature.",
+  emptyHint: "Un paiement apparaît ici quand une marque bloque l'argent en séquestre : après la signature, pas à la signature.",
   loadFailed: "Impossible de charger vos gains pour l'instant."
 };
 
@@ -81,7 +81,7 @@ const en = {
   colGross: "Gross",
   colCommission: "Commission",
   colNet: "Net",
-  noDate: "—",
+  noDate: "No date",
   untitled: "Untitled campaign",
   unknownBrand: "Brand",
   viewContract: "View the contract",
@@ -90,7 +90,7 @@ const en = {
   clientAll: "All clients",
 
   empty: "No payments yet.",
-  emptyHint: "A payment appears here when a brand holds the money in escrow — after signing, not at signing.",
+  emptyHint: "A payment appears here when a brand holds the money in escrow: after signing, not at signing.",
   loadFailed: "Your earnings could not be loaded right now."
 };
 

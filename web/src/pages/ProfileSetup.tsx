@@ -525,7 +525,7 @@ function PackagesSection({ userId, token }: { userId: string; token: string | nu
                 value={form.durationValue} onChange={(e) => setForm({ ...form, durationValue: e.target.value.replace(/\D/g, "") })} />
               <select className="select" aria-label={t("profile.packageDuration")} value={form.durationUnit}
                 onChange={(e) => setForm({ ...form, durationUnit: e.target.value })}>
-                <option value="">—</option>
+                <option value="">{t("profile.durationUnitNone")}</option>
                 <option value="seconds">{t("profile.durationUnitSeconds")}</option>
                 <option value="minutes">{t("profile.durationUnitMinutes")}</option>
                 <option value="hours">{t("profile.durationUnitHours")}</option>
@@ -788,7 +788,7 @@ export default function ProfileSetup() {
                 <div className="field">
                   <label className="label" htmlFor="gender">{t("profile.gender")}</label>
                   <select id="gender" className="select" value={gender} onChange={(e) => setGender(e.target.value)}>
-                    <option value="">—</option>
+                    <option value="">{t("profile.genderNone")}</option>
                     <option value="female">{t("profile.genderFemale")}</option>
                     <option value="male">{t("profile.genderMale")}</option>
                     <option value="other">{t("profile.genderOther")}</option>

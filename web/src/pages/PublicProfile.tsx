@@ -563,7 +563,7 @@ export default function PublicProfilePage() {
                     <select className="select" style={{ marginTop: 12 }} aria-label={t("public.choosePackage")}
                       value={selectedPackage.id} onChange={(e) => setSelectedId(e.target.value)}>
                       {packages.map((p) => (
-                        <option key={p.id} value={p.id}>{p.quantity ?? 1} × {p.title} — {price(p)}</option>
+                        <option key={p.id} value={p.id}>{p.quantity ?? 1} × {p.title} · {price(p)}</option>
                       ))}
                     </select>
                     {pkgChips(selectedPackage)}

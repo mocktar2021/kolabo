@@ -17,7 +17,7 @@ const fr = {
   opening: "Ouverture du paiement…",
   waiting: "En attente de votre paiement",
   waitingHint:
-    "Validez le paiement sur votre téléphone. Cette page se met à jour automatiquement — ne la fermez pas.",
+    "Validez le paiement sur votre téléphone. Cette page se met à jour automatiquement. Ne la fermez pas.",
   reopen: "Rouvrir la page de paiement",
   succeeded: "Paiement confirmé",
   succeededHint: "Les fonds sont en séquestre. Le créateur peut commencer le travail.",
@@ -36,7 +36,7 @@ const fr = {
   unavailable: "Paiements indisponibles",
   unavailableHint:
     "Les paiements en ligne ne sont pas encore ouverts dans votre pays. Nous vous préviendrons dès que c'est disponible.",
-  sandbox: "Mode test — aucun argent réel n'est débité.",
+  sandbox: "Mode test : aucun argent réel n'est débité.",
 
   payoutTitle: "Où souhaitez-vous être payé ?",
   payoutHint:
@@ -60,7 +60,7 @@ const en = {
   opening: "Opening payment…",
   waiting: "Waiting for your payment",
   waitingHint:
-    "Approve the payment on your phone. This page updates on its own — please don't close it.",
+    "Approve the payment on your phone. This page updates on its own. Please don't close it.",
   reopen: "Reopen the payment page",
   succeeded: "Payment confirmed",
   succeededHint: "The funds are in escrow. The creator can start the work.",
@@ -76,11 +76,11 @@ const en = {
   unavailable: "Payments unavailable",
   unavailableHint:
     "Online payments aren't open in your country yet. We'll let you know as soon as they are.",
-  sandbox: "Test mode — no real money is charged.",
+  sandbox: "Test mode: no real money is charged.",
 
   payoutTitle: "Where should we pay you?",
   payoutHint:
-    "We send your earnings to this Mobile Money wallet. Pick the network — we don't guess it from the number.",
+    "We send your earnings to this Mobile Money wallet. Pick the network. We don't guess it from the number.",
   payoutCountry: "Country",
   payoutNetwork: "Network",
   payoutPhone: "Mobile Money number",

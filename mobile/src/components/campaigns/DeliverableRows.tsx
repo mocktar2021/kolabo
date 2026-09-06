@@ -62,7 +62,7 @@ export function DeliverableRows({
       <View style={{ gap: space(1) }}>
         {value.map((d, i) => (
           <Text key={i} style={styles.lockedRow}>
-            {d.quantity} × {deliverableLabel(d.type)} —{" "}
+            {d.quantity} × {deliverableLabel(d.type)} ·{" "}
             {SELLABLE_PLATFORMS.find((p) => p.id === d.platform)?.label ?? d.platform}
           </Text>
         ))}

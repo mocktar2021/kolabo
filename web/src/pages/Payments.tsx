@@ -260,7 +260,7 @@ export default function PaymentsPage() {
                 screen. */}
             {filtering && (
               <p className="muted" style={{ fontSize: 13.5, margin: "16px 0 -2px", fontWeight: 600 }}>
-                {t("filt.totals")} <span style={{ fontWeight: 400 }}>— {t("filt.totalsHint")}</span>
+                {t("filt.totals")} <span style={{ fontWeight: 400 }}>({t("filt.totalsHint")})</span>
               </p>
             )}
 

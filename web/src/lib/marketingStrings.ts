@@ -86,7 +86,7 @@ const fr = {
     /* Time band. */
     timeKicker: "Le temps de gestion d'une campagne",
     timeOld: "40 heures", timeNew: "1 heure",
-    timeLine: "Relances, suivi des paiements et reporting tournent tout seuls — il ne vous reste que les décisions.",
+    timeLine: "Relances, suivi des paiements et reporting tournent tout seuls. Il ne vous reste que les décisions.",
     timeCta: "Commencer gratuitement",
     whySub: "Ce qui compte vraiment sur nos marchés.",
     /* Teams ("Pensé pour toutes les tailles"). */
@@ -199,7 +199,7 @@ const en = {
     /* Time band. */
     timeKicker: "Time spent managing a campaign",
     timeOld: "40 hours", timeNew: "1 hour",
-    timeLine: "Status chasing, payment tracking, and reporting run on their own — all that's left for you is the decisions.",
+    timeLine: "Status chasing, payment tracking, and reporting run on their own. All that's left for you is the decisions.",
     timeCta: "Start for free",
     whySub: "What actually matters in our markets.",
     /* Teams ("Built for every size"). */

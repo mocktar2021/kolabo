@@ -137,7 +137,7 @@ export function CampaignEditForm({ campaign, locked, onSaved, onClose }: {
               : t("campaign.noBudget")}
           </Text>
           <Text style={styles.lockedLine}>
-            {t("campaign.deadline")}: {campaign.deadline ? fromIsoDay(campaign.deadline) : "—"}
+            {t("campaign.deadline")}: {campaign.deadline ? fromIsoDay(campaign.deadline) : t("campaign.noDeadline")}
           </Text>
           <Text style={[styles.fieldLabel, { marginTop: space(2) }]}>{t("campaign.deliverables")}</Text>
           <DeliverableRows value={deliverables} onChange={setDeliverables} disabled />

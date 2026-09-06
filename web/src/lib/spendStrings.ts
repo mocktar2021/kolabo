@@ -49,7 +49,7 @@ const fr = {
      revenus apparaissent dans un total sans aucune ligne à laquelle les
      rattacher. */
   rowRefunded: "dont {{amount}} remboursé",
-  noDate: "—",
+  noDate: "Sans date",
   untitled: "Campagne sans titre",
   unknownCreator: "Créateur",
 
@@ -60,7 +60,7 @@ const fr = {
   creatorAll: "Tous les créateurs",
 
   empty: "Aucun paiement pour l'instant.",
-  emptyHint: "Un paiement apparaît ici quand vous bloquez l'argent en séquestre — après la signature du contrat, pas à la commande.",
+  emptyHint: "Un paiement apparaît ici quand vous bloquez l'argent en séquestre : après la signature du contrat, pas à la commande.",
   loadFailed: "Impossible de charger vos paiements pour l'instant."
 };
 
@@ -90,7 +90,7 @@ const en = {
   colAmount: "Amount",
   colStatus: "Status",
   rowRefunded: "including {{amount}} refunded",
-  noDate: "—",
+  noDate: "No date",
   untitled: "Untitled campaign",
   unknownCreator: "Creator",
 
@@ -98,7 +98,7 @@ const en = {
   creatorAll: "All creators",
 
   empty: "No payments yet.",
-  emptyHint: "A payment appears here when you hold the money in escrow — after the contract is signed, not when you order.",
+  emptyHint: "A payment appears here when you hold the money in escrow: after the contract is signed, not when you order.",
   loadFailed: "Your payments could not be loaded right now."
 };
 

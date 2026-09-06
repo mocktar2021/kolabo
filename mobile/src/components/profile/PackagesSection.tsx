@@ -16,7 +16,6 @@ import "../../lib/packageStrings";
 
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const UNIT_OPTIONS: Choice[] = [
-  { value: "", label: "—" },
   { value: "seconds", label: "s" },
   { value: "minutes", label: "min" },
   { value: "hours", label: "h" },
@@ -353,7 +352,7 @@ export function PackagesSection({
         <View style={{ flex: 1 }}>
           <Text style={styles.fieldLabel}>{t("profile.durationUnit")}</Text>
           <ChoiceGroup
-            options={UNIT_OPTIONS}
+            options={[{ value: "", label: t("profile.durationUnitNone") }, ...UNIT_OPTIONS]}
             value={form.durationUnit}
             onChange={(v) => setForm({ ...form, durationUnit: v })}
           />

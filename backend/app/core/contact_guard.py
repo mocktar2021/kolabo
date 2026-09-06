@@ -197,7 +197,13 @@ _CURRENCY_WINDOW = 12
 # between two unrelated numbers would otherwise splice them into one long run.
 # Deliberately not "/" either, which is what keeps 02/08/2026 from ever being a
 # candidate in the first place.
-_SEPARATORS = r"  \t.\-()"
+#
+# The no-break space is written as \u00A0 rather than as the character itself,
+# and re reads the escape as that character. A literal one is invisible, and a
+# tool that normalises whitespace turns it into an ordinary space without a
+# word: this file lost it exactly that way once, and the guard then silently
+# stopped matching numbers pasted from a phone. Keep it as the escape.
+_SEPARATORS = r"\u00A0 \t.\-()"
 _DIGIT_RUN = re.compile(r"\+?\d[\d" + _SEPARATORS + r"]{5,}\d")
 _GROUP_SPLIT = re.compile(r"[" + _SEPARATORS + r"]+")
 
@@ -413,7 +419,7 @@ def contact_details_detail(kinds: list[str], surface: str) -> str:
         "conversation, the contract and the money in one place: a deal agreed "
         "elsewhere has no contract and no escrow behind it, so neither side has "
         f"any recourse if it goes wrong. Take it out and send the {surface} "
-        "again — nothing was saved and nothing was edited."
+        "again. Nothing was saved and nothing was edited."
     )
 
 

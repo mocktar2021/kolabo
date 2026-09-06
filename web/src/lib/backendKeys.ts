@@ -129,5 +129,5 @@ export function assertBackendIsThere(): void {
   if (!statSync(APP_DIR).isDirectory()) throw new Error(`not a directory: ${APP_DIR}`);
   if (!statSync(MODULES_DIR).isDirectory()) throw new Error(`not a directory: ${MODULES_DIR}`);
   const count = pythonFiles().length;
-  if (count < 20) throw new Error(`only ${count} python files under ${APP_DIR} — has it moved?`);
+  if (count < 20) throw new Error(`only ${count} python files under ${APP_DIR}. Has it moved?`);
 }

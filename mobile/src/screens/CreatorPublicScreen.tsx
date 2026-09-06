@@ -412,7 +412,7 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
                 <Card>
                   <SectionTitle>{t("public.orderConfirm")}</SectionTitle>
                   <Text style={styles.confirmLine}>
-                    {selectedPackage.title} — {selectedPackage.price_amount.toLocaleString(i18n.language)}{" "}
+                    {selectedPackage.title} · {selectedPackage.price_amount.toLocaleString(i18n.language)}{" "}
                     {selectedPackage.currency}
                   </Text>
                   {orderError ? <Banner kind="error">{orderError}</Banner> : null}

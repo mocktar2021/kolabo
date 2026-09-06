@@ -50,7 +50,7 @@ const fr = {
   s2HeadAccent: "protégés",
   s2HeadB: ", du brief à la livraison.",
   s2Body:
-    "Signez le contrat et payez en séquestre. Les fonds ne sont libérés qu'une fois la collaboration validée — par Mobile Money.",
+    "Signez le contrat et payez en séquestre. Les fonds ne sont libérés qu'une fois la collaboration validée, par Mobile Money.",
   s2CardTitle: "Paiement en séquestre",
   s2CardChip: "Protégé",
   s2CardSub: "Fonds bloqués jusqu'à validation",

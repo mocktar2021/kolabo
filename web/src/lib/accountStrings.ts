@@ -46,12 +46,12 @@ const fr = {
   passwordMismatch: "Les deux mots de passe ne sont pas identiques.",
 
   paymentTitle: "Comment vous êtes payé",
-  paymentBody: "Les paiements passent par Mobile Money. L'argent d'une commande est bloqué en séquestre à la commande, puis libéré vers vous à la livraison — c'est ce séquestre qui vous protège d'un client qui disparaît, et le client d'une livraison qui n'arrive pas.",
+  paymentBody: "Les paiements passent par Mobile Money. L'argent d'une commande est bloqué en séquestre à la commande, puis libéré vers vous à la livraison. C'est ce séquestre qui vous protège d'un client qui disparaît, et le client d'une livraison qui n'arrive pas.",
   /* Why there is no form here. Nothing in this system stores an instrument de
      paiement, aucun endpoint n'en accepte, et un formulaire qui collecte des
      coordonnées que personne ne lit est pire que la phrase honnête : il
      promet un versement automatique qui n'existe pas encore. */
-  paymentPending: "Les coordonnées de versement — opérateur et numéro de retrait — arriveront avec l'intégration du prestataire de paiement. Tant qu'aucun versement ne part d'ici, il n'y a rien à saisir sur cette page.",
+  paymentPending: "Les coordonnées de versement (opérateur et numéro de retrait) arriveront avec l'intégration du prestataire de paiement. Tant qu'aucun versement ne part d'ici, il n'y a rien à saisir sur cette page.",
   paymentMeanwhile: "D'ici là, les versements sont déclenchés manuellement vers le numéro de votre compte.",
 
   notifTitle: "Ce que nous vous envoyons",
@@ -62,7 +62,7 @@ const fr = {
   notifPayment: "Un paiement est bloqué en séquestre, libéré, ou remboursé.",
   notifDispute: "Un litige est ouvert, reçoit une réponse, ou est tranché.",
   notifMessage: "Un message vous est adressé.",
-  notifSecurity: "Votre mot de passe change — y compris quand ce n'est pas vous qui l'avez changé.",
+  notifSecurity: "Votre mot de passe change, y compris quand ce n'est pas vous qui l'avez changé.",
   /* Read-only on purpose. Il n'existe pas de préférences de notification
      côté serveur : des interrupteurs qui ne coupent rien seraient un mensonge
      avec une jolie animation, et la première notification reçue après les
@@ -102,8 +102,8 @@ const en = {
   passwordMismatch: "The two passwords do not match.",
 
   paymentTitle: "How you get paid",
-  paymentBody: "Payments run on Mobile Money. An order's money is held in escrow when it is placed and released to you on delivery — that escrow is what protects you from a client who disappears, and the client from a delivery that never arrives.",
-  paymentPending: "Payout details — operator and withdrawal number — arrive with the payment provider integration. While no payout leaves from here, there is nothing on this page to fill in.",
+  paymentBody: "Payments run on Mobile Money. An order's money is held in escrow when it is placed and released to you on delivery. That escrow is what protects you from a client who disappears, and the client from a delivery that never arrives.",
+  paymentPending: "Payout details (operator and withdrawal number) arrive with the payment provider integration. While no payout leaves from here, there is nothing on this page to fill in.",
   paymentMeanwhile: "Until then, payouts are triggered manually to the number on your account.",
 
   notifTitle: "What we send you",
@@ -114,7 +114,7 @@ const en = {
   notifPayment: "A payment is held in escrow, released, or refunded.",
   notifDispute: "A dispute is opened, answered, or decided.",
   notifMessage: "Somebody writes to you.",
-  notifSecurity: "Your password changes — including when you are not the one who changed it.",
+  notifSecurity: "Your password changes, including when you are not the one who changed it.",
   notifReadOnly: "This list is read-only. There are no notification preferences server-side yet, and switches that switched nothing would be worth less than this sentence.",
 
   sessionTitle: "Session",

@@ -249,7 +249,7 @@ export const error_fr: Record<string, string> = {
      sur mobile — et le refus arrive au moment où quelqu'un regarde son
      argent, donc c'est la dernière phrase qui doive être illisible. */
   escrow_business_not_found: "Nous n'avons pas retrouvé votre compte. Reconnectez-vous puis réessayez.",
-  payments_gateway_unavailable: "Le service de paiement est momentanément injoignable. Rien n'a été débité — réessayez dans un instant.",
+  payments_gateway_unavailable: "Le service de paiement est momentanément injoignable. Rien n'a été débité. Réessayez dans un instant.",
   payments_gateway_not_configured: "Les paiements ne sont pas encore activés sur la plateforme. Contactez le support.",
   payment_intent_not_found: "Ce paiement est introuvable. Si un montant a été débité, contactez le support avec la référence.",
   payment_intent_not_yours: "Ce paiement ne vous appartient pas.",
@@ -266,7 +266,7 @@ export const error_fr: Record<string, string> = {
      composés par contactDetails() plus bas à partir des jetons envoyés par le
      backend : le français ne construit pas une liste comme l'anglais, et une
      phrase assemblée en Python ne pourrait l'être que dans une seule langue. */
-  contact_details_found: "Ce {{surface}} semble contenir {{what}}. Kolabo garde la conversation, le contrat et l'argent au même endroit : un accord conclu ailleurs n'a ni contrat ni séquestre derrière lui, donc aucune des deux parties n'a de recours si ça tourne mal. Retirez-le et renvoyez votre {{surface}} — rien n'a été enregistré et rien n'a été modifié.",
+  contact_details_found: "Ce {{surface}} semble contenir {{what}}. Kolabo garde la conversation, le contrat et l'argent au même endroit : un accord conclu ailleurs n'a ni contrat ni séquestre derrière lui, donc aucune des deux parties n'a de recours si ça tourne mal. Retirez-le et renvoyez votre {{surface}}. Rien n'a été enregistré et rien n'a été modifié.",
   kind_email: "une adresse e-mail",
   kind_phone: "un numéro de téléphone",
   kind_handle: "un identifiant de messagerie",
@@ -506,7 +506,7 @@ export const error_en: Record<string, string> = {
      a francophone reader ever found out. tests/errorMessages.test.ts is what
      changed that. */
   escrow_business_not_found: "We couldn't find your account. Please sign in again and retry.",
-  payments_gateway_unavailable: "The payment service is unreachable right now. Nothing has been charged — please try again in a moment.",
+  payments_gateway_unavailable: "The payment service is unreachable right now. Nothing has been charged. Please try again in a moment.",
   payments_gateway_not_configured: "Payments aren't switched on yet. Please contact support.",
   payment_intent_not_found: "We can't find this payment. If you were charged, contact support with the reference.",
   payment_intent_not_yours: "This payment isn't yours.",
@@ -521,7 +521,7 @@ export const error_en: Record<string, string> = {
   /* The contact guard's refusal, and the only body whose values are words
      rather than numbers. {{what}} and {{surface}} are composed by
      contactDetails() below from the tokens the backend sends. */
-  contact_details_found: "This {{surface}} looks like it contains {{what}}. Kolabo keeps the conversation, the contract and the money in one place: a deal agreed elsewhere has no contract and no escrow behind it, so neither side has any recourse if it goes wrong. Take it out and send the {{surface}} again — nothing was saved and nothing was edited.",
+  contact_details_found: "This {{surface}} looks like it contains {{what}}. Kolabo keeps the conversation, the contract and the money in one place: a deal agreed elsewhere has no contract and no escrow behind it, so neither side has any recourse if it goes wrong. Take it out and send the {{surface}} again. Nothing was saved and nothing was edited.",
   kind_email: "an email address",
   kind_phone: "a phone number",
   kind_handle: "a messaging app handle",

@@ -165,7 +165,7 @@ function InvitationCard({ inv, onDone, onContract }: {
         <View style={{ gap: 2 }}>
           {c.deliverables.map((d, i) => (
             <Text key={i} style={styles.deliv}>
-              {d.quantity} × {deliverableLabel(d.type)} — {PLATFORM_LABELS[d.platform] ?? d.platform}
+              {d.quantity} × {deliverableLabel(d.type)} · {PLATFORM_LABELS[d.platform] ?? d.platform}
             </Text>
           ))}
         </View>

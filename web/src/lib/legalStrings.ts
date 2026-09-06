@@ -28,17 +28,17 @@
    the one place in the product where French punctuation is worth the trouble.
    Do not normalise it away.
 
-   THE FIFTEEN NON-BREAKING SPACES BELOW ARE REAL U+00A0 CHARACTERS, AND THEY
-   ARE INVISIBLE. An editor, a diff and a code review all draw one exactly like
-   the ordinary space beside it, and nothing in the toolchain will tell you
-   when one is lost: a space is not a type error, so tsc, vitest and the build
-   all stay green over French punctuation that has quietly stopped being
-   French. One round trip through a tool that normalises whitespace is enough
-   to lose the lot — this file lost all of them exactly that way while
-   being committed, and the only thing that noticed was a byte count. So if you
-   edit these strings, check the result the way this change was checked — by
-   hashing the file and counting U+00A0 — and not by eye. All fifteen of
-   them are on /legal/privacy.
+   THE FIFTEEN NON-BREAKING SPACES BELOW ARE WRITTEN AS  , ON PURPOSE.
+   They used to be literal U+00A0 characters, and a literal one is invisible:
+   an editor, a diff and a code review all draw it exactly like the ordinary
+   space beside it, and nothing in the toolchain says when one is lost. A
+   space is not a type error, so tsc, vitest and the build all stay green
+   over French punctuation that has quietly stopped being French. This file
+   lost all fifteen that way more than once while being committed, and the
+   only thing that ever noticed was a byte count. The escape is the same
+   character at runtime, it cannot be normalised away by anything short of an
+   edit, and it shows up in a diff. Keep writing new ones as  . All
+   fifteen are on /legal/privacy.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
    BOTH LANGUAGES. RB/COT/26 A 119654 and 1200900488800 identify a company in
@@ -121,7 +121,7 @@ const fr = {
       intro: "Kolabo est exploité par Mocktar Technologies, responsable du traitement. Cette politique explique ce que nous collectons lorsque vous utilisez Kolabo, pourquoi, qui d’autre y a accès, et ce que vous pouvez nous demander à ce sujet. Elle couvre le site web et les applications mobiles Kolabo. Elle ne couvre pas mocktar.com ni nos autres produits, qui ont leurs propres politiques.",
 
       whoTitle: "Qui nous sommes",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante :",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin. RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante :",
       whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "Ce que nous collectons",
@@ -163,7 +163,7 @@ const fr = {
       collectVerify: "**Pour vérifier que c’est bien vous.** Les codes à usage unique rattachés à votre numéro de téléphone. Ils expirent, ils ne fonctionnent qu’une fois, et un code erroné coûte une tentative.",
 
       collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
-      collectSocial: "**Vos comptes de réseaux sociaux connectés.** La plateforme et le pseudonyme que vous connectez, ainsi que les chiffres d’audience que nous récupérons pour ce compte — nombre d’abonnés, taux d’engagement et composition de l’audience — que nous obtenons depuis l’API publique de la plateforme elle-même. Nous ne recevons pas le mot de passe de votre compte social et nous ne pouvons pas publier en votre nom.",
+      collectSocial: "**Vos comptes de réseaux sociaux connectés.** La plateforme et le pseudonyme que vous connectez, ainsi que les chiffres d’audience que nous récupérons pour ce compte (nombre d’abonnés, taux d’engagement et composition de l’audience) que nous obtenons depuis l’API publique de la plateforme elle-même. Nous ne recevons pas le mot de passe de votre compte social et nous ne pouvons pas publier en votre nom.",
       collectDocs: "**Documents de vérification.** Si vous demandez à être vérifié, la pièce d’identité ou le document d’immatriculation que vous téléversez. Ces documents sont **chiffrés au repos** et ne sont visibles que par le personnel qui les examine.",
       collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
       collectWork: "**Le travail en commun.** Les messages et les pièces jointes que vous échangez avec l’autre partie à un contrat, le travail que vous soumettez et, si quelque chose tourne mal, la réclamation et les preuves versées à un litige.",
@@ -225,11 +225,11 @@ const en = {
       intro: "Kolabo is operated by Mocktar Technologies. This policy explains what we collect when you use Kolabo, why, who else sees it, and what you can ask us to do about it. It covers the Kolabo website and mobile apps. It does not cover mocktar.com or our other products, which have their own policies.",
 
       whoTitle: "Who we are",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin — RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at:",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin. RCCM RB/COT/26 A 119654, IFU 1200900488800. Full registration details, including our United States entity, are published at:",
       whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "What we collect",
-      collectAccount: "**To create your account.** Your phone number, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. An email address if you choose to give one — it is optional.",
+      collectAccount: "**To create your account.** Your phone number, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. An email address if you choose to give one. It is optional.",
 
       /* Reworded, and sharedSms deleted outright — see the note above the
          French collectVerify for what changed, why, and what has to be put
@@ -237,10 +237,10 @@ const en = {
       collectVerify: "**To verify it is you.** One-time codes tied to your phone number. They expire, they work once, and a wrong code costs an attempt.",
 
       collectPublish: "**What you publish.** Your profile: display name, bio, categories, prices and packages, availability, profile photo and portfolio images. This is your storefront and is visible to anyone, including people who are not signed in. Please do not put anything in it you would not want public.",
-      collectSocial: "**Your connected social accounts.** The platform and handle you connect, and the audience figures we retrieve for it — follower counts, engagement rates and audience breakdowns — which we fetch from the platform's own public API. We do not receive your social account password and we cannot post on your behalf.",
+      collectSocial: "**Your connected social accounts.** The platform and handle you connect, and the audience figures we retrieve for it (follower counts, engagement rates and audience breakdowns) which we fetch from the platform's own public API. We do not receive your social account password and we cannot post on your behalf.",
       collectDocs: "**Verification documents.** If you ask to be verified, the identity or business registration document you upload. These are **encrypted at rest** and are visible only to the staff who review them.",
       collectMoney: "**Money.** What you order or are hired for, the amount, the currency, and the state of the escrow holding it. If you are paid out: your mobile money number, the network, and the account name. We show that number back to you masked, and it goes to our payment provider rather than to the other party.",
-      collectWork: "**Working together.** Messages and attachments you exchange with the other party to a contract, work you submit, and — if something goes wrong — the claim and the evidence in a dispute.",
+      collectWork: "**Working together.** Messages and attachments you exchange with the other party to a contract, work you submit, and, if something goes wrong, the claim and the evidence in a dispute.",
       collectTech: "**Technical.** The usual connection data any web service processes to work at all: IP address, device and browser type, timestamps.",
 
       whyTitle: "Why we collect it",
@@ -248,7 +248,7 @@ const en = {
       whyNoSale: "**We do not sell your personal data, and we do not use it for advertising.**",
 
       sharedTitle: "Who else sees it",
-      sharedGateway: "**Our payment provider, FedaPay**, receives what a payment or payout requires — amount, currency, and the payer's or recipient's details. Money cannot move without this.",
+      sharedGateway: "**Our payment provider, FedaPay**, receives what a payment or payout requires: amount, currency, and the payer's or recipient's details. Money cannot move without this.",
       sharedSocial: "**Social platforms** (YouTube, Meta and others as we add them) receive a request for the public data on a handle you connected.",
       sharedAi: "**Anthropic**, if you use the optional \"draft my bio\" feature: the profile facts you already published are sent to draft a suggestion. You choose whether to save it. Do not use the feature for anything you do not want to leave our systems.",
       sharedHosting: "**Our hosting and infrastructure providers**, which store and serve the data on our instructions.",
@@ -259,7 +259,7 @@ const en = {
       where: "On servers we operate and on our providers' infrastructure, which may be outside your country. Payment and payout data is processed by FedaPay in the markets it serves.",
 
       retentionTitle: "How long we keep it",
-      retention: "While your account is open, and afterwards for as long as we must — records of completed transactions, tax records and dispute records have to outlive the account they belong to. We do not yet publish a schedule of retention periods; when we set one it will appear here.",
+      retention: "While your account is open, and afterwards for as long as we must: records of completed transactions, tax records and dispute records have to outlive the account they belong to. We do not yet publish a schedule of retention periods; when we set one it will appear here.",
 
       rightsTitle: "Your choices and rights",
       rightsEdit: "You can edit or delete most of your profile from the app at any time. Depending on where you live, you may have rights to access the data we hold on you, correct it, have it erased, object to how we use it, or receive a copy. **You can close your account yourself, in account settings on the Kolabo website.** We ask for your password when you do, because a signed-in session on its own should not be enough to erase an account. **An account that has any contract or any escrow cannot be closed that way**, and the form will say so: the other party to a collaboration keeps its own record of it, and we do not erase the trail of money that moved. To close an account like that, or to make any of the other requests above, **write to us** at the address below and we will answer.",

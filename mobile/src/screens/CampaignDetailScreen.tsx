@@ -266,7 +266,7 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
             <View style={{ gap: 2, marginBottom: space(2) }}>
               {campaign.deliverables.map((d, i) => (
                 <Text key={i} style={styles.deliv}>
-                  {d.quantity} × {deliverableLabel(d.type)} — {PLATFORM_LABELS[d.platform] ?? d.platform}
+                  {d.quantity} × {deliverableLabel(d.type)} · {PLATFORM_LABELS[d.platform] ?? d.platform}
                 </Text>
               ))}
             </View>

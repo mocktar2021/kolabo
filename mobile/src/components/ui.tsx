@@ -353,7 +353,7 @@ export function Select({
         style={({ pressed }) => [styles.selectBox, pressed && { backgroundColor: colors.surface }]}
       >
         <Text style={[styles.selectValue, !current && { color: colors.muted }]} numberOfLines={1}>
-          {current ? current.label : (placeholder ?? "—")}
+          {current ? current.label : (placeholder ?? "")}
         </Text>
         <Ionicons name="chevron-down" size={18} color={colors.muted} />
       </Pressable>

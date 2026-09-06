@@ -306,7 +306,7 @@ export default function CartPage() {
                                 code the resolver refused with. */}
                             {isRejected && error && (
                               <p style={{ fontSize: 13, margin: "6px 0 0", color: "var(--danger, #c0392b)", fontWeight: 600 }}>
-                                {t("cart.lineRejected")} — {error}
+                                {t("cart.lineRejected")}: {error}
                               </p>
                             )}
                           </div>

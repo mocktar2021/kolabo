@@ -71,7 +71,7 @@ const frBoard = {
      correspond donc à aucune niche et à aucun pays, et disparaît. Le seul
      moyen de le revoir est d'élargir : la phrase pointe vers le bouton. */
   emptyFiltered: "Aucun brief ne correspond à ces filtres.",
-  emptyFilteredHint: "Attention aux filtres Niche et Pays : ils lisent le ciblage de la marque, donc ils masquent aussi les briefs qui ne visent personne en particulier — et ce sont justement ceux qui sont ouverts à tout le monde. Élargissez vos filtres ou réinitialisez-les pour les revoir.",
+  emptyFilteredHint: "Attention aux filtres Niche et Pays : ils lisent le ciblage de la marque, donc ils masquent aussi les briefs qui ne visent personne en particulier, et ce sont justement ceux qui sont ouverts à tout le monde. Élargissez vos filtres ou réinitialisez-les pour les revoir.",
 
   loadFailed: "Impossible de charger les briefs ouverts pour l'instant."
 };
@@ -126,7 +126,7 @@ const enBoard = {
   emptyHint: "A brief appears here when a brand publishes a campaign and opens it to applications. In the meantime, invitations addressed to you arrive under Invitations.",
 
   emptyFiltered: "No brief matches these filters.",
-  emptyFilteredHint: "Watch the Niche and Country filters: they read the brand's targeting, so they also hide briefs that target nobody in particular — and those are exactly the ones open to everyone. Widen your filters or reset them to see those again.",
+  emptyFilteredHint: "Watch the Niche and Country filters: they read the brand's targeting, so they also hide briefs that target nobody in particular, and those are exactly the ones open to everyone. Widen your filters or reset them to see those again.",
 
   loadFailed: "Open briefs could not be loaded right now."
 };
@@ -182,7 +182,7 @@ const frLanding = {
   brief2d: "Images, exigences, budget, échéance. C'est le document sur lequel les créateurs se prononcent.",
 
   brief3t: "Les créateurs postulent",
-  brief3d: "Ils proposent leur tarif et leur délai. Vous choisissez, vous négociez, vous signez — sans quitter Kolabo."
+  brief3d: "Ils proposent leur tarif et leur délai. Vous choisissez, vous négociez, vous signez. Le tout sans quitter Kolabo."
 };
 
 const enLanding = {
@@ -196,7 +196,7 @@ const enLanding = {
   brief2d: "Images, requirements, budget, deadline. It is the document creators price against.",
 
   brief3t: "Creators apply",
-  brief3d: "They propose their rate and their timeline. You choose, you negotiate, you sign — without leaving Kolabo."
+  brief3d: "They propose their rate and their timeline. You choose, you negotiate, you sign. All without leaving Kolabo."
 };
 
 i18n.addResourceBundle(

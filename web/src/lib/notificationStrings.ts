@@ -34,7 +34,7 @@ const fr = {
   /* Depuis le lien porté par la notification, un clic ouvre directement
      l'élément concerné quand il existe — le contrat, le litige, la
      conversation — et sinon l'écran correspondant. */
-  routeNote: "Un clic ouvre directement l'élément concerné quand c'est possible — le contrat, le litige, la conversation — et sinon l'écran correspondant.",
+  routeNote: "Un clic ouvre directement l'élément concerné quand c'est possible (le contrat, le litige, la conversation) et sinon l'écran correspondant.",
   opensScreen: "Ouvre l'élément concerné",
 
   justNow: "à l'instant",
@@ -67,7 +67,7 @@ const en = {
   emptyHint: "Invitations, proposals, contracts, messages and money movements arrive here.",
   loadFailed: "Your notifications could not be loaded right now.",
 
-  routeNote: "A click opens the item it is about when it can — the contract, the dispute, the conversation — otherwise the matching screen.",
+  routeNote: "A click opens the item it is about when it can (the contract, the dispute, the conversation), otherwise the matching screen.",
   opensScreen: "Opens the item it is about",
 
   justNow: "just now",

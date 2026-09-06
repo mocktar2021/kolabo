@@ -573,7 +573,7 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
         ) : (
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14 }}>
             {c.deliverables.map((d, i) => (
-              <li key={i}>{d.quantity} × {t(`deliverable.${d.type}`, d.type)} — {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
+              <li key={i}>{d.quantity} × {t(`deliverable.${d.type}`, d.type)} · {PLATFORM_LABELS[d.platform] ?? d.platform}</li>
             ))}
           </ul>
         )}

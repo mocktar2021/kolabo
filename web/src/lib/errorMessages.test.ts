@@ -93,7 +93,7 @@ describe("the contact guard's tokens are all translated", () => {
 
   function tupleLiterals(name: string): string[] {
     const block = new RegExp(`${name}\\s*=\\s*\\(([^)]*)\\)`).exec(guard);
-    if (!block) throw new Error(`${name} not found in contact_guard.py — has it been renamed?`);
+    if (!block) throw new Error(`${name} not found in contact_guard.py. Has it been renamed?`);
     return [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   }
 

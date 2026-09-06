@@ -461,7 +461,7 @@ export default function Onboarding() {
                       value={pkg.durationValue} onChange={(e) => setPkg({ ...pkg, durationValue: e.target.value.replace(/\D/g, "") })} />
                     <select className="select" aria-label={t("profile.packageDuration")} value={pkg.durationUnit}
                       onChange={(e) => setPkg({ ...pkg, durationUnit: e.target.value })}>
-                      <option value="">—</option>
+                      <option value="">{t("profile.durationUnitNone")}</option>
                       <option value="seconds">{t("profile.durationUnitSeconds")}</option>
                       <option value="minutes">{t("profile.durationUnitMinutes")}</option>
                       <option value="hours">{t("profile.durationUnitHours")}</option>

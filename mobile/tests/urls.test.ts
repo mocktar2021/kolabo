@@ -4,11 +4,16 @@ import { safeExternalHref } from "../src/lib/urls";
 
 /* The guard on a link one user typed and another user taps.
 
-   WHY IT LIVES UNDER tests/ AND NOT BESIDE THE SOURCE. vitest.config.ts sets
-   include: ["tests/**/*.test.ts"], so a test file under src/ is collected by
-   nothing. It would never run and would therefore never fail, which reads in
-   a diff exactly like a test that passes. Every mobile test is here for that
-   reason.
+   WHY IT LIVES UNDER tests/ AND NOT BESIDE THE SOURCE. The include glob in
+   vitest.config.ts collects test files under tests/ and nowhere else, so a
+   test file under src/ is collected by nothing. It would never run and would
+   therefore never fail, which reads in a diff exactly like a test that
+   passes. Every mobile test is here for that reason.
+
+   The glob is described in words rather than quoted, and it has to be: the
+   star and slash in the middle of it close a block comment, so writing it out
+   here ends this one early and hands the rest of the file to the parser as
+   code. That is a syntax error, not a stylistic one.
 
    WHY IT IS TESTED SEPARATELY FROM WEB rather than sharing a file. The two
    packages share no module, and mobile/src/lib/urls.ts is a different

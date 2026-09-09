@@ -1,15 +1,29 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# THE COMMITTED DEFAULTS, NAMED, so that production can refuse them by value.
+#
+# A laptop must run with no setup, which is what these defaults are for. A
+# production deployment must never run WITH them: a JWT secret that is in a
+# public git history lets anyone mint a token for any account, including an
+# admin's, and the admin surface includes POST /payments/escrow/{id}/resolve,
+# which splits any escrow to any amounts that balance. The gap between those
+# two sentences is one forgotten environment variable, and until the
+# validator below existed nothing noticed. Kept as module constants rather
+# than inlined twice so the check and the default cannot drift apart.
+DEFAULT_JWT_SECRET = "change-me"
+DEFAULT_DOCUMENT_ENCRYPTION_KEY = "t8eo8FXK3XnpNtKXhH39F9ZPzwrcn3fpIaiBQaFBgnk="
 
 
 class Settings(BaseSettings):
     env: str = "development"
     database_url: str = "postgresql://kolabo:kolabo@localhost:5432/kolabo"
-    jwt_secret: str = "change-me"
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
     # Fernet key used to encrypt verification documents at rest. Override in
     # production via the DOCUMENT_ENCRYPTION_KEY environment variable.
-    document_encryption_key: str = "t8eo8FXK3XnpNtKXhH39F9ZPzwrcn3fpIaiBQaFBgnk="
+    document_encryption_key: str = DEFAULT_DOCUMENT_ENCRYPTION_KEY
     # Platform commission in basis points (1500 = 15 percent). Launch value,
     # to be confirmed via Business Model Validation and set per country later.
     commission_bps: int = 1500
@@ -268,6 +282,50 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
+    @model_validator(mode="after")
+    def _refuse_committed_secrets_in_production(self):
+        """Refuse to exist with ENV=production and a secret still at its default.
+
+        AT CONSTRUCTION, WHICH IS IMPORT, WHICH IS STARTUP. Settings() runs at
+        the bottom of this module, so the API, the sweeps container and any
+        script that imports app.core.config all refuse in the same way and
+        none of them gets as far as opening a database with a forged-token
+        risk hanging over it. The traceback names the variables, because the
+        person reading it is mid-deploy and needs the fix, not a riddle.
+
+        The codebase already accepts this pattern for a smaller risk:
+        gateway_router computes mock_payments as (not live) and env !=
+        "production", and gateway_schemas calls the environment half of that
+        condition load-bearing. Same reasoning, higher stakes.
+
+        Development is untouched. A laptop still runs with no setup, which is
+        the reason the defaults exist at all.
+        """
+        if self.env != "production":
+            return self
+        problems: list[str] = []
+        if self.jwt_secret == DEFAULT_JWT_SECRET:
+            problems.append("JWT_SECRET is the committed default; anyone can mint a token")
+        if self.document_encryption_key == DEFAULT_DOCUMENT_ENCRYPTION_KEY:
+            problems.append(
+                "DOCUMENT_ENCRYPTION_KEY is the committed default; verification documents are readable"
+            )
+        # Only when payments are live. With no secret key the registry is
+        # empty and no webhook will ever arrive, so an empty webhook secret
+        # is not a fault. With one, every webhook FedaPay sends would be
+        # rejected, and /payments/config would report healthy right up until
+        # the first escrow failed to fund.
+        if self.fedapay_secret_key and not self.fedapay_webhook_secret:
+            problems.append(
+                "FEDAPAY_WEBHOOK_SECRET is empty while FEDAPAY_SECRET_KEY is set; every webhook would be rejected"
+            )
+        if problems:
+            raise RuntimeError(
+                "Refusing to start with ENV=production. Set these in deploy/.env and restart:\n  "
+                + "\n  ".join(problems)
+            )
+        return self
 
 
 settings = Settings()

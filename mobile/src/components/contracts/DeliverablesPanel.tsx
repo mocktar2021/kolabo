@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, mediaSrc, type MediaOut } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { errorText } from "../../lib/errorMessages";
+import { safeExternalHref } from "../../lib/urls";
 import {
   REVIEW_WINDOW_DAYS,
   openSubmission,
@@ -256,36 +257,58 @@ export function DeliverablesPanel({
           {rows.length > 0 ? (
             <View style={{ marginTop: space(4) }}>
               <Text style={styles.h4}>{t("deliv.history")}</Text>
-              {rows.map((r) => (
-                <View key={r.id} style={styles.histRow}>
-                  <Text style={[styles.statusChip, chipStyle(r.status)]}>{t(`deliv.status_${r.status}`)}</Text>
-                  {r.link_url ? (
-                    <Text style={styles.link} onPress={() => Linking.openURL(r.link_url as string)}>
-                      {t("deliv.viewPost")}
-                    </Text>
-                  ) : null}
-                  {r.note ? <Text style={styles.note}>{r.note}</Text> : null}
-                  {/* Through mediaSrc: the API returns a bare
-                      "/profiles/media/{id}" path and the API origin is not the
-                      app, so used raw these would resolve against nothing. A
-                      submission the phone can now make is a submission the
-                      phone has to be able to SHOW — otherwise a creator sends
-                      four photos and neither side can see them on the device
-                      they were shot on. */}
-                  {r.attachments.length > 0 ? (
-                    <View style={styles.thumbs}>
-                      {r.attachments.map((url) => (
-                        <Image key={url} source={{ uri: mediaSrc(url) }} style={styles.thumb} />
-                      ))}
-                    </View>
-                  ) : null}
-                  {r.review_note ? (
-                    <Text style={styles.reviewNote}>
-                      <Text style={{ fontFamily: family.bodyBold }}>{t("deliv.reviewNoteShown")}</Text> {r.review_note}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
+              {rows.map((r) => {
+                /* Decided on the phone, not trusted from the API. The
+                   `as string` this replaces did not merely silence the
+                   null check, it silenced the question: link_url was
+                   stored with no validation at all from the day
+                   deliverables shipped, so every row already in the
+                   database went in unchecked and a rule that only runs on
+                   new submissions cannot reach the old ones. openURL
+                   resolves whatever it is handed against every scheme an
+                   installed app has registered. See lib/urls.ts. */
+                const href = safeExternalHref(r.link_url);
+                return (
+                  <View key={r.id} style={styles.histRow}>
+                    <Text style={[styles.statusChip, chipStyle(r.status)]}>{t(`deliv.status_${r.status}`)}</Text>
+                    {href ? (
+                      <Text style={styles.link} onPress={() => Linking.openURL(href)}>
+                        {t("deliv.viewPost")}
+                      </Text>
+                    ) : r.link_url ? (
+                      /* Inert, and still visible. The creator has to be able
+                         to see what they submitted in order to fix it, and a
+                         brand shown nothing at all would read this as a
+                         submission that came with no link rather than one the
+                         app declined to open. */
+                      <>
+                        <Text style={styles.deadLink}>{r.link_url}</Text>
+                        <Text style={styles.deadLinkHint}>{t("deliv.linkNotOpenable")}</Text>
+                      </>
+                    ) : null}
+                    {r.note ? <Text style={styles.note}>{r.note}</Text> : null}
+                    {/* Through mediaSrc: the API returns a bare
+                        "/profiles/media/{id}" path and the API origin is not the
+                        app, so used raw these would resolve against nothing. A
+                        submission the phone can now make is a submission the
+                        phone has to be able to SHOW — otherwise a creator sends
+                        four photos and neither side can see them on the device
+                        they were shot on. */}
+                    {r.attachments.length > 0 ? (
+                      <View style={styles.thumbs}>
+                        {r.attachments.map((url) => (
+                          <Image key={url} source={{ uri: mediaSrc(url) }} style={styles.thumb} />
+                        ))}
+                      </View>
+                    ) : null}
+                    {r.review_note ? (
+                      <Text style={styles.reviewNote}>
+                        <Text style={{ fontFamily: family.bodyBold }}>{t("deliv.reviewNoteShown")}</Text> {r.review_note}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
         </>
@@ -313,6 +336,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   link: { color: colors.teal600, fontFamily: family.bodySemi, fontSize: font.small, marginTop: space(2) },
+  deadLink: { fontFamily: family.body, color: colors.ink, fontSize: font.small, marginTop: space(2) },
+  deadLinkHint: { fontFamily: family.body, color: colors.muted, fontSize: font.tiny, marginTop: space(1) },
   note: { fontFamily: family.body, color: colors.ink, fontSize: font.small, marginTop: space(2) },
   thumbs: { flexDirection: "row", flexWrap: "wrap", gap: space(2), marginTop: space(2) },
   thumb: {

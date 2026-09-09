@@ -23,6 +23,7 @@ second sender to swap the day a real SMS provider is contracted. The reset
 code is otp.generate_code() and the delivery is otp.default_sender, the same
 two calls registration makes.
 """
+import logging
 from datetime import timedelta
 
 from fastapi import status
@@ -44,6 +45,8 @@ from app.modules.profiles.models import BusinessProfile, InfluencerProfile
 # The same sender registration uses. Module level so a test can swap it, like
 # the one in service.py.
 _sender = otp.default_sender
+
+_log = logging.getLogger("kolabo.auth.account")
 
 # One body, one status, for a phone we know and a phone we do not. Built once
 # so the two return paths cannot drift into two different sentences — which is
@@ -333,7 +336,32 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
     )
     db.add(token)
     db.commit()
-    _sender.send(user.phone, f"Your Kolabo password reset code is {token.token}")
+    result = otp.deliver(_sender, user.phone, f"Your Kolabo password reset code is {token.token}")
+    if not result.ok:
+        # THE ONE CALL SITE THAT DOES NOT REFUSE, and the reason is the oracle
+        # this whole endpoint exists to defeat. A 503 here would be answered
+        # only for numbers that have an account, because only those reach a
+        # send at all, so a provider outage would turn every request into a
+        # free "is this number on Kolabo" lookup for as long as it lasted.
+        # The 429 above narrows the oracle deliberately and says why; this
+        # would open it wide for nothing the user could act on.
+        #
+        # So the answer stays the generic 202. What changes is that the token
+        # is consumed, so a code that never left stops counting as one in
+        # flight against the per-hour cap and the person can ask again the
+        # moment delivery is back, and the failure is logged at ERROR in the
+        # provider's own words, because a silent 202 over a dead provider is
+        # how an outage goes unnoticed until support hears about it. The real
+        # answer to a failing provider is a second one behind it, which is
+        # what otp.CompositeSender is for.
+        token.consumed = True
+        db.commit()
+        _log.error(
+            "reset code not delivered to %s via %s: %s",
+            user.phone,
+            result.provider,
+            result.error,
+        )
     return GENERIC_RESET_RESPONSE
 
 

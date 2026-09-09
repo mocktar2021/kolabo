@@ -16,6 +16,7 @@ Registration still only records attribution — signing up with a code is worth
 nothing on its own, deliberately. What a referral eventually earns, and when,
 lives in app.modules.auth.referrals.
 """
+import logging
 import secrets
 from datetime import timedelta
 
@@ -58,8 +59,30 @@ REFERRAL_MAX_ATTEMPTS = 3
 
 _sender = otp.default_sender
 
+_log = logging.getLogger("kolabo.auth.service")
+
 
 def _issue_otp(db: Session, user: User) -> None:
+    """Write a challenge, put its code on the phone, and refuse if it did not go.
+
+    THE ROW IS COMMITTED BEFORE THE SEND, and that order is the safe one. A
+    code that reaches a handset must already exist to be verified against; a
+    send that went out before the commit could hand somebody a code the
+    database then failed to record. The price of that order is the case this
+    function now handles: the send fails AFTER the row exists.
+
+    WHEN THE SEND FAILS THE CHALLENGE IS CONSUMED ON THE SPOT. Left live, it
+    would count against the per-phone and platform ceilings as a code in
+    flight that never flew, and it would be the newest unconsumed challenge
+    that verify_otp resolves the next guess against. Consumed, it is history.
+    Then the request refuses with a code of its own, so no client ever shows
+    "code sent" for a code that never left the server. The account row stays,
+    and registering the same number again is the resend.
+
+    A provider that raises is a provider that failed: otp.deliver turns the
+    exception into a result, so a gateway outage is a 503 that says so rather
+    than a 500 on a request whose row was already committed.
+    """
     code = otp.generate_code()
     challenge = OtpChallenge(
         user_id=user.id,
@@ -68,7 +91,26 @@ def _issue_otp(db: Session, user: User) -> None:
     )
     db.add(challenge)
     db.commit()
-    _sender.send(user.phone, f"Your Kolabo verification code is {code}")
+    result = otp.deliver(_sender, user.phone, f"Your Kolabo verification code is {code}")
+    if result.ok:
+        return
+    challenge.consumed = True
+    db.commit()
+    _log.error(
+        "verification code not delivered to %s via %s: %s",
+        user.phone,
+        result.provider,
+        result.error,
+    )
+    raise AppError(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        # 503, not 500 and not 400: nobody sent anything wrong and the server
+        # is not broken, the thing between us and the handset is. The client
+        # says so in the reader's language and offers the retry that will
+        # succeed the moment the provider is back.
+        code="auth_otp_delivery_failed",
+        detail="We could not send the verification code. Please try again in a moment.",
+    )
 
 
 def _live_otp_challenges(db: Session, user: User, now):

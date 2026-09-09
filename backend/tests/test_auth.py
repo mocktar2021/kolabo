@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.db import Base, get_db
 from app.core.errors import AppError, app_error_handler
 from app.core.rewards import REFERRAL_CREDIT
-from app.modules.auth import models, service
+from app.modules.auth import models, otp, service
 from app.modules.auth.router import router as auth_router
 
 PHONE = "+22990000001"
@@ -69,11 +69,16 @@ class _RecordingSender:
     generator: a module level name, reassigned for the duration of one test.
     """
 
+    name = "recording"
+
     def __init__(self):
         self.sent = []
 
     def send(self, phone, message):
         self.sent.append((phone, message))
+        # A sender that says nothing is a sender that failed, since KOL-74:
+        # see otp.deliver. Every stand-in has to answer.
+        return otp.SendResult(ok=True, provider=self.name)
 
 
 @pytest.fixture()

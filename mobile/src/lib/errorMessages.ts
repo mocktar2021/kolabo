@@ -49,6 +49,7 @@ export const error_fr: Record<string, string> = {
   auth_reset_too_many: "Trop de demandes de réinitialisation. Réessayez plus tard.",
   auth_otp_too_many: "Trop de codes de vérification demandés. Réessayez plus tard.",
   auth_otp_capacity: "Les codes de vérification sont momentanément indisponibles. Réessayez dans quelques minutes.",
+  auth_otp_delivery_failed: "Nous n'avons pas pu envoyer le code de vérification. Réessayez dans un instant.",
   auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
 
   profile_not_found: "Profil introuvable.",
@@ -308,6 +309,7 @@ export const error_en: Record<string, string> = {
   auth_reset_too_many: "Too many reset requests. Try again later.",
   auth_otp_too_many: "Too many verification codes requested. Try again later.",
   auth_otp_capacity: "Verification codes are temporarily unavailable. Try again in a few minutes.",
+  auth_otp_delivery_failed: "We could not send the verification code. Try again in a moment.",
   auth_reset_code_invalid: "That reset code is invalid or expired.",
 
   profile_not_found: "Profile not found.",

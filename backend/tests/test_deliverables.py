@@ -21,12 +21,16 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
 from app.core.db import Base, get_db
+from app.core.errors import AppError
 from app.core.security import create_access_token
+from app.core.urls import MAX_URL_CHARS
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models as deliverables  # noqa: F401  (registers tables)
+from app.modules.deliverables import service as deliverables_service
 from app.modules.deliverables.router import router as deliverables_router
+from app.modules.deliverables.schemas import SubmissionIn
 from app.modules.notifications.models import Notification
 from app.modules.payments import models as pay_models
 from app.modules.payments import provider as provider_module
@@ -249,6 +253,98 @@ def test_a_second_submission_while_one_is_open_is_a_conflict(client):
     _, inf, _, cid, _ = _funded(client)
     assert _submit(client, inf, cid).status_code == 201
     assert _submit(client, inf, cid).status_code == 409
+
+
+# --- The link, which is the field somebody else's browser follows -------
+#
+# link_url was a bare string: stripped, stored, and rendered as a live anchor
+# by both clients. So a creator could store `javascript:...` and wait for the
+# brand to click it, on the contract page, where that brand is signed in and
+# one button away from releasing this escrow. That is what separates this
+# field from `note`, which is only ever read. app/core/urls.py holds the rule
+# and the argument for it; these are the cases at this end of it.
+
+
+def test_a_link_a_browser_would_run_is_refused_and_nothing_is_written(client):
+    """Refused rather than blanked. A submission stored with the link silently
+    removed would leave the creator believing they sent something they did
+    not, which is the same objection contact_guard makes to redacting."""
+    _, inf, _, cid, _ = _funded(client)
+    assert _submit(client, inf, cid, link_url="javascript:alert(1)").status_code == 400
+    assert client.get(f"/deliverables?contract_id={cid}", headers=_headers(inf)).json() == []
+    # And the door is still open for the same creator to send a real one.
+    assert _submit(client, inf, cid).status_code == 201
+
+
+def test_a_link_nobody_typed_is_refused_by_length(client):
+    """Measured before it is parsed, so a pasted blob costs a len() rather
+    than a parse."""
+    _, inf, _, cid, _ = _funded(client)
+    giant = "https://example.com/" + ("a" * 3000)
+    assert len(giant) > MAX_URL_CHARS
+    assert _submit(client, inf, cid, link_url=giant).status_code == 400
+    assert client.get(f"/deliverables?contract_id={cid}", headers=_headers(inf)).json() == []
+
+
+def test_the_link_refusals_name_themselves(client):
+    """The status is what a client acts on; the CODE is what it translates.
+
+    Read at the service rather than off the response, because the app this
+    file builds does not register the AppError handler (the same note the D2
+    gate below carries), so `code` never reaches the body here. These two
+    names are the contract with errorMessages.ts and are worth asserting by
+    name rather than by status alone.
+    """
+    _, inf, _, cid, _ = _funded(client)
+    db = client.session_factory()
+    try:
+        with pytest.raises(AppError) as refused:
+            deliverables_service.submit(
+                db, inf, SubmissionIn(contract_id=cid, link_url="javascript:alert(1)")
+            )
+        assert refused.value.code == "deliverable_link_invalid"
+        assert refused.value.status_code == 400
+
+        with pytest.raises(AppError) as too_long:
+            deliverables_service.submit(
+                db,
+                inf,
+                SubmissionIn(contract_id=cid, link_url="https://example.com/" + ("a" * 3000)),
+            )
+        assert too_long.value.code == "deliverable_link_too_long"
+        assert too_long.value.status_code == 400
+        # The ceiling travels as a number, so the French sentence can put it
+        # where French puts it instead of baking a 2048 into two strings.
+        assert too_long.value.values == {"max": MAX_URL_CHARS}
+    finally:
+        db.close()
+
+
+def test_a_link_pasted_without_a_scheme_is_stored_with_one(client):
+    """The commonest real input. A creator copies what the app showed them,
+    which has no https:// on the front, and refusing that would teach them
+    nothing except that the field is fussy. What is STORED is what the guard
+    parsed, because that is the string a browser will follow."""
+    _, inf, _, cid, _ = _funded(client)
+    r = _submit(client, inf, cid, link_url="instagram.com/p/abc")
+    assert r.status_code == 201
+    assert r.json()["link_url"] == "https://instagram.com/p/abc"
+
+
+def test_a_submission_with_only_a_bad_link_is_not_called_empty(client):
+    """Two rules could refuse this and only one of them is useful. "A
+    submission needs a link or a file" would send a creator who DID paste a
+    link looking for a file to attach; the link refusal tells them the truth."""
+    _, inf, _, cid, _ = _funded(client)
+    db = client.session_factory()
+    try:
+        with pytest.raises(AppError) as refused:
+            deliverables_service.submit(
+                db, inf, SubmissionIn(contract_id=cid, link_url="file:///etc/passwd")
+            )
+        assert refused.value.code == "deliverable_link_invalid"
+    finally:
+        db.close()
 
 
 # --- Approving ----------------------------------------------------------

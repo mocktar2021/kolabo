@@ -5,6 +5,7 @@ import { errorText } from "../lib/errorMessages";
 import { EvidencePicker } from "./EvidencePicker";
 import { useAuth } from "../lib/auth";
 import { parseApiDate } from "../lib/orders";
+import { safeExternalHref } from "../lib/urls";
 import {
   REVIEW_WINDOW_DAYS,
   draftFrom,
@@ -48,6 +49,13 @@ function StatusChip({ status }: { status: DeliverableSubmission["status"] }) {
 
 function SubmissionRow({ row }: { row: DeliverableSubmission }) {
   const { t } = useTranslation();
+  /* Decided here, not trusted from the API. link_url was stored with no
+     validation at all from the day deliverables shipped until the guard that
+     lands with this change, so every row already in the database went in
+     unchecked, and a rule that only runs on new submissions cannot reach the
+     old ones. This component renders the old ones. See lib/urls.ts for what
+     an unchecked value in an href actually costs. */
+  const href = safeExternalHref(row.link_url);
   return (
     <div style={{ borderTop: "1px solid var(--line)", padding: "12px 0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -61,8 +69,22 @@ function SubmissionRow({ row }: { row: DeliverableSubmission }) {
       </div>
       {row.link_url && (
         <p style={{ margin: "8px 0 0", fontSize: 14 }}>
-          {/* rel="noreferrer" because this is a link somebody else supplied. */}
-          <a href={row.link_url} target="_blank" rel="noreferrer">{t("deliv.viewPost")}</a>
+          {href ? (
+            /* rel="noreferrer" because this is a link somebody else supplied. */
+            <a href={href} target="_blank" rel="noreferrer">{t("deliv.viewPost")}</a>
+          ) : (
+            /* Shown rather than hidden, and inert rather than clickable. The
+               creator needs to see what they actually submitted in order to
+               fix it, and a brand shown nothing at all would read this as a
+               submission that came with no link rather than one the app
+               declined to open. */
+            <>
+              <span style={{ wordBreak: "break-all" }}>{row.link_url}</span>
+              <span className="muted" style={{ display: "block", fontSize: 13, marginTop: 4 }}>
+                {t("deliv.linkNotOpenable")}
+              </span>
+            </>
+          )}
         </p>
       )}
       {row.note && <p style={{ margin: "6px 0 0", fontSize: 14, whiteSpace: "pre-wrap" }}>{row.note}</p>}

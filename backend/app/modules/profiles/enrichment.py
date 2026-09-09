@@ -25,14 +25,24 @@ configured nothing is filled and the creator types their own details.
 """
 import logging
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import httpx
 
 from app.core.config import settings
+from app.core.urls import is_public_host, normalized_public_url
 
 _log = logging.getLogger("kolabo.profiles.enrichment")
 
 TIMEOUT_SECONDS = 6.0
+
+# The most of an avatar this process will ever hold in memory. Real ones are
+# tens of kilobytes, so five megabytes is generous for the thing we want and
+# still small enough that a url pointing at a video file, or at an endpoint
+# that streams for as long as somebody keeps writing to it, cannot turn one
+# profile import into an out-of-memory kill. Counted as bytes ARRIVE rather
+# than read off a header, for the reason fetch_image gives.
+MAX_FETCHED_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 class EnrichedProfile(dict):
@@ -277,14 +287,74 @@ default_enricher: SocialEnricher = build_default_enricher()
 
 
 def fetch_image(url: str) -> tuple[bytes, str] | None:
-    """Download an avatar so it can be stored as a media asset."""
+    """Download an avatar so it can be stored as a media asset.
+
+    THE URL PASSED IN CAME OUT OF A THIRD PARTY'S API RESPONSE. Every caller
+    reaches here with an `avatar_image_url` lifted off a Graph or YouTube
+    payload, which means the address this process is about to dial was chosen
+    by somebody who is not us. That is exactly the class of input that must not
+    be handed the process's own network position: from inside the cluster,
+    `http://169.254.169.254/...` and `http://10.0.0.5:6379/` answer in a way
+    they never would from a creator's browser, and a fetch is a fetch whether
+    the url arrived from a stranger or from Meta. The trust we place in the API
+    is trust in what it SAYS, not permission for it to aim us.
+
+    So, before any body is read:
+
+    * The url has to be one we would hand to a browser at all (app.core.urls),
+      which is what refuses `file://` and anything with a control character
+      spliced into it.
+    * The host must not be a loopback, private or link-local literal.
+    * The content type has to be an image. Checking it after reading the body
+      means having already paid for an HTML error page.
+
+    REDIRECTS ARE STILL FOLLOWED, because avatar urls redirect constantly, but
+    the address we actually LANDED on is put through both guards again. A
+    guard on the first hop only is not a guard: a public url that answers 302
+    to the metadata endpoint would otherwise walk the request there for us.
+
+    And the body is streamed into a bounded buffer instead of being buffered
+    whole. A declared Content-Length over the ceiling saves us reading a byte,
+    but it is a claim rather than a measurement, so the running total of what
+    actually arrived is what enforces the limit.
+    """
+    target = normalized_public_url(url)
+    if target is None or not is_public_host(urlsplit(target).hostname):
+        _log.warning("Avatar download refused, not a public web url: %s", url)
+        return None
     try:
-        res = httpx.get(url, timeout=TIMEOUT_SECONDS, follow_redirects=True)
-        res.raise_for_status()
-        content_type = res.headers.get("content-type", "").split(";")[0].strip()
-        if not content_type.startswith("image/"):
-            return None
-        return res.content, content_type
+        with httpx.stream(
+            "GET", target, timeout=TIMEOUT_SECONDS, follow_redirects=True
+        ) as res:
+            res.raise_for_status()
+
+            # Where we ended up, which is not necessarily where we aimed.
+            landed = normalized_public_url(str(res.url))
+            if landed is None or not is_public_host(urlsplit(landed).hostname):
+                _log.warning("Avatar download refused, redirected to %s", res.url)
+                return None
+
+            content_type = res.headers.get("content-type", "").split(";")[0].strip()
+            if not content_type.startswith("image/"):
+                return None
+
+            declared = res.headers.get("content-length") or ""
+            if declared.isdigit() and int(declared) > MAX_FETCHED_IMAGE_BYTES:
+                return None
+
+            body = bytearray()
+            for chunk in res.iter_bytes():
+                body += chunk
+                if len(body) > MAX_FETCHED_IMAGE_BYTES:
+                    # Abandoned mid-stream, and the `with` closes the response
+                    # on the way out, so the rest of it is never pulled down.
+                    _log.warning(
+                        "Avatar download over %s bytes, abandoned: %s",
+                        MAX_FETCHED_IMAGE_BYTES,
+                        url,
+                    )
+                    return None
+            return bytes(body), content_type
     except Exception as exc:
         _log.warning("Avatar download failed for %s: %s", url, exc)
         return None

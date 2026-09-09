@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.urls import MAX_URL_CHARS, normalized_public_url
 from app.modules.campaigns import completion
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
@@ -71,6 +72,15 @@ NOT_FUNDED_DETAIL = (
 OPEN_ALREADY_DETAIL = (
     "You have already submitted work on this contract and the brand has not "
     "answered yet. Wait for their review, or withdraw the submission first."
+)
+
+# Names the shape that is wanted rather than the rule that was broken. A
+# creator whose link was refused does not care that it failed a scheme allow
+# list; they care that the box wants the address of the post, in full, the way
+# their phone copied it.
+LINK_INVALID_DETAIL = (
+    "That link does not look like a web address. Paste the full link to the "
+    "published post, starting with https://."
 )
 
 
@@ -289,7 +299,34 @@ def submit(db: Session, actor_user_id: str, payload) -> dict:
             detail=OPEN_ALREADY_DETAIL,
         )
 
-    link_url = (payload.link_url or "").strip() or None
+    # A LINK IS THE ONE FIELD IN A SUBMISSION THAT ANOTHER PERSON'S BROWSER
+    # WILL FOLLOW. A note is text the brand reads; a link is a thing they
+    # click, on the page where they are signed in and one button away from
+    # releasing this escrow. That difference is the whole reason this field
+    # gets a guard and `note` does not: the worst a bad note can do is waste a
+    # reader's time. app.core.urls carries the rule and the argument for it.
+    #
+    # LENGTH BEFORE SHAPE, so a pasted blob is measured rather than parsed, and
+    # so a creator whose link is merely long is told that instead of being told
+    # it is malformed.
+    raw_link = (payload.link_url or "").strip()
+    if len(raw_link) > MAX_URL_CHARS:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_link_too_long",
+            detail=f"A link is at most {MAX_URL_CHARS} characters.",
+            values={"max": MAX_URL_CHARS},
+        )
+    # What gets STORED is what the guard parsed, not what was typed. If those
+    # two ever disagree, the stored one is the one a browser follows, so the
+    # stored one is the one that has to have been checked.
+    link_url = normalized_public_url(raw_link)
+    if raw_link and link_url is None:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="deliverable_link_invalid",
+            detail=LINK_INVALID_DETAIL,
+        )
     note = (payload.note or "").strip() or None
     if note is not None and len(note) > MAX_NOTE_CHARS:
         raise AppError(

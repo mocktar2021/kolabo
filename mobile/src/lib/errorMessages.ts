@@ -120,6 +120,9 @@ export const error_fr: Record<string, string> = {
   deliverable_submission_open_already:
     "Vous avez déjà envoyé un livrable sur ce contrat et la marque n'a pas encore répondu. Attendez sa réponse ou retirez d'abord votre envoi.",
   deliverable_note_too_long: "Une note fait au plus {{max}} caractères.",
+  deliverable_link_too_long: "Un lien fait au plus {{max}} caractères.",
+  deliverable_link_invalid:
+    "Ce lien ne ressemble pas à une adresse web. Collez le lien complet de la publication, en commençant par https://.",
   deliverable_submission_empty:
     "Un envoi doit contenir le lien de la publication, un fichier, ou les deux. Envoyez ce que la marque doit regarder.",
   deliverable_submission_not_found: "Envoi introuvable.",
@@ -376,6 +379,9 @@ export const error_en: Record<string, string> = {
   deliverable_submission_open_already:
     "You have already submitted work on this contract and the brand has not answered yet. Wait for their review, or withdraw the submission first.",
   deliverable_note_too_long: "A note is at most {{max}} characters.",
+  deliverable_link_too_long: "A link is at most {{max}} characters.",
+  deliverable_link_invalid:
+    "That link does not look like a web address. Paste the full link to the published post, starting with https://.",
   deliverable_submission_empty:
     "A submission needs the link to the published post, a file, or both. Send what the brand is meant to look at.",
   deliverable_submission_not_found: "Submission not found.",

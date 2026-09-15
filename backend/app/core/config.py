@@ -280,6 +280,35 @@ class Settings(BaseSettings):
     # cap is an open tab on the inference bill.
     bio_generation_limit: int = 10
 
+    # -------------------------------------------------------------------- mail
+    # Transactional email, through Resend. The only thing it carries today
+    # is the address verification code, which is why it arrives alongside
+    # the email identity work rather than as a notifications feature.
+    #
+    # UNSET MEANS MAIL IS OFF, not that it half works. With no key there is
+    # no sender to build, so the call that would have sent reports the
+    # feature unavailable instead of failing somewhere downstream with a
+    # provider error. That is the rule build_default_sender() and the
+    # payments gateway registry already follow, and the same one
+    # youtube_api_key, the Meta credentials and anthropic_api_key follow
+    # above: an unconfigured provider is ABSENT rather than BROKEN.
+    #
+    # DELIBERATELY NOT IN _refuse_committed_secrets_in_production BELOW,
+    # and that is not an oversight. What that validator refuses is a secret
+    # still sitting at a value published in this repository, because such a
+    # default is an open door: anyone who has read the history can walk
+    # through it. An empty mail key is not a weak door, it is no door at
+    # all, and a deployment that has not set one should quietly send no
+    # mail rather than refuse to boot.
+    resend_api_key: str = ""
+    # The envelope sender, for example "Kolabo <codes@auth.kolaboafrica.com>".
+    # Empty counts as unconfigured for the same reason an empty key does: a
+    # provider with nothing to send FROM cannot send.
+    mail_from: str = ""
+    # Optional. Where a reply to one of these messages should land when that
+    # is not the From address. Empty simply omits the header.
+    mail_reply_to: str = ""
+
     class Config:
         env_file = ".env"
 

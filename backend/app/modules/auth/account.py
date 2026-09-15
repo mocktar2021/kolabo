@@ -30,6 +30,7 @@ from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.emails import normalized_email
 from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
 from app.modules.auth import otp
@@ -143,6 +144,11 @@ def _me_out(db: Session, user: User) -> dict:
     return {
         "id": user.id,
         "phone": user.phone,
+        # Null for almost everybody, and that is a real answer rather than a
+        # gap: an email is optional on this platform and the phone is what an
+        # account is. It is here so a settings screen can show what is on file,
+        # which is the only way somebody who mistyped it can find out.
+        "email": user.email,
         "role": user.role,
         "country_code": user.country_code,
         "is_verified": user.is_verified,
@@ -198,7 +204,7 @@ def get_me(db: Session, user_id: str) -> dict:
 
 
 def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
-    """Change the phone, the password, or both — at the price of the password.
+    """Change the phone, the email, the password — at the price of the password.
 
     THE PHONE IS THE LOGIN IDENTITY, so changing it must cost the password.
     Anyone holding a live bearer token could otherwise point the account at a
@@ -211,7 +217,21 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     move between countries — so this has to exist rather than being a support
     ticket. What it must not become is a way to take somebody else's number.
 
-    NOTHING HERE CAN TOUCH is_admin. AccountPatch has three fields and that is
+    THE EMAIL IS NOT THE LOGIN IDENTITY AND COSTS THE PASSWORD ANYWAY. Nothing
+    signs in with it and no reset code is sent to it today — that move is a
+    later change, deliberately not this one. What makes it worth the same price
+    now is that whatever address is sitting in this column on the day the
+    identity does move becomes the way back into the account, and an attacker
+    holding a borrowed session would only have to have set it early and waited.
+    A credential you will need tomorrow is a credential today.
+
+    It is normalised through core.emails before it is compared to anything, so
+    the value tested for uniqueness is the value that would be stored. Doing it
+    the other way round would let one spelling look free while another is
+    taken, and the unique index would then turn a clear 409 into a 500 on the
+    write that found out.
+
+    NOTHING HERE CAN TOUCH is_admin. AccountPatch has four fields and that is
     not one of them, and pydantic drops unknown keys rather than refusing
     them, so a client posting it gets a 200 and no privilege. The flag comes
     from deployment configuration only — see app.modules.auth.admins.
@@ -220,12 +240,13 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
 
     data = payload.model_dump(exclude_unset=True)
     new_phone = data.get("phone")
+    new_email = data.get("email")
     new_password = data.get("new_password")
-    if new_phone is None and new_password is None:
+    if new_phone is None and new_email is None and new_password is None:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
             code="auth_account_nothing_to_change",
-            detail="Send a new phone number, a new password, or both.",
+            detail="Send a new phone number, a new email address, a new password, or any combination of them.",
         )
 
     # Checked before anything is looked up or written, and before the 409 on a
@@ -251,6 +272,34 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
                 detail="That phone number is already in use",
             )
         user.phone = new_phone
+
+    if new_email is not None:
+        # Normalised first, so what is compared and what is stored are the same
+        # string. See core.emails for what it does and, more to the point, for
+        # what it deliberately does not do: this is a claim, not a verified
+        # mailbox, and no confirmation link exists yet to make it one.
+        email = normalized_email(new_email)
+        if email is None:
+            raise AppError(
+                status.HTTP_400_BAD_REQUEST,
+                code="auth_email_invalid",
+                detail="That email address does not look right. Check it and try again.",
+            )
+        if email != user.email:
+            # Any row at all, verified or not, exactly as the phone above and
+            # for the same two reasons: an unverified registration still holds
+            # the address it claimed, and a second account taking it would
+            # collide on the unique index anyway, turning a clear 409 into a
+            # 500. Asked only after the password check, so this cannot be used
+            # as a "does this person have a Kolabo account" lookup.
+            taken = db.query(User).filter(User.email == email, User.id != user.id).first()
+            if taken is not None:
+                raise AppError(
+                    status.HTTP_409_CONFLICT,
+                    code="auth_email_taken",
+                    detail="That email address is already on another account.",
+                )
+            user.email = email
 
     if new_password is not None:
         user.password_hash = hash_password(new_password)

@@ -31,7 +31,12 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     phone: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Unique and indexed, because the address is an identity: no two
+    # accounts may share one, and every lookup by it is on a hot path.
+    # STILL NULLABLE, and the presence rule lives in the API layer rather
+    # than here. Migration e1b7d4c92f08 explains why the column is not
+    # NOT NULL yet and what it would cost to make it so today.
+    email: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     country_code: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)

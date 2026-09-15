@@ -15,14 +15,18 @@ BROKEN. A half-configured ResendSender would accept every send, fail every one
 of them, and look from the outside exactly like a working install, which is the
 expensive kind of silence. Both a key and a from address, or the logging sender.
 
-THE TARGET IS STILL WHATEVER service.notify HANDS OVER, which today is
-`user.email or user.phone` — so on this platform most targets are still phone
-numbers, because the phone is the login identity and an email is optional. That
-is deliberately untouched by this module: it can now HOLD and SEND to an
-address, and which of the two a notification is addressed to is the identity
-question, decided in the PR that flips it. Until then ResendSender declines a
-target that is not an address rather than posting a phone number to a mail API
-and collecting a rejection per notification.
+THE TARGET IS AN EMAIL ADDRESS. service.notify passes user.email and skips the
+send entirely when an account has none, which is now only true of accounts
+created before the address became the login identity. This module also carries
+the OTP and password reset codes, through the adapter in auth/otp.py, so it is
+the one outbound channel this product has.
+
+ResendSender still declines a target that is not an address. That check was
+written when most targets really were phone numbers and it was the ordinary
+case; it is now the LAST LINE rather than a routine one, and it is kept for
+that reason: a caller that regresses to passing something else should lose one
+notification quietly rather than post a phone number to a mail API and collect
+a rejection per send.
 
 WHAT A SEND CANNOT TELL ANYONE. Sender.send returns None, so a provider that
 refuses a message has nowhere to report it except the log, and the caller
@@ -127,14 +131,20 @@ class ResendSender:
 
     def send(self, target: str, type: str, message: str) -> None:
         if normalized_email(target) is None:
-            # Not an address. service.notify addresses to `user.email or
-            # user.phone`, so until the identity flips this is the ORDINARY
-            # case rather than a fault: most accounts have no email on file and
-            # their target is a phone number. Posting one to a mail API buys a
-            # 422 and an ERROR line per notification, which would bury the
-            # failures actually worth reading. Declined here, at debug level,
-            # because it is the expected state of the world.
-            _log.debug("no email on file for this notification [%s], nothing sent", type)
+            # Not an address. This USED to be the ordinary case, back when
+            # notify() addressed to `user.email or user.phone` and most
+            # accounts had no address on file. It is not any more: callers pass
+            # an address or they do not call. Kept as the last line before a
+            # mail API, because posting a phone number to one buys a 422 and an
+            # ERROR line per notification, which would bury the failures
+            # actually worth reading.
+            #
+            # Still debug rather than error: this module cannot tell a caller
+            # anything (send returns None, see the note at the top), so raising
+            # the level would only make a log noisier without making anything
+            # recoverable. The target is not logged, because a value that
+            # failed to parse as an address is a value of unknown provenance.
+            _log.debug("target is not an email address [%s], nothing sent", type)
             return
 
         payload: dict = {

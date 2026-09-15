@@ -67,7 +67,7 @@ def client():
 def _user(client, phone, role, country="BJ", verified=True):
     db = client.session_factory()
     try:
-        u = User(phone=phone, password_hash="x", country_code=country, role=role, is_verified=verified)
+        u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code=country, role=role, is_verified=verified)
         db.add(u); db.commit(); db.refresh(u)
         return u.id, {"Authorization": f"Bearer {create_access_token(u.id)}"}
     finally:

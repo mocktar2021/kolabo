@@ -6,7 +6,7 @@ the next person to touch this needs the reasoning before the code:
 
 - THE REWARD TRIGGERS ON THE REFERRED USER'S FIRST COMPLETED ORDER, NEVER AT
   SIGNUP. Paying at signup pays for accounts, and accounts are free to
-  manufacture: a phone number and an OTP is the whole cost of one. Paying at
+  manufacture: an email address and an OTP is the whole cost of one. Paying at
   completion pays for a transaction that had to clear escrow, which is a thing
   nobody can fake for free. Fake signups must earn nothing.
 - THE REWARD IS PLATFORM CREDIT, NOT CASH. Credit needs no payout rails, opens

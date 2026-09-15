@@ -55,6 +55,17 @@ naming the payer to the mock provider. Neither is wrong and neither is touched
 here. What changes is that the state they guard against can no longer be
 reached through the database.
 
+THE TESTS THAT COVERED THOSE TWO GUARDS WENT WITH THIS CHANGE, because each of
+them built a User with email=None and that row can no longer exist. In
+test_notifications.py it was
+test_an_account_with_no_address_gets_the_bell_and_no_email; in test_payments.py
+it was test_a_pre_flip_brand_with_no_address_still_names_its_number. Neither
+could be rewritten: the premise each of them states is the state this revision
+removes, and seeding an empty address instead would describe something nothing
+can write either, since core/emails.py::normalized_email refuses blank input.
+Each guard now carries a comment at its own site, so that defensive code with
+no test here reads as a decision rather than an oversight.
+
 NO INSPECTOR GUARD, for the reason e1b7d4c92f08 and f3c0a84e17d9 both give
 about this same table: users has belonged to alembic since the baseline
 (5f3a9c80d26f), and create_all at app startup does not alter a table it finds

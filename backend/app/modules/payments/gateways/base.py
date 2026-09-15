@@ -167,10 +167,26 @@ class PaymentGateway(Protocol):
         currency: str,
         description: str,
         callback_url: str,
-        payer_phone: str,
         payer_country: str,
         payer_first_name: str,
         payer_last_name: str,
+        # BOTH OPTIONAL, AND AT LEAST ONE REQUIRED IN PRACTICE. A gateway
+        # identifies the payer by one or the other and an implementation is
+        # entitled to refuse a customer carrying neither.
+        #
+        # payer_phone became optional when the email became the login identity
+        # and registration stopped collecting a number: users.phone is nullable
+        # now, so a brand funding their first contract may genuinely have none
+        # and `str` would have been a lie the type checker could not catch.
+        # payer_email is the value that is always there for an account created
+        # since that change.
+        #
+        # NOTE THAT THIS IS NOT THE WALLET BEING DEBITED. The payer chooses
+        # their network and types the paying number on the gateway's own hosted
+        # checkout page; these are the customer record the transaction is filed
+        # under, which is why an absent one is a degraded receipt rather than a
+        # payment that cannot happen.
+        payer_phone: str | None = None,
         payer_email: str | None = None,
         merchant_reference: str | None = None,
         metadata: dict | None = None,

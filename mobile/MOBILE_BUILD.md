@@ -48,13 +48,16 @@ Expect to fix a handful of things. The likely candidates, in order:
 
 ---
 
-## ⚠️ Decide the bundle identifier now
+## ✅ The bundle identifier is settled: `com.kolaboafrica.app`
 
-`app.json` sets both to **`com.kolabo.app`**. This is a placeholder and it needs a real decision **before the first store submission**, because it is permanent — an app's bundle ID cannot be changed after publishing without shipping a new app and losing every install and review.
+`app.json` sets both `ios.bundleIdentifier` and `android.package` to **`com.kolaboafrica.app`**. That is the final value, not a placeholder. It landed in PR #166 (KOL-68) and replaced `com.kolabo.app`, which derived from no domain anyone owns. Reverse DNS is meant to be a domain you control, and `kolaboafrica.com` is the canonical production domain.
 
-Convention is reverse-DNS of a domain you control. Today that means something like `com.mocktar.kolabo`; if `kolaboafrica.com` gets registered (KOL-40), `com.kolaboafrica.app` is the natural choice.
+**Do not change it again.** Neither store lets you alter the identifier on an app record that already exists. After the first submission, a different id is a different app: a new listing, with no installs, ratings or reviews carried across.
 
-Changing it before any store release costs nothing. Changing it after costs the app.
+Two consequences are already in effect:
+
+1. The APK installed under the old package is a **separate app** on the handset. The next build is an uninstall and a reinstall, not an update. Anyone still carrying a build from before PR #166 keeps it until they remove it by hand.
+2. `scheme` stays `kolabo`, and it is not derived from the package name. `Linking.createURL()` in `src/screens/CheckoutScreen.tsx` builds the payment return link from `expo.scheme` alone, so changing the identifier does not touch the FedaPay return leg.
 
 ---
 

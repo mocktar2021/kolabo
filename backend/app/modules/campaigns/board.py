@@ -70,6 +70,7 @@ that notification and nothing else.
 from datetime import date
 
 from fastapi import status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
@@ -343,6 +344,18 @@ def list_open_campaigns(
     campaign's clothes, and the rule that it stays off any listing somebody
     else can read is older than this module.
 
+    AND ONLY BRIEFS THAT ARE STILL TAKING BIDS. A lapsed brief is refused by
+    every write path (service.submit_proposal carries that reasoning), so
+    leaving it listed would put a card in front of a creator whose only
+    possible reward for an evening spent pricing it is a refusal. Off the
+    board is where a brief nobody can bid on belongs.
+
+      Inclusive of the deadline's own day, exactly as the write guards are: a
+      brief due on the 1st is on the board all the way through the 1st. An
+      UNDATED brief is untouched and stays listed, because it has no deadline
+      to be past; that is the one place this differs from deadline_before
+      below, which drops undated briefs on purpose.
+
     THE BRAND'S TARGETING IS STILL NOT IN THE FILTER. It is in the sort, and
     the module docstring says why at length.
 
@@ -387,6 +400,15 @@ def list_open_campaigns(
         models.Campaign.status == models.PUBLISHED,
         models.Campaign.is_open.is_(True),
         models.Campaign.is_direct.is_(False),
+        # Still live, or never dated. Written as an explicit OR rather than
+        # left to SQL's NULL handling, because here the NULL has to SURVIVE:
+        # every other deadline comparison in this function drops undated
+        # briefs and this one must not, so the rule is spelled out instead of
+        # being a property of the operator somebody has to remember.
+        or_(
+            models.Campaign.deadline.is_(None),
+            models.Campaign.deadline >= date.today(),
+        ),
     )
     # The column-backed filters, in the database. See _matches_list_filters
     # for why the other three are not.
@@ -506,6 +528,22 @@ def apply_to_campaign(
             status.HTTP_400_BAD_REQUEST,
             code="board_not_open",
             detail=NOT_OPEN_DETAIL,
+        )
+    # The deadline IS repeated here, unlike the published check above, and the
+    # difference is what the caller is told rather than whether they are
+    # refused. submit_proposal would catch this brief anyway, but only after
+    # the already-applied 409 below has had its say — so a creator returning
+    # to a brief that lapsed while they were away would be told they had
+    # already applied, which is true and is not the reason they are being
+    # turned down. Asked here, the answer is the brief is over.
+    #
+    # Inclusive of the deadline's own day; service.submit_proposal carries the
+    # reasoning for the rule and for the comparison.
+    if campaign.deadline is not None and campaign.deadline < date.today():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_deadline_passed",
+            detail="This brief's deadline has passed, so it is no longer taking proposals.",
         )
 
     latest = service.latest_in_chain(db, campaign_id, influencer_user_id)

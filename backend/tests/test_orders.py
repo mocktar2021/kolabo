@@ -397,6 +397,7 @@ def test_accepting_after_the_window_closed_is_rejected(client):
     biz, creator, pkg = _setup(client)
     order = _order(client, biz, pkg).json()
     _age_out(client, order["proposal_id"])
+
     r = client.post(f"/campaigns/orders/{order['proposal_id']}/accept", headers=_headers(creator))
     assert r.status_code == 400
     assert r.json()["detail"] == "This order has expired."

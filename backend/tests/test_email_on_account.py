@@ -1,21 +1,20 @@
-"""An account can now HOLD an email address. It still logs in with a phone.
+"""Moving the address an account logs in with, and the two ways that can fail.
 
-That distinction is the whole point of this file, so it is worth stating before
-the tests rather than after. Nothing here signs in with an address, nothing
-resets a password to one, and /auth/register is untouched: the phone is still
-the login identity and the identity move is a later change. What is new is a
-column somebody can put an address in, a sentence for the two ways that can go
-wrong, and the rule that an address on one account is not available to another.
+The identity move this file was written just ahead of has happened: the address
+IS the login identity now, /auth/register collects one, and a reset code goes
+to it. So what is left here is the SETTINGS half — changing the address of an
+account that already has one — and it is worth keeping separate from
+test_account.py because the rules it pins are about the address specifically:
+what a valid one is, and that one account's address is not available to another.
 
 Same shape as test_account.py, deliberately, including its fixture: these are
 the same endpoint and the same credential rule, and a second way of standing a
 client up would be a second thing to fix the day the first one changes.
 
-THE PRICE IS THE CURRENT PASSWORD, like every other credential change here. It
-is not the login identity today, which is exactly why it is worth saying out
-loud why it costs the same: whatever address is in this column on the day the
-identity moves becomes the way back into the account, so a stolen session that
-could set it quietly would be a takeover on a delay.
+THE PRICE IS THE CURRENT PASSWORD, like every other credential change here, and
+it needs no special pleading any more: this is the address a reset code is sent
+to, so a stolen session that could point it somewhere else quietly would own
+the account outright a minute later.
 """
 import pytest
 from fastapi import FastAPI
@@ -29,12 +28,11 @@ from app.core.errors import AppError, app_error_handler
 from app.modules.auth import models
 from app.modules.auth.router import router as auth_router
 
-PHONE = "+22990000021"
-OTHER_PHONE = "+22990000022"
 PASSWORD = "strongpass1"
 
 EMAIL = "ama@example.com"
 OTHER_EMAIL = "kofi@example.com"
+THIRD_EMAIL = "yaa@example.com"
 
 
 @pytest.fixture()
@@ -74,17 +72,17 @@ def client():
     return test_client
 
 
-def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD):
+def _register(client, email=EMAIL, country="BJ", role="influencer", password=PASSWORD):
     return client.post(
         "/auth/register",
-        json={"phone": phone, "password": password, "country_code": country, "role": role},
+        json={"email": email, "password": password, "country_code": country, "role": role},
     )
 
 
-def _latest_otp(client, phone=PHONE):
+def _latest_otp(client, email=EMAIL):
     db = client.session_factory()
     try:
-        user = db.query(models.User).filter(models.User.phone == phone).first()
+        user = db.query(models.User).filter(models.User.email == email).first()
         return (
             db.query(models.OtpChallenge)
             .filter(models.OtpChallenge.user_id == user.id)
@@ -96,10 +94,10 @@ def _latest_otp(client, phone=PHONE):
         db.close()
 
 
-def _verified_token(client, phone=PHONE, role="influencer"):
-    _register(client, phone=phone, role=role)
-    client.post("/auth/verify-otp", json={"phone": phone, "code": _latest_otp(client, phone)})
-    return client.post("/auth/login", json={"phone": phone, "password": PASSWORD}).json()[
+def _verified_token(client, email=EMAIL, role="influencer"):
+    _register(client, email=email, role=role)
+    client.post("/auth/verify-otp", json={"email": email, "code": _latest_otp(client, email)})
+    return client.post("/auth/login", json={"email": email, "password": PASSWORD}).json()[
         "access_token"
     ]
 
@@ -108,21 +106,14 @@ def _headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _put_email_on(client, phone, email):
-    """Give another account an address, without going through the endpoint.
+def _unverified_holder(client, email):
+    """An account that CLAIMS an address without having verified it.
 
-    The conflict this file cares about is "somebody else already holds it", and
-    how they came to hold it is not part of that question. Writing the column
-    directly keeps the test about the refusal rather than about a second
-    account's whole signup.
+    Registered and never verified, which is the state the conflict rule below
+    is specifically about: a half-finished signup still holds the address it
+    claimed, and a verified account must not be able to take it.
     """
-    db = client.session_factory()
-    try:
-        user = db.query(models.User).filter(models.User.phone == phone).first()
-        user.email = email
-        db.commit()
-    finally:
-        db.close()
+    _register(client, email=email)
 
 
 def _me(client, token):
@@ -130,52 +121,57 @@ def _me(client, token):
 
 
 # --------------------------------------------------------------------------
-# Putting an address on your own account
+# Moving the address on your own account
 # --------------------------------------------------------------------------
 
 
-def test_a_new_account_has_no_email_and_that_is_a_real_answer(client):
-    """Null, not absent and not a 500. An email is optional on this platform,
-    so almost every row has none, and the field has to be readable anyway or
-    nobody can tell whether theirs saved."""
+def test_a_new_account_arrives_with_the_address_it_registered_with(client):
+    """The address is what the account IS, so it is never null on a row created
+    since the flip. The phone is, because registration does not ask."""
     token = _verified_token(client)
     body = _me(client, token)
-    assert "email" in body
-    assert body["email"] is None
-    # The phone is still what this account IS. Nothing about adding an email
-    # column changes that, and this PR does not pretend otherwise.
-    assert body["phone"] == PHONE
+    assert body["email"] == EMAIL
+    assert body["phone"] is None
 
 
-def test_setting_an_email_works_and_comes_back_on_me(client):
+def test_changing_the_email_works_and_comes_back_on_me(client):
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": EMAIL},
+        json={"current_password": PASSWORD, "email": THIRD_EMAIL},
         headers=_headers(token),
     )
     assert r.status_code == 200
-    assert r.json()["email"] == EMAIL
+    assert r.json()["email"] == THIRD_EMAIL
     # And it is on the account rather than only in the response of the write:
-    # a settings screen reads it back on the next page load.
-    assert _me(client, token)["email"] == EMAIL
+    # a settings screen reads it back on the next page load, and the next login
+    # resolves on it.
+    assert _me(client, token)["email"] == THIRD_EMAIL
 
 
-def test_the_domain_is_lowercased_and_the_local_part_is_not(client):
+def test_the_whole_address_is_lowercased(client):
     """The one normalisation this system performs on an address, asserted end
     to end rather than only in the unit test, because it is the storage rule
-    the unique index depends on. The local part is formally case sensitive and
-    is left exactly as typed; the domain is not, so it is settled once here
-    instead of at every comparison."""
+    the unique index depends on AND the rule that makes a login work whatever
+    case somebody types.
+
+    Both halves are folded. The domain because it is case insensitive by
+    standard, the local part by a decision core/emails.py argues at length: a
+    formally case sensitive local part that no provider these users have
+    actually distinguishes is not worth locking anybody out over."""
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": "Ama.K@EXAMPLE.COM"},
+        json={"current_password": PASSWORD, "email": "Yaa.K@EXAMPLE.COM"},
         headers=_headers(token),
     )
     assert r.status_code == 200
-    assert r.json()["email"] == "Ama.K@example.com"
-    assert _me(client, token)["email"] == "Ama.K@example.com"
+    assert r.json()["email"] == "yaa.k@example.com"
+    assert _me(client, token)["email"] == "yaa.k@example.com"
+    # And the folded spelling is the one that logs in, which is the point.
+    assert client.post(
+        "/auth/login", json={"email": "YAA.K@example.com", "password": PASSWORD}
+    ).status_code == 200
 
 
 def test_an_address_is_trimmed_before_it_is_stored(client):
@@ -184,11 +180,11 @@ def test_an_address_is_trimmed_before_it_is_stored(client):
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": "  ama@example.com  "},
+        json={"current_password": PASSWORD, "email": "  yaa@example.com  "},
         headers=_headers(token),
     )
     assert r.status_code == 200
-    assert r.json()["email"] == EMAIL
+    assert r.json()["email"] == THIRD_EMAIL
 
 
 # --------------------------------------------------------------------------
@@ -204,7 +200,9 @@ def test_an_address_is_trimmed_before_it_is_stored(client):
         "@example.com",
         "ama @example.com",
         # A phone number in the email field, which is the mistake this
-        # particular product is most likely to collect.
+        # particular product is most likely to collect, and more likely than
+        # ever now that the signup form asks for an address where it used to
+        # ask for a number.
         "+22990000021",
         "",
     ],
@@ -220,14 +218,14 @@ def test_an_address_that_is_not_one_is_refused_by_name(client, typed):
     # The code, not the English. The client renders its own sentence from it in
     # French or English — see auth_email_invalid in errorMessages.ts.
     assert r.json()["code"] == "auth_email_invalid"
-    # And nothing was written on the way to the refusal.
-    assert _me(client, token)["email"] is None
+    # And nothing was written on the way to the refusal: the account still logs
+    # in with the address it had.
+    assert _me(client, token)["email"] == EMAIL
 
 
 def test_an_address_already_on_another_account_is_409(client):
     token = _verified_token(client)
-    _register(client, phone=OTHER_PHONE)
-    _put_email_on(client, OTHER_PHONE, OTHER_EMAIL)
+    _unverified_holder(client, OTHER_EMAIL)
 
     r = client.patch(
         "/auth/me",
@@ -236,31 +234,28 @@ def test_an_address_already_on_another_account_is_409(client):
     )
     assert r.status_code == 409
     assert r.json()["code"] == "auth_email_taken"
-    assert _me(client, token)["email"] is None
+    assert _me(client, token)["email"] == EMAIL
 
 
 def test_the_conflict_is_decided_on_the_normalised_spelling(client):
     """Otherwise one spelling looks free while another is taken, and the unique
     index turns a clear 409 into a 500 on the write that finds out.
 
-    THE DOMAIN IS THE HALF THAT VARIES HERE, and it has to be. Normalisation
-    lowercases the domain and deliberately leaves the local part exactly as it
-    was typed (core/emails.py says why at length, and test_email_guard.py pins
-    it with "AMA@EXAMPLE.COM" -> "AMA@example.com"). So "KOFI@example.com" and
-    "kofi@example.com" are two different addresses on purpose: neither the
-    lookup below nor the unique index behind it would treat them as one, and a
-    test that asked for a 409 on that pair would be asking for the rule to be
-    broken rather than checking it. Changing only the case of the domain is
-    what exercises the thing this test is named for, because it is the only
-    half where the stored value and the typed value legitimately differ.
+    THE LOCAL PART IS THE HALF THAT VARIES HERE, and that is the case worth
+    testing now. It used to be the domain, because the domain was the only half
+    normalisation touched; folding the local part as well is the change that
+    made the address safe to log in with, so "KOFI@example.com" arriving at an
+    account that already holds "kofi@example.com" is exactly the collision that
+    would have slipped through before and the one a reader of this test needs
+    to see caught. A domain-only variation would still pass while the rule it
+    is named for had been reverted.
     """
     token = _verified_token(client)
-    _register(client, phone=OTHER_PHONE)
-    _put_email_on(client, OTHER_PHONE, OTHER_EMAIL)
+    _unverified_holder(client, OTHER_EMAIL)
 
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": "kofi@EXAMPLE.COM"},
+        json={"current_password": PASSWORD, "email": "KOFI@example.com"},
         headers=_headers(token),
     )
     assert r.status_code == 409
@@ -270,11 +265,9 @@ def test_the_conflict_is_decided_on_the_normalised_spelling(client):
 def test_an_unverified_registration_still_holds_its_address(client):
     """Verified or not, a row that claims an address holds it. Letting a
     verified account take it would displace somebody who half signed up, and
-    would collide on the unique index anyway."""
+    would collide on ix_users_email anyway."""
     token = _verified_token(client)
-    # Registered and never verified, exactly as the phone rule above it.
-    _register(client, phone=OTHER_PHONE)
-    _put_email_on(client, OTHER_PHONE, OTHER_EMAIL)
+    _unverified_holder(client, OTHER_EMAIL)
 
     r = client.patch(
         "/auth/me",
@@ -287,13 +280,8 @@ def test_an_unverified_registration_still_holds_its_address(client):
 def test_resending_your_own_address_is_not_a_conflict(client):
     """A settings form posts every field it has, including the one that did not
     change. Answering 409 to somebody's own address would make saving a phone
-    number impossible for anybody who already had an email."""
+    number impossible for everybody, since every account has an address."""
     token = _verified_token(client)
-    client.patch(
-        "/auth/me",
-        json={"current_password": PASSWORD, "email": EMAIL},
-        headers=_headers(token),
-    )
     r = client.patch(
         "/auth/me",
         json={"current_password": PASSWORD, "email": EMAIL},
@@ -310,16 +298,15 @@ def test_resending_your_own_address_is_not_a_conflict(client):
 
 def test_setting_an_email_requires_the_current_password(client):
     """A bearer token says a session exists. Only the password says the owner
-    is the one asking, and this column is where a reset will be sent the day
-    the identity moves."""
+    is the one asking, and this column is where a reset code is sent."""
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": "not-the-password", "email": EMAIL},
+        json={"current_password": "not-the-password", "email": THIRD_EMAIL},
         headers=_headers(token),
     )
     assert r.status_code == 403
-    assert _me(client, token)["email"] is None
+    assert _me(client, token)["email"] == EMAIL
 
 
 def test_the_password_is_checked_before_the_address_is_looked_up(client):
@@ -327,8 +314,7 @@ def test_the_password_is_checked_before_the_address_is_looked_up(client):
     account" lookup for anybody holding a stolen session and a list of
     addresses: a 409 and a 403 would tell them apart."""
     token = _verified_token(client)
-    _register(client, phone=OTHER_PHONE)
-    _put_email_on(client, OTHER_PHONE, OTHER_EMAIL)
+    _unverified_holder(client, OTHER_EMAIL)
 
     taken = client.patch(
         "/auth/me",
@@ -345,20 +331,20 @@ def test_the_password_is_checked_before_the_address_is_looked_up(client):
 
 
 def test_an_email_and_a_phone_move_together_in_one_patch(client):
-    """Both are credentials and both cost the one password, so a settings screen
-    saves them in one request rather than two that can half succeed."""
+    """Both cost the one password, so a settings screen saves them in one
+    request rather than two that can half succeed."""
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "phone": OTHER_PHONE, "email": EMAIL},
+        json={"current_password": PASSWORD, "phone": "+22990000022", "email": THIRD_EMAIL},
         headers=_headers(token),
     )
     assert r.status_code == 200
-    assert r.json()["phone"] == OTHER_PHONE
-    assert r.json()["email"] == EMAIL
-    # The phone is still the login identity, and it really moved.
+    assert r.json()["phone"] == "+22990000022"
+    assert r.json()["email"] == THIRD_EMAIL
+    # The email is the login identity, and it really moved.
     assert client.post(
-        "/auth/login", json={"phone": OTHER_PHONE, "password": PASSWORD}
+        "/auth/login", json={"email": THIRD_EMAIL, "password": PASSWORD}
     ).status_code == 200
 
 
@@ -368,12 +354,12 @@ def test_an_email_alone_is_enough_of_a_change_to_be_accepted(client):
     token = _verified_token(client)
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": EMAIL},
+        json={"current_password": PASSWORD, "email": THIRD_EMAIL},
         headers=_headers(token),
     )
     assert r.status_code == 200
-    # And an empty one is still refused, with the code whose sentence now
-    # mentions the address as well.
+    # And an empty one is still refused, with the code whose sentence mentions
+    # the address as well.
     empty = client.patch(
         "/auth/me", json={"current_password": PASSWORD}, headers=_headers(token)
     )

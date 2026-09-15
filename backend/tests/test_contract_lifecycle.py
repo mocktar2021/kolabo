@@ -54,8 +54,8 @@ def _headers(uid):
 def _parties(client):
     db = client.session_factory()
     try:
-        biz = User(phone="+22990001001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone="+22990001002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990001001", email="22990001001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(phone="+22990001002", email="22990001002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         return biz.id, inf.id
     finally:

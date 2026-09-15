@@ -57,7 +57,7 @@ def _ig_packages(user_id, prices=(30000, 40000, 50000)):
 def _make_influencer(client, phone, verified, categories, followers, country="BJ", bio="Creator"):
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code=country, role="influencer", is_verified=verified)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code=country, role="influencer", is_verified=verified)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -75,7 +75,7 @@ def _make_influencer(client, phone, verified, categories, followers, country="BJ
 def _make_business_token(client, phone="+22990000100"):
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role="business", is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -90,7 +90,7 @@ def test_search_returns_only_searchable_and_matches_category(client):
     _make_influencer(client, "+22990000002", True, ["tech"], 8000)
     # An incomplete profile (no bio) must not appear.
     db = client.session_factory()
-    u = User(phone="+22990000003", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+    u = User(phone="+22990000003", email="22990000003@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
     db.add(u); db.commit(); db.refresh(u)
     db.add(pmodels.InfluencerProfile(user_id=u.id, bio=None, categories=["fashion"], rate_card={"p": 1}))
     db.add_all(_ig_packages(u.id))
@@ -192,7 +192,7 @@ def _profile_without_rate(client, phone, categories, followers, bio="Creator"):
     """A creator who filled bio and categories but has no packages yet."""
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(user); db.commit(); db.refresh(user)
         prof = pmodels.InfluencerProfile(
             user_id=user.id, bio=bio, categories=categories, rate_card={}, follower_count=followers,
@@ -312,7 +312,7 @@ def test_favorite_without_a_profile_returns_nulls_not_an_error(client):
     shortlist down with it — and empty means empty: no phone number stands in
     for the missing name."""
     db = client.session_factory()
-    user = User(phone="+22990000303", password_hash="x", country_code="TG", role="influencer", is_verified=True)
+    user = User(phone="+22990000303", email="22990000303@kolabo.test", password_hash="x", country_code="TG", role="influencer", is_verified=True)
     db.add(user); db.commit(); db.refresh(user)
     uid = user.id
     db.close()

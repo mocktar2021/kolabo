@@ -43,12 +43,20 @@ class User(Base):
     # the same mailbox, and because registration, verification, login and
     # password reset all start from a lookup on this column.
     #
-    # STILL NULLABLE, and the presence rule lives in the API layer rather
-    # than here. Migration e1b7d4c92f08 explains why the column is not
-    # NOT NULL yet and what it would cost to make it so today; the short
-    # version is that 49 of the 60 backend test files build User(phone=...)
-    # with no email and would all fail at flush in their fixtures.
-    email: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
+    # NOT NULL since b4e9c2a71f05, which is the revision that finished the
+    # identity flip: e1b7d4c92f08 made an address unique, f3c0a84e17d9 took
+    # the identity away from the phone, and this column now has to BE there
+    # as well as be unique. The API layer still decides what a well formed
+    # address is and reports a bad one to the person who typed it; the column
+    # decides that an account has one at all, which is the half of the rule a
+    # service check cannot hold on its own.
+    #
+    # AN ACCOUNT WITH NO ADDRESS IS THEREFORE NO LONGER REPRESENTABLE. The
+    # migration refuses to run rather than invent an address for a row that
+    # has none, so any database that has reached head carries one on every
+    # user. Code that still reads this column defensively is belt and braces
+    # rather than a live case.
+    email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     country_code: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)

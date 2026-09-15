@@ -71,8 +71,8 @@ def _setup(client, price=25000, currency="XOF", active=True, quantity=2):
     """A brand, a creator, and one package on the creator's profile."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        creator = User(phone="+22990000002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990000001", email="22990000001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        creator = User(phone="+22990000002", email="22990000002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, creator]); db.commit(); db.refresh(biz); db.refresh(creator)
         pkg = Package(
             user_id=creator.id,
@@ -94,7 +94,7 @@ def _second_package(client, phone="+22990000004", price=15000):
     """Another creator with another package, so two orders can coexist."""
     db = client.session_factory()
     try:
-        creator = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        creator = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(creator); db.commit(); db.refresh(creator)
         pkg = Package(
             user_id=creator.id,
@@ -145,7 +145,7 @@ def _outsider(client, phone="+22990000005"):
     """A verified creator with nothing at all to do with the order under test."""
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(user); db.commit(); db.refresh(user)
         return user.id
     finally:

@@ -59,7 +59,7 @@ def _headers(uid):
 def _business(client, phone="+22990001000"):
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role="business", is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
         db.add(user); db.commit(); db.refresh(user)
         return user.id
     finally:
@@ -70,7 +70,7 @@ def _creator(client, phone, display_name="Ama K.", with_profile=True, with_avata
     """A creator, optionally with a profile and an avatar. Returns (id, media_id)."""
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(user); db.commit(); db.refresh(user)
         media_id = None
         if with_avatar:

@@ -52,8 +52,8 @@ def _setup(client, contract=True):
     """A brand, a creator, a campaign, and (by default) the contract on it."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone="+22990000002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990000001", email="22990000001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(phone="+22990000002", email="22990000002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         camp = campaigns.Campaign(business_user_id=biz.id, title="Launch", budget_amount=1000, budget_currency="XOF",
                                   deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}], status=campaigns.PUBLISHED)
@@ -100,7 +100,7 @@ def test_message_locked_without_a_contract(client):
 def test_message_must_be_to_the_other_party_of_the_contract(client):
     biz, inf, camp = _setup(client)
     db = client.session_factory()
-    outsider = User(phone="+22990000003", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+    outsider = User(phone="+22990000003", email="22990000003@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
     db.add(outsider); db.commit(); db.refresh(outsider)
     oid = outsider.id
     db.close()

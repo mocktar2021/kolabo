@@ -60,8 +60,8 @@ def _disputed(client, amount=10000, suffix="1"):
     """A frozen escrow with an open dispute raised by the creator."""
     db = client.session_factory()
     try:
-        biz = User(phone=f"+2299001{suffix}01", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone=f"+2299001{suffix}02", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone=f"+2299001{suffix}01", email=f"2299001{suffix}01@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(phone=f"+2299001{suffix}02", email=f"2299001{suffix}02@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf])
         db.commit()
         db.refresh(biz)
@@ -104,7 +104,7 @@ def _payouts(client):
 def _referred_by(client, user_id, phone="+22990019999"):
     db = client.session_factory()
     try:
-        referrer = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        referrer = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(referrer)
         db.commit()
         db.refresh(referrer)

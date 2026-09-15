@@ -75,8 +75,8 @@ def _funded(client, amount=10000):
     """A signed contract with money held against it and nothing delivered."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone="+22990000002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990000001", email="22990000001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(phone="+22990000002", email="22990000002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         c = contracts.Contract(
             campaign_id="camp-1", proposal_id="prop-1", business_user_id=biz.id,

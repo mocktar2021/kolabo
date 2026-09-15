@@ -486,7 +486,8 @@ def _user(client, phone):
     db = client.session_factory()
     try:
         u = User(
-            phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True
+            phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x",
+            country_code="BJ", role="influencer", is_verified=True
         )
         db.add(u)
         db.commit()

@@ -207,16 +207,6 @@ def test_funding_names_the_payer_by_address_and_never_by_None(client):
     assert pay_service.payment_provider.collections[0]["target"] == "brand@example.com"
 
 
-def test_a_pre_flip_brand_with_no_address_still_names_its_number(client):
-    """An account that registered before the flip has a number and no address,
-    and must not become a blank payer on the way through."""
-    biz, _inf, cid = _signed_contract(client, biz_email=None, biz_phone="+22990000001")
-    assert client.post(
-        "/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)
-    ).status_code == 201
-    assert pay_service.payment_provider.collections[0]["target"] == "+22990000001"
-
-
 def test_fund_requires_ownership_and_no_double_fund(client):
     biz, inf, cid = _signed_contract(client)
     assert client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(inf)).status_code == 403

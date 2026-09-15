@@ -63,11 +63,11 @@ def world(client):
     """A brand, a creator, a published brief, and an open invitation."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990060001", password_hash="x", country_code="BJ",
+        biz = User(phone="+22990060001", email="22990060001@kolabo.test", password_hash="x", country_code="BJ",
                    role="business", is_verified=True)
-        inf = User(phone="+22990060002", password_hash="x", country_code="BJ",
+        inf = User(phone="+22990060002", email="22990060002@kolabo.test", password_hash="x", country_code="BJ",
                    role="influencer", is_verified=True)
-        other = User(phone="+22990060003", password_hash="x", country_code="BJ",
+        other = User(phone="+22990060003", email="22990060003@kolabo.test", password_hash="x", country_code="BJ",
                      role="influencer", is_verified=True)
         db.add_all([biz, inf, other]); db.commit()
         db.refresh(biz); db.refresh(inf); db.refresh(other)

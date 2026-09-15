@@ -182,10 +182,12 @@ def _deal(db):
     opens messaging; the escrow is what a dispute freezes.
     """
     biz = User(
-        phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True
+        phone="+22990000001", email="22990000001@kolabo.test", password_hash="x",
+        country_code="BJ", role="business", is_verified=True
     )
     inf = User(
-        phone="+22990000002", password_hash="x", country_code="BJ", role="influencer", is_verified=True
+        phone="+22990000002", email="22990000002@kolabo.test", password_hash="x",
+        country_code="BJ", role="influencer", is_verified=True
     )
     db.add_all([biz, inf])
     db.commit()

@@ -83,7 +83,7 @@ def _creator(client, phone, display_name, searchable=True, categories=("fashion"
     """
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ",
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ",
                     role="influencer", is_verified=True)
         db.add(user); db.commit(); db.refresh(user)
         db.add(pmodels.InfluencerProfile(

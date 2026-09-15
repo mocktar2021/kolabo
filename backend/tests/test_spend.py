@@ -68,9 +68,9 @@ def world(client):
     """A brand that buys and a creator with a name to show on the statement."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990060001", password_hash="x", country_code="BJ",
+        biz = User(phone="+22990060001", email="22990060001@kolabo.test", password_hash="x", country_code="BJ",
                    role="business", is_verified=True)
-        inf = User(phone="+22990060002", password_hash="x", country_code="BJ",
+        inf = User(phone="+22990060002", email="22990060002@kolabo.test", password_hash="x", country_code="BJ",
                    role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         db.add(InfluencerProfile(user_id=inf.id, display_name="Ama K.", rate_card={}))
@@ -84,7 +84,7 @@ def _other_creator(client, phone="+22990060003", name="Kofi B."):
     """A second creator, so "filter by counterparty" has two to tell apart."""
     db = client.session_factory()
     try:
-        inf = User(phone=phone, password_hash="x", country_code="BJ",
+        inf = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ",
                    role="influencer", is_verified=True)
         db.add(inf); db.commit(); db.refresh(inf)
         db.add(InfluencerProfile(user_id=inf.id, display_name=name, rate_card={}))

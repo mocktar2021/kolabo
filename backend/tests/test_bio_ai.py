@@ -71,7 +71,7 @@ def restore_generator():
 def _user(client, phone="+22990000900", country="BJ"):
     db = client.session_factory()
     try:
-        u = User(phone=phone, password_hash="x", country_code=country, role="influencer", is_verified=True)
+        u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code=country, role="influencer", is_verified=True)
         db.add(u); db.commit(); db.refresh(u)
         return u.id
     finally:

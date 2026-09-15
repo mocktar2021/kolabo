@@ -136,10 +136,10 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/profile" element={<ProfileSetup />} />
-          {/* Neither wrapper, and deliberately. Every account signs in with a
-              phone number, has a password, is notified about things and may
-              want to leave; the two sides of the market differ in what they
-              DO on Kolabo, not in what an account is. */}
+          {/* Neither wrapper, and deliberately. Every account signs in with
+              an email address, has a password, is notified about things and
+              may want to leave; the two sides of the market differ in what
+              they DO on Kolabo, not in what an account is. */}
           <Route path="/account" element={<AccountPage />} />
           <Route path="/earnings" element={<CreatorOnly><EarningsPage /></CreatorOnly>} />
           {/* Beside /earnings because it is the other half of getting paid,

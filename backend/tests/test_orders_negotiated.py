@@ -72,8 +72,8 @@ def _parties(client):
     """A brand and a creator. No package: that is the whole point here."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990010001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        creator = User(phone="+22990010002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990010001", email="22990010001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        creator = User(phone="+22990010002", email="22990010002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, creator]); db.commit(); db.refresh(biz); db.refresh(creator)
         return biz.id, creator.id
     finally:
@@ -237,7 +237,7 @@ def test_the_target_must_exist_and_must_be_a_creator(client):
     assert _offer(client, biz, "nobody").status_code == 404
 
     db = client.session_factory()
-    other_brand = User(phone="+22990010003", password_hash="x", country_code="BJ", role="business", is_verified=True)
+    other_brand = User(phone="+22990010003", email="22990010003@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
     db.add(other_brand); db.commit(); db.refresh(other_brand)
     other_brand_id = other_brand.id
     db.close()

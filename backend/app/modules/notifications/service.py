@@ -69,14 +69,16 @@ def notify(
         # an address was an optional extra; the fallback put a phone number
         # into a mail API, which ResendSender had to learn to decline.
         #
-        # THE GUARD IS NOT DEFENSIVE PROGRAMMING, it is a state that really
-        # exists: accounts registered before the flip have no address, because
-        # nothing ever asked them for one, and users.email is nullable for
-        # exactly that reason. Such an account still gets the in-app
-        # notification — the row above is already written — and simply gets no
-        # email, which is the honest outcome when there is nowhere to send one.
-        # It is not logged as an error because it is not one; they see it in
-        # the bell, and the settings screen is where they fix it.
+        # THE GUARD IS INSURANCE NOW, not a live case. It was one: accounts
+        # registered before the flip had no address, because nothing had ever
+        # asked them for one, and users.email was nullable for exactly that
+        # reason. b4e9c2a71f05 made the column NOT NULL, so an account with no
+        # address is no longer a row the database will hold and this branch can
+        # no longer be reached; the test that built one went with the
+        # constraint. It stays for the day somebody widens the column back to
+        # nullable, and because if such a row did turn up the honest outcome is
+        # still the bell and no email, which is what there is when there is
+        # nowhere to send one.
         #
         # What must never happen is None reaching a sender. LoggingEmailSender
         # would file it in its outbox and ResendSender would post null as a

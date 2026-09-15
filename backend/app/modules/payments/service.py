@@ -211,6 +211,14 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
     # last, so that a row somehow carrying neither is a blank field in a mock's
     # list rather than a None travelling into a provider interface.
     #
+    # THE PHONE AND THE EMPTY STRING ARE INSURANCE FROM HERE ON. b4e9c2a71f05
+    # made users.email NOT NULL, so an account with no address is not a row the
+    # database will hold and neither fallback can be reached; the test that
+    # seeded a pre-flip brand to reach the phone one went with the constraint.
+    # They stay against the day the column is widened back to nullable, and
+    # because an `or` chain that ends in a string is what keeps a None out of a
+    # `target: str` parameter.
+    #
     # This path only runs when NO real gateway is configured (see the refusal
     # above), which means the tests and a keyless laptop. Nothing real reads
     # this value; what matters is that it is a string.

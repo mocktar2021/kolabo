@@ -188,6 +188,7 @@ def _seed(
         )
         creator = User(
             phone="+22990000002",
+            email="22990000002@kolabo.test",
             password_hash="x",
             country_code=country,
             role="influencer",

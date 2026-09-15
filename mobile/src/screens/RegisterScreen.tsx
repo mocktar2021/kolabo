@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { api, type RegisterResponse, type Role } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
-import { COUNTRIES, countryName, dialFor } from "../lib/countries";
+import { COUNTRIES, countryName } from "../lib/countries";
 import {
   Banner,
   Card,
@@ -21,6 +21,12 @@ import type { AuthScreenProps } from "../navigation/types";
 
 const ROLES: Role[] = ["influencer", "business", "agency"];
 
+/* A loose shape test, deliberately. The backend owns what counts as an
+   address and says so with auth_email_invalid, so a strict pattern here would
+   only turn away valid addresses nobody thought of. This exists to stop the
+   obviously unsendable from costing a round trip, and to do nothing else. */
+const EMAIL_SHAPE = /^\S+@\S+\.\S+$/;
+
 export default function RegisterScreen({ navigation, route }: AuthScreenProps<"Register">) {
   const { t, i18n } = useTranslation();
   const preset = route.params?.role;
@@ -28,7 +34,7 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
     preset === "business" || preset === "agency" || preset === "influencer" ? preset : "influencer"
   );
   const [country, setCountry] = useState("BJ");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,7 +49,7 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
   );
   const countryOptions: Choice[] = COUNTRIES.map((c) => ({ value: c.code, label: countryName(c, i18n.language) }));
 
-  const canSubmit = phone.trim().length >= 6 && password.length >= 8;
+  const canSubmit = EMAIL_SHAPE.test(email.trim()) && password.length >= 8;
 
   async function onSubmit() {
     if (!canSubmit) return;
@@ -52,9 +58,9 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
     try {
       await api<RegisterResponse>("/auth/register", {
         method: "POST",
-        body: { phone: phone.trim(), password, country_code: country, role },
+        body: { email: email.trim(), password, country_code: country, role },
       });
-      navigation.navigate("VerifyOtp", { phone: phone.trim() });
+      navigation.navigate("VerifyOtp", { email: email.trim() });
     } catch (err) {
       setError(errorText(err, t));
     } finally {
@@ -81,13 +87,13 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
         <Select label={t("auth.country")} value={country} options={countryOptions} onChange={setCountry} />
 
         <Field
-          label={t("auth.phone")}
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
+          label={t("auth.email")}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
           autoCapitalize="none"
-          placeholder={`${dialFor(country)} ...`}
-          hint={t("auth.phoneHint")}
+          autoComplete="email"
+          hint={t("auth.emailHint")}
         />
         <Field
           label={t("auth.password")}

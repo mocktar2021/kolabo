@@ -207,6 +207,24 @@ def start_checkout(
             currency=intent.currency,
             description=f"Kolabo contract {contract.id[:8]}",
             callback_url=f"{callback_url}?intent={intent.id}",
+            # WHICHEVER OF THESE THE ACCOUNT ACTUALLY HAS, and after the
+            # identity flip that is usually the address and not the number.
+            #
+            # users.phone is nullable now: registration stopped collecting a
+            # number, so business.phone is None for every brand that signed up
+            # since, and it is only ever filled in by somebody visiting the
+            # settings screen. Both values are passed through as they are and
+            # the gateway decides what to do with a missing one; FedaPay omits
+            # the customer's phone_number rather than sending a null inside it,
+            # and refuses outright only if BOTH are absent. See its
+            # start_collection for why that is not left to the API to discover.
+            #
+            # NEITHER OF THESE IS THE WALLET THAT GETS DEBITED. The payer picks
+            # their network and types the paying number on the hosted checkout
+            # page the url below leads to, which is why a brand with no phone
+            # on file can still complete a payment perfectly well: what they
+            # lose is a phone number on the customer record at FedaPay, not the
+            # ability to pay.
             payer_phone=business.phone,
             payer_country=country,
             payer_first_name=payer_first_name or "Kolabo",

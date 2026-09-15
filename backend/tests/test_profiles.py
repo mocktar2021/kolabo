@@ -51,7 +51,7 @@ def client():
 def _make_user(client, phone="+22990000001", role="influencer"):
     db = client.session_factory()
     try:
-        user = User(phone=phone, password_hash="x", country_code="BJ", role=role, is_verified=True)
+        user = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role=role, is_verified=True)
         db.add(user)
         db.commit()
         db.refresh(user)

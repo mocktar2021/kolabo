@@ -14,6 +14,13 @@ import type { CampaignDetail, Contract, Deliverable, Favorite, Proposal } from "
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py. */
 const NOTE_MAX_LENGTH = 2000;
 
+/* The campaign statuses that are over. Campaign.status is exactly draft,
+   published, cancelled and completed; cancelled was called off and completed
+   ran to the end, and editing.py answers 400 to a PATCH on either. The same
+   pair MyInvitations.tsx closes a creator's forms on, held the same way, so
+   the two sides of a finished brief agree on what ended means. */
+const CLOSED_CAMPAIGN_STATUSES = new Set(["cancelled", "completed"]);
+
 /* One favourited creator, offered as a person rather than as an id. "Créateur
    05317bc0" is not somebody a brand can decide to invite: the choice is made
    on a face, a name and the size of the audience behind them — which is what
@@ -676,9 +683,10 @@ export default function CampaignDetailPage() {
 
   /* The three questions the owner actions are made of, asked once.
 
-     editable: a cancelled campaign is closed, and a direct order is a
-     negotiation rather than a document — editing.py answers 400 to both, so
-     neither gets a form that could only fail.
+     editable: a campaign that has ended is closed, whichever of the two
+     endings it reached, and a direct order is a negotiation rather than a
+     document — editing.py answers 400 to all of them, so none of them gets a
+     form that could only fail.
 
      locked: the terms are frozen once a published campaign has been priced
      against. Exactly the backend's condition.
@@ -686,7 +694,7 @@ export default function CampaignDetailPage() {
      deletable: a draft with nothing attached. The server also refuses when a
      contract exists, which cannot happen on a draft, and answers 409 either
      way — so this is the offer, not the authority. */
-  const editable = !!campaign && !campaign.is_direct && campaign.status !== "cancelled";
+  const editable = !!campaign && !campaign.is_direct && !CLOSED_CAMPAIGN_STATUSES.has(campaign.status);
   const locked = !!campaign && campaign.status === "published" && campaign.proposals.length > 0;
   const deletable =
     !!campaign && campaign.status === "draft" &&
@@ -727,7 +735,14 @@ export default function CampaignDetailPage() {
             {campaign.is_open && (
               <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("target.openHint")}</p>
             )}
-            {campaign.status !== "published" && campaign.status !== "cancelled" && (
+            {/* A draft and nothing else. publish_campaign answers 400
+                campaign_publish_not_draft to anything that is not one, and
+                the negated pair this replaces read as "not published, not
+                cancelled" — which a completed brief satisfies, so it was
+                offered a Publish button whose only outcome was that refusal.
+                The mobile screen has always tested for draft; this is web
+                agreeing with it. */}
+            {campaign.status === "draft" && (
               <button className="btn btn-teal" disabled={busy} onClick={publish}>{t("campaign.publish")}</button>
             )}
 
@@ -760,10 +775,17 @@ export default function CampaignDetailPage() {
                 </>
               ) : (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <button className="btn btn-ghost" disabled={busy}
-                    onClick={() => { setEditOpen((o) => !o); setSaved(false); }}>
-                    {t("campaign.edit")}
-                  </button>
+                  {/* Only where the editor can actually open. editable is what
+                      decides whether the form renders below, so on a completed
+                      campaign this button used to toggle a panel that never
+                      appeared. Mobile gates the same button on the same
+                      flag. */}
+                  {editable && (
+                    <button className="btn btn-ghost" disabled={busy}
+                      onClick={() => { setEditOpen((o) => !o); setSaved(false); }}>
+                      {t("campaign.edit")}
+                    </button>
+                  )}
                   <button className="btn btn-ghost" disabled={busy} onClick={() => { setConfirming("cancel"); setActionError(null); }}>
                     {t("campaign.cancelCampaign")}
                   </button>

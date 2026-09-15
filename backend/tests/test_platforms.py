@@ -73,7 +73,7 @@ def client():
 def _user(client, phone="+22990000301"):
     db = client.session_factory()
     try:
-        u = User(phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add(u); db.commit(); db.refresh(u)
         return u.id
     finally:

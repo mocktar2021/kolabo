@@ -27,7 +27,7 @@ from app.modules.auth import service as auth_service
 from app.modules.auth.models import OtpChallenge, PasswordResetToken, User, utcnow
 from app.modules.auth.schemas import PasswordResetConfirm, VerifyOtpRequest
 
-PHONE = "+22990009001"
+EMAIL = "guesser@example.com"
 GOOD = "123456"
 BAD = "000000"
 
@@ -49,9 +49,9 @@ def db():
         session.close()
 
 
-def _user(db, phone=PHONE):
+def _user(db, email=EMAIL):
     user = User(
-        phone=phone, password_hash="x", country_code="BJ", role="influencer", is_verified=False
+        email=email, password_hash="x", country_code="BJ", role="influencer", is_verified=False
     )
     db.add(user)
     db.commit()
@@ -79,16 +79,16 @@ def _reset_token(db, user, code=GOOD, minutes=15):
     return row
 
 
-def _guess(db, phone=PHONE, code=BAD):
+def _guess(db, email=EMAIL, code=BAD):
     with pytest.raises(AppError) as exc:
-        auth_service.verify_otp(db, VerifyOtpRequest(phone=phone, code=code))
+        auth_service.verify_otp(db, VerifyOtpRequest(email=email, code=code))
     return getattr(exc.value, "code", None)
 
 
-def _reset_guess(db, phone=PHONE, code=BAD):
+def _reset_guess(db, email=EMAIL, code=BAD):
     with pytest.raises(AppError) as exc:
         account.confirm_password_reset(
-            db, PasswordResetConfirm(phone=phone, code=code, new_password="newpassword1")
+            db, PasswordResetConfirm(email=email, code=code, new_password="newpassword1")
         )
     return getattr(exc.value, "code", None)
 
@@ -129,7 +129,7 @@ class TestVerificationAllowance:
         _challenge(db, user)
         for _ in range(otp.MAX_ATTEMPTS - 1):
             _guess(db)
-        result = auth_service.verify_otp(db, VerifyOtpRequest(phone=PHONE, code=GOOD))
+        result = auth_service.verify_otp(db, VerifyOtpRequest(email=EMAIL, code=GOOD))
         assert result["access_token"]
         db.refresh(user)
         assert user.is_verified is True
@@ -189,7 +189,7 @@ class TestResetAllowance:
         for _ in range(otp.MAX_ATTEMPTS - 1):
             _reset_guess(db)
         result = account.confirm_password_reset(
-            db, PasswordResetConfirm(phone=PHONE, code=GOOD, new_password="newpassword1")
+            db, PasswordResetConfirm(email=EMAIL, code=GOOD, new_password="newpassword1")
         )
         assert result["message"]
         db.refresh(user)

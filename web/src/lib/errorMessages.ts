@@ -139,6 +139,25 @@ export const error_fr = {
   auth_otp_delivery_failed: "Nous n'avons pas pu envoyer le code de vérification. Réessayez dans un instant.",
   auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
 
+  /* Connexion avec Google. Trois refus seulement, parce que le client n'a que
+     trois conduites à tenir : cacher le bouton, redemander, ou poser deux
+     questions.
+
+     auth_google_token_invalid couvre TOUTES les façons dont un jeton peut
+     être refusé, y compris une adresse que Google n'a pas confirmée.
+     Distinguer les cas indiquerait à qui présente un faux jeton quelle
+     vérification l'a arrêté, et la phrase porte de toute façon les deux seules
+     suites utiles : réessayer, et vérifier l'adresse côté Google.
+
+     auth_google_profile_required n'est pas une erreur. C'est la première
+     étape d'un parcours en deux temps : Google dit qui vous êtes et ne peut
+     pas dire dans quel pays vous vendez ni si vous venez vendre. Le client
+     pose les deux questions puis rappelle POST /auth/google avec le même
+     jeton. */
+  auth_google_unavailable: "La connexion avec Google n'est pas disponible. Utilisez votre adresse e-mail et votre mot de passe.",
+  auth_google_token_invalid: "Nous n'avons pas pu vous connecter avec Google. Réessayez, et vérifiez que votre adresse e-mail Google est confirmée.",
+  auth_google_profile_required: "Indiquez votre pays et si vous êtes créateur ou entreprise, puis reconnectez-vous avec Google.",
+
   /* Profiles: setting up a creator page, its packages and its portfolio. */
   profile_not_found: "Profil introuvable.",
   profile_under_age: "Vous devez avoir au moins {{min}} ans pour créer un profil de créateur.",
@@ -421,6 +440,24 @@ export const error_en = {
   auth_otp_capacity: "Verification codes are temporarily unavailable. Try again in a few minutes.",
   auth_otp_delivery_failed: "We could not send the verification code. Try again in a moment.",
   auth_reset_code_invalid: "That reset code is invalid or expired.",
+
+  /* Signing in with Google. Three refusals only, because a client has exactly
+     three things to do about it: hide the button, ask again, or ask two
+     questions.
+
+     auth_google_token_invalid covers EVERY way a token can be refused,
+     including an address Google has not confirmed. Telling them apart would
+     say to whoever is holding a forged token which check caught it, and the
+     sentence carries the only two next steps that ever help anyway: try
+     again, and check the address on the Google side.
+
+     auth_google_profile_required is not an error. It is the first leg of a
+     two step flow: Google says who somebody is and cannot say which country
+     they sell in or whether they came here to sell. The client asks both
+     questions and calls POST /auth/google again with the same token. */
+  auth_google_unavailable: "Signing in with Google is not available. Use your email address and password.",
+  auth_google_token_invalid: "We could not sign you in with Google. Try again, and check that your Google email address is confirmed.",
+  auth_google_profile_required: "Tell us your country and whether you are a creator or a business, then sign in with Google again.",
 
   profile_not_found: "Profile not found.",
   profile_under_age: "You must be at least {{min}} to create a creator profile.",

@@ -63,7 +63,7 @@ def _headers(uid):
 def _user(client, phone, role="business"):
     db = client.session_factory()
     try:
-        u = User(phone=phone, password_hash="x", country_code="BJ", role=role, is_verified=True)
+        u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role=role, is_verified=True)
         db.add(u); db.commit(); db.refresh(u)
         return u.id
     finally:

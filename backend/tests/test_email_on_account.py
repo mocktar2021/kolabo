@@ -25,6 +25,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.modules.auth import models
 from app.modules.auth.router import router as auth_router
 
@@ -59,6 +60,13 @@ def client():
             db.close()
 
     app = FastAPI()
+    # The REAL error handler, for the reason test_auth.py registers it: every
+    # refusal below is asserted by its `code`, and AppError subclasses
+    # HTTPException, so without this FastAPI's own handler renders
+    # {"detail": ...} alone and each assertion fails on a missing key rather
+    # than on a wrong answer. Registering the real one rather than a lookalike
+    # is what makes these tests evidence about the wiring in main.py.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(auth_router, prefix="/auth")
     app.dependency_overrides[get_db] = override_get_db
     test_client = TestClient(app)
@@ -233,14 +241,26 @@ def test_an_address_already_on_another_account_is_409(client):
 
 def test_the_conflict_is_decided_on_the_normalised_spelling(client):
     """Otherwise one spelling looks free while another is taken, and the unique
-    index turns a clear 409 into a 500 on the write that finds out."""
+    index turns a clear 409 into a 500 on the write that finds out.
+
+    THE DOMAIN IS THE HALF THAT VARIES HERE, and it has to be. Normalisation
+    lowercases the domain and deliberately leaves the local part exactly as it
+    was typed (core/emails.py says why at length, and test_email_guard.py pins
+    it with "AMA@EXAMPLE.COM" -> "AMA@example.com"). So "KOFI@example.com" and
+    "kofi@example.com" are two different addresses on purpose: neither the
+    lookup below nor the unique index behind it would treat them as one, and a
+    test that asked for a 409 on that pair would be asking for the rule to be
+    broken rather than checking it. Changing only the case of the domain is
+    what exercises the thing this test is named for, because it is the only
+    half where the stored value and the typed value legitimately differ.
+    """
     token = _verified_token(client)
     _register(client, phone=OTHER_PHONE)
     _put_email_on(client, OTHER_PHONE, OTHER_EMAIL)
 
     r = client.patch(
         "/auth/me",
-        json={"current_password": PASSWORD, "email": "KOFI@EXAMPLE.COM"},
+        json={"current_password": PASSWORD, "email": "kofi@EXAMPLE.COM"},
         headers=_headers(token),
     )
     assert r.status_code == 409

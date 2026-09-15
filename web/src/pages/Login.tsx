@@ -22,24 +22,24 @@ const MIN_PASSWORD_LENGTH = 8;
 
    THE ONE THING THIS FLOW MUST NOT DO. POST /auth/password-reset/request
    answers exactly the same 202 with exactly the same body whether or not the
-   number is registered, and that is the entire security property of the
+   address is registered, and that is the entire security property of the
    endpoint rather than an implementation detail. Two answers would turn it
    into a free "is this person on Kolabo?" lookup for anyone holding a list of
-   numbers — which in these markets discloses who is earning on the platform
+   addresses — which in these markets discloses who is earning on the platform
    to whoever asks, including the people a user is specifically trying not to
-   be found by. So the confirmation below says "if that number is registered"
+   be found by. So the confirmation below says "if that address is registered"
    and never "a code has been sent": the client genuinely does not know, and
    writing copy that implies it does would leak through the UI what the API
    refuses to leak.
 
    The confirm step is not skipped when the request "succeeds" for the same
    reason: there is nothing to skip on. Every failure of the confirm step —
-   unknown phone, wrong code, expired code, already-spent code — comes back as
-   the same 400, so it gets one sentence too. */
+   unknown address, wrong code, expired code, already-spent code — comes back
+   as the same 400, so it gets one sentence too. */
 function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<"phone" | "code">("phone");
-  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -52,16 +52,16 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
 
   async function request(e: FormEvent) {
     e.preventDefault();
-    if (!phone.trim()) return;
+    if (!email.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/password-reset/request", { method: "POST", body: { phone: phone.trim() } });
+      await api("/auth/password-reset/request", { method: "POST", body: { email: email.trim() } });
       setStep("code");
     } catch (err) {
       /* 429 is the ONE case this endpoint is not silent about, and the
-         backend says why: every request sends an SMS that costs money, and
-         swallowing the limit behind a 202 would leave a genuinely
+         backend says why: every request sends an email that costs something,
+         and swallowing the limit behind a 202 would leave a genuinely
          rate-limited user waiting for a message that is never coming.
          It arrives as auth_reset_too_many now, so errorText says it in the
          reader's language without this screen having to know the status. */
@@ -79,7 +79,7 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
     try {
       await api("/auth/password-reset/confirm", {
         method: "POST",
-        body: { phone: phone.trim(), code, new_password: password }
+        body: { email: email.trim(), code, new_password: password }
       });
       onDone();
     } catch (err) {
@@ -98,15 +98,15 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
       <h2 style={{ marginTop: 0, fontSize: 20 }}>{t("reset.title")}</h2>
       {error && <div className="alert alert-error">{error}</div>}
 
-      {step === "phone" ? (
+      {step === "email" ? (
         <form onSubmit={request}>
           <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("reset.intro")}</p>
           <div className="field">
-            <label className="label" htmlFor="reset-phone">{t("reset.phoneLabel")}</label>
-            <input id="reset-phone" className="input" value={phone} placeholder="+229 ..."
-              onChange={(e) => setPhone(e.target.value)} required />
+            <label className="label" htmlFor="reset-email">{t("reset.phoneLabel")}</label>
+            <input id="reset-email" className="input" type="email" autoComplete="email" inputMode="email"
+              value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
-          <button className="btn btn-primary btn-block" type="submit" disabled={busy || !phone.trim()}>
+          <button className="btn btn-primary btn-block" type="submit" disabled={busy || !email.trim()}>
             {busy ? t("auth.working") : t("reset.request")}
           </button>
           <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={onCancel}>
@@ -139,7 +139,7 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
             {busy ? t("auth.working") : t("reset.confirm")}
           </button>
           <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 10 }}
-            onClick={() => { setStep("phone"); setError(null); }}>
+            onClick={() => { setStep("email"); setError(null); }}>
             {t("reset.changePhone")}
           </button>
         </form>
@@ -152,7 +152,7 @@ export default function Login() {
   const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -167,7 +167,7 @@ export default function Login() {
     setError(null);
     setBusy(true);
     try {
-      const res = await api<TokenResponse>("/auth/login", { method: "POST", body: { phone, password } });
+      const res = await api<TokenResponse>("/auth/login", { method: "POST", body: { email, password } });
       // The response carries the stored role; login persists it so the app
       // renders the right experience even after a logout wiped nothing but
       // the token.
@@ -193,8 +193,8 @@ export default function Login() {
               onCancel={() => setResetting(false)}
               /* Back to the login form with the success line above it, rather
                  than signing them in silently. The reset endpoint returns no
-                 token — on purpose: proving you hold the phone is how you get
-                 a new password, not how you get a session — and typing it
+                 token — on purpose: proving you hold the address is how you
+                 get a new password, not how you get a session — and typing it
                  once is also the confirmation that it is the one they
                  meant. */
               onDone={() => { setResetting(false); setResetDone(true); setPassword(""); }}
@@ -205,8 +205,9 @@ export default function Login() {
               {error && <div className="alert alert-error">{error}</div>}
               <form onSubmit={onSubmit}>
                 <div className="field">
-                  <label className="label" htmlFor="phone">{t("auth.phone")}</label>
-                  <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+229 ..." required />
+                  <label className="label" htmlFor="email">{t("auth.email")}</label>
+                  <input id="email" className="input" type="email" autoComplete="email" inputMode="email"
+                    value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div className="field">
                   <label className="label" htmlFor="password">{t("auth.password")}</label>

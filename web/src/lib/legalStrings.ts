@@ -28,7 +28,7 @@
    the one place in the product where French punctuation is worth the trouble.
    Do not normalise it away.
 
-   THE FIFTEEN NON-BREAKING SPACES BELOW ARE WRITTEN AS \u00A0, ON PURPOSE.
+   THE FIFTEEN NON-BREAKING SPACES BELOW ARE WRITTEN AS  , ON PURPOSE.
    They used to be literal U+00A0 characters, and a literal one is invisible:
    an editor, a diff and a code review all draw it exactly like the ordinary
    space beside it, and nothing in the toolchain says when one is lost. A
@@ -37,7 +37,7 @@
    lost all fifteen that way more than once while being committed, and the
    only thing that ever noticed was a byte count. The escape is the same
    character at runtime, it cannot be normalised away by anything short of an
-   edit, and it shows up in a diff. Keep writing new ones as \u00A0. All
+   edit, and it shows up in a diff. Keep writing new ones as  . All
    fifteen are on /legal/privacy.
 
    THE REGISTRATION IDENTIFIERS AND THE POSTAL ADDRESS ARE THE SAME STRING IN
@@ -76,9 +76,11 @@
    CLAUSE ANYWHERE IN THIS FILE, and there should not be one — the clause
    belongs to /legal/terms, which does not exist yet.
 
-   Every factual claim below was checked against the repo at main @ c447e4ad:
-   phone as the login identity and email optional (auth/models.py::User),
-   hashed passwords (User.password_hash), expiring single-use codes
+   Every factual claim below was checked against the repo at main @ c447e4ad
+   and re-checked for the email identity flip: the EMAIL ADDRESS as the login
+   identity with the phone number nullable and optional
+   (auth/models.py::User), hashed passwords (User.password_hash), expiring
+   single-use codes
    (OtpChallenge), images in the database (MediaAsset.data), audience figures
    from the platforms' own APIs (profiles/enrichment.py), AI-drafted bios
    (profiles/bio_ai.py), documents encrypted at rest
@@ -121,62 +123,65 @@ const fr = {
       intro: "Kolabo est exploité par Mocktar Technologies, responsable du traitement. Cette politique explique ce que nous collectons lorsque vous utilisez Kolabo, pourquoi, qui d’autre y a accès, et ce que vous pouvez nous demander à ce sujet. Elle couvre le site web et les applications mobiles Kolabo. Elle ne couvre pas mocktar.com ni nos autres produits, qui ont leurs propres politiques.",
 
       whoTitle: "Qui nous sommes",
-      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin. RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante\u00A0:",
+      who: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin. RCCM RB/COT/26 A 119654, IFU 1200900488800. Les informations d’immatriculation complètes, y compris celles de notre entité aux États-Unis, sont publiées à l’adresse suivante :",
       whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "Ce que nous collectons",
-      collectAccount: "**Pour créer votre compte.** Votre numéro de téléphone, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Une adresse e-mail si vous choisissez d’en donner une\u00A0: elle est facultative.",
+      collectAccount: "**Pour créer votre compte.** Votre adresse e-mail, qui vous sert à vous connecter et qui est le seul identifiant que nous exigeons. Un mot de passe, que nous stockons sous forme hachée et jamais en clair. Votre pays, et si vous vous inscrivez comme créateur, comme entreprise ou comme agence. Un numéro de téléphone si vous choisissez d’en donner un : il est facultatif, et il sert à recevoir vos versements Mobile Money.",
 
-      /* THE SMS SENTENCES, AND WHY THEY NO LONGER SAY WHAT THEY SAID.
+      /* THE ONE-TIME CODE SENTENCES, AFTER THE EMAIL IDENTITY FLIP.
 
-         Two claims in the drafted policy described an SMS provider that does
-         not exist. backend/app/modules/auth/otp.py declares Sender(Protocol)
-         and ships exactly one implementation of it — LoggingSender, which
-         writes the code to the application log. No provider is integrated, so
-         NOBODY OUTSIDE THIS SYSTEM RECEIVES A PHONE NUMBER IN ORDER TO
-         DELIVER A CODE, and neither sentence was true on the day the page was
-         due to go live.
+         THE IDENTIFIER CHANGED, AND THESE TWO PARAGRAPHS ARE WHERE THAT SHOWS.
+         Registration, sign-in and both halves of password recovery now take an
+         EMAIL ADDRESS (backend/app/modules/auth), users.phone is nullable and
+         signup no longer asks for a number, and the one-time code is delivered
+         to that address in French or English according to the account's
+         country. collectAccount above and collectVerify below are written to
+         that. Left alone they would have been false on the day the flip
+         shipped, in the one document written to be read for exactly this fact.
 
-         REMOVED: legal.privacy.sharedSms, in both languages — "Our SMS
-         provider receives your phone number in order to deliver a code" —
-         together with its entry in the who-else-sees-it list in
-         PRIVACY_DOCUMENT (pages/LegalPage.tsx), where it sat between
-         sharedGateway and sharedSocial. A present-tense line in a list headed
-         "who else sees it", naming a recipient that does not exist, is not
-         cautious drafting: it is a false statement about where a user's phone
-         number goes, in the one document a regulator reads for exactly that.
+         THE PHONE NUMBER IS STILL COLLECTED, and collectAccount still says so:
+         it is optional now, and what it is for is a Mobile Money payout. The
+         sentence names that purpose rather than leaving the reader to guess
+         why a marketplace wants their number.
 
-         REWORDED: collectVerify, immediately below. "One-time codes we send
-         to your phone" was untrue for the same reason, and it is in any case
-         a claim about a delivery channel rather than about data held. It now
-         says what is actually held — a code tied to your phone number — and
-         the rest of the sentence is untouched, because expiry, single use and
-         the cost of a wrong guess are all real (OtpChallenge, and the
-         attempts counter added by migration a1c5e8b30f7d).
+         THE DELIVERY CLAUSE IS BACK IN collectVerify, because it is true
+         again. An earlier draft said "one-time codes we send to your phone"
+         while auth/otp.py shipped nothing but LoggingSender, and the claim was
+         cut back to what was merely held. Codes are really sent now, so the
+         sentence says so. Expiry, single use and the cost of a wrong guess
+         were always real and are untouched (OtpChallenge, and the attempts
+         counter added by migration a1c5e8b30f7d).
 
-         BOTH SENTENCES BECOME TRUE AGAIN THE DAY AN SMS PROVIDER IS
-         INTEGRATED, and whoever replaces LoggingSender in auth/otp.py owns
-         restoring them: put sharedSms back in both languages and back into
-         the PRIVACY_DOCUMENT list, and put the delivery clause back into
-         collectVerify in both languages. Naming the provider in the policy is
-         part of shipping it, not a follow-up. */
-      collectVerify: "**Pour vérifier que c’est bien vous.** Les codes à usage unique rattachés à votre numéro de téléphone. Ils expirent, ils ne fonctionnent qu’une fois, et un code erroné coûte une tentative.",
+         legal.privacy.sharedSms STAYS DELETED, in both languages and in the
+         PRIVACY_DOCUMENT list (pages/LegalPage.tsx). It named an SMS provider
+         that never existed, and nothing in this change brings one back.
 
-      collectPublish: "**Ce que vous publiez.** Votre profil\u00A0: nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
+         WHAT IS STILL OPEN, and it is the thing to chase before a regulator
+         does: IF the code leaves this system through a third-party email
+         provider, that provider receives a user's email address and belongs
+         in the who-else-sees-it list below and in PRIVACY_DOCUMENT, in the
+         slot sharedSms used to occupy. That line is NOT written here because
+         nobody has confirmed which transport auth/otp.py sends through, and
+         guessing a recipient would be the same error, in the same document,
+         as naming one that does not exist. Whoever knows owns writing it. */
+      collectVerify: "**Pour vérifier que c’est bien vous.** Les codes à usage unique que nous envoyons à votre adresse e-mail. Ils expirent, ils ne fonctionnent qu’une fois, et un code erroné coûte une tentative.",
+
+      collectPublish: "**Ce que vous publiez.** Votre profil : nom affiché, biographie, catégories, tarifs et offres, disponibilité, photo de profil et images de portfolio. C’est votre vitrine, et elle est visible par tout le monde, y compris par les personnes qui ne sont pas connectées. N’y mettez rien que vous ne voudriez pas rendre public.",
       collectSocial: "**Vos comptes de réseaux sociaux connectés.** La plateforme et le pseudonyme que vous connectez, ainsi que les chiffres d’audience que nous récupérons pour ce compte (nombre d’abonnés, taux d’engagement et composition de l’audience) que nous obtenons depuis l’API publique de la plateforme elle-même. Nous ne recevons pas le mot de passe de votre compte social et nous ne pouvons pas publier en votre nom.",
       collectDocs: "**Documents de vérification.** Si vous demandez à être vérifié, la pièce d’identité ou le document d’immatriculation que vous téléversez. Ces documents sont **chiffrés au repos** et ne sont visibles que par le personnel qui les examine.",
-      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé\u00A0: votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
+      collectMoney: "**L’argent.** Ce que vous commandez ou ce pour quoi vous êtes engagé, le montant, la devise, et l’état du séquestre (escrow) qui le retient. Si vous êtes payé : votre numéro mobile money, le réseau, et le nom du titulaire du compte. Nous vous réaffichons ce numéro masqué, et il est transmis à notre prestataire de paiement plutôt qu’à l’autre partie.",
       collectWork: "**Le travail en commun.** Les messages et les pièces jointes que vous échangez avec l’autre partie à un contrat, le travail que vous soumettez et, si quelque chose tourne mal, la réclamation et les preuves versées à un litige.",
-      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner\u00A0: adresse IP, type d’appareil et de navigateur, horodatages.",
+      collectTech: "**Données techniques.** Les données de connexion que tout service web traite simplement pour fonctionner : adresse IP, type d’appareil et de navigateur, horodatages.",
 
       whyTitle: "Pourquoi nous les collectons",
       why: "Pour faire fonctionner votre compte et prouver qu’il est le vôtre. Pour permettre aux marques et aux créateurs de se trouver. Pour conserver l’argent en sécurité sous séquestre, puis le libérer ou le rembourser. Pour vérifier que les personnes sont bien celles qu’elles disent être, ce qui est tout l’objet d’une place de marché où des inconnus paient des inconnus. Pour résoudre les litiges. Pour respecter nos obligations légales et fiscales. Pour garder la plateforme libre de fraude et de faux comptes.",
       whyNoSale: "**Nous ne vendons pas vos données à caractère personnel et nous ne les utilisons pas à des fins publicitaires.**",
 
       sharedTitle: "Qui d’autre y a accès",
-      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige\u00A0: le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
+      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige : le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
       sharedSocial: "**Les plateformes sociales** (YouTube, Meta, et les autres à mesure que nous les ajoutons) reçoivent une requête portant sur les données publiques du compte que vous avez connecté.",
-      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative «\u00A0rédiger ma bio\u00A0»\u00A0: les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
+      sharedAi: "**Anthropic**, si vous utilisez la fonction facultative « rédiger ma bio » : les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
       sharedHosting: "**Nos hébergeurs et fournisseurs d’infrastructure**, qui stockent et servent les données sur nos instructions.",
       sharedCounterparty: "**L’autre partie à un contrat**, qui voit votre profil public, ce que vous avez convenu, vos messages et le travail que vous soumettez. **Elle ne voit jamais votre numéro de versement, ni vos documents, ni votre mot de passe.**",
       sharedAuthorities: "**Les autorités**, lorsque la loi l’exige.",
@@ -185,11 +190,11 @@ const fr = {
       where: "Sur des serveurs que nous exploitons et sur l’infrastructure de nos prestataires, qui peuvent se trouver hors de votre pays. Les données de paiement et de versement sont traitées par FedaPay dans les marchés qu’il dessert.",
 
       retentionTitle: "Combien de temps nous les conservons",
-      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons\u00A0: les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation\u00A0; lorsque nous en fixerons un, il figurera ici.",
+      retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons : les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation ; lorsque nous en fixerons un, il figurera ici.",
 
       rightsTitle: "Vos choix et vos droits",
-      rightsEdit: "Vous pouvez modifier ou supprimer la plus grande partie de votre profil depuis l’application à tout moment. Selon le lieu où vous vivez, vous pouvez disposer d’un droit d’accès, de rectification et d’effacement des données que nous détenons sur vous, du droit de vous opposer à l’usage que nous en faisons, ou d’en recevoir une copie. **Vous pouvez fermer votre compte vous-même, dans les paramètres de votre compte, sur le site web Kolabo.** Nous vous demandons alors votre mot de passe\u00A0: une session ouverte ne doit pas suffire, à elle seule, à supprimer un compte. **Un compte rattaché à un contrat ou à un séquestre ne peut pas être fermé de cette manière**, et le formulaire vous l’indiquera\u00A0: l’autre partie à une collaboration en conserve sa propre trace, et nous n’effaçons pas l’historique des sommes qui ont circulé. Pour fermer un tel compte, ou pour formuler l’une des autres demandes ci-dessus, **écrivez-nous** à l’adresse ci-dessous et nous vous répondrons.",
-      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande\u00A0: un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
+      rightsEdit: "Vous pouvez modifier ou supprimer la plus grande partie de votre profil depuis l’application à tout moment. Selon le lieu où vous vivez, vous pouvez disposer d’un droit d’accès, de rectification et d’effacement des données que nous détenons sur vous, du droit de vous opposer à l’usage que nous en faisons, ou d’en recevoir une copie. **Vous pouvez fermer votre compte vous-même, dans les paramètres de votre compte, sur le site web Kolabo.** Nous vous demandons alors votre mot de passe : une session ouverte ne doit pas suffire, à elle seule, à supprimer un compte. **Un compte rattaché à un contrat ou à un séquestre ne peut pas être fermé de cette manière**, et le formulaire vous l’indiquera : l’autre partie à une collaboration en conserve sa propre trace, et nous n’effaçons pas l’historique des sommes qui ont circulé. Pour fermer un tel compte, ou pour formuler l’une des autres demandes ci-dessus, **écrivez-nous** à l’adresse ci-dessous et nous vous répondrons.",
+      rightsLimits: "Certaines choses ne peuvent pas être supprimées sur demande : un paiement effectué, un litige tranché, et tout ce qu’une loi nous impose de conserver.",
 
       securityTitle: "Sécurité",
       security: "Les mots de passe sont hachés. Les documents de vérification sont chiffrés au repos. Les numéros de versement sont masqués dans l’application. L’accès aux documents et aux litiges est limité au personnel qui les examine. Aucun système n’est parfaitement sûr, et nous ne prétendons pas le contraire.",
@@ -202,7 +207,7 @@ const fr = {
 
       contactTitle: "Nous contacter",
       contactAddress: "Mocktar Technologies, C 1357 Houeyiho, 07BP91, Cotonou, Benin",
-      contactRegistration: "Informations d’immatriculation\u00A0:",
+      contactRegistration: "Informations d’immatriculation :",
       contactRegistrationLink: "mocktar.com/legal/entities"
     }
   },
@@ -229,12 +234,12 @@ const en = {
       whoLink: "mocktar.com/legal/entities",
 
       collectTitle: "What we collect",
-      collectAccount: "**To create your account.** Your phone number, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. An email address if you choose to give one. It is optional.",
+      collectAccount: "**To create your account.** Your email address, which is how you sign in and the only identifier we require. A password, which we store hashed and never in readable form. Your country and whether you are joining as a creator, a business or an agency. A phone number if you choose to give one. It is optional, and it is where your Mobile Money payouts are sent.",
 
-      /* Reworded, and sharedSms deleted outright — see the note above the
-         French collectVerify for what changed, why, and what has to be put
-         back the day auth/otp.py grows a real Sender. */
-      collectVerify: "**To verify it is you.** One-time codes tied to your phone number. They expire, they work once, and a wrong code costs an attempt.",
+      /* Rewritten for the email identity flip, and sharedSms still deleted —
+         see the note above the French collectVerify for what changed, why,
+         and the one line a reviewer still has to chase. */
+      collectVerify: "**To verify it is you.** One-time codes we send to your email address. They expire, they work once, and a wrong code costs an attempt.",
 
       collectPublish: "**What you publish.** Your profile: display name, bio, categories, prices and packages, availability, profile photo and portfolio images. This is your storefront and is visible to anyone, including people who are not signed in. Please do not put anything in it you would not want public.",
       collectSocial: "**Your connected social accounts.** The platform and handle you connect, and the audience figures we retrieve for it (follower counts, engagement rates and audience breakdowns) which we fetch from the platform's own public API. We do not receive your social account password and we cannot post on your behalf.",

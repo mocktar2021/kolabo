@@ -53,33 +53,35 @@ Nothing in Track B is blocked by this. Do it in the meantime.
 
 ## Track B — what the app needs before Apple sees it
 
-### 1. The bundle identifier is permanent — decide it first
+### 1. The bundle identifier is settled: `com.kolaboafrica.app`
 
-`app.json` currently says `com.kolabo.app` for both platforms. **This is a placeholder.**
+**DONE, in PR #166 (KOL-68).** `app.json` sets both `ios.bundleIdentifier` and `android.package`
+to `com.kolaboafrica.app`. The old value, `com.kolabo.app`, was a placeholder derived from no
+domain anyone owns. Reverse DNS is meant to be a domain you control, and `kolaboafrica.com` is the
+canonical production domain.
 
-Once an app is published under a bundle ID, that ID cannot be changed. Changing it means
-publishing a *different* app and losing every install, rating and review on both stores.
-Changing it today costs nothing.
+**Treat this value as frozen.** Once an app is published under a bundle ID, that ID cannot be
+changed. Changing it means publishing a *different* app and losing every install, rating and
+review on both stores. It was free to change right up to the first submission and it is not free
+after.
 
-Convention is reverse-DNS of a domain you actually control:
+`scheme` is unaffected and stays `kolabo`. It is not derived from the package name:
+`Linking.createURL()` in `src/screens/CheckoutScreen.tsx` builds the payment return link from
+`expo.scheme` alone, so the identifier change does not touch the FedaPay return leg.
 
-- `com.mocktar.kolabo` — works today, but bakes a personal domain into the company's app forever.
-- `com.kolaboafrica.app` — the natural choice once `kolaboafrica.com` is registered (KOL-40,
-  verified available at the time of that check; re-check before relying on it).
+### 2. App icon: in place
 
-**This is a founder decision and it is now on the critical path.** It has to be settled before the
-first TestFlight upload, not after.
+**DONE, in PR #166 (KOL-88).** `app.json` carries `"icon": "./assets/kolabo-icon-1024.png"`, and
+the file is committed at `mobile/assets/kolabo-icon-1024.png`. Android also gets an adaptive pair
+under `android.adaptiveIcon`: `kolabo-adaptive-foreground.png` composited over
+`kolabo-adaptive-background.png`. Expo generates every other size from these.
 
-### 2. App icon — required for the App Store, currently absent
+The mark is the one already shipping as the web favicon: indigo to teal, a white K, an amber dot
+at the vertex. Square, no rounded corners, no alpha on the main icon, because Apple applies its own
+squircle mask and rejects alpha in the App Store icon.
 
-`app.json` has no `icon` key, so `expo prebuild` emits `» ios: icon: No icon is defined in the
-Expo config` and falls back to Expo's blank default. Verified: the generated Xcode project does
-contain `App-Icon-1024x1024@1x.png`, so **a build will not fail** — it will just carry a
-placeholder icon.
-
-That is survivable for internal TestFlight. It is not survivable for a public listing.
-Needed: a single **1024×1024 PNG, no alpha channel, no rounded corners** (Apple applies the mask),
-referenced as `"icon": "./assets/icon.png"`. Expo generates every other size from it.
+Before this, `app.json` had no `icon` key at all, `expo prebuild` emitted `» ios: icon: No icon
+is defined in the Expo config`, and every build shipped Expo's blank default.
 
 ### 3. Permissions — fixed, and it also fixed an Android problem
 
@@ -237,8 +239,8 @@ Builds expire after 90 days.
 | Order | Step | Blocked by | Who |
 |---|---|---|---|
 | 1 | Look up / request D-U-N-S number | — | Founder |
-| 2 | Decide the bundle identifier | — | Founder |
-| 3 | Produce the 1024×1024 app icon | Brand direction | Design |
+| 2 | Decide the bundle identifier (DONE, PR #166) | — | Founder |
+| 3 | Produce the 1024×1024 app icon (DONE, PR #166) | Brand direction | Design |
 | 4 | Enrol in Apple Developer Program | D-U-N-S (org route) | Founder |
 | 5 | Write privacy policy, host it | — | Founder + legal review |
 | 6 | Seed creator + business demo accounts on the dev API | — | Dev |
@@ -247,7 +249,7 @@ Builds expire after 90 days.
 | 9 | `eas submit -p ios --latest` → internal TestFlight | Step 8 | Dev |
 | 10 | External TestFlight group → Beta App Review | Steps 5, 6, 9 | Dev |
 
-Steps 1–3, 5 and 6 are all doable today. Nothing after step 4 is.
+Steps 2 and 3 are done. Steps 1, 5 and 6 are doable today. Nothing after step 4 is.
 
 ---
 
@@ -257,7 +259,9 @@ Steps 1–3, 5 and 6 are all doable today. Nothing after step 4 is.
   of writing; confirm on developer.apple.com before budgeting.
 - Whether a D-U-N-S number already exists for the Kolabo entity, and whether the entity is
   registered at all, is unknown here.
-- `kolaboafrica.com` was verified available at the time of the KOL-40 check. Availability changes.
-  Re-check before deciding the bundle ID on the strength of it.
+- The bundle identifier `com.kolaboafrica.app` assumes `kolaboafrica.com` is registered to the
+  company. Whether that registration exists, and in whose name, is not verified anywhere in this
+  repo, and the API still answers on `api.kolabo.mocktar.com`. Confirm it before the first store
+  submission, because the identifier cannot be changed afterwards.
 - Nothing in this document has been through an actual App Review. The rejection reasons listed are
   the well-documented common ones, not a guarantee of approval.

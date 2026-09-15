@@ -11,7 +11,7 @@ export default function VerifyOtp() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const phone = params.get("phone") || "";
+  const email = params.get("email") || "";
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export default function VerifyOtp() {
     setError(null);
     setBusy(true);
     try {
-      const res = await api<TokenResponse>("/auth/verify-otp", { method: "POST", body: { phone, code } });
+      const res = await api<TokenResponse>("/auth/verify-otp", { method: "POST", body: { email, code } });
       // The response's role is the backend truth; it overwrites whatever
       // registration stored locally.
       login(res.access_token, res.role);

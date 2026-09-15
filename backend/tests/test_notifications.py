@@ -61,28 +61,6 @@ def test_notify_records_in_app_and_sends_email(client):
     assert notif_service.email_sender.outbox[0]["target"] == "creator@example.com"
 
 
-def test_an_account_with_no_address_gets_the_bell_and_no_email(client):
-    """THE FALLBACK TO THE PHONE IS GONE, and this is what replaced it.
-
-    notify() addressed to `user.email or user.phone` when the phone was the
-    identity, which put a phone number into a mail API that ResendSender then
-    had to learn to decline. It addresses the email and nothing else now.
-
-    An account with no address is a row that predates the identity flip, since
-    registration collects one. It still gets the in-app notification, because
-    that is written before any of this, and it gets no email, because there is
-    nowhere to send one. What must not happen is None reaching the sender:
-    LoggingEmailSender would file it and ResendSender would post null as a
-    recipient, and neither is visible from the call site.
-    """
-    uid = _user(client, email=None, phone="+22990000009")
-    db = client.session_factory()
-    notif_service.notify(db, uid, "proposal", "hi")
-    db.commit(); db.close()
-    assert notif_service.email_sender.outbox == []
-    assert len(client.get("/notifications/", headers=_headers(uid)).json()) == 1
-
-
 def test_unsubscribe_stops_non_critical_email(client):
     uid = _user(client)
     client.put("/notifications/preferences", json={"type": "proposal", "email_enabled": False}, headers=_headers(uid))

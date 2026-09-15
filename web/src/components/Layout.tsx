@@ -337,10 +337,10 @@ function AccountMenu() {
       {open && (
         <div className="menu-panel menu-panel-end menu-panel-account" role="menu">
           {/* Who is signed in, at the top of the menu that is about them. The
-              name only — NOT the phone number, which /auth/me does carry and
+              name only — NOT the email address, which /auth/me does carry and
               which belongs on the account screen where somebody is checking
-              which number they log in with, not under an avatar in a nav that
-              is open on a shared screen.
+              which address they sign in with, not under an avatar in a nav
+              that is open on a shared screen.
 
               While the first request is in flight this renders nothing rather
               than the fallback: "Votre compte" appearing for a frame and then

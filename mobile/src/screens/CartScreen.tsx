@@ -209,7 +209,15 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
               }}
             />
           ) : (
-            <GhostButton title={t("cart.emptyCta")} onPress={() => navigation.navigate("Discover")} />
+            /* Discover is a TAB and this is a stack screen, so the tab has
+               to be named through its host route. A bare navigate("Discover")
+               from here is dispatched on the stack, which has no such route,
+               and ends up switching the tab underneath a Cart screen that
+               stays on top. See TabParamList in navigation/types.ts. */
+            <GhostButton
+              title={t("cart.emptyCta")}
+              onPress={() => navigation.navigate("Tabs", { screen: "Discover" })}
+            />
           )}
         </Card>
       </Screen>
@@ -233,7 +241,12 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
         <Card>
           <Hint>{t("cart.empty")}</Hint>
           <View style={{ height: space(3) }} />
-          <PrimaryButton title={t("cart.emptyCta")} onPress={() => navigation.navigate("Discover")} />
+          {/* Through the host route, for the reason given on the receipt's
+              copy of this button above. */}
+          <PrimaryButton
+            title={t("cart.emptyCta")}
+            onPress={() => navigation.navigate("Tabs", { screen: "Discover" })}
+          />
         </Card>
       </Screen>
     );

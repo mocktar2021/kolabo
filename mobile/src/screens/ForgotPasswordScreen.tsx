@@ -12,15 +12,15 @@ const MIN_PASSWORD_LENGTH = 8;
 /* Two steps, mirroring web/src/pages/Login.tsx's PasswordReset.
 
    THE SECURITY PROPERTY THIS MUST KEEP: POST /auth/password-reset/request
-   answers the same 202 whether or not the number is registered — two answers
+   answers the same 202 whether or not the address is registered — two answers
    would make it a free "is this person on Kolabo?" lookup. So the confirmation
-   after the request says "if that number is registered" and never "a code has
+   after the request says "if that address is registered" and never "a code has
    been sent": the client genuinely does not know. Every way the confirm step
    can fail comes back as the same refusal, so it gets one sentence too. */
 export default function ForgotPasswordScreen({ navigation }: AuthScreenProps<"ForgotPassword">) {
   const { t } = useTranslation();
-  const [step, setStep] = useState<"phone" | "code">("phone");
-  const [phone, setPhone] = useState("");
+  const [step, setStep] = useState<"email" | "code">("email");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -32,11 +32,11 @@ export default function ForgotPasswordScreen({ navigation }: AuthScreenProps<"Fo
   const ready = code.length === 6 && password.length >= MIN_PASSWORD_LENGTH && confirm === password;
 
   async function request() {
-    if (!phone.trim()) return;
+    if (!email.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/password-reset/request", { method: "POST", body: { phone: phone.trim() } });
+      await api("/auth/password-reset/request", { method: "POST", body: { email: email.trim() } });
       setStep("code");
     } catch (err) {
       // 429 (auth_reset_too_many) is the one case this endpoint is not silent
@@ -54,10 +54,10 @@ export default function ForgotPasswordScreen({ navigation }: AuthScreenProps<"Fo
     try {
       await api("/auth/password-reset/confirm", {
         method: "POST",
-        body: { phone: phone.trim(), code, new_password: password },
+        body: { email: email.trim(), code, new_password: password },
       });
-      // No token is returned on purpose — proving you hold the phone earns a
-      // new password, not a session. Back to login to sign in with it.
+      // No token is returned on purpose — proving you hold the mailbox earns
+      // a new password, not a session. Back to login to sign in with it.
       navigation.navigate("Login");
     } catch (err) {
       setError(errorText(err, t));
@@ -69,25 +69,25 @@ export default function ForgotPasswordScreen({ navigation }: AuthScreenProps<"Fo
   return (
     <Screen>
       <Title>{t("reset.title")}</Title>
-      <Subtitle>{step === "phone" ? t("reset.intro") : t("reset.sentHint")}</Subtitle>
+      <Subtitle>{step === "email" ? t("reset.intro") : t("reset.sentHint")}</Subtitle>
       <Card>
         {error ? <Banner kind="error">{error}</Banner> : null}
 
-        {step === "phone" ? (
+        {step === "email" ? (
           <>
             <Field
-              label={t("reset.phoneLabel")}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
+              label={t("reset.emailLabel")}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
               autoCapitalize="none"
-              placeholder="+229 ..."
+              autoComplete="email"
             />
             <PrimaryButton
               title={busy ? t("common.working") : t("reset.request")}
               onPress={request}
               loading={busy}
-              disabled={!phone.trim()}
+              disabled={!email.trim()}
             />
             <View style={{ marginTop: space(3) }}>
               <GhostButton title={t("reset.back")} onPress={() => navigation.navigate("Login")} />
@@ -130,9 +130,9 @@ export default function ForgotPasswordScreen({ navigation }: AuthScreenProps<"Fo
             />
             <View style={{ marginTop: space(3) }}>
               <GhostButton
-                title={t("reset.changePhone")}
+                title={t("reset.changeEmail")}
                 onPress={() => {
-                  setStep("phone");
+                  setStep("email");
                   setError(null);
                 }}
               />

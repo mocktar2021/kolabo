@@ -5,6 +5,8 @@ reads, and the rule that an acceptance signs the last version rather than
 whichever id the page was holding. Kept out of test_campaigns.py, which is
 already long enough to be read in one sitting only just.
 """
+from datetime import date, timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,6 +19,12 @@ from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.contracts.router import router as contracts_router
+
+# Every negotiation here runs on a live brief, and a brief past its deadline
+# takes no proposals and no replies (campaigns.service). Relative rather than
+# a literal, so the file does not start failing on a date instead of on a
+# change.
+LIVE_DEADLINE = date.today() + timedelta(days=90)
 
 
 @pytest.fixture()
@@ -66,7 +74,7 @@ def _published_campaign(client, headers):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": True,
         "is_open": True,
     }, headers=headers).json()["id"]
@@ -327,7 +335,7 @@ def test_a_draft_brief_takes_no_proposals(client):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 1}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": False,
     }, headers=biz).json()["id"]
     assert _submit(client, cid, inf).status_code == 400

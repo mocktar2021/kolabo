@@ -57,8 +57,8 @@ def _setup(client, proposal_status=campaigns.SUBMITTED, country="BJ"):
     """Create a business, an influencer, a published campaign, and a proposal."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990000001", password_hash="x", country_code=country, role="business", is_verified=True)
-        inf = User(phone="+22990000002", password_hash="x", country_code=country, role="influencer", is_verified=True)
+        biz = User(phone="+22990000001", email="22990000001@kolabo.test", password_hash="x", country_code=country, role="business", is_verified=True)
+        inf = User(phone="+22990000002", email="22990000002@kolabo.test", password_hash="x", country_code=country, role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         camp = campaigns.Campaign(
             business_user_id=biz.id, title="Launch push", budget_amount=50000, budget_currency="XOF",

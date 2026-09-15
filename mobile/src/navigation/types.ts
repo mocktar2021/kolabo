@@ -11,7 +11,7 @@ export type AuthStackParamList = {
   Landing: undefined;
   Login: undefined;
   Register: { role?: string } | undefined;
-  VerifyOtp: { phone: string };
+  VerifyOtp: { email: string };
   ForgotPassword: undefined;
 };
 

@@ -15,7 +15,7 @@ the creator set them, can see they are set, and clears them in one click.
 Nobody is kept out of a room they did not know was there. That asymmetry is
 why test_a_filter_can_hide_a_brief_the_creator_could_still_apply_to exists.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -30,6 +30,17 @@ from app.modules.auth.models import User
 from app.modules.campaigns import board, models as campaigns
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.profiles.models import InfluencerProfile
+
+# Two live dates, far enough apart to tell one deadline from another.
+#
+# RELATIVE, AND THEY HAVE TO BE. The board now drops a brief whose deadline
+# has passed (campaigns.board.list_open_campaigns), so a fixed literal here
+# does not describe "a brief due in September" — it describes a brief that is
+# on the board until that date and invisible afterwards, which would empty
+# almost every assertion in this file on a morning nobody had touched it. Both
+# are also comfortably beyond any brief's own deadline filter below.
+SOON = date.today() + timedelta(days=30)
+LATER = date.today() + timedelta(days=120)
 
 
 @pytest.fixture()
@@ -80,20 +91,23 @@ def _creator_profile(client, user_id, categories, followers=5000):
 
 
 def _open_brief(
-    client, headers, title, *, budget=50000, deadline="2026-09-01",
+    client, headers, title, *, budget=50000, deadline=SOON,
     platform="instagram", deliverable="post", publish=True, **targeting,
 ):
-    """A published brief, open from the start.
+    """A published brief, open from the start, and LIVE.
 
     Created open rather than opened by a later PATCH — test_board.py already
     covers the PATCH path, and every brief here exists only to be filtered.
+
+    `deadline` takes a date or a string and is stringified below, so a caller
+    that wants a particular one can pass SOON, LATER, or arithmetic on either.
     """
     r = client.post("/campaigns/", json={
         "title": title,
         "budget_amount": budget,
         "budget_currency": "XOF",
         "deliverables": [{"platform": platform, "type": deliverable, "quantity": 2}],
-        "deadline": deadline,
+        "deadline": str(deadline),
         "publish": publish,
         "is_open": True,
         **targeting,
@@ -167,7 +181,7 @@ def test_the_platform_filter_matches_any_one_deliverable(client):
             {"platform": "instagram", "type": "post", "quantity": 2},
             {"platform": "tiktok", "type": "video", "quantity": 1},
         ],
-        "deadline": "2026-09-01", "publish": True, "is_open": True,
+        "deadline": str(SOON), "publish": True, "is_open": True,
     }, headers=biz)
     assert mixed.status_code == 201, mixed.text
 
@@ -182,8 +196,8 @@ def test_the_deadline_filter_is_inclusive_and_drops_undated_briefs(client):
     required to publish), so it is written straight to the database."""
     biz_id, biz = _user(client, "+22990030040", "business")
     _, inf = _user(client, "+22990030041", "influencer")
-    _open_brief(client, biz, "Due August", deadline="2026-08-30")
-    _open_brief(client, biz, "Due December", deadline="2026-12-01")
+    _open_brief(client, biz, "Due soon", deadline=SOON)
+    _open_brief(client, biz, "Due later", deadline=LATER)
 
     db = client.session_factory()
     db.add(campaigns.Campaign(
@@ -193,9 +207,10 @@ def test_the_deadline_filter_is_inclusive_and_drops_undated_briefs(client):
     ))
     db.commit(); db.close()
 
-    assert _titles(client, inf, "?deadline_before=2026-09-30") == ["Due August"]
-    assert _titles(client, inf, "?deadline_before=2026-08-30") == ["Due August"]
-    assert _titles(client, inf, "?deadline_before=2026-08-01") == []
+    assert _titles(client, inf, f"?deadline_before={SOON + timedelta(days=1)}") == ["Due soon"]
+    # The inclusive edge: a brief due on precisely the day asked for qualifies.
+    assert _titles(client, inf, f"?deadline_before={SOON}") == ["Due soon"]
+    assert _titles(client, inf, f"?deadline_before={SOON - timedelta(days=1)}") == []
     # And with no filter the undated brief is on the board like anything else.
     assert "No date" in _titles(client, inf)
 
@@ -204,7 +219,7 @@ def test_filters_combine_and_narrow_together(client):
     _, biz = _user(client, "+22990030050", "business")
     _, inf = _user(client, "+22990030051", "influencer")
     _open_brief(client, biz, "Wanted", budget=200000, platform="tiktok",
-                deliverable="video", deadline="2026-09-01",
+                deliverable="video", deadline=SOON,
                 target_categories=["fashion"])
     _open_brief(client, biz, "Too cheap", budget=20000, platform="tiktok",
                 deliverable="video", target_categories=["fashion"])
@@ -215,7 +230,7 @@ def test_filters_combine_and_narrow_together(client):
 
     got = _titles(
         client, inf,
-        "?min_budget=100000&platform=tiktok&category=fashion&deadline_before=2026-10-01",
+        f"?min_budget=100000&platform=tiktok&category=fashion&deadline_before={SOON}",
     )
     assert got == ["Wanted"]
 

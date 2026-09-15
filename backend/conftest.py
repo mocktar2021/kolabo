@@ -10,8 +10,15 @@ import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 
-# Deliberately outside the +2299000... space the test files seed their own
-# users in, so the shared admin below can never collide with one of theirs.
+# Deliberately outside the space the test files seed their own users in, so the
+# shared admin below can never collide with one of theirs.
+#
+# BOTH COLUMNS, because the fixture writes both. The address is what the
+# account IS since the identity flip and is the column auth.admins matches on;
+# the phone is kept because users.phone still exists, still has no unique index
+# to collide on, and a seeded admin that looks like a real pre-flip account is
+# a better fixture than one that is missing half its contact details.
+ADMIN_EMAIL = "conftest-admin@kolabo.test"
 ADMIN_PHONE = "+22999000001"
 
 
@@ -84,6 +91,7 @@ def admin_user_id(client):
     db = client.session_factory()
     try:
         admin = User(
+            email=ADMIN_EMAIL,
             phone=ADMIN_PHONE,
             password_hash="x",
             country_code="BJ",

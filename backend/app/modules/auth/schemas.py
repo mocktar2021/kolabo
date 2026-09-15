@@ -71,6 +71,16 @@ class MeOut(BaseModel):
 
     id: str
     phone: str
+    # WHAT ELSE THE ACCOUNT CAN BE REACHED AT, and no more than that yet. The
+    # phone above is still the login identity; this is an address the owner may
+    # have added so a notification has somewhere better to go than a phone
+    # number, and it is null for almost everybody.
+    #
+    # Readable here because AccountPatch below can write it. A field a client
+    # can set and cannot read back is a field nobody can find a typo in, and
+    # this one is the address a password reset will be sent to the day the
+    # identity moves.
+    email: str | None = None
     role: str
     country_code: str
     is_verified: bool
@@ -109,15 +119,15 @@ class MeOut(BaseModel):
 
 
 class AccountPatch(BaseModel):
-    """A change to the account itself: the login phone, the password, or both.
+    """A change to the account itself: the login phone, the email, the password.
 
-    current_password is REQUIRED and not optional-per-field. Both of these
-    change the credentials somebody logs in with, and a bearer token only
-    proves that a session exists — it cannot tell an owner from whoever picked
-    the handset up. The password is what tells them apart.
+    current_password is REQUIRED and not optional-per-field. Every one of these
+    changes something the account is reached or identified by, and a bearer
+    token only proves that a session exists — it cannot tell an owner from
+    whoever picked the handset up. The password is what tells them apart.
 
     Partial like every other patch here: a field the client did not send is
-    left alone. Neither field sent is refused in the service with a sentence,
+    left alone. No field sent at all is refused in the service with a sentence,
     rather than silently succeeding at nothing.
 
     NOTHING HERE TOUCHES is_admin, and nothing ever should. Pydantic ignores
@@ -127,6 +137,18 @@ class AccountPatch(BaseModel):
 
     current_password: str = Field(min_length=1)
     phone: str | None = Field(default=None, min_length=6, max_length=20)
+    # The address this account may be reached at. Not the login identity today
+    # and not a second one: nothing signs in with it, nothing resets a password
+    # to it yet. It costs the current password anyway, for the reason the phone
+    # does — it is where a reset WILL be sent, so a bearer token alone must not
+    # be able to point it at a mailbox somebody else owns and then wait.
+    #
+    # No min_length or max_length beside it, unlike the phone. A length is a
+    # property of an address and app.core.emails owns it (MAX_EMAIL_CHARS); a
+    # second opinion here would be a second number to keep in step, and it
+    # would answer a mistyped address with an untranslated 422 instead of the
+    # sentence auth_email_invalid exists to say.
+    email: str | None = None
     # Same floor as registration, on purpose. See MIN_PASSWORD_LENGTH.
     new_password: str | None = Field(
         default=None, min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH

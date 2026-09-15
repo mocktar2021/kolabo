@@ -1,12 +1,11 @@
 """An email address somebody typed, checked before anything is stored under it.
 
-WHY THIS EXISTS. The phone number is the login identity in these markets and
-nothing in this module changes that. What changes is that an account may now
-HOLD an email address as well, and two things downstream care a great deal
-about what ends up in that column. notifications/service.py addresses every
-message it sends to `user.email or user.phone`, so a malformed value there is
-not a validation error, it is a notification that silently goes nowhere; and
-the column is about to carry a unique index, so two spellings of one address
+WHY THIS EXISTS. The email address IS the login identity. Registration,
+verification, login and password reset all resolve an account by it, and
+notifications/service.py addresses every message it sends to it. So a
+malformed value here is not a validation error in the ordinary sense: it is an
+account nobody can sign in to, and a notification that silently goes nowhere.
+The column carries a unique index as well, so two spellings of one address
 would be two accounts, or a 500 on the insert that discovers they are not.
 
 Both of those are arguments for deciding what an address IS exactly once. The
@@ -52,8 +51,26 @@ def normalized_email(raw: str | None) -> str | None:
 
     In order: nothing at all, too long, characters that never belong inside an
     address, then the library's opinion, then the one normalisation we perform
-    ourselves. Cheap and certain first, so the expensive parse only ever sees
-    text that is already the right shape.
+    ourselves, which is to LOWERCASE THE WHOLE ADDRESS. Cheap and certain
+    first, so the expensive parse only ever sees text that is already the right
+    shape.
+
+    THE LOCAL PART IS FORMALLY CASE SENSITIVE AND THIS DELIBERATELY IGNORES
+    THAT, which is a reversal of what this module did when it was written and
+    is worth stating rather than leaving a later reader to "fix" back. RFC 5321
+    leaves the local part to the receiving host, but essentially no consumer
+    mail provider treats it as significant. Meanwhile the address is now the
+    login key: somebody who registers as Kofi@gmail.com and later types
+    kofi@gmail.com gets told their credentials are wrong, about a spelling
+    their own provider considers the same mailbox. In these markets that is a
+    support ticket at best and a lost signup at worst, and the RFC purity is
+    not worth either of them.
+
+    The trade is not symmetric, which is what settles it. A user whose host
+    really does distinguish case still receives mail at the lowercased
+    spelling from every large provider they correspond with, because those
+    providers fold case on the way out anyway. A user locked out of their own
+    account has no workaround at all.
     """
     if raw is None:
         return None
@@ -97,18 +114,17 @@ def normalized_email(raw: str | None) -> str | None:
         # somebody who mistyped their address. See auth_email_invalid.
         return None
 
-    # THE DOMAIN IS CASE INSENSITIVE AND THE LOCAL PART IS NOT. RFC 5321 leaves
-    # the local part to the receiving host and says only that host may
-    # interpret it, even though in practice almost nobody treats it as case
-    # sensitive: Gmail does not, Outlook does not, most of what a creator in
-    # these markets uses does not. "In practice" is the whole problem.
-    # Lowercasing the entire address would quietly rewrite the address of
-    # everybody whose provider is NOT one of the big ones, and the account
-    # would then hold an address its owner never typed and cannot be reached
-    # at. So the half that is ours to normalise is normalised, and the half
-    # that belongs to their mail host is left exactly as they wrote it.
+    # ONE SPELLING PER MAILBOX, domain and local part alike. See the docstring
+    # for why the local part is folded despite the standard.
     #
-    # validate_email has already lowercased and IDNA-normalised the domain;
-    # .lower() here is what makes that visible in this module rather than a
-    # property a reader has to go and confirm somewhere else.
-    return f"{parsed.local_part}@{parsed.domain.lower()}"
+    # The domain half needs no argument: it is case insensitive by standard,
+    # and validate_email has already lowercased and IDNA-normalised it.
+    # .lower() on it here is what makes that visible in this module rather
+    # than a property a reader has to go and confirm somewhere else.
+    #
+    # This is also what makes the unique index on users.email mean one account
+    # per mailbox rather than one account per SPELLING of a mailbox. Two rows
+    # holding Kofi@gmail.com and kofi@gmail.com would not collide on it, and
+    # the second of them is a duplicate account nobody can explain to the
+    # person who owns both.
+    return f"{parsed.local_part.lower()}@{parsed.domain.lower()}"

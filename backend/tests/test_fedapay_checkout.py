@@ -160,12 +160,26 @@ def _headers(uid):
     return {"Authorization": f"Bearer {create_access_token(uid)}"}
 
 
-def _seed(client, *, country="BJ", amount=50000, currency="XOF", signed=True):
-    """A brand, a creator and a fully signed contract between them."""
+def _seed(
+    client,
+    *,
+    country="BJ",
+    amount=50000,
+    currency="XOF",
+    signed=True,
+    brand_phone="+22990000001",
+):
+    """A brand, a creator and a fully signed contract between them.
+
+    brand_phone defaults to a number because plenty of these tests predate the
+    identity flip and a pre-flip brand is a perfectly real fixture. A brand who
+    registered AFTER it has None there, which is what
+    test_a_brand_with_no_phone_can_still_start_a_checkout passes.
+    """
     db = client.session_factory()
     try:
         brand = User(
-            phone="+22990000001",
+            phone=brand_phone,
             email="brand@example.com",
             password_hash="x",
             country_code=country,
@@ -236,6 +250,44 @@ def test_start_checkout_returns_a_url_and_does_not_fund_yet(client, gateway):
     assert _escrow_count(client, contract) == 0
     # The amount asked for is the contract's, unscaled.
     assert gateway.started[0]["amount"] == 50000
+
+
+def test_a_brand_with_no_phone_can_still_start_a_checkout(client, gateway):
+    """THE REGRESSION THIS GUARDS IS THE WORST ONE IN THE IDENTITY FLIP.
+
+    Registration stopped collecting a phone number, so users.phone is None for
+    every brand that signed up since, and start_checkout read it straight into
+    payer_phone on a parameter that was typed `str`. Funding is the one path
+    where a None that merely "works" in Python is a brand who cannot pay us.
+
+    What reaches the gateway is the address instead, and an absent number. The
+    FedaPay client omits the customer's phone_number rather than sending a null
+    inside it — see test_fedapay_gateway.py, which asserts that on the wire.
+
+    Note what is NOT lost: the payer still chooses their network and types the
+    paying number on the hosted checkout page this url leads to. The customer
+    phone was never the wallet being debited.
+    """
+    brand, _creator, contract = _seed(client, brand_phone=None)
+    res = client.post(
+        "/payments/checkout/start", json={"contract_id": contract}, headers=_headers(brand)
+    )
+    assert res.status_code == 201
+    assert res.json()["checkout_url"] == "https://pay.test/tx_1"
+
+    started = gateway.started[0]
+    assert started["payer_phone"] is None
+    assert started["payer_email"] == "brand@example.com"
+
+
+def test_a_brand_who_has_added_a_phone_still_sends_it(client, gateway):
+    """The settings screen is the only place a number arrives from now, and a
+    brand who used it must see that number on their payment record."""
+    brand, _creator, contract = _seed(client, brand_phone="+22997000000")
+    client.post(
+        "/payments/checkout/start", json={"contract_id": contract}, headers=_headers(brand)
+    )
+    assert gateway.started[0]["payer_phone"] == "+22997000000"
 
 
 def test_reading_a_paid_intent_creates_the_escrow(client, gateway):

@@ -11,7 +11,7 @@ import type { AuthScreenProps } from "../navigation/types";
 export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
   const { t } = useTranslation();
   const { login } = useAuth();
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
     try {
       const res = await api<TokenResponse>("/auth/login", {
         method: "POST",
-        body: { phone: phone.trim(), password },
+        body: { email: email.trim(), password },
       });
       // Setting the token flips the root navigator to the app; no manual
       // navigate. The role rides along so the experience is restored.
@@ -40,12 +40,12 @@ export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
       <Card>
         {error ? <Banner kind="error">{error}</Banner> : null}
         <Field
-          label={t("auth.phone")}
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
+          label={t("auth.email")}
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
           autoCapitalize="none"
-          placeholder="+229 ..."
+          autoComplete="email"
         />
         <Field
           label={t("auth.password")}
@@ -58,7 +58,7 @@ export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
           title={busy ? t("common.working") : t("auth.submitLogin")}
           onPress={onSubmit}
           loading={busy}
-          disabled={!phone.trim() || !password}
+          disabled={!email.trim() || !password}
         />
         <View style={{ marginTop: space(3) }}>
           <GhostButton title={t("reset.forgot")} onPress={() => navigation.navigate("ForgotPassword")} />

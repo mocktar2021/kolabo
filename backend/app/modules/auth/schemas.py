@@ -14,7 +14,22 @@ MAX_PASSWORD_LENGTH = 128
 
 
 class RegisterRequest(BaseModel):
-    phone: str = Field(min_length=6, max_length=20)
+    """What a signup carries. An address, not a number.
+
+    NO min_length OR max_length ON THE EMAIL, unlike the phone this replaced.
+    A length is a property of an address and app.core.emails owns it
+    (MAX_EMAIL_CHARS); a second opinion here would be a second number to keep
+    in step, and it would answer a mistyped address with an untranslated 422
+    instead of the sentence auth_email_invalid exists to say. Same reasoning,
+    and the same shape, as AccountPatch.email below.
+
+    THE PHONE IS GONE FROM THIS REQUEST ENTIRELY and is not optional here. A
+    number collected at signup is a number nothing verifies, on a form whose
+    only job is to get somebody into the product; the settings screen asks for
+    one later, when there is a reason to.
+    """
+
+    email: str
     password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
     country_code: str = Field(min_length=2, max_length=2)
     role: str
@@ -29,12 +44,12 @@ class RegisterResponse(BaseModel):
 
 
 class VerifyOtpRequest(BaseModel):
-    phone: str
+    email: str
     code: str = Field(min_length=6, max_length=6)
 
 
 class LoginRequest(BaseModel):
-    phone: str
+    email: str
     password: str
 
 
@@ -58,11 +73,11 @@ class DeleteAccountRequest(BaseModel):
 class MeOut(BaseModel):
     """The caller's own account, and only ever the caller's own.
 
-    The phone number is on it, which is the one place in this system that is
-    true: everywhere else a phone is deliberately withheld, because handing it
-    to the other side of a deal is how a negotiation leaves the platform. Here
-    the reader IS the subject, and a settings screen that cannot show you
-    which number you log in with is a settings screen you cannot use.
+    Both contact columns are on it, which is the one place in this system that
+    is true: everywhere else they are deliberately withheld, because handing
+    either to the other side of a deal is how a negotiation leaves the
+    platform. Here the reader IS the subject, and a settings screen that cannot
+    show you what you log in with is a settings screen you cannot use.
 
     password_hash is absent and there is no field it could arrive in. A hash
     is not a display value, and shipping one gives an attacker who has
@@ -70,16 +85,20 @@ class MeOut(BaseModel):
     """
 
     id: str
-    phone: str
-    # WHAT ELSE THE ACCOUNT CAN BE REACHED AT, and no more than that yet. The
-    # phone above is still the login identity; this is an address the owner may
-    # have added so a notification has somewhere better to go than a phone
-    # number, and it is null for almost everybody.
+    # NOW OPTIONAL, AND NULL FOR EVERY ACCOUNT CREATED AFTER THE FLIP.
+    # Registration stopped asking for a number, so this is either a value an
+    # account carried over from before or one its owner typed into the settings
+    # screen afterwards. It is still readable because the settings screen has
+    # to show what is on file, and because it is the number a business's
+    # checkout is started against.
+    phone: str | None = None
+    # THE LOGIN IDENTITY. This is what the account signs in with, what a
+    # verification code is sent to and what a password reset resolves.
     #
-    # Readable here because AccountPatch below can write it. A field a client
-    # can set and cannot read back is a field nobody can find a typo in, and
-    # this one is the address a password reset will be sent to the day the
-    # identity moves.
+    # Still typed optional, and the type is honest rather than lazy: accounts
+    # registered before the flip have no address, and users.email is nullable
+    # for the reason migration e1b7d4c92f08 sets out. A client reading null
+    # here is looking at an account that predates the change, not at a bug.
     email: str | None = None
     role: str
     country_code: str
@@ -96,7 +115,7 @@ class MeOut(BaseModel):
     # request on it 403'd, and it rendered empty.
     #
     # READ-ONLY, AND SETTABLE NOWHERE IN THE API. app.modules.auth.admins
-    # reconciles this from a configured list of phone numbers on every boot,
+    # reconciles this from a configured list of email addresses on every boot,
     # granting and revoking, because deployment configuration is the one
     # channel an attacker who has reached the API does not automatically have.
     # AccountPatch below cannot carry it either.
@@ -112,14 +131,20 @@ class MeOut(BaseModel):
     #
     # Null is a real answer for somebody who has not written a profile yet,
     # and it stays null. It must never be filled in from the users table: the
-    # only human-readable column there is the phone number, and putting that
-    # in a display slot is how it ends up rendered somewhere it should not be.
+    # only human-readable columns there are the contact ones, and putting an
+    # address or a number in a display slot is how it ends up rendered
+    # somewhere it should not be.
     display_name: str | None = None
     avatar_url: str | None = None
 
 
 class AccountPatch(BaseModel):
-    """A change to the account itself: the login phone, the email, the password.
+    """A change to the account itself: the login email, the phone, the password.
+
+    BOTH COLUMNS STAY WRITABLE HERE even though only one of them is now an
+    identity. The email because it is the identity, and the phone because it
+    is the contact detail registration stopped collecting, which means this
+    patch is the ONLY way an account ever acquires one.
 
     current_password is REQUIRED and not optional-per-field. Every one of these
     changes something the account is reached or identified by, and a bearer
@@ -137,11 +162,10 @@ class AccountPatch(BaseModel):
 
     current_password: str = Field(min_length=1)
     phone: str | None = Field(default=None, min_length=6, max_length=20)
-    # The address this account may be reached at. Not the login identity today
-    # and not a second one: nothing signs in with it, nothing resets a password
-    # to it yet. It costs the current password anyway, for the reason the phone
-    # does — it is where a reset WILL be sent, so a bearer token alone must not
-    # be able to point it at a mailbox somebody else owns and then wait.
+    # THE LOGIN IDENTITY, so changing it is the single most consequential
+    # thing on this schema: it moves where a reset code goes and it moves what
+    # the account signs in with. A bearer token alone must never be able to
+    # point it at a mailbox somebody else owns.
     #
     # No min_length or max_length beside it, unlike the phone. A length is a
     # property of an address and app.core.emails owns it (MAX_EMAIL_CHARS); a
@@ -180,20 +204,20 @@ class ReferralOut(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
-    phone: str
+    email: str
 
 
 class PasswordResetConfirm(BaseModel):
-    """Phone plus code, not a bare token.
+    """Address plus code, not a bare token.
 
-    The phone is part of the request because the code is six digits delivered
-    by SMS, exactly like the registration OTP: it is short enough to be worth
+    The address is part of the request because the code is six digits sent by
+    email, exactly like the registration OTP: it is short enough to be worth
     typing and therefore short enough to be worth guessing, so it is only ever
-    resolved together with the number it was sent to. A bare six digit token
+    resolved together with the mailbox it was sent to. A bare six digit token
     accepted on its own would be a lottery anyone could enter.
     """
 
-    phone: str
+    email: str
     code: str = Field(min_length=6, max_length=6)
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
 

@@ -66,8 +66,10 @@ deploy/.env created, mode 600, with three generated secrets:
 
 STILL TO FILL IN BY HAND — the stack will not work without them:
 
-  ADMIN_PHONES             your phone in +229... form. Empty means NOBODY is an
-                           admin, so no dispute resolution and no manual sweeps.
+  ADMIN_EMAILS             the email address you registered your account with.
+                           Empty means NOBODY is an admin, so no dispute
+                           resolution and no manual sweeps. Renamed from
+                           ADMIN_PHONES; the old name is ignored, not rejected.
   FEDAPAY_SECRET_KEY       sandbox.fedapay.com -> Developers -> API keys
   FEDAPAY_PUBLIC_KEY       same screen
   FEDAPAY_WEBHOOK_SECRET   the dashboard's Webhooks tab, prefixed wh_.

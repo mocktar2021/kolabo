@@ -1,7 +1,8 @@
 """Notification logic (Epic D and Epic F).
 
 notify() records an in-app notification and delivers it by email through the
-sender interface. Critical types (payment, dispute) are always delivered.
+sender interface, addressed to the account's email, which is what an account
+is. Critical types (payment, dispute) are always delivered.
 Non critical types are delivered unless the user has unsubscribed from that
 type. Delivery is synchronous so it goes out immediately, which meets the
 "within 1 minute" criterion in KOL-35. The caller commits the transaction.
@@ -63,9 +64,25 @@ def notify(
     should_email = type in CRITICAL_TYPES or type not in _muted_types(db, user_id)
     if should_email:
         user = db.query(User).filter(User.id == user_id).first()
-        if user is not None:
-            target = user.email or user.phone
-            email_sender.send(target, type, message)
+        # ADDRESSED TO user.email AND NOTHING ELSE. This was
+        # `user.email or user.phone`, from when the phone was the identity and
+        # an address was an optional extra; the fallback put a phone number
+        # into a mail API, which ResendSender had to learn to decline.
+        #
+        # THE GUARD IS NOT DEFENSIVE PROGRAMMING, it is a state that really
+        # exists: accounts registered before the flip have no address, because
+        # nothing ever asked them for one, and users.email is nullable for
+        # exactly that reason. Such an account still gets the in-app
+        # notification — the row above is already written — and simply gets no
+        # email, which is the honest outcome when there is nowhere to send one.
+        # It is not logged as an error because it is not one; they see it in
+        # the bell, and the settings screen is where they fix it.
+        #
+        # What must never happen is None reaching a sender. LoggingEmailSender
+        # would file it in its outbox and ResendSender would post null as a
+        # recipient, and neither failure is visible from the call site.
+        if user is not None and user.email:
+            email_sender.send(user.email, type, message)
 
 
 def list_notifications(

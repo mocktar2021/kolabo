@@ -8,6 +8,14 @@ on a brief it had already called off, a cancelled brief could be quietly
 brought back to life, and one creator could be invited to the same campaign
 twice and told about it twice.
 
+A FIFTH OF THE SAME SHAPE, and the widest: the DEADLINE. Campaign.deadline was
+read by _publish_ready, by _to_out and by the board's optional filter, and by
+nothing at all that decides whether a write is allowed, so a brief whose date
+passed last month went on taking bids, taking counters, and being turned into
+contracts. Four paths enforce it now and section A3 tests all four together,
+because a guard on three of them would be worse than none: it would teach
+everybody a rule that does not actually hold.
+
 EVERY REFUSAL HERE IS ASSERTED TWICE: the status and the code the caller gets
 back, and the fact that nothing was written. A guard that answers 400 and
 writes the row anyway reads as green in a test that only checks the status,
@@ -18,7 +26,7 @@ The codes are asserted rather than the English sentences. A code names the
 rule, and both clients key their translated sentence off it; the sentence
 itself is free to be reworded without touching this file.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -33,6 +41,8 @@ from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
 from app.modules.campaigns.router import router as campaigns_router
+from app.modules.contracts import service as contracts_service
+from app.modules.contracts.models import Contract
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
@@ -90,13 +100,20 @@ def _brief(client, headers, is_open=False, publish=True):
     state these guards are about: a brief the brand keeps to the creators it
     invited. The open-board case passes is_open=True explicitly, so every test
     below says out loud which of the two briefs it is talking about.
+
+    THE DEADLINE IS RELATIVE TO TODAY, and it has to be now that A3 exists. A
+    hard-coded date says "a live brief" only until it arrives, and then every
+    test in this file that submits or replies starts failing on a morning
+    nobody changed anything — a fuse, not a fixture. Ninety days is simply far
+    enough away to read as "live"; the tests that care about the date set it
+    themselves with _set_deadline.
     """
     r = client.post("/campaigns/", json={
         "title": "Launch push",
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
-        "deadline": "2026-12-01",
+        "deadline": str(date.today() + timedelta(days=90)),
         "publish": publish,
         "is_open": is_open,
     }, headers=headers)
@@ -197,6 +214,29 @@ def _age_out(client, proposal_id):
     try:
         p = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == proposal_id).first()
         p.expires_at = campaigns.utcnow() - timedelta(hours=1)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _set_deadline(client, cid, value):
+    """Move a brief's deadline, as the calendar would.
+
+    Written onto the row rather than passed to _brief, and the reason is which
+    brief these tests are about. Every lapsed brief in production was LIVE when
+    it was written and stopped being live while nobody was looking; a fixture
+    that posted a date already in the past would be describing a brand that
+    published a dead brief, which is a different and much rarer thing.
+
+    It also keeps the guard honest about what it reads. Publishing validates
+    only that a deadline EXISTS (_publish_ready), so there is no API path that
+    refuses a past one at create time and none of these tests should imply
+    there is.
+    """
+    db = client.session_factory()
+    try:
+        c = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == cid).first()
+        c.deadline = value
         db.commit()
     finally:
         db.close()
@@ -380,6 +420,118 @@ def test_the_business_can_still_counter_on_a_live_brief(client):
     assert r.json()["version"] == 2
     assert r.json()["author_role"] == "business"
     assert len(_rows(client, campaigns.Proposal, campaign_id=cid)) == 2
+
+
+# --------------------------------------------------------------------------
+# A3 — the deadline, on the four paths that may not be walked past it
+#
+# Nothing anywhere enforced it before. All four are tested here rather than
+# spread across four files precisely because agreement between them IS the
+# feature: a brief that refuses a bid and then accepts a contract is not a
+# half-fixed bug, it is a rule nobody can rely on.
+# --------------------------------------------------------------------------
+
+
+def test_a_creator_cannot_bid_on_a_brief_whose_deadline_has_passed(client):
+    """The brand said when it needed the work by. Bidding afterwards prices an
+    evening against a date that is gone."""
+    _, biz = _user(client, "+22990005030", "business")
+    _, inf = _user(client, "+22990005031", "influencer")
+    cid = _brief(client, biz, is_open=True)
+    _set_deadline(client, cid, date.today() - timedelta(days=1))
+
+    r = _submit(client, cid, inf)
+    assert r.status_code == 400
+    assert r.json()["code"] == "campaign_deadline_passed"
+    assert _rows(client, campaigns.Proposal, campaign_id=cid) == []
+
+
+def test_a_brief_still_takes_bids_all_through_its_deadline_day(client):
+    """THE INCLUSIVE EDGE, and the reason the comparison is `<` and not `<=`.
+
+    Somebody reading "due the 1st" means they can still deliver on the 1st, so
+    a brief is live all the way through the day it is due. This is the test
+    that goes red if the guard is ever tightened to `<=` by somebody reading
+    the comparison on its own and taking it for an off-by-one — which is
+    exactly why the four call sites say so in a comment.
+    """
+    _, biz = _user(client, "+22990005032", "business")
+    _, inf = _user(client, "+22990005033", "influencer")
+    cid = _brief(client, biz, is_open=True)
+    _set_deadline(client, cid, date.today())
+
+    r = _submit(client, cid, inf)
+    assert r.status_code == 201
+    assert r.json()["version"] == 1
+    assert len(_rows(client, campaigns.Proposal, campaign_id=cid)) == 1
+
+
+def test_the_business_cannot_counter_on_a_brief_whose_deadline_has_passed(client):
+    """The buyer's side of the same rule. The creator priced their bid while
+    the brief was live; a counter would be a fresh live offer on a brief whose
+    date is gone, and the creator can no longer answer it either."""
+    _, biz = _user(client, "+22990005034", "business")
+    _, inf = _user(client, "+22990005035", "influencer")
+    cid = _brief(client, biz, is_open=True)
+    first = _submit(client, cid, inf).json()
+    _set_deadline(client, cid, date.today() - timedelta(days=1))
+
+    r = _reply(client, cid, first["id"], biz, note="Can you do 8000?", rate=8000)
+    assert r.status_code == 400
+    assert r.json()["code"] == "campaign_deadline_passed"
+    assert len(_rows(client, campaigns.Proposal, campaign_id=cid)) == 1
+
+
+def test_applying_from_the_board_to_a_lapsed_brief_is_refused(client):
+    """The board's own path. It delegates the write to submit_proposal, which
+    would refuse this anyway — but it asks FIRST, ahead of the already-applied
+    409, so a creator coming back to a brief that lapsed while they were away
+    is told the brief is over rather than that they have already applied."""
+    _, biz = _user(client, "+22990005036", "business")
+    _, inf = _user(client, "+22990005037", "influencer")
+    cid = _brief(client, biz, is_open=True)
+    _set_deadline(client, cid, date.today() - timedelta(days=1))
+
+    r = client.post(
+        f"/campaigns/{cid}/apply",
+        json={"rate_amount": 10000, "rate_currency": "XOF", "timeline_days": 7},
+        headers=inf,
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "campaign_deadline_passed"
+    assert _rows(client, campaigns.Proposal, campaign_id=cid) == []
+
+
+def test_a_lapsed_brief_cannot_be_turned_into_a_contract(client):
+    """The fourth path, and the only one that ends in money.
+
+    The other three cost somebody an evening. This one turns an old bid into a
+    signed, fundable agreement, so it is both the last place the rule can be
+    applied and the place where missing it is most expensive.
+
+    Asserted at the SERVICE layer with pytest.raises rather than over HTTP,
+    because this fixture mounts the campaigns router alone: there is no
+    contracts endpoint on this app to call, and mounting one here would be a
+    test of its own wiring.
+    """
+    biz_id, biz = _user(client, "+22990005038", "business")
+    _, inf = _user(client, "+22990005039", "influencer")
+    cid = _brief(client, biz, is_open=True)
+    bid = _submit(client, cid, inf).json()
+    _set_deadline(client, cid, date.today() - timedelta(days=1))
+
+    db = client.session_factory()
+    try:
+        with pytest.raises(AppError) as refused:
+            contracts_service.generate_from_proposal(db, biz_id, bid["id"])
+        assert refused.value.code == "campaign_deadline_passed"
+    finally:
+        db.close()
+
+    # Nothing written, on either side of the refusal: no contract, and the
+    # creator's bid was not quietly marked accepted on the way out.
+    assert _rows(client, Contract, campaign_id=cid) == []
+    assert _rows(client, campaigns.Proposal, campaign_id=cid)[0].status == campaigns.SUBMITTED
 
 
 # --------------------------------------------------------------------------

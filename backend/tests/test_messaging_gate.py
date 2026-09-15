@@ -80,9 +80,9 @@ def world(client):
     """
     db = client.session_factory()
     try:
-        biz = User(phone="+22990040001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone="+22990040002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
-        third = User(phone="+22990040003", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(phone="+22990040001", email="22990040001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(phone="+22990040002", email="22990040002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        third = User(phone="+22990040003", email="22990040003@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf, third]); db.commit()
         db.refresh(biz); db.refresh(inf); db.refresh(third)
         db.add(BusinessProfile(user_id=biz.id, company_name="Maison Kola"))

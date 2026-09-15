@@ -61,11 +61,11 @@ def world(client):
     contract nor claim."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990070001", password_hash="x", country_code="BJ",
+        biz = User(phone="+22990070001", email="22990070001@kolabo.test", password_hash="x", country_code="BJ",
                    role="business", is_verified=True)
-        inf = User(phone="+22990070002", password_hash="x", country_code="BJ",
+        inf = User(phone="+22990070002", email="22990070002@kolabo.test", password_hash="x", country_code="BJ",
                    role="influencer", is_verified=True)
-        third = User(phone="+22990070003", password_hash="x", country_code="BJ",
+        third = User(phone="+22990070003", email="22990070003@kolabo.test", password_hash="x", country_code="BJ",
                      role="influencer", is_verified=True)
         db.add_all([biz, inf, third]); db.commit()
         db.refresh(biz); db.refresh(inf); db.refresh(third)

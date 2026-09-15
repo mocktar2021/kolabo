@@ -3,14 +3,21 @@
 Design notes tied to the Jira acceptance criteria:
 - KOL-12: a user row is created at registration but stays unverified and cannot
   log in until the OTP is confirmed. The OTP is delivered immediately through
-  the Sender interface (synchronous logging sender for now), which satisfies the
-  "sent within 30 seconds" criterion by design. A phone that already belongs to
-  a verified account is blocked as a duplicate.
+  the Sender interface (which now puts it in a mailbox, see app.modules.auth.otp),
+  which satisfies the "sent within 30 seconds" criterion by design. An address
+  that already belongs to a verified account is blocked as a duplicate.
 - KOL-13: the country selected at signup must be enabled in country_config, and
   the value drives all later country specific behavior.
 - KOL-14: password reset. It lives next door in app.modules.auth.account,
   together with the account settings that change the same two credentials, and
   it REUSES the OTP machinery below rather than owning a second one.
+
+THE EMAIL ADDRESS IS THE IDENTITY, and every lookup in this module is by it.
+Registration takes no phone number at all. Each address is normalised through
+core.emails before it is compared to anything, so the string that is looked up
+is the string that would be stored, which is what stops one spelling of an
+address looking free while another is taken — and stops the unique index
+turning a clear 409 into a 500 on the write that finds out.
 
 Registration still only records attribution — signing up with a code is worth
 nothing on its own, deliberately. What a referral eventually earns, and when,
@@ -25,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.country_config import get_enabled_countries
+from app.core.emails import normalized_email
 from app.core.errors import AppError
 from app.core.security import (
     create_access_token,
@@ -63,25 +71,31 @@ _log = logging.getLogger("kolabo.auth.service")
 
 
 def _issue_otp(db: Session, user: User) -> None:
-    """Write a challenge, put its code on the phone, and refuse if it did not go.
+    """Write a challenge, put its code in the mailbox, and refuse if it did not go.
 
     THE ROW IS COMMITTED BEFORE THE SEND, and that order is the safe one. A
-    code that reaches a handset must already exist to be verified against; a
+    code that reaches a mailbox must already exist to be verified against; a
     send that went out before the commit could hand somebody a code the
     database then failed to record. The price of that order is the case this
     function now handles: the send fails AFTER the row exists.
 
     WHEN THE SEND FAILS THE CHALLENGE IS CONSUMED ON THE SPOT. Left live, it
-    would count against the per-phone and platform ceilings as a code in
+    would count against the per-account and platform ceilings as a code in
     flight that never flew, and it would be the newest unconsumed challenge
     that verify_otp resolves the next guess against. Consumed, it is history.
     Then the request refuses with a code of its own, so no client ever shows
     "code sent" for a code that never left the server. The account row stays,
-    and registering the same number again is the resend.
+    and registering the same address again is the resend.
 
     A provider that raises is a provider that failed: otp.deliver turns the
-    exception into a result, so a gateway outage is a 503 that says so rather
-    than a 500 on a request whose row was already committed.
+    exception into a result, so a mail outage is a 503 that says so rather
+    than a 500 on a request whose row was already committed. What a mail
+    provider that merely REFUSES cannot tell us is written down on
+    otp.EmailSender, where the gap lives.
+
+    THE TARGET IS user.email AND NOTHING ELSE. Only register() calls this, and
+    register writes the address on the row before it does, so there is never
+    a case here where the account has nowhere to send to.
     """
     code = otp.generate_code()
     challenge = OtpChallenge(
@@ -91,21 +105,27 @@ def _issue_otp(db: Session, user: User) -> None:
     )
     db.add(challenge)
     db.commit()
-    result = otp.deliver(_sender, user.phone, f"Your Kolabo verification code is {code}")
+    result = otp.deliver(
+        _sender,
+        user.email,
+        # Subject and body, in the language their country defaults to. Composed
+        # in otp.py because the reset path needs the identical treatment.
+        otp.verification_message(user.country_code, code, OTP_TTL_MINUTES),
+    )
     if result.ok:
         return
     challenge.consumed = True
     db.commit()
     _log.error(
         "verification code not delivered to %s via %s: %s",
-        user.phone,
+        user.email,
         result.provider,
         result.error,
     )
     raise AppError(
         status.HTTP_503_SERVICE_UNAVAILABLE,
         # 503, not 500 and not 400: nobody sent anything wrong and the server
-        # is not broken, the thing between us and the handset is. The client
+        # is not broken, the thing between us and the mailbox is. The client
         # says so in the reader's language and offers the retry that will
         # succeed the moment the provider is back.
         code="auth_otp_delivery_failed",
@@ -146,7 +166,7 @@ def _live_otp_challenge_count(db: Session, now) -> int:
     strange way to ask how many there are.
 
     LIVE RATHER THAN SENDS-PER-HOUR, deliberately, so this number means the
-    same kind of thing as the per-phone one beside it. With a ten-minute OTP
+    same kind of thing as the per-account one beside it. With a ten-minute OTP
     lifetime that makes both of them really "codes in flight" — which is also
     the quantity that tracks money already spent.
 
@@ -292,23 +312,39 @@ def register(db: Session, payload: RegisterRequest) -> dict:
             detail="Country is not available yet",
         )
 
-    existing = db.query(User).filter(User.phone == payload.phone).first()
+    # NORMALISED BEFORE ANYTHING IS LOOKED UP OR WRITTEN, so that the address
+    # compared against existing rows is the address that would be stored. The
+    # other order would let "Kofi@gmail.com" look free while "kofi@gmail.com"
+    # is taken, and the unique index would then turn a clear 409 into a 500 on
+    # the insert that discovered it. core.emails owns what a valid address is.
+    email = normalized_email(payload.email)
+    if email is None:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            # The same code the account screen raises for the same reason, so
+            # the client has one sentence to say about a mistyped address
+            # wherever it was typed. See auth/account.py.
+            code="auth_email_invalid",
+            detail="That email address does not look right. Check it and try again.",
+        )
+
+    existing = db.query(User).filter(User.email == email).first()
     if existing is not None and existing.is_verified:
         raise AppError(
             status.HTTP_409_CONFLICT,
             # The same rule the account screen enforces when somebody changes
-            # their number, so the same code — see auth/account.py. One
+            # their address, so the same code — see auth/account.py. One
             # sentence covers both because the fact is the same one: that
-            # number belongs to an account already.
-            code="auth_phone_taken",
-            detail="Phone number is already registered",
+            # address belongs to an account already.
+            code="auth_email_taken",
+            detail="That email address is already registered.",
         )
 
-    # THE CEILING THAT IS ABOUT THE BILL RATHER THAN ABOUT ONE NUMBER.
+    # THE CEILING THAT IS ABOUT THE BILL RATHER THAN ABOUT ONE ACCOUNT.
     #
-    # The per-phone cap below stops a loop over ONE handset. It does nothing
-    # about a loop over MANY: three codes per number, times as many numbers as
-    # somebody cares to type, is still an SMS bill with no top to it, and
+    # The per-account cap below stops a loop over ONE address. It does nothing
+    # about a loop over MANY: three codes per address, times as many addresses
+    # as somebody cares to type, is still a send bill with no top to it, and
     # until this line nothing anywhere counted the total.
     #
     # A BACKSTOP, NOT A GATE, and the difference is the whole design. Whoever
@@ -319,12 +355,12 @@ def register(db: Session, payload: RegisterRequest) -> dict:
     # the value and the arithmetic behind it. Reaching it should mean
     # something is wrong, never that a good afternoon was busy.
     #
-    # CHECKED HERE, after the duplicate-phone 409 and before either branch
-    # below writes anything, for exactly the reason the per-phone cap is
+    # CHECKED HERE, after the duplicate-address 409 and before either branch
+    # below writes anything, for exactly the reason the per-account cap is
     # checked before the credentials are rewritten: a refused request must
     # change nothing. A caller over both ceilings is told about this one,
     # which is the honest answer — it is the condition that will still be true
-    # when they try again from a different number.
+    # when they try again from a different address.
     if _live_otp_challenge_count(db, utcnow()) >= settings.otp_global_max_per_hour:
         raise AppError(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -332,7 +368,7 @@ def register(db: Session, payload: RegisterRequest) -> dict:
             # asked for too many codes, and this reader may have asked for
             # none: the ceiling that stopped them is the platform's, not
             # theirs, and a refusal that blames the wrong party sends somebody
-            # off to check a phone that was never the problem.
+            # off to check a mailbox that was never the problem.
             code="auth_otp_capacity",
             detail="Verification codes are temporarily unavailable, try again in a few minutes",
         )
@@ -340,11 +376,11 @@ def register(db: Session, payload: RegisterRequest) -> dict:
     if existing is not None:
         # THE SAME CAP THE RESET ENDPOINT ENFORCES, for the same reason and by
         # the same means — see auth.account.request_password_reset. Registering
-        # a number that already has an unverified row RE-SENDS the code, so
+        # an address that already has an unverified row RE-SENDS the code, so
         # /auth/register is the resend endpoint too, and it had no ceiling at
-        # all: looping it over one phone was an SMS bill a stranger could run
-        # up on us. Growth does not look like the same number four times in
-        # ten minutes; abuse does.
+        # all: looping it over one address was a bill a stranger could run up
+        # on us. Growth does not look like the same address four times in ten
+        # minutes; abuse does.
         #
         # CHECKED BEFORE THE CREDENTIALS BELOW ARE REWRITTEN, so a refused
         # request changes nothing. Re-registering overwrites the password on
@@ -352,8 +388,8 @@ def register(db: Session, payload: RegisterRequest) -> dict:
         # ran the cap out a free way to take over somebody's half-finished
         # signup.
         #
-        # It says out loud that this number has a registration pending, which
-        # is a narrower disclosure than the 409 three lines above already
+        # It says out loud that this address has a registration pending, which
+        # is a narrower disclosure than the 409 a few lines above already
         # makes for a verified one. The reset endpoint pays a real privacy
         # cost for its 429 and takes it deliberately; this one pays nothing it
         # was not already paying.
@@ -363,15 +399,21 @@ def register(db: Session, payload: RegisterRequest) -> dict:
                 code="auth_otp_too_many",
                 detail="Too many verification codes requested, try again later",
             )
-        # Unverified registration for this phone. Refresh credentials and resend.
+        # Unverified registration for this address. Refresh credentials and
+        # resend.
         existing.password_hash = hash_password(payload.password)
         existing.country_code = payload.country_code
         existing.role = payload.role
         db.commit()
         user = existing
     else:
+        # NO PHONE NUMBER. The column is nullable since f3c0a84e17d9 precisely
+        # so this row can be written without one: a number asked for at signup
+        # is a number nothing verifies, on the form whose only job is to get
+        # somebody into the product. The settings screen collects one later,
+        # when a payment or a support call gives it a purpose.
         user = User(
-            phone=payload.phone,
+            email=email,
             password_hash=hash_password(payload.password),
             country_code=payload.country_code,
             role=payload.role,
@@ -389,12 +431,15 @@ def register(db: Session, payload: RegisterRequest) -> dict:
 
 
 def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
-    user = db.query(User).filter(User.phone == payload.phone).first()
+    # Normalised before the lookup, exactly as register normalises before the
+    # insert. Somebody who registered as Kofi@ and types kofi@ on the
+    # verification screen is the same person and must find the same row.
+    user = db.query(User).filter(User.email == normalized_email(payload.email)).first()
     if user is None:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
             code="auth_no_pending_verification",
-            detail="No pending verification for this phone",
+            detail="No pending verification for this email address",
         )
 
     challenge = (
@@ -449,16 +494,21 @@ def verify_otp(db: Session, payload: VerifyOtpRequest) -> dict:
 
 
 def login(db: Session, payload: LoginRequest) -> dict:
-    user = db.query(User).filter(User.phone == payload.phone).first()
+    # THE NORMALISATION IS THE LOGIN FIX. core.emails lowercases the whole
+    # address, here and at registration alike, so the capitalisation somebody
+    # happened to use on the signup form is not a credential they have to
+    # remember. Without this line a login is case sensitive in a way no mail
+    # provider these users have is.
+    user = db.query(User).filter(User.email == normalized_email(payload.email)).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise AppError(
             status.HTTP_401_UNAUTHORIZED,
             # Deliberately one code for two different failures — no such
             # account, and wrong password. Splitting them would let anybody
-            # enumerate which numbers are registered here, which is the whole
+            # enumerate which addresses are registered here, which is the whole
             # reason the English sentence is vague too.
             code="auth_bad_credentials",
-            detail="Invalid phone or password",
+            detail="Invalid email or password",
         )
     if not user.is_verified:
         raise AppError(

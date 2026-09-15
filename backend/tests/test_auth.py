@@ -1,5 +1,11 @@
 """Tests for Epic A (KOL-1): auth registration, verification, login, reset.
 
+THE IDENTITY IS AN EMAIL ADDRESS. Registration takes one and no phone number at
+all, verification and login resolve the account by it, and a reset code is sent
+to it. Every helper below posts an address where it used to post a number, and
+not one phone number is left in the file: the accounts these tests create have
+none, which is what test_registration_stores_no_phone_number goes and looks at.
+
 Account settings and the reset flow's own rules live in test_account.py. What
 stays here is the pair of reset tests that were always here — the rate limit
 and the happy path — kept so a regression shows up in both files.
@@ -18,7 +24,7 @@ from app.core.rewards import REFERRAL_CREDIT
 from app.modules.auth import models, otp, service
 from app.modules.auth.router import router as auth_router
 
-PHONE = "+22990000001"
+EMAIL = "ama@example.com"
 PASSWORD = "strongpass1"
 
 
@@ -61,7 +67,7 @@ def client():
 
 
 class _RecordingSender:
-    """Stands in for the SMS sender and counts what it was asked to send.
+    """Stands in for the mail sender and counts what it was asked to send.
 
     A rate limit on a send endpoint is about MONEY, not about status codes, so
     the assertion that matters is that the refused request put nothing on the
@@ -74,8 +80,8 @@ class _RecordingSender:
     def __init__(self):
         self.sent = []
 
-    def send(self, phone, message):
-        self.sent.append((phone, message))
+    def send(self, target, message):
+        self.sent.append((target, message))
         # A sender that says nothing is a sender that failed, since KOL-74:
         # see otp.deliver. Every stand-in has to answer.
         return otp.SendResult(ok=True, provider=self.name)
@@ -88,17 +94,17 @@ def sender(monkeypatch):
     return spy
 
 
-def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD, **extra):
+def _register(client, email=EMAIL, country="BJ", role="influencer", password=PASSWORD, **extra):
     return client.post(
         "/auth/register",
-        json={"phone": phone, "password": password, "country_code": country, "role": role, **extra},
+        json={"email": email, "password": password, "country_code": country, "role": role, **extra},
     )
 
 
-def _latest_code(client, phone=PHONE):
+def _latest_code(client, email=EMAIL):
     db = client.session_factory()
     try:
-        user = db.query(models.User).filter(models.User.phone == phone).first()
+        user = db.query(models.User).filter(models.User.email == email).first()
         challenge = (
             db.query(models.OtpChallenge)
             .filter(models.OtpChallenge.user_id == user.id)
@@ -110,12 +116,12 @@ def _latest_code(client, phone=PHONE):
         db.close()
 
 
-def _verified_token(client, phone=PHONE, role="influencer"):
+def _verified_token(client, email=EMAIL, role="influencer"):
     """Register, verify, and log in; returns a real bearer token."""
-    _register(client, phone=phone, role=role)
-    code = _latest_code(client, phone=phone)
-    client.post("/auth/verify-otp", json={"phone": phone, "code": code})
-    resp = client.post("/auth/login", json={"phone": phone, "password": PASSWORD})
+    _register(client, email=email, role=role)
+    code = _latest_code(client, email=email)
+    client.post("/auth/verify-otp", json={"email": email, "code": code})
+    resp = client.post("/auth/login", json={"email": email, "password": PASSWORD})
     return resp.json()["access_token"]
 
 
@@ -123,17 +129,17 @@ def _auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _user_id(client, phone=PHONE):
+def _user_id(client, email=EMAIL):
     db = client.session_factory()
     try:
-        return db.query(models.User).filter(models.User.phone == phone).first().id
+        return db.query(models.User).filter(models.User.email == email).first().id
     finally:
         db.close()
 
 
 def test_register_creates_unverified_account_and_blocks_login(client):
     assert _register(client).status_code == 201
-    resp = client.post("/auth/login", json={"phone": PHONE, "password": PASSWORD})
+    resp = client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     assert resp.status_code == 403
 
 
@@ -141,7 +147,7 @@ def test_all_seven_pilot_countries_can_register(client):
     # Product decision: registration is open in every pilot market, including
     # the five that launched disabled.
     for i, country in enumerate(["BJ", "TG", "CI", "GH", "SN", "CM", "NG"]):
-        resp = _register(client, phone=f"+2299000010{i}", country=country)
+        resp = _register(client, email=f"pilot{i}@example.com", country=country)
         assert resp.status_code == 201, resp.text
 
 
@@ -167,10 +173,10 @@ def test_invalid_role_rejected(client):
 def test_verify_then_login_returns_token(client):
     _register(client)
     code = _latest_code(client)
-    resp = client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
+    resp = client.post("/auth/verify-otp", json={"email": EMAIL, "code": code})
     assert resp.status_code == 200
     assert resp.json()["access_token"]
-    resp = client.post("/auth/login", json={"phone": PHONE, "password": PASSWORD})
+    resp = client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     assert resp.status_code == 200
     assert resp.json()["access_token"]
 
@@ -183,25 +189,70 @@ def test_login_returns_stored_role_for_agency(client):
     restore it from. Both token grants must echo the stored role."""
     _register(client, role="agency")
     code = _latest_code(client)
-    verify = client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
+    verify = client.post("/auth/verify-otp", json={"email": EMAIL, "code": code})
     assert verify.status_code == 200
     assert verify.json()["role"] == "agency"
-    login = client.post("/auth/login", json={"phone": PHONE, "password": PASSWORD})
+    login = client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD})
     assert login.status_code == 200
     assert login.json()["role"] == "agency"
 
 
 def test_wrong_otp_rejected(client):
     _register(client)
-    resp = client.post("/auth/verify-otp", json={"phone": PHONE, "code": "000000"})
+    resp = client.post("/auth/verify-otp", json={"email": EMAIL, "code": "000000"})
     assert resp.status_code == 401
 
 
-def test_duplicate_verified_phone_blocked(client):
+def test_duplicate_verified_email_blocked(client):
     _register(client)
     code = _latest_code(client)
-    client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
-    assert _register(client).status_code == 409
+    client.post("/auth/verify-otp", json={"email": EMAIL, "code": code})
+    refused = _register(client)
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "auth_email_taken"
+
+
+def test_the_signup_address_is_folded_and_logs_in_either_way(client):
+    """THE REASON core/emails.py LOWERCASES THE LOCAL PART.
+
+    Somebody registers from a phone keyboard that capitalised the first letter
+    and later types it in lower case, or the other way round. Both are the same
+    mailbox to every provider these users have, and while the address was only
+    a note on the account it did not matter. It is the login key now, so a
+    spelling that does not resolve is an account its owner cannot get into and
+    a support ticket nobody can diagnose from the outside.
+    """
+    assert _register(client, email="Ama.K@EXAMPLE.COM").status_code == 201
+    stored = "ama.k@example.com"
+    code = _latest_code(client, email=stored)
+    assert client.post(
+        "/auth/verify-otp", json={"email": "AMA.K@example.com", "code": code}
+    ).status_code == 200
+    assert client.post(
+        "/auth/login", json={"email": stored, "password": PASSWORD}
+    ).status_code == 200
+    assert client.post(
+        "/auth/login", json={"email": "Ama.K@Example.Com", "password": PASSWORD}
+    ).status_code == 200
+
+
+def test_an_address_that_is_not_one_is_refused_at_registration(client):
+    """The same code the settings screen raises, so the client has one sentence
+    to say about a mistyped address wherever it was typed."""
+    refused = _register(client, email="notanemail")
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "auth_email_invalid"
+
+
+def test_registration_stores_no_phone_number(client):
+    """It does not ask for one, so there is none to store. The column is
+    nullable since f3c0a84e17d9 for exactly this row."""
+    assert _register(client).status_code == 201
+    db = client.session_factory()
+    try:
+        assert db.query(models.User).filter(models.User.email == EMAIL).first().phone is None
+    finally:
+        db.close()
 
 
 def test_delete_account_with_wrong_password_403(client):
@@ -212,7 +263,7 @@ def test_delete_account_with_wrong_password_403(client):
     assert r.status_code == 403
     db = client.session_factory()
     try:
-        assert db.query(models.User).filter(models.User.phone == PHONE).first() is not None
+        assert db.query(models.User).filter(models.User.email == EMAIL).first() is not None
     finally:
         db.close()
 
@@ -247,8 +298,8 @@ def test_delete_account_takes_own_credits_but_spares_the_other_half(client):
     cleared, because that money was earned by somebody else."""
     token = _verified_token(client)
     user_id = _user_id(client)
-    _register(client, phone="+22990000071")
-    other_id = _user_id(client, "+22990000071")
+    _register(client, email="other@example.com")
+    other_id = _user_id(client, "other@example.com")
     db = client.session_factory()
     try:
         db.add(models.ReferralCredit(user_id=user_id, amount=2000, currency="XOF",
@@ -297,10 +348,10 @@ def test_delete_account_with_contract_history_409(client):
         db.close()
 
 
-def test_registration_otp_is_rate_limited_per_phone(client, sender):
-    """Every registration sends an SMS and every SMS costs money.
+def test_registration_otp_is_rate_limited_per_account(client, sender):
+    """Every registration sends a message and every message costs something.
 
-    Re-registering an unverified number RESENDS the code, so /auth/register is
+    Re-registering an unverified address RESENDS the code, so /auth/register is
     the resend endpoint as well — and an uncapped resend is a bill a stranger
     can run up on us in a loop. Same ceiling, and the same shape, as the reset
     limit below.
@@ -325,7 +376,7 @@ def test_registration_otp_is_rate_limited_per_phone(client, sender):
 def test_a_refused_registration_does_not_rewrite_the_password(client, sender):
     """The cap is checked before the credentials are refreshed.
 
-    Registering a phone that already has an unverified row overwrites its
+    Registering an address that already has an unverified row overwrites its
     password, so a 429 that still wrote would let whoever ran the cap out take
     over a half-finished signup for free. The original password still logs in
     once the account is verified; the one the refused request carried does not.
@@ -335,41 +386,41 @@ def test_a_refused_registration_does_not_rewrite_the_password(client, sender):
     assert _register(client, password="attackerpass9").status_code == 429
 
     code = _latest_code(client)
-    assert client.post("/auth/verify-otp", json={"phone": PHONE, "code": code}).status_code == 200
+    assert client.post("/auth/verify-otp", json={"email": EMAIL, "code": code}).status_code == 200
     assert client.post(
-        "/auth/login", json={"phone": PHONE, "password": PASSWORD}
+        "/auth/login", json={"email": EMAIL, "password": PASSWORD}
     ).status_code == 200
     assert client.post(
-        "/auth/login", json={"phone": PHONE, "password": "attackerpass9"}
+        "/auth/login", json={"email": EMAIL, "password": "attackerpass9"}
     ).status_code == 401
 
 
-def test_the_otp_cap_is_per_phone_and_not_a_global_ceiling(client, sender):
+def test_the_otp_cap_is_per_account_and_not_a_global_ceiling(client, sender):
     """Counting every registration on the platform instead of every
-    registration for one number would make a single looping attacker a denial
+    registration for one address would make a single looping attacker a denial
     of service on everybody else's signup.
 
     THE PLATFORM-WIDE CEILING BELOW DOES NOT CHANGE THAT, and this test is what
     says so. It sits two orders of magnitude above this one — a backstop on the
     bill, not a queue for signups — so four codes in flight are nowhere near it
-    and the fourth number still registers. The day somebody tunes
+    and the fourth address still registers. The day somebody tunes
     otp_global_max_per_hour down towards otp_max_per_hour, this goes red, which
     is exactly the conversation that change deserves to have.
     """
     for _ in range(3):
         _register(client)
     assert _register(client).status_code == 429
-    assert _register(client, phone="+22990000042").status_code == 201
+    assert _register(client, email="fourth@example.com").status_code == 201
     assert len(sender.sent) == 4
 
 
-def test_a_platform_wide_ceiling_backstops_the_per_phone_cap(client, sender, monkeypatch):
-    """Fresh numbers cost one SMS each, and until now nothing counted the total.
+def test_a_platform_wide_ceiling_backstops_the_per_account_cap(client, sender, monkeypatch):
+    """Fresh addresses cost one send each, and until now nothing counted the total.
 
-    The cap above is per phone, which is the right shape for the abuse it was
-    written against and no shape at all for the bill: three codes per number,
-    times as many numbers as somebody feels like typing, has no top to it. A
-    stranger working through a list of phone numbers could spend the whole SMS
+    The cap above is per account, which is the right shape for the abuse it was
+    written against and no shape at all for the bill: three codes per address,
+    times as many addresses as somebody feels like typing, has no top to it. A
+    stranger working through a list of addresses could spend the whole send
     budget and every single response would be a cheerful 201.
 
     The ceiling is set absurdly low here so that the assertion is about the
@@ -379,17 +430,17 @@ def test_a_platform_wide_ceiling_backstops_the_per_phone_cap(client, sender, mon
     settings.otp_global_max_per_hour for the value and the reasoning.
     """
     monkeypatch.setattr(settings, "otp_global_max_per_hour", 2)
-    assert _register(client, phone="+22990000201").status_code == 201
-    assert _register(client, phone="+22990000202").status_code == 201
+    assert _register(client, email="one@example.com").status_code == 201
+    assert _register(client, email="two@example.com").status_code == 201
 
-    refused = _register(client, phone="+22990000203")
+    refused = _register(client, email="three@example.com")
     assert refused.status_code == 429
     # A code of its own rather than auth_otp_too_many. This caller asked for
     # one verification code; telling them they asked for too many would send
-    # them off to inspect a phone that was never the problem.
+    # them off to inspect a mailbox that was never the problem.
     assert refused.json()["code"] == "auth_otp_capacity"
 
-    # THE HALF THAT IS ACTUALLY ABOUT THE BILL, asserted the way the per-phone
+    # THE HALF THAT IS ACTUALLY ABOUT THE BILL, asserted the way the per-account
     # test asserts it: the refusal put nothing on the wire and wrote no third
     # challenge. And because the ceiling is checked before either branch of
     # register() writes anything, it left no half-made account behind either.
@@ -397,13 +448,15 @@ def test_a_platform_wide_ceiling_backstops_the_per_phone_cap(client, sender, mon
     db = client.session_factory()
     try:
         assert db.query(models.OtpChallenge).count() == 2
-        assert db.query(models.User).filter(models.User.phone == "+22990000203").first() is None
+        assert (
+            db.query(models.User).filter(models.User.email == "three@example.com").first() is None
+        )
     finally:
         db.close()
 
 
 def test_the_platform_ceiling_counts_live_codes_and_not_sends(client, sender, monkeypatch):
-    """Spending a code gives its place back, exactly as the per-phone cap does.
+    """Spending a code gives its place back, exactly as the per-account cap does.
 
     This is what keeps the two numbers meaning the same kind of thing. A code
     that has been used is not in flight and is not costing anything more, so it
@@ -412,36 +465,36 @@ def test_the_platform_ceiling_counts_live_codes_and_not_sends(client, sender, mo
     signups completed successfully.
     """
     monkeypatch.setattr(settings, "otp_global_max_per_hour", 2)
-    _register(client, phone="+22990000211")
-    _register(client, phone="+22990000212")
-    assert _register(client, phone="+22990000213").status_code == 429
+    _register(client, email="a@example.com")
+    _register(client, email="b@example.com")
+    assert _register(client, email="c@example.com").status_code == 429
 
-    code = _latest_code(client, phone="+22990000211")
-    verified = client.post("/auth/verify-otp", json={"phone": "+22990000211", "code": code})
+    code = _latest_code(client, email="a@example.com")
+    verified = client.post("/auth/verify-otp", json={"email": "a@example.com", "code": code})
     assert verified.status_code == 200
 
-    assert _register(client, phone="+22990000213").status_code == 201
+    assert _register(client, email="c@example.com").status_code == 201
 
 
 def test_password_reset_rate_limited_to_three_per_hour(client):
     _register(client)
     for _ in range(3):
-        assert client.post("/auth/password-reset/request", json={"phone": PHONE}).status_code == 202
-    assert client.post("/auth/password-reset/request", json={"phone": PHONE}).status_code == 429
+        assert client.post("/auth/password-reset/request", json={"email": EMAIL}).status_code == 202
+    assert client.post("/auth/password-reset/request", json={"email": EMAIL}).status_code == 429
 
 
 def test_password_reset_confirm_updates_password(client):
-    """Confirm now takes {phone, code, new_password} rather than a bare token.
+    """Confirm takes {email, code, new_password} rather than a bare token.
 
-    The reset code is a six digit OTP delivered by SMS, exactly like the
-    registration code, so it is only ever resolved together with the number it
+    The reset code is a six digit OTP sent by email, exactly like the
+    registration code, so it is only ever resolved together with the mailbox it
     was sent to — six digits standing alone would be a lottery anyone could
     enter. It is still read off the same password_reset_tokens row.
     """
     _register(client)
     code = _latest_code(client)
-    client.post("/auth/verify-otp", json={"phone": PHONE, "code": code})
-    client.post("/auth/password-reset/request", json={"phone": PHONE})
+    client.post("/auth/verify-otp", json={"email": EMAIL, "code": code})
+    client.post("/auth/password-reset/request", json={"email": EMAIL})
 
     db = client.session_factory()
     reset_code = db.query(models.PasswordResetToken).first().token
@@ -449,15 +502,15 @@ def test_password_reset_confirm_updates_password(client):
 
     resp = client.post(
         "/auth/password-reset/confirm",
-        json={"phone": PHONE, "code": reset_code, "new_password": "newstrongpass2"},
+        json={"email": EMAIL, "code": reset_code, "new_password": "newstrongpass2"},
     )
     assert resp.status_code == 200
-    resp = client.post("/auth/login", json={"phone": PHONE, "password": "newstrongpass2"})
+    resp = client.post("/auth/login", json={"email": EMAIL, "password": "newstrongpass2"})
     assert resp.status_code == 200
 
 
-def test_reset_request_for_unknown_phone_is_generic(client):
-    resp = client.post("/auth/password-reset/request", json={"phone": "+22999999999"})
+def test_reset_request_for_unknown_email_is_generic(client):
+    resp = client.post("/auth/password-reset/request", json={"email": "nobody@example.com"})
     assert resp.status_code == 202
 
 
@@ -498,11 +551,13 @@ def test_register_with_valid_referral_code_links_attribution(client):
     referrer_id = _user_id(client)
     code = client.get("/auth/me/referral", headers=_auth_headers(token)).json()["code"]
 
-    resp = _register(client, phone="+22990000055", referral_code=code)
+    resp = _register(client, email="newcomer@example.com", referral_code=code)
     assert resp.status_code == 201
     db = client.session_factory()
     try:
-        newcomer = db.query(models.User).filter(models.User.phone == "+22990000055").first()
+        newcomer = (
+            db.query(models.User).filter(models.User.email == "newcomer@example.com").first()
+        )
         assert newcomer.referred_by_user_id == referrer_id
     finally:
         db.close()
@@ -515,11 +570,13 @@ def test_register_with_garbage_referral_code_still_succeeds(client):
     """A mistyped code must never block a signup: attribution is best-effort
     and the account matters more. Well-formed but unknown codes are dropped
     silently — no error, no attribution."""
-    resp = _register(client, phone="+22990000056", referral_code="ZZZZ9999")
+    resp = _register(client, email="garbage@example.com", referral_code="ZZZZ9999")
     assert resp.status_code == 201
     db = client.session_factory()
     try:
-        newcomer = db.query(models.User).filter(models.User.phone == "+22990000056").first()
+        newcomer = (
+            db.query(models.User).filter(models.User.email == "garbage@example.com").first()
+        )
         assert newcomer.referred_by_user_id is None
     finally:
         db.close()
@@ -533,9 +590,9 @@ def test_referral_report_splits_counts_and_marks_who_ordered(client):
     referrer_id = _user_id(client)
     code = client.get("/auth/me/referral", headers=_auth_headers(token)).json()["code"]
 
-    _register(client, phone="+22990000061", role="influencer", referral_code=code)
-    _register(client, phone="+22990000062", role="business", referral_code=code)
-    creator_id = _user_id(client, "+22990000061")
+    _register(client, email="creator@example.com", role="influencer", referral_code=code)
+    _register(client, email="brand@example.com", role="business", referral_code=code)
+    creator_id = _user_id(client, "creator@example.com")
 
     # Only the creator has completed an order. The "referee" row is what says
     # so, exactly as the escrow release path writes it.

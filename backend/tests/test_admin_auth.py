@@ -9,6 +9,12 @@ The first test in this file is the one that matters most: the old credential
 must now be REFUSED. A change like this is only worth anything if the door it
 replaced is actually shut, and "we added a better lock" is not the same
 sentence as "the old key no longer works".
+
+THE LIST IS EMAIL ADDRESSES NOW, not phone numbers, because the address is the
+login identity. That rename is the most dangerous single line in the identity
+flip and the reason test_the_grant_and_the_revoke_read_the_same_column exists
+below: a settings key still holding numbers, matched against User.email,
+matches nothing, grants nobody and then REVOKES every admin there is, silently.
 """
 import pytest
 from fastapi import FastAPI
@@ -25,6 +31,12 @@ from app.modules.admin.router import router as admin_router
 from app.modules.auth.admins import sync_admins
 from app.modules.auth.models import User
 
+ADMIN_EMAIL = "admin@example.com"
+CIVILIAN_EMAIL = "civilian@example.com"
+
+# Both accounts still carry a number, because users.phone still exists and a
+# pre-flip account is a realistic fixture. Nothing below matches on it, and
+# that is precisely what several of these tests are asserting.
 ADMIN_PHONE = "+22990000100"
 CIVILIAN_PHONE = "+22990000200"
 
@@ -62,22 +74,25 @@ def people(client):
     """One user who will be made an admin, one who will not."""
     db = client.session_factory()
     try:
-        admin = User(phone=ADMIN_PHONE, password_hash="x", country_code="BJ",
-                     role="business", is_verified=True)
-        civilian = User(phone=CIVILIAN_PHONE, password_hash="x", country_code="BJ",
-                        role="influencer", is_verified=True)
+        admin = User(email=ADMIN_EMAIL, phone=ADMIN_PHONE, password_hash="x",
+                     country_code="BJ", role="business", is_verified=True)
+        civilian = User(email=CIVILIAN_EMAIL, phone=CIVILIAN_PHONE, password_hash="x",
+                        country_code="BJ", role="influencer", is_verified=True)
         db.add_all([admin, civilian]); db.commit(); db.refresh(admin); db.refresh(civilian)
         return {"admin": admin.id, "civilian": civilian.id}
     finally:
         db.close()
 
 
-def _configure(monkeypatch, phones: str):
-    monkeypatch.setattr(config_module.settings, "admin_phones", phones, raising=False)
-    # auth.admins reads the same settings object by reference.
+def _configure(monkeypatch, emails: str):
+    monkeypatch.setattr(config_module.settings, "admin_emails", emails, raising=False)
+    # auth.admins reads the same settings object by reference. Both are patched
+    # anyway, because `raising=False` means a name that has been renamed out
+    # from under this helper would set a NEW attribute on the settings object
+    # and pass quietly while the code read the real one.
     from app.modules.auth import admins as admins_module
 
-    monkeypatch.setattr(admins_module.settings, "admin_phones", phones, raising=False)
+    monkeypatch.setattr(admins_module.settings, "admin_emails", emails, raising=False)
 
 
 def _sync(client):
@@ -112,7 +127,7 @@ def test_the_admin_id_header_alone_is_refused(client, people, monkeypatch):
     just an unknown header, and a request carrying nothing else is
     unauthenticated.
     """
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     r = client.get("/admin/dashboard", headers={"X-Admin-Id": "anyone-at-all"})
     assert r.status_code == 401
@@ -125,7 +140,7 @@ def test_the_header_cannot_upgrade_an_ordinary_token(client, people, monkeypatch
     changed but the header still consulted somewhere — would pass the test
     above and fail this one.
     """
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     r = client.get(
         "/admin/dashboard",
@@ -145,7 +160,7 @@ def test_no_credential_at_all_is_401(client, people):
 
 def test_an_ordinary_user_is_403(client, people, monkeypatch):
     """We know exactly who you are, and the answer is still no."""
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     r = client.get("/admin/dashboard", headers=_token(people["civilian"]))
     assert r.status_code == 403
@@ -153,7 +168,7 @@ def test_an_ordinary_user_is_403(client, people, monkeypatch):
 
 
 def test_a_configured_admin_gets_in(client, people, monkeypatch):
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     assert client.get("/admin/dashboard", headers=_token(people["admin"])).status_code == 200
 
@@ -162,7 +177,7 @@ def test_a_deleted_account_with_a_live_token_is_403(client, people, monkeypatch)
     """A token outlives the row it names. The gate loads the user rather than
     trusting the subject claim, so a deleted admin's unexpired token is not a
     way back in."""
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     db = client.session_factory()
     try:
@@ -187,27 +202,27 @@ def test_nobody_is_an_admin_by_default(client, people, monkeypatch):
     assert client.get("/admin/dashboard", headers=_token(people["admin"])).status_code == 403
 
 
-def test_listing_a_phone_grants_it(client, people, monkeypatch):
-    _configure(monkeypatch, ADMIN_PHONE)
+def test_listing_an_address_grants_it(client, people, monkeypatch):
+    _configure(monkeypatch, ADMIN_EMAIL)
     assert _sync(client)["granted"] == 1
     assert _is_admin(client, people["admin"]) is True
 
 
 def test_the_sync_is_idempotent(client, people, monkeypatch):
     """It runs on every boot, so a second run must be a no-op."""
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     assert _sync(client) == {"granted": 0, "revoked": 0, "no_account": 0}
 
 
-def test_removing_a_phone_revokes_it(client, people, monkeypatch):
+def test_removing_an_address_revokes_it(client, people, monkeypatch):
     """THE HALF THAT MAKES IT A SYNC RATHER THAN A SEED.
 
     Without this, removing somebody's access means remembering to go and edit
     a row by hand — on precisely the day nobody wants to be hand-editing
     production data.
     """
-    _configure(monkeypatch, ADMIN_PHONE)
+    _configure(monkeypatch, ADMIN_EMAIL)
     _sync(client)
     _configure(monkeypatch, "")
     assert _sync(client)["revoked"] == 1
@@ -215,30 +230,91 @@ def test_removing_a_phone_revokes_it(client, people, monkeypatch):
     assert client.get("/admin/dashboard", headers=_token(people["admin"])).status_code == 403
 
 
-def test_a_listed_phone_with_no_account_is_counted_not_created(client, people, monkeypatch):
+def test_a_listed_address_with_no_account_is_counted_not_created(client, people, monkeypatch):
     """Creating a passwordless user from a config file would be a worse hole
     than the one this closes. They become an admin at the next boot after they
     register, and until then it is reported rather than silently ignored."""
-    _configure(monkeypatch, f"{ADMIN_PHONE},+22990000999")
+    _configure(monkeypatch, f"{ADMIN_EMAIL},nobody@example.com")
     result = _sync(client)
     assert result["granted"] == 1
     assert result["no_account"] == 1
     db = client.session_factory()
     try:
-        assert db.query(User).filter(User.phone == "+22990000999").first() is None
+        assert db.query(User).filter(User.email == "nobody@example.com").first() is None
     finally:
         db.close()
 
 
 def test_the_list_tolerates_spaces_and_blanks(client, people, monkeypatch):
     """It is hand-edited deployment config, so it is written by a person."""
-    _configure(monkeypatch, f"  {ADMIN_PHONE} , , ")
+    _configure(monkeypatch, f"  {ADMIN_EMAIL} , , ")
     assert _sync(client)["granted"] == 1
     assert _is_admin(client, people["admin"]) is True
 
 
-def test_several_admins_coexist(client, people, monkeypatch):
+def test_the_grant_and_the_revoke_read_the_same_column(client, people, monkeypatch):
+    """THE FAILURE THAT WOULD NOT HAVE RAISED ANYTHING.
+
+    sync_admins does two passes: grant everybody on the list, then revoke
+    everybody holding is_admin who is NOT on it. Those two passes have to read
+    the same column or the function is a self-destruct, because a list that
+    matches nothing still drives a revoke that matches everybody.
+
+    So this configures the list with the PHONE NUMBERS these accounts really
+    have, which is exactly what a deployment would be left holding if the
+    settings key had been renamed without the matcher, or the matcher without
+    the key. Nothing is granted, because a phone number is not an address; and
+    an admin who was granted a moment ago is revoked, which is the part that
+    takes the money tools offline.
+
+    Asserted rather than reasoned about because there is no error to notice:
+    the boot log shows one warning and every admin endpoint starts answering
+    403 to people who were admins yesterday.
+    """
+    _configure(monkeypatch, ADMIN_EMAIL)
+    assert _sync(client)["granted"] == 1
+    assert _is_admin(client, people["admin"]) is True
+
     _configure(monkeypatch, f"{ADMIN_PHONE},{CIVILIAN_PHONE}")
+    result = _sync(client)
+    assert result["granted"] == 0
+    assert result["revoked"] == 1
+    assert _is_admin(client, people["admin"]) is False
+    assert client.get("/admin/dashboard", headers=_token(people["admin"])).status_code == 403
+
+
+def test_the_list_is_normalised_like_a_registration(client, people, monkeypatch):
+    """A .env file is typed by a person, and a person capitalises things.
+
+    The stored address is folded (core/emails.py), so a list compared verbatim
+    would miss a row over a capital letter — and missing a row here is not a
+    quiet no-op, it is the revoke above. Normalising the configured value the
+    same way registration normalises the typed one is what closes that.
+    """
+    _configure(monkeypatch, "  Admin@EXAMPLE.com ")
+    assert _sync(client)["granted"] == 1
+    assert _is_admin(client, people["admin"]) is True
+    assert client.get("/admin/dashboard", headers=_token(people["admin"])).status_code == 200
+
+
+def test_an_entry_that_is_not_an_address_is_dropped_and_said_out_loud(client, people, monkeypatch, caplog):
+    """Dropped, because a string no row can equal is indistinguishable at the
+    query from having configured nobody. Said out loud, because a silently
+    discarded entry is one admin fewer than whoever edited the file believes
+    there is, and they will find out during an escrow dispute."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="app.modules.auth.admins"):
+        _configure(monkeypatch, f"{ADMIN_EMAIL},not-an-address")
+        assert _sync(client)["granted"] == 1
+    assert any("not-an-address" in rec.getMessage() for rec in caplog.records)
+    # The readable half of the list still worked, which is the point of
+    # dropping one entry rather than refusing the whole setting.
+    assert _is_admin(client, people["admin"]) is True
+
+
+def test_several_admins_coexist(client, people, monkeypatch):
+    _configure(monkeypatch, f"{ADMIN_EMAIL},{CIVILIAN_EMAIL}")
     assert _sync(client)["granted"] == 2
     for who in ("admin", "civilian"):
         assert client.get("/admin/dashboard", headers=_token(people[who])).status_code == 200

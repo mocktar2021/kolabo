@@ -277,14 +277,56 @@ class FedaPayGateway:
         currency: str,
         description: str,
         callback_url: str,
-        payer_phone: str,
         payer_country: str,
         payer_first_name: str,
         payer_last_name: str,
+        payer_phone: str | None = None,
         payer_email: str | None = None,
         merchant_reference: str | None = None,
         metadata: dict | None = None,
     ) -> CollectionStart:
+        # THE CUSTOMER PHONE IS NOW CONDITIONAL, exactly as the email above it
+        # always was, and this is a real change to what FedaPay receives.
+        #
+        # It used to be unconditional because users.phone was NOT NULL and
+        # every account had one. Registration stopped asking for a number when
+        # the email became the login identity, so a brand funding a contract
+        # may have nothing to put here, and `{"number": None}` is not an absent
+        # field: it is a malformed one. FedaPay answers a malformed
+        # phone_number with a 400 that _request turns into a GatewayError, the
+        # checkout endpoint turns that into payments_gateway_unavailable, and
+        # the brand reads "we could not reach the payment provider" about a
+        # provider that was reachable and said something specific. That is the
+        # same failure mode, and almost the same sentence, as the callback_url
+        # bug _gateway_return_url exists to document.
+        #
+        # So the key is omitted when there is no number. The customer is then
+        # identified by email, which every account created since the flip has.
+        #
+        # A CUSTOMER WITH NEITHER IS REFUSED HERE rather than posted and
+        # refused there. It should be unreachable: post-flip accounts have an
+        # address and pre-flip accounts have a number. If it ever happens, a
+        # message naming the account is worth more to whoever is paged than
+        # FedaPay's own validation prose arriving through two layers of
+        # translation.
+        if not payer_phone and not payer_email:
+            raise GatewayError(
+                "FedaPay needs a phone number or an email address for the payer, "
+                "and this account has neither"
+            )
+
+        customer: dict[str, Any] = {
+            "firstname": payer_first_name,
+            "lastname": payer_last_name,
+        }
+        if payer_phone:
+            customer["phone_number"] = {
+                "number": payer_phone,
+                "country": payer_country.lower(),
+            }
+        if payer_email:
+            customer["email"] = payer_email
+
         body: dict[str, Any] = {
             "description": description,
             "amount": amount,
@@ -293,14 +335,8 @@ class FedaPayGateway:
             # say so.
             "currency": {"iso": currency},
             "callback_url": callback_url,
-            "customer": {
-                "firstname": payer_first_name,
-                "lastname": payer_last_name,
-                "phone_number": {"number": payer_phone, "country": payer_country.lower()},
-            },
+            "customer": customer,
         }
-        if payer_email:
-            body["customer"]["email"] = payer_email
         if merchant_reference:
             # Our own id, echoed back on every read and every webhook. This is
             # what makes reconciliation possible without trusting anything the

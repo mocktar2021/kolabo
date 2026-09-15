@@ -12,6 +12,12 @@ in the body, and that the phantom challenge does not eat the caller's
 allowance. The chain and the router are tested on their own, because they
 are the shape a real provider will be dropped into and the shape is what has
 to hold.
+
+THE CODE GOES TO A MAILBOX NOW. The Sender protocol is unchanged in shape and
+the parameter is called `target`, so every stand-in below is the same class it
+always was with one word renamed. What is new at the bottom of this file is the
+adapter onto the notifications mail provider, and the bilingual message the
+target actually receives.
 """
 import logging
 
@@ -27,7 +33,7 @@ from app.core.errors import AppError, app_error_handler
 from app.modules.auth import account, models, otp, service
 from app.modules.auth.router import router as auth_router
 
-PHONE = "+22990000301"
+EMAIL = "delivery@example.com"
 PASSWORD = "strongpass1"
 
 
@@ -69,8 +75,8 @@ class _Accepting:
         self.name = name
         self.sent = []
 
-    def send(self, phone, message):
-        self.sent.append((phone, message))
+    def send(self, target, message):
+        self.sent.append((target, message))
         return otp.SendResult(ok=True, provider=self.name)
 
 
@@ -82,8 +88,8 @@ class _Refusing:
         self.error = error
         self.sent = []
 
-    def send(self, phone, message):
-        self.sent.append((phone, message))
+    def send(self, target, message):
+        self.sent.append((target, message))
         return otp.SendResult(ok=False, provider=self.name, error=self.error)
 
 
@@ -92,7 +98,7 @@ class _Raising:
 
     name = "raising"
 
-    def send(self, phone, message):
+    def send(self, target, message):
         raise ConnectionError("gateway timed out")
 
 
@@ -101,21 +107,21 @@ class _Silent:
 
     name = "silent"
 
-    def send(self, phone, message):
+    def send(self, target, message):
         return None
 
 
-def _register(client, phone=PHONE, country="BJ", role="influencer", password=PASSWORD):
+def _register(client, email=EMAIL, country="BJ", role="influencer", password=PASSWORD):
     return client.post(
         "/auth/register",
-        json={"phone": phone, "password": password, "country_code": country, "role": role},
+        json={"email": email, "password": password, "country_code": country, "role": role},
     )
 
 
-def _challenges(client, phone=PHONE):
+def _challenges(client, email=EMAIL):
     db = client.session_factory()
     try:
-        user = db.query(models.User).filter(models.User.phone == phone).first()
+        user = db.query(models.User).filter(models.User.email == email).first()
         if user is None:
             return []
         return (
@@ -155,15 +161,15 @@ class TestRegistration:
         assert rows[0].consumed is True
         # And it is not the "newest unconsumed challenge" a guess resolves
         # against: the honest answer is that there is no live code at all.
-        r = client.post("/auth/verify-otp", json={"phone": PHONE, "code": rows[0].code})
+        r = client.post("/auth/verify-otp", json={"email": EMAIL, "code": rows[0].code})
         assert r.status_code == 400
         assert r.json()["code"] == "auth_code_expired"
 
     def test_a_phantom_code_does_not_spend_the_callers_allowance(self, client, monkeypatch):
         """Three failed sends and then a working provider: the fourth request
-        must go through. The per-phone cap counts codes in flight, and a code
+        must go through. The per-account cap counts codes in flight, and a code
         that never left is not in flight. Without the consume in _issue_otp,
-        an outage would lock every affected number out for an hour after the
+        an outage would lock every affected address out for an hour after the
         provider came back."""
         monkeypatch.setattr(service, "_sender", _Refusing())
         for _ in range(3):
@@ -184,7 +190,24 @@ class TestRegistration:
         assert r.status_code == 201
         assert r.json()["message"] == "Verification code sent"
         assert len(good.sent) == 1
-        assert good.sent[0][0] == PHONE
+        assert good.sent[0][0] == EMAIL
+        # And the message is the bilingual one, with the subject on the first
+        # line where notifications/email.py's _subject will find it. Benin, so
+        # French: five of the seven configured countries default to it.
+        subject, blank, first_body_line = good.sent[0][1].split("\n")[:3]
+        assert subject == "Votre code de vérification Kolabo"
+        assert blank == ""
+        assert first_body_line.startswith("Votre code de vérification Kolabo est ")
+
+    def test_the_language_follows_the_country_on_the_account(self, client, monkeypatch):
+        """Asserted through the router rather than on the template function,
+        because what can break is the WIRING: _issue_otp has to pass the
+        account's country, and a signup that quietly sent French to Accra would
+        look perfectly healthy from every other test in this file."""
+        good = _Accepting()
+        monkeypatch.setattr(service, "_sender", good)
+        assert _register(client, email="accra@example.com", country="GH").status_code == 201
+        assert good.sent[0][1].startswith("Your Kolabo verification code\n")
 
     def test_the_failure_is_logged_with_the_providers_words(self, client, monkeypatch, caplog):
         """Support will read this line. It has to say which provider and what
@@ -206,13 +229,13 @@ class TestPasswordReset:
         _register(client)
 
     def test_a_failed_send_still_answers_the_generic_202(self, client, monkeypatch):
-        """A 503 only for numbers that have an account would make a provider
+        """A 503 only for addresses that have an account would make a provider
         outage into an enumeration oracle. The endpoint's privacy contract
         outranks the honesty of one sentence, and the sentence was already
         conditional."""
         self._registered(client, monkeypatch)
         monkeypatch.setattr(account, "_sender", _Refusing())
-        r = client.post("/auth/password-reset/request", json={"phone": PHONE})
+        r = client.post("/auth/password-reset/request", json={"email": EMAIL})
         assert r.status_code == 202
         assert r.json() == account.GENERIC_RESET_RESPONSE
 
@@ -222,7 +245,7 @@ class TestPasswordReset:
         self._registered(client, monkeypatch)
         monkeypatch.setattr(account, "_sender", _Refusing())
         for _ in range(3):
-            assert client.post("/auth/password-reset/request", json={"phone": PHONE}).status_code == 202
+            assert client.post("/auth/password-reset/request", json={"email": EMAIL}).status_code == 202
         db = client.session_factory()
         try:
             tokens = db.query(models.PasswordResetToken).all()
@@ -232,7 +255,7 @@ class TestPasswordReset:
             db.close()
         # Not rate limited: none of those counted.
         monkeypatch.setattr(account, "_sender", _Accepting())
-        assert client.post("/auth/password-reset/request", json={"phone": PHONE}).status_code == 202
+        assert client.post("/auth/password-reset/request", json={"email": EMAIL}).status_code == 202
         db = client.session_factory()
         try:
             live = [t for t in db.query(models.PasswordResetToken).all() if not t.consumed]
@@ -243,7 +266,7 @@ class TestPasswordReset:
     def test_a_raising_provider_does_not_500_the_reset(self, client, monkeypatch):
         self._registered(client, monkeypatch)
         monkeypatch.setattr(account, "_sender", _Raising())
-        r = client.post("/auth/password-reset/request", json={"phone": PHONE})
+        r = client.post("/auth/password-reset/request", json={"email": EMAIL})
         assert r.status_code == 202
 
     def test_the_failure_is_logged_loudly(self, client, monkeypatch, caplog):
@@ -251,7 +274,7 @@ class TestPasswordReset:
         self._registered(client, monkeypatch)
         monkeypatch.setattr(account, "_sender", _Refusing(name="termii", error="account suspended"))
         with caplog.at_level(logging.ERROR, logger="kolabo.auth.account"):
-            client.post("/auth/password-reset/request", json={"phone": PHONE})
+            client.post("/auth/password-reset/request", json={"email": EMAIL})
         assert any(
             "termii" in rec.getMessage() and "account suspended" in rec.getMessage()
             for rec in caplog.records
@@ -262,10 +285,10 @@ class TestDeliver:
     """The wrapper every call site goes through."""
 
     def test_a_result_passes_through(self):
-        assert otp.deliver(_Accepting("x"), PHONE, "m") == otp.SendResult(ok=True, provider="x")
+        assert otp.deliver(_Accepting("x"), EMAIL, "m") == otp.SendResult(ok=True, provider="x")
 
     def test_an_exception_becomes_a_failed_result(self):
-        result = otp.deliver(_Raising(), PHONE, "m")
+        result = otp.deliver(_Raising(), EMAIL, "m")
         assert result.ok is False
         assert result.provider == "raising"
         assert "ConnectionError" in result.error
@@ -274,47 +297,48 @@ class TestDeliver:
     def test_a_sender_that_returns_nothing_is_a_failure(self):
         """The old protocol, and the silent failure this change exists to end:
         an adapter that forgot to return must not look like one that worked."""
-        result = otp.deliver(_Silent(), PHONE, "m")
+        result = otp.deliver(_Silent(), EMAIL, "m")
         assert result.ok is False
         assert result.provider == "silent"
 
     def test_the_logging_sender_reports_success(self):
-        result = otp.deliver(otp.LoggingSender(), PHONE, "m")
+        result = otp.deliver(otp.LoggingSender(), EMAIL, "m")
         assert result == otp.SendResult(ok=True, provider="logging")
 
 
 class TestCompositeSender:
     def test_the_first_that_accepts_wins_and_is_named(self):
         first, second = _Accepting("first"), _Accepting("second")
-        result = otp.CompositeSender([first, second]).send(PHONE, "m")
+        result = otp.CompositeSender([first, second]).send(EMAIL, "m")
         assert result.ok is True
         assert result.provider == "first"
         assert len(first.sent) == 1
-        # Never reached: a fallback that also sends is a double SMS bill.
+        # Never reached: a fallback that also sends is a second message the
+        # recipient never asked for, and a second line on the bill.
         assert second.sent == []
 
     def test_first_fails_second_succeeds(self):
         first, second = _Refusing("first"), _Accepting("second")
-        result = otp.CompositeSender([first, second]).send(PHONE, "m")
+        result = otp.CompositeSender([first, second]).send(EMAIL, "m")
         assert result.ok is True
         assert result.provider == "second"
         assert len(first.sent) == 1 and len(second.sent) == 1
 
     def test_a_raising_child_does_not_take_the_chain_down(self):
-        result = otp.CompositeSender([_Raising(), _Accepting("second")]).send(PHONE, "m")
+        result = otp.CompositeSender([_Raising(), _Accepting("second")]).send(EMAIL, "m")
         assert result.ok is True
         assert result.provider == "second"
 
     def test_all_fail_and_every_error_is_reported(self):
         chain = otp.CompositeSender([_Refusing("a", "no credit"), _Refusing("b", "bad number")])
-        result = chain.send(PHONE, "m")
+        result = chain.send(EMAIL, "m")
         assert result.ok is False
         assert result.provider == "composite"
         assert "a: no credit" in result.error
         assert "b: bad number" in result.error
 
     def test_an_empty_chain_is_a_refusal_not_a_crash(self):
-        result = otp.CompositeSender([]).send(PHONE, "m")
+        result = otp.CompositeSender([]).send(EMAIL, "m")
         assert result.ok is False
         assert "no senders" in result.error
 
@@ -322,11 +346,20 @@ class TestCompositeSender:
         """A primary that is failing is a bill and a latency somebody should
         hear about before the secondary fails too."""
         with caplog.at_level(logging.WARNING, logger="kolabo.auth.otp"):
-            otp.CompositeSender([_Refusing("first"), _Accepting("second")]).send(PHONE, "m")
+            otp.CompositeSender([_Refusing("first"), _Accepting("second")]).send(EMAIL, "m")
         assert any("first" in rec.getMessage() and "second" in rec.getMessage() for rec in caplog.records)
 
 
 class TestRoutingSender:
+    """Kept green over code nothing calls, and that is deliberate.
+
+    RoutingSender routes on the dialling prefix of a phone number and codes go
+    to mailboxes now, so nothing in the application builds one. It is kept for
+    the day an SMS channel returns (see its docstring), and a class that is
+    kept without tests is a class that has quietly rotted by the time anybody
+    wants it. These still use phone numbers because that is what it routes on.
+    """
+
     def test_routes_by_dialling_prefix(self):
         benin, ghana, rest = _Accepting("benin"), _Accepting("ghana"), _Accepting("rest")
         router = otp.RoutingSender({"+229": benin, "+233": ghana}, default=rest)
@@ -353,11 +386,132 @@ class TestRoutingSender:
         chain as the default so every number has a fallback."""
         primary, backup = _Refusing("primary"), _Accepting("backup")
         router = otp.RoutingSender({}, default=otp.CompositeSender([primary, backup]))
-        result = router.send(PHONE, "m")
+        result = router.send(EMAIL, "m")
         assert result.ok is True
         assert result.provider == "backup"
 
 
-def test_the_default_sender_is_the_logging_one_until_a_provider_exists():
-    assert isinstance(otp.build_default_sender(), otp.LoggingSender)
-    assert otp.default_sender.name == "logging"
+class TestTheDefaultSender:
+    """Which sender a deployment gets, and the rule that decides.
+
+    The rule is notifications.email.build_default_email_sender's and is asked
+    rather than restated, so there is one definition of "configured" rather
+    than two that can disagree about a half-filled .env.
+    """
+
+    def test_it_is_the_logging_one_until_mail_is_configured(self):
+        """A laptop and the test suite have no mail credentials and must keep
+        printing the code, not acquire a mail client that fails every send."""
+        assert isinstance(otp.build_default_sender(), otp.LoggingSender)
+        assert otp.default_sender.name == "logging"
+
+    def test_a_configured_deployment_gets_the_email_adapter(self, monkeypatch):
+        """Both a key and a from address, or neither counts. Set through the
+        settings object the email module actually reads."""
+        from app.modules.notifications import email as email_module
+
+        monkeypatch.setattr(email_module.settings, "resend_api_key", "re_test", raising=False)
+        monkeypatch.setattr(email_module.settings, "mail_from", "no-reply@kolabo.test", raising=False)
+        sender = otp.build_default_sender()
+        assert isinstance(sender, otp.EmailSender)
+        assert sender.name == "email"
+        assert isinstance(sender.mail, email_module.ResendSender)
+
+    def test_a_key_with_no_from_address_is_still_unconfigured(self, monkeypatch):
+        """An unconfigured provider is ABSENT rather than present and broken.
+        Half a configuration would accept every send and fail every one of
+        them somewhere only the logs can see."""
+        from app.modules.notifications import email as email_module
+
+        monkeypatch.setattr(email_module.settings, "resend_api_key", "re_test", raising=False)
+        monkeypatch.setattr(email_module.settings, "mail_from", "", raising=False)
+        assert isinstance(otp.build_default_sender(), otp.LoggingSender)
+
+
+class TestEmailSender:
+    """The adapter from this module's Sender onto the notifications one."""
+
+    def test_it_hands_the_target_and_the_body_to_the_mail_provider(self):
+        from app.modules.notifications import email as email_module
+
+        mail = email_module.LoggingEmailSender()
+        result = otp.EmailSender(mail).send(EMAIL, "Subject line\n\nbody")
+        assert result == otp.SendResult(ok=True, provider="email")
+        assert mail.outbox == [
+            {"target": EMAIL, "type": "security", "message": "Subject line\n\nbody"}
+        ]
+
+    def test_a_mail_provider_that_raises_is_still_a_failed_result(self):
+        """The one failure it CAN see. notifications.email.Sender.send returns
+        None and ResendSender swallows HTTP errors, so a refusal is invisible
+        to this adapter and is reported as ok — which EmailSender's docstring
+        says out loud. An exception is not, because deliver catches it."""
+
+        class _Exploding:
+            def send(self, target, type, message):
+                raise RuntimeError("no credentials")
+
+        result = otp.deliver(otp.EmailSender(_Exploding()), EMAIL, "m")
+        assert result.ok is False
+        assert "RuntimeError" in result.error
+
+
+class TestTheMessageItself:
+    """Subject and body, in the language the account's country defaults to."""
+
+    def test_french_for_a_francophone_market(self):
+        message = otp.verification_message("BJ", "123456", 10)
+        assert message.startswith("Votre code de vérification Kolabo\n\n")
+        assert "123456" in message
+        assert "10 minutes" in message
+
+    def test_english_for_an_anglophone_market(self):
+        message = otp.verification_message("GH", "123456", 10)
+        assert message.startswith("Your Kolabo verification code\n\n")
+
+    def test_the_reset_message_is_treated_the_same_way(self):
+        assert otp.password_reset_message("CI", "654321", 15).startswith(
+            "Votre code de réinitialisation Kolabo\n\n"
+        )
+        assert otp.password_reset_message("NG", "654321", 15).startswith(
+            "Your Kolabo password reset code\n\n"
+        )
+
+    def test_an_unknown_country_gets_the_default_language_rather_than_a_crash(self):
+        """default_language already falls back for an unconfigured country; this
+        asserts the template lookup does too, because a KeyError here would be
+        a 500 on somebody's signup."""
+        assert otp.verification_message(None, "123456", 10).startswith("Votre code")
+        assert otp.verification_message("ZZ", "123456", 10).startswith("Votre code")
+
+    def test_the_first_line_is_what_the_mail_module_will_use_as_a_subject(self):
+        """The whole subject mechanism, asserted across the seam rather than
+        assumed: otp composes the message, notifications/email.py reads its
+        first line. Two modules agreeing by convention is worth one test."""
+        from app.modules.notifications.email import _subject
+
+        assert _subject(otp.verification_message("GH", "123456", 10)) == (
+            "Your Kolabo verification code"
+        )
+        assert _subject(otp.password_reset_message("BJ", "654321", 15)) == (
+            "Votre code de réinitialisation Kolabo"
+        )
+
+    def test_nothing_in_a_credential_email_looks_like_marketing(self):
+        """No unsubscribe link on a message somebody needs in order to sign in,
+        no tracking, no HTML. A credential email that carries any of those is
+        harder to tell from a phishing attempt."""
+        for message in (
+            otp.verification_message("BJ", "123456", 10),
+            otp.verification_message("GH", "123456", 10),
+            otp.password_reset_message("BJ", "654321", 15),
+            otp.password_reset_message("GH", "654321", 15),
+        ):
+            lowered = message.lower()
+            assert "http" not in lowered
+            assert "unsubscribe" not in lowered
+            assert "désabonner" not in lowered
+            assert "<" not in message
+            # No em dash and no en dash in anything a user reads.
+            assert "—" not in message
+            assert "–" not in message

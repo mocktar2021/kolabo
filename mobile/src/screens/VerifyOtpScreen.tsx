@@ -9,7 +9,7 @@ import type { AuthScreenProps } from "../navigation/types";
 export default function VerifyOtpScreen({ route }: AuthScreenProps<"VerifyOtp">) {
   const { t } = useTranslation();
   const { login } = useAuth();
-  const { phone } = route.params;
+  const { email } = route.params;
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export default function VerifyOtpScreen({ route }: AuthScreenProps<"VerifyOtp">)
     try {
       const res = await api<TokenResponse>("/auth/verify-otp", {
         method: "POST",
-        body: { phone, code },
+        body: { email, code },
       });
       // The verify response's role is the backend truth. Setting the token
       // flips the root navigator into the app.

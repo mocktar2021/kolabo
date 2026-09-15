@@ -179,7 +179,27 @@ def disburse(
         # path, the tests and any uncovered country behave exactly as before.
         if legacy_provider is not None:
             user = db.query(User).filter(User.id == recipient_user_id).first()
-            ref = legacy_provider.payout(user.phone if user else "", amount, escrow.currency)
+            # WHERE THE MONEY WOULD GO, as a string the mock can record.
+            #
+            # This was `user.phone if user else ""`, which guarded against a
+            # missing USER and not against a missing NUMBER. users.phone is
+            # nullable since the identity flip, so a creator who signed up
+            # after it has None there and MobileMoneyProvider.payout is typed
+            # `target: str`.
+            #
+            # The payout method's phone comes FIRST, and that is a correction
+            # rather than a fallback reordering: method.phone is the mobile
+            # money wallet the creator actually nominated, which is what a
+            # payout goes to, while users.phone was only ever the number they
+            # logged in with and had no reason to be the same one. The real
+            # gateway path below has always used method.phone; this legacy leg
+            # simply never caught up.
+            #
+            # Then the account's number for a pre-flip creator with no method
+            # on file, then an empty string, so a provider interface expecting
+            # a string never receives None.
+            target = (method.phone if method else None) or (user.phone if user else None) or ""
+            ref = legacy_provider.payout(target, amount, escrow.currency)
             _mark(payout, gmodels.PAYOUT_SENT, provider="mock", ref=ref)
             return ref
         _mark(payout, gmodels.PAYOUT_NO_METHOD, provider="none", reason="no_gateway_for_country")

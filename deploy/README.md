@@ -29,7 +29,7 @@ Caddy obtains and renews the certificates from Let's Encrypt automatically — n
 | `JWT_SECRET` | `change-me` | Signs every session token. Anyone who has read this repo can forge a token for any account, **including an admin**. |
 | `DOCUMENT_ENCRYPTION_KEY` | a real Fernet key | Encrypts verification documents at rest. Unchanged, the encryption is decorative. |
 | `POSTGRES_PASSWORD` | `kolabo` | Not published to the host here, but it is the credential for every user and payment row. |
-| `ADMIN_PHONES` | empty | Empty means **nobody** is an admin. Safe by default, but you cannot resolve a dispute or trigger a sweep by hand until it is set. |
+| `ADMIN_EMAILS` | empty | Empty means **nobody** is an admin. Safe by default, but you cannot resolve a dispute or trigger a sweep by hand until it is set. It holds the email addresses those accounts registered with; it was called `ADMIN_PHONES` before the email address became the login identity, and an `.env` still carrying the old name is **ignored rather than rejected**, which reads as an empty list and revokes every admin at the next boot. |
 
 Generate them:
 

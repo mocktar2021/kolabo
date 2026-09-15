@@ -200,7 +200,22 @@ def fund_escrow(db: Session, business_user_id: str, contract_id: str) -> dict:
 
     contract = assert_fundable(db, business_user_id, contract_id)
     business = db.query(User).filter(User.id == business_user_id).first()
-    fund_ref = payment_provider.collect(business.phone, contract.rate_amount, contract.rate_currency)
+    # WHO WE ASKED FOR MONEY, as a string the mock can record. This read
+    # business.phone, which is None for every account created since
+    # registration stopped collecting a number, and MobileMoneyProvider.collect
+    # is typed `target: str`.
+    #
+    # The address first, because the address is what an account IS now and is
+    # the only value guaranteed to be there. The phone second, so a row that
+    # predates the flip still records the number it always did. An empty string
+    # last, so that a row somehow carrying neither is a blank field in a mock's
+    # list rather than a None travelling into a provider interface.
+    #
+    # This path only runs when NO real gateway is configured (see the refusal
+    # above), which means the tests and a keyless laptop. Nothing real reads
+    # this value; what matters is that it is a string.
+    target = business.email or business.phone or ""
+    fund_ref = payment_provider.collect(target, contract.rate_amount, contract.rate_currency)
     escrow = hold_funds(db, contract_id=contract.id, provider_name="mock", fund_ref=fund_ref)
     db.commit()
     db.refresh(escrow)

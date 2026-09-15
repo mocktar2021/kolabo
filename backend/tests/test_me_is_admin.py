@@ -39,9 +39,9 @@ def db():
         session.close()
 
 
-def _user(db, phone, is_admin=False):
+def _user(db, email, is_admin=False):
     user = User(
-        phone=phone,
+        email=email,
         password_hash="x",
         country_code="BJ",
         role="business",
@@ -55,28 +55,39 @@ def _user(db, phone, is_admin=False):
 
 
 def test_an_ordinary_account_is_not_an_admin(db):
-    user = _user(db, "+22990002001")
+    user = _user(db, "ordinary@example.com")
     assert account.get_me(db, user.id)["is_admin"] is False
 
 
 def test_an_admin_account_says_so(db):
-    user = _user(db, "+22990002002", is_admin=True)
+    user = _user(db, "admin@example.com", is_admin=True)
     assert account.get_me(db, user.id)["is_admin"] is True
 
 
 def test_the_field_survives_the_response_model(db):
     """MeOut is what the router serialises through; a field the schema drops
     would leave the frontend exactly as blind as it was before."""
-    user = _user(db, "+22990002003", is_admin=True)
+    user = _user(db, "schema@example.com", is_admin=True)
     assert MeOut(**account.get_me(db, user.id)).is_admin is True
+
+
+def test_the_response_model_accepts_an_account_with_no_phone(db):
+    """Every account created since registration stopped asking for a number has
+    a null phone, so MeOut.phone being optional is not a nicety: a required
+    field here would turn /auth/me into a 500 for every new user."""
+    user = _user(db, "nophone@example.com")
+    body = account.get_me(db, user.id)
+    assert body["phone"] is None
+    assert MeOut(**body).phone is None
 
 
 def test_admin_is_not_settable_through_the_account_patch(db):
     """THE RULE THAT MATTERS MORE THAN THE FIELD.
 
     A grant endpoint is deliberately absent — auth.admins reconciles the flag
-    from deployment configuration on every boot, because that is the one
-    channel an attacker who has reached the API does not automatically have.
+    from a configured list of email addresses on every boot, because
+    deployment configuration is the one channel an attacker who has reached the
+    API does not automatically have.
     Pydantic ignores unknown keys rather than refusing them, so a client
     posting is_admin gets a 200 and no privilege; asserted here so that a
     later change to model_config cannot quietly open a door.

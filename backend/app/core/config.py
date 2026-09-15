@@ -109,40 +109,39 @@ class Settings(BaseSettings):
     #
     # Short on purpose, and shorter than the registration OTP's ten minutes is
     # not the point — what this window really bounds is how long a borrowed or
-    # briefly unattended handset is an account takeover. The code arrives by
-    # SMS on the phone that IS the login identity, so the SMS itself is the
-    # credential, and a credential sitting readable on a lock screen should
-    # stop working quickly. A setting rather than a constant because support
-    # will tell us whether fifteen minutes is enough for a real person on a
-    # slow network.
+    # briefly unattended session is an account takeover. The code arrives by
+    # email at the address that IS the login identity, so the message itself is
+    # the credential, and a credential sitting readable in an inbox somebody
+    # else may already be signed into should stop working quickly. A setting
+    # rather than a constant because support will tell us whether fifteen
+    # minutes is enough for a real person on a slow network.
     password_reset_ttl_minutes: int = 15
-    # How many live (unconsumed, unexpired) reset codes one phone may hold
-    # within an hour. Every request sends an SMS and every SMS costs money, so
-    # an uncapped endpoint is a bill that anyone on the internet can run up on
-    # us by looping over a phone number. It also caps how many valid codes are
-    # in flight for one account at once.
+    # How many live (unconsumed, unexpired) reset codes one account may hold
+    # within an hour. Every request sends a message and every message costs
+    # something, so an uncapped endpoint is a bill that anyone on the internet
+    # can run up on us by looping over one address. It also caps how many valid
+    # codes are in flight for one account at once.
     password_reset_max_per_hour: int = 3
-    # How many live (unconsumed, unexpired) verification codes one phone may
+    # How many live (unconsumed, unexpired) verification codes one account may
     # hold within an hour.
     #
     # THE REGISTRATION OTP HAD NO CEILING AT ALL, which is the gap this closes.
-    # POST /auth/register re-sends the code when the number already has an
+    # POST /auth/register re-sends the code when the address already has an
     # unverified row, so it is the resend endpoint as well as the signup one,
-    # and a loop over a single phone number was an unbounded SMS bill anybody
-    # on the internet could run up on us. SMS is the most expensive thing this
-    # product does per request in the launch markets.
+    # and a loop over a single address was an unbounded send bill anybody on
+    # the internet could run up on us.
     #
     # Same number and same shape as password_reset_max_per_hour above,
     # deliberately: there is ONE rule about how many codes may be in flight to
-    # one handset, and a second mechanism with its own arithmetic would be a
+    # one mailbox, and a second mechanism with its own arithmetic would be a
     # second thing to reason about the day either number changes.
     otp_max_per_hour: int = 3
     # How many live verification codes the WHOLE PLATFORM may hold at once.
     #
     # THE CAP ABOVE IS NOT A BILL CAP, and that is the hole this closes. It
-    # counts codes per phone, so cycling fresh numbers costs one SMS each and
-    # the total stays unbounded: three per number times as many numbers as an
-    # attacker cares to type. Nothing anywhere counted the total.
+    # counts codes per account, so cycling fresh addresses costs one send each
+    # and the total stays unbounded: three per address times as many addresses
+    # as an attacker cares to type. Nothing anywhere counted the total.
     #
     # A BACKSTOP, NOT A QUEUE. A global ceiling is itself a denial of service —
     # whoever reaches it locks out every legitimate signup until the codes
@@ -164,21 +163,28 @@ class Settings(BaseSettings):
     # same kind of thing. With a ten-minute TTL that makes both of them really
     # "codes in flight", which is the quantity that maps to money spent.
     #
-    # NOT applied to password reset. That endpoint only ever sends to a number
-    # that already has an account, so its bill is bounded by the user table
-    # rather than by the attacker's imagination — and a global cap there would
+    # NOT applied to password reset. That endpoint only ever sends to an
+    # address that already has an account, so its bill is bounded by the users
+    # table rather than by the attacker's imagination — and a global cap would
     # let one attacker lock every real user out of recovering their account,
     # which is a worse outcome than the one it would prevent.
     otp_global_max_per_hour: int = 500
-    # Comma separated phone numbers of the people who may use the admin
+    # Comma separated email addresses of the people who may use the admin
     # surface. THIS IS THE ADMIN LIST, and the database is made to agree with
-    # it on every boot — listed numbers are granted, unlisted holders are
+    # it on every boot — listed addresses are granted, unlisted holders are
     # revoked. See app.modules.auth.admins for why deployment config rather
     # than a flag somebody sets through the UI.
     #
+    # ADDRESSES RATHER THAN PHONE NUMBERS SINCE THE IDENTITY FLIP, and the
+    # rename is the safety half of that change. Left reading admin_phones while
+    # auth.admins matched on User.email, the list would have matched nothing,
+    # granted nobody, and then the revoke half would have cleared is_admin on
+    # every existing admin at the next boot — silently, with no error anywhere,
+    # and discovered only when a disputed escrow needed resolving.
+    #
     # Empty by default, and empty means NOBODY. A deployment that forgot to
     # configure this locks the admin surface instead of opening it.
-    admin_phones: str = ""
+    admin_emails: str = ""
     # Comma separated list of origins allowed to call the API from a browser
     # (the web app in dev and, later, the deployed web origins). Override via
     # the CORS_ORIGINS environment variable.

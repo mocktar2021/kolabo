@@ -19,6 +19,7 @@ from app.modules.auth.models import ReferralCredit, User
 from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.deliverables import models as deliverables
+from app.modules.payments import gateway_models
 from app.modules.payments import provider as provider_module
 from app.modules.payments import service as pay_service
 from app.modules.payments import models as pay_models
@@ -68,11 +69,19 @@ def _dispute(client, escrow_id, user_id):
     )
 
 
-def _signed_contract(client, signed=True, amount=10000):
+def _signed_contract(client, signed=True, amount=10000, biz_email="brand@example.com",
+                     biz_phone=None, inf_phone=None):
+    """A brand, a creator and a contract between them.
+
+    NEITHER PARTY HAS A PHONE NUMBER BY DEFAULT, which is what an account
+    created since registration stopped asking for one looks like. The two
+    fields are here so the pair of tests below can seed a pre-flip account and
+    show that both shapes still move money.
+    """
     db = client.session_factory()
     try:
-        biz = User(phone="+22990000001", password_hash="x", country_code="BJ", role="business", is_verified=True)
-        inf = User(phone="+22990000002", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
+        biz = User(email=biz_email, phone=biz_phone, password_hash="x", country_code="BJ", role="business", is_verified=True)
+        inf = User(email="creator@example.com", phone=inf_phone, password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         c = contracts.Contract(
             campaign_id="camp-1", proposal_id="prop-1", business_user_id=biz.id, influencer_user_id=inf.id,
@@ -100,11 +109,11 @@ def _another_signed_contract(client, business_user_id, influencer_user_id, amoun
         db.close()
 
 
-def _referred_by(client, user_id, country="BJ", phone="+22990000009"):
+def _referred_by(client, user_id, country="BJ", email="referrer@example.com"):
     """Give an existing user a referrer, as a signup with a code would have."""
     db = client.session_factory()
     try:
-        referrer = User(phone=phone, password_hash="x", country_code=country, role="influencer", is_verified=True)
+        referrer = User(email=email, password_hash="x", country_code=country, role="influencer", is_verified=True)
         db.add(referrer); db.commit(); db.refresh(referrer)
         user = db.query(User).filter(User.id == user_id).first()
         user.referred_by_user_id = referrer.id
@@ -181,6 +190,33 @@ def test_fund_holds_money_and_calls_provider(client):
     assert pay_service.payment_provider.collections[0]["amount"] == 10000
 
 
+def test_funding_names_the_payer_by_address_and_never_by_None(client):
+    """The mock path's half of the phone-is-nullable problem.
+
+    fund_escrow passed business.phone into MobileMoneyProvider.collect, which
+    is typed `target: str`. That column is None for every account created since
+    registration stopped asking, so the mock would have filed None as the payer
+    — harmless in a list, and exactly the shape of mistake that is not harmless
+    in the gateway path beside it. The address is what an account IS now, so it
+    is what identifies the payer.
+    """
+    biz, _inf, cid = _signed_contract(client)
+    assert client.post(
+        "/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)
+    ).status_code == 201
+    assert pay_service.payment_provider.collections[0]["target"] == "brand@example.com"
+
+
+def test_a_pre_flip_brand_with_no_address_still_names_its_number(client):
+    """An account that registered before the flip has a number and no address,
+    and must not become a blank payer on the way through."""
+    biz, _inf, cid = _signed_contract(client, biz_email=None, biz_phone="+22990000001")
+    assert client.post(
+        "/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(biz)
+    ).status_code == 201
+    assert pay_service.payment_provider.collections[0]["target"] == "+22990000001"
+
+
 def test_fund_requires_ownership_and_no_double_fund(client):
     biz, inf, cid = _signed_contract(client)
     assert client.post("/payments/escrow/fund", json={"contract_id": cid}, headers=_headers(inf)).status_code == 403
@@ -213,6 +249,62 @@ def test_release_deducts_commission(client):
     # 15 percent of 10000 is 1500 commission; payout is 8500.
     assert body["commission_amount"] == 1500
     assert pay_service.payment_provider.payouts[0]["amount"] == 8500
+
+
+def _payout_method(client, user_id, phone="+22996000000"):
+    """The wallet a creator actually nominated, which is where a payout goes.
+
+    Written straight to the table rather than through PUT /payments/payout-method:
+    this file mounts only the escrow router, and what is under test is where the
+    money is addressed, not the form that collects it.
+    """
+    db = client.session_factory()
+    try:
+        db.add(
+            gateway_models.PayoutMethod(
+                user_id=user_id, country="BJ", mode="mtn_open", phone=phone
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_a_legacy_payout_goes_to_the_nominated_wallet_and_never_to_None(client):
+    """The third place the account phone was read, and the one that was already
+    slightly wrong before the flip made it dangerous.
+
+    payouts.disburse's legacy branch sent `user.phone if user else ""`, which
+    guarded against a missing USER and not against a missing NUMBER. Since
+    registration stopped collecting one that column is None for every creator
+    who signed up after, and MobileMoneyProvider.payout is typed `target: str`.
+
+    The correction is not only the None: method.phone is the mobile money
+    wallet the creator nominated, and users.phone was only ever the number they
+    happened to log in with. The real gateway path has always used the wallet;
+    this leg simply never caught up.
+    """
+    biz, inf, cid = _signed_contract(client)
+    _payout_method(client, inf)
+    escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
+    assert client.post(
+        f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)
+    ).status_code == 200
+    assert pay_service.payment_provider.payouts[0]["target"] == "+22996000000"
+
+
+def test_a_creator_with_no_wallet_and_no_number_is_a_blank_target_not_a_None(client):
+    """Nothing real reads this value — the branch only runs where no gateway is
+    configured — but a None here is the same bug as a None in the gateway path
+    beside it, and the type says str."""
+    biz, inf, cid = _signed_contract(client)
+    escrow = _fund(client, biz, cid)
+    _submitted(client, cid, inf)
+    assert client.post(
+        f"/payments/escrow/{escrow['id']}/release", headers=_headers(biz)
+    ).status_code == 200
+    assert pay_service.payment_provider.payouts[0]["target"] == ""
 
 
 def _brief(client, business_user_id, campaign_id="camp-1"):

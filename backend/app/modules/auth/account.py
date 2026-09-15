@@ -1,27 +1,32 @@
 """The account a user owns: reading it, changing it, and getting back into it.
 
 Two jobs live here and they are the same job seen from either side of the
-door. A signed-in user changing their phone or their password is account
-settings; a locked-out user proving they still hold the phone is password
-reset. Both turn on one fact — in these markets THE PHONE NUMBER IS THE LOGIN
-IDENTITY, because email is rare, often shared, and frequently abandoned — so
+door. A signed-in user changing their address or their password is account
+settings; a locked-out user proving they still hold the mailbox is password
+reset. Both turn on one fact — THE EMAIL ADDRESS IS THE LOGIN IDENTITY — so
 both are written down in one place instead of split between a settings module
 and a recovery one, where the rule would have to be restated and could drift.
 
-Why there was no way back in before this. A user who forgot their password was
-locked out permanently: nothing in the codebase read password_reset_tokens
-except the delete-account sweep that cleaned it up, so the table existed and
-the door did not. In markets where the phone is the account and numbers change
-with SIM prices, that is not an edge case, it is attrition.
+THAT FACT USED TO BE THE PHONE NUMBER, and the whole of this module was written
+around it. The argument then was that email is rare, often shared and
+frequently abandoned in these markets. What settled it the other way is that
+no SMS provider was ever contracted, so the phone half was a channel that
+existed on paper only, while a mailbox is reachable in every one of the seven
+countries for the price of an HTTP request.
+
+Why there was no way back in before any of this. A user who forgot their
+password was locked out permanently: nothing in the codebase read
+password_reset_tokens except the delete-account sweep that cleaned it up, so
+the table existed and the door did not.
 
 A separate module from service.py, which is about registration, verification
 and login. The dependency runs one way — router -> account -> otp, models —
 and the OTP MACHINERY IS REUSED RATHER THAN REBUILT. There is exactly one way
-this system puts a numeric code on a phone (app.modules.auth.otp), and a
-second one would mean a second code generator, a second expiry rule and a
-second sender to swap the day a real SMS provider is contracted. The reset
-code is otp.generate_code() and the delivery is otp.default_sender, the same
-two calls registration makes.
+this system puts a numeric code in front of a person (app.modules.auth.otp),
+and a second one would mean a second code generator, a second expiry rule and
+a second sender to swap the day the delivery channel changes again. The reset
+code is otp.generate_code(), the body is otp.password_reset_message() and the
+delivery is otp.default_sender: the same three calls registration makes.
 """
 import logging
 from datetime import timedelta
@@ -49,23 +54,25 @@ _sender = otp.default_sender
 
 _log = logging.getLogger("kolabo.auth.account")
 
-# One body, one status, for a phone we know and a phone we do not. Built once
-# so the two return paths cannot drift into two different sentences — which is
-# the entire attack this endpoint is written to defeat.
-GENERIC_RESET_RESPONSE = {"message": "If the phone is registered, a reset code has been sent"}
+# One body, one status, for an address we know and an address we do not. Built
+# once so the two return paths cannot drift into two different sentences —
+# which is the entire attack this endpoint is written to defeat.
+GENERIC_RESET_RESPONSE = {
+    "message": "If the email address is registered, a reset code has been sent"
+}
 
 # Said the same way for a wrong code, an expired code, an already-used code and
-# a phone that has never asked for one. Four different failures, one sentence:
-# telling them apart would let a caller walk the difference backwards into
-# "this number is registered and has an outstanding reset".
+# an address that has never asked for one. Four different failures, one
+# sentence: telling them apart would let a caller walk the difference backwards
+# into "this address is registered and has an outstanding reset".
 INVALID_CODE_DETAIL = "Reset code is invalid or expired"
 
 
 def _own_identity(db: Session, user_id: str) -> tuple[str | None, str | None]:
     """The caller's own name and picture, in ONE query.
 
-    Why this is on the account response at all. The users table holds a phone
-    number, a role and a country, and not one of those is something a person
+    Why this is on the account response at all. The users table holds an email
+    address, a role and a country, and not one of those is something a person
     recognises themselves by — so the web nav had nothing to draw the
     signed-in user with and painted a gradient glyph instead. The alternative
     was a second request on every page to decorate a 28px button, which is a
@@ -90,9 +97,9 @@ def _own_identity(db: Session, user_id: str) -> tuple[str | None, str | None]:
     counterparty_avatar_url for creators only.
 
     Neither profile means two nulls, and they stay null. It must never fall
-    back to the users table: the only human-readable column there is the phone
-    number, and a phone number is not a display name — it is the credential
-    this whole module exists to protect.
+    back to the users table: the only human-readable column there is the email
+    address, and an address is not a display name — it is the credential this
+    whole module exists to protect.
     """
     row = (
         db.query(
@@ -143,11 +150,12 @@ def _me_out(db: Session, user: User) -> dict:
     display_name, avatar_url = _own_identity(db, user.id)
     return {
         "id": user.id,
+        # Null for everybody who signed up after the flip, and that is a real
+        # answer rather than a gap: registration stopped asking. It is here so
+        # a settings screen can show what is on file and offer to fill it in.
         "phone": user.phone,
-        # Null for almost everybody, and that is a real answer rather than a
-        # gap: an email is optional on this platform and the phone is what an
-        # account is. It is here so a settings screen can show what is on file,
-        # which is the only way somebody who mistyped it can find out.
+        # What the account IS. Present for every account created since the
+        # flip; null only on rows that predate it.
         "email": user.email,
         "role": user.role,
         "country_code": user.country_code,
@@ -204,26 +212,27 @@ def get_me(db: Session, user_id: str) -> dict:
 
 
 def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
-    """Change the phone, the email, the password — at the price of the password.
+    """Change the email, the phone, the password — at the price of the password.
 
-    THE PHONE IS THE LOGIN IDENTITY, so changing it must cost the password.
+    THE EMAIL IS THE LOGIN IDENTITY, so changing it must cost the password.
     Anyone holding a live bearer token could otherwise point the account at a
-    handset they own and then reset the password to it at leisure, which turns
-    a borrowed phone into a permanent takeover of somebody's livelihood. The
-    bearer token says a session exists; only the current password says the
-    owner is the one asking.
+    mailbox they own and then reset the password from it at leisure, which
+    turns a borrowed session into a permanent takeover of somebody's
+    livelihood. The bearer token says a session exists; only the current
+    password says the owner is the one asking.
 
-    Phone numbers really do change here — a better tariff, a lost handset, a
-    move between countries — so this has to exist rather than being a support
-    ticket. What it must not become is a way to take somebody else's number.
+    Addresses really do change — a job, a provider closing, a name change — so
+    this has to exist rather than being a support ticket. What it must not
+    become is a way to take somebody else's mailbox.
 
-    THE EMAIL IS NOT THE LOGIN IDENTITY AND COSTS THE PASSWORD ANYWAY. Nothing
-    signs in with it and no reset code is sent to it today — that move is a
-    later change, deliberately not this one. What makes it worth the same price
-    now is that whatever address is sitting in this column on the day the
-    identity does move becomes the way back into the account, and an attacker
-    holding a borrowed session would only have to have set it early and waited.
-    A credential you will need tomorrow is a credential today.
+    THE PHONE IS NOT THE LOGIN IDENTITY ANY MORE AND STILL COSTS THE PASSWORD.
+    It is no longer what anybody signs in with and no code is sent to it, so
+    the takeover argument above does not apply to it. It keeps the price for a
+    plainer reason: this patch is the only way an account ever gets a number at
+    all now that registration does not ask, that number is what a business's
+    FedaPay checkout is started against and what support calls back on, and a
+    field that moves money and identifies a caller is not one a stolen session
+    should be able to rewrite quietly.
 
     It is normalised through core.emails before it is compared to anything, so
     the value tested for uniqueness is the value that would be stored. Doing it
@@ -234,7 +243,8 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     NOTHING HERE CAN TOUCH is_admin. AccountPatch has four fields and that is
     not one of them, and pydantic drops unknown keys rather than refusing
     them, so a client posting it gets a 200 and no privilege. The flag comes
-    from deployment configuration only — see app.modules.auth.admins.
+    from deployment configuration only — see app.modules.auth.admins, which
+    now matches on the address rather than on the number.
     """
     user = _require_user(db, user_id)
 
@@ -262,8 +272,15 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     if new_phone is not None and new_phone != user.phone:
         # Any row at all, verified or not. An unverified registration still
         # holds the number, and letting a verified account take it would let
-        # somebody who half-signed-up be quietly displaced — and would then
-        # collide on the unique index anyway, turning a clear 409 into a 500.
+        # somebody who half-signed-up be quietly displaced.
+        #
+        # THERE IS NO UNIQUE INDEX UNDERNEATH THIS ANY MORE. f3c0a84e17d9
+        # dropped ix_users_phone when the phone stopped being an identity, so
+        # this query is now the whole of the rule rather than a friendlier
+        # spelling of a constraint the database would also have enforced. Two
+        # requests racing through the gap between this SELECT and the commit
+        # below would both succeed. That is an acceptable trade for a field
+        # nothing authenticates with, and the migration says why.
         taken = db.query(User).filter(User.phone == new_phone, User.id != user.id).first()
         if taken is not None:
             raise AppError(
@@ -286,12 +303,14 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
                 detail="That email address does not look right. Check it and try again.",
             )
         if email != user.email:
-            # Any row at all, verified or not, exactly as the phone above and
-            # for the same two reasons: an unverified registration still holds
-            # the address it claimed, and a second account taking it would
-            # collide on the unique index anyway, turning a clear 409 into a
-            # 500. Asked only after the password check, so this cannot be used
-            # as a "does this person have a Kolabo account" lookup.
+            # Any row at all, verified or not: an unverified registration still
+            # holds the address it claimed, and a second account taking it
+            # would collide on ix_users_email anyway, turning a clear 409 into
+            # a 500 on the write that found out. Unlike the phone above, this
+            # one does still have a constraint behind it, and it is the one
+            # that needs it. Asked only after the password check, so this
+            # cannot be used as a "does this person have a Kolabo account"
+            # lookup.
             taken = db.query(User).filter(User.email == email, User.id != user.id).first()
             if taken is not None:
                 raise AppError(
@@ -334,41 +353,48 @@ def _live_reset_tokens(db: Session, user: User, now):
 def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
     """Send a reset code, and say the same thing either way.
 
-    THE RESPONSE IS IDENTICAL WHETHER OR NOT THE PHONE IS REGISTERED. Same
+    THE RESPONSE IS IDENTICAL WHETHER OR NOT THE ADDRESS IS REGISTERED. Same
     202, same body, same wording. This is the whole security property of the
     endpoint and it is not a nicety: an endpoint that answers differently for
-    a known number is a free "is this person on Kolabo?" oracle, and anyone
-    with a list of numbers can run it. In these markets that is a real
+    a known address is a free "is this person on Kolabo?" oracle, and anyone
+    with a list of addresses can run it. In these markets that is a real
     privacy leak with real consequences — it discloses which creators and
     which businesses are earning on the platform to whoever asks, including
     people the user is specifically trying not to be found by. There is no
     product value on the other side of the trade: a user who mistyped their
-    own number is helped by "check your messages", not by being told their
-    number is unknown.
+    own address is helped by "check your inbox", not by being told their
+    address is unknown.
 
     So: no 404 here, ever, and no timing shortcut that skips work for an
-    unknown number in a way a stopwatch could read as an answer.
+    unknown address in a way a stopwatch could read as an answer.
+
+    THE ADDRESS IS NORMALISED FIRST, which is not a detail on this endpoint. A
+    lookup that skipped it would answer the generic 202 to somebody who typed
+    their own address with a capital letter, send nothing, and leave them
+    waiting for a code that is never coming, with no way to tell that from a
+    working reset. Silence is the failure mode this endpoint is built out of,
+    so the one thing it must get right is finding the row.
     """
-    user = db.query(User).filter(User.phone == payload.phone).first()
+    user = db.query(User).filter(User.email == normalized_email(payload.email)).first()
     if user is None:
         return GENERIC_RESET_RESPONSE
 
     now = utcnow()
     if len(_live_reset_tokens(db, user, now)) >= settings.password_reset_max_per_hour:
         # THE ONE PLACE THIS ENDPOINT STOPS BEING SILENT, and the trade is
-        # deliberate. Every request sends an SMS and every SMS costs money, so
-        # an uncapped endpoint is a bill a stranger can run up on us by
-        # looping — and swallowing the limit behind a 202 would hide that from
-        # us while still spending nothing, leaving the abuse invisible and a
-        # genuinely rate-limited user staring at "check your messages" for a
+        # deliberate. Every request sends a message and every message costs
+        # something, so an uncapped endpoint is a bill a stranger can run up on
+        # us by looping — and swallowing the limit behind a 202 would hide that
+        # from us while still spending nothing, leaving the abuse invisible and
+        # a genuinely rate-limited user staring at "check your inbox" for a
         # message that will never arrive.
         #
         # It does narrow the oracle above: four requests distinguish a
-        # registered number from an unknown one. That costs the attacker three
-        # SMS-priced requests per number and is capped by the limit itself,
-        # where the silent alternative costs them nothing and tells us
-        # nothing. Worth revisiting the day there is a per-phone attempt
-        # counter that does not itself need a table of unauthenticated input.
+        # registered address from an unknown one. That costs the attacker three
+        # priced requests per address and is capped by the limit itself, where
+        # the silent alternative costs them nothing and tells us nothing. Worth
+        # revisiting the day there is a per-address attempt counter that does
+        # not itself need a table of unauthenticated input.
         raise AppError(
             status.HTTP_429_TOO_MANY_REQUESTS,
             code="auth_reset_too_many",
@@ -378,20 +404,28 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
     token = PasswordResetToken(
         user_id=user.id,
         # The registration OTP generator, not a second one. Six digits because
-        # this is read off a lock screen and retyped, which the previous
+        # this is read off a screen and retyped, which the previous
         # 43-character urlsafe token was never going to survive.
         token=otp.generate_code(),
         expires_at=now + timedelta(minutes=settings.password_reset_ttl_minutes),
     )
     db.add(token)
     db.commit()
-    result = otp.deliver(_sender, user.phone, f"Your Kolabo password reset code is {token.token}")
+    result = otp.deliver(
+        _sender,
+        user.email,
+        # Subject and body in the language their country defaults to, composed
+        # by the same module registration uses so the two cannot drift.
+        otp.password_reset_message(
+            user.country_code, token.token, settings.password_reset_ttl_minutes
+        ),
+    )
     if not result.ok:
         # THE ONE CALL SITE THAT DOES NOT REFUSE, and the reason is the oracle
         # this whole endpoint exists to defeat. A 503 here would be answered
-        # only for numbers that have an account, because only those reach a
+        # only for addresses that have an account, because only those reach a
         # send at all, so a provider outage would turn every request into a
-        # free "is this number on Kolabo" lookup for as long as it lasted.
+        # free "is this address on Kolabo" lookup for as long as it lasted.
         # The 429 above narrows the oracle deliberately and says why; this
         # would open it wide for nothing the user could act on.
         #
@@ -407,7 +441,7 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
         db.commit()
         _log.error(
             "reset code not delivered to %s via %s: %s",
-            user.phone,
+            user.email,
             result.provider,
             result.error,
         )
@@ -417,16 +451,16 @@ def request_password_reset(db: Session, payload: PasswordResetRequest) -> dict:
 def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
     """Spend a code once and set the new password.
 
-    Resolved by PHONE AND CODE together. Six digits is small enough to guess
-    at if it identifies a row on its own; paired with the number it was sent
+    Resolved by ADDRESS AND CODE together. Six digits is small enough to guess
+    at if it identifies a row on its own; paired with the mailbox it was sent
     to, a guess has to be aimed at somebody in particular.
 
-    Every failure answers the same 400 with the same sentence — unknown phone,
-    wrong code, expired code, already-spent code. Distinguishing them would
-    hand back exactly the fact the request endpoint refuses to disclose.
+    Every failure answers the same 400 with the same sentence — unknown
+    address, wrong code, expired code, already-spent code. Distinguishing them
+    would hand back exactly the fact the request endpoint refuses to disclose.
     """
     now = utcnow()
-    user = db.query(User).filter(User.phone == payload.phone).first()
+    user = db.query(User).filter(User.email == normalized_email(payload.email)).first()
     if user is None:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
@@ -470,7 +504,7 @@ def confirm_password_reset(db: Session, payload: PasswordResetConfirm) -> dict:
     token.consumed = True
     # Every other outstanding code for this account dies with it, not just the
     # one that was spent. The account has just changed hands back to whoever
-    # holds the phone; leaving two more valid codes in flight would leave two
+    # holds the mailbox; leaving two more valid codes in flight would leave two
     # more chances for whoever prompted the reset in the first place.
     for other in _live_reset_tokens(db, user, now):
         other.consumed = True

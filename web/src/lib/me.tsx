@@ -12,16 +12,24 @@ import { useAuth } from "./auth";
    profile, else from the business profile's company name WITH A NULL AVATAR
    (a business has a company name and no avatar anywhere in this system), else
    both null. Null is a real answer for somebody who has not written a profile
-   yet and it stays null — the users table's only human-readable column is the
-   phone number, and a phone number is never put in a display slot.
+   yet and it stays null — the users table's only human-readable columns are
+   the email address and the optional phone number, and neither is ever put in
+   a display slot.
 
-   The phone IS on this payload and is deliberately not rendered in the nav.
-   Here the reader is the subject, so /auth/me is the one place it is right to
-   return it — the account settings screen needs to show you which number you
-   log in with. A dropdown under an avatar does not. */
+   BOTH ARE ON THIS PAYLOAD and neither is rendered in the nav. Here the
+   reader is the subject, so /auth/me is the one place it is right to return
+   them — the account settings screen needs to show you which address you log
+   in with, and which number your payouts go to. A dropdown under an avatar
+   needs neither.
+
+   `phone` IS NULLABLE and the type says so, because users.phone is nullable
+   and nothing collects it at signup any more. An account that has never added
+   one answers null, and a reader that assumes a string prints "null" at a
+   user. */
 export type Me = {
   id: string;
-  phone: string;
+  email: string;
+  phone: string | null;
   role: string;
   country_code: string;
   is_verified: boolean;

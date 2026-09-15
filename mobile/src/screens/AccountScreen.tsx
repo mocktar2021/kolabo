@@ -33,12 +33,18 @@ const NOTIFY_KEYS = [
   "acct.notifSecurity",
 ] as const;
 
-/* The account itself: the number somebody signs in with, their password, the
-   app's language, and the way out. Web's /account, minus the notification
-   email toggles (there is no GET for their current state yet — flagged in
-   the gap report) and plus the language switch, which web keeps in its nav.
+/* The account itself: the address somebody signs in with, the number they can
+   be reached on, their password, the app's language, and the way out. Web's
+   /account, minus the notification email toggles (there is no GET for their
+   current state yet — flagged in the gap report) and plus the language
+   switch, which web keeps in its nav.
 
-   Both credential changes REQUIRE the current password — the backend's rule,
+   THE EMAIL LEADS because it is the identity. The phone under it is a contact
+   detail that registration no longer asks for, which makes this screen the
+   only place an account ever acquires one; for anybody who signed up after
+   the flip it starts empty, and the copy says so rather than rendering a gap.
+
+   Every credential change REQUIRES the current password — the backend's rule,
    said before the form: a bearer token proves a session exists, not that the
    holder is the owner. Deleting requires it too, and hard-deletes only an
    account with no contract or escrow history (otherwise the catalog's
@@ -50,7 +56,14 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
   const [me, setMe] = useState<MeOut | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Phone section
+  // Email section: the sign-in identity, so it comes first on screen too
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSaved, setEmailSaved] = useState(false);
+
+  // Phone section: a contact detail, not a way in
   const [newPhone, setNewPhone] = useState("");
   const [phonePassword, setPhonePassword] = useState("");
   const [phoneBusy, setPhoneBusy] = useState(false);
@@ -77,6 +90,28 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
       .then(setMe)
       .catch((e) => setLoadError(errorText(e, t)));
   }, [token, t]);
+
+  async function saveEmail() {
+    if (!newEmail.trim() || !emailPassword) return;
+    setEmailBusy(true);
+    setEmailError(null);
+    setEmailSaved(false);
+    try {
+      const updated = await api<MeOut>("/auth/me", {
+        method: "PATCH",
+        token,
+        body: { current_password: emailPassword, email: newEmail.trim() },
+      });
+      setMe(updated);
+      setNewEmail("");
+      setEmailPassword("");
+      setEmailSaved(true);
+    } catch (e) {
+      setEmailError(errorText(e, t));
+    } finally {
+      setEmailBusy(false);
+    }
+  }
 
   async function savePhone() {
     if (!newPhone.trim() || !phonePassword) return;
@@ -155,12 +190,49 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
       {loadError ? <Banner kind="error">{loadError}</Banner> : null}
 
       <Card>
+        <SectionTitle>{t("acct.emailTitle")}</SectionTitle>
+        <Hint>{t("acct.emailWhyPassword")}</Hint>
+        <View style={{ height: space(3) }} />
+        {/* Null is a real answer for both columns, so neither is rendered as a
+            bare value: an account from before the flip has no address, and one
+            created after it has no number until somebody adds one here. */}
+        {me ? (
+          <Text style={styles.current}>
+            {me.email ? `${t("acct.emailCurrent")}: ${me.email}` : t("acct.emailNone")}
+          </Text>
+        ) : null}
+        {emailError ? <Banner kind="error">{emailError}</Banner> : null}
+        {emailSaved ? <Banner kind="success">{t("acct.emailSaved")}</Banner> : null}
+        <Field
+          label={t("acct.emailNew")}
+          value={newEmail}
+          onChangeText={setNewEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+        />
+        <Field
+          label={t("acct.passwordCurrent")}
+          value={emailPassword}
+          onChangeText={setEmailPassword}
+          secureTextEntry
+        />
+        <PrimaryButton
+          title={emailBusy ? t("common.working") : t("acct.emailSave")}
+          onPress={() => void saveEmail()}
+          loading={emailBusy}
+          disabled={!newEmail.trim() || !emailPassword}
+        />
+      </Card>
+
+      <View style={{ height: space(4) }} />
+      <Card>
         <SectionTitle>{t("acct.phoneTitle")}</SectionTitle>
         <Hint>{t("acct.phoneWhyPassword")}</Hint>
         <View style={{ height: space(3) }} />
         {me ? (
-          <Text style={{ fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(3) }}>
-            {t("acct.phoneCurrent")}: {me.phone}
+          <Text style={styles.current}>
+            {me.phone ? `${t("acct.phoneCurrent")}: ${me.phone}` : t("acct.phoneNone")}
           </Text>
         ) : null}
         {phoneError ? <Banner kind="error">{phoneError}</Banner> : null}
@@ -305,6 +377,7 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
 }
 
 const styles = StyleSheet.create({
+  current: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(3) },
   body: { fontFamily: family.body, fontSize: font.small, color: colors.ink, lineHeight: 20, marginBottom: space(2) },
   notifRow: { flexDirection: "row", gap: space(2), paddingVertical: 3 },
   notifBullet: { fontFamily: family.body, fontSize: font.small, color: colors.muted },

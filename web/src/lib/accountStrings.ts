@@ -5,10 +5,16 @@
 
    TWO NAMESPACES IN ONE FILE, and they are two screens: `account` is what a
    signed-in user changes about themselves, `reset` is how a locked-out user
-   gets back in. They live together because they turn on one fact — THE PHONE
-   NUMBER IS THE LOGIN IDENTITY — which is also exactly why the backend keeps
+   gets back in. They live together because they turn on one fact — THE EMAIL
+   ADDRESS IS THE LOGIN IDENTITY — which is also exactly why the backend keeps
    them in one module (backend/app/modules/auth/account.py) rather than
    splitting settings from recovery and restating the rule in both.
+
+   THE PHONE NUMBER IS STILL HERE AND IS NO LONGER THAT. It is optional, it is
+   not collected at signup, and the one thing it is for is a Mobile Money
+   payout. The copy below has to keep saying which of the two is which: a
+   settings screen that still calls the number an identifiant is how somebody
+   ends up changing the wrong field and locking themselves out.
 
    nav.account is deep-merged into the nav group i18n.ts owns.
    addResourceBundle is called with deep=true and overwrite=true and main.tsx
@@ -19,22 +25,32 @@ import i18n from "../i18n";
 
 const fr = {
   title: "Mon compte",
-  sub: "Le numéro avec lequel vous vous connectez, votre mot de passe, et ce que la plateforme vous envoie.",
+  sub: "L'adresse avec laquelle vous vous connectez, votre mot de passe, et ce que la plateforme vous envoie.",
 
   tabDetails: "Détails",
   tabPayment: "Paiement",
   tabNotifications: "Notifications",
   tabAccount: "Compte",
 
-  phoneTitle: "Numéro de téléphone",
+  emailTitle: "Adresse e-mail",
   /* Said before the form, not after the refusal: somebody who does not know
-     the number is their identifiant reads the password field as de la
+     the address is their identifiant reads the password field as de la
      paperasse. */
-  phoneWhyPassword: "Votre numéro est votre identifiant de connexion. Le modifier demande votre mot de passe actuel : un appareil resté ouvert ne doit pas suffire à faire basculer un compte vers un autre téléphone.",
+  emailWhyPassword: "Votre adresse e-mail est votre identifiant de connexion. La modifier demande votre mot de passe actuel : un appareil resté ouvert ne doit pas suffire à faire basculer un compte vers une autre adresse.",
+  emailCurrent: "Adresse actuelle",
+  emailNew: "Nouvelle adresse",
+  emailSave: "Enregistrer l'adresse",
+  emailSaved: "Adresse mise à jour. C'est désormais celle de votre connexion.",
+
+  phoneTitle: "Numéro de téléphone",
+  /* The number is optional and it is not the login. Saying what it IS for is
+     what stops somebody adding one because they think they have to. */
+  phoneWhyPassword: "Votre numéro sert à vos versements Mobile Money. Il est facultatif et ne sert pas à vous connecter. Le modifier demande votre mot de passe actuel : un appareil resté ouvert ne doit pas suffire à rediriger l'argent de quelqu'un.",
   phoneCurrent: "Numéro actuel",
+  phoneNone: "Aucun numéro enregistré",
   phoneNew: "Nouveau numéro",
   phoneSave: "Enregistrer le numéro",
-  phoneSaved: "Numéro mis à jour. C'est désormais celui de votre connexion.",
+  phoneSaved: "Numéro mis à jour. C'est celui que nous utiliserons pour vos versements.",
 
   passwordTitle: "Mot de passe",
   passwordCurrent: "Mot de passe actuel",
@@ -78,19 +94,27 @@ const fr = {
 
 const en = {
   title: "My account",
-  sub: "The number you sign in with, your password, and what the platform sends you.",
+  sub: "The address you sign in with, your password, and what the platform sends you.",
 
   tabDetails: "Details",
   tabPayment: "Payment",
   tabNotifications: "Notifications",
   tabAccount: "Account",
 
+  emailTitle: "Email address",
+  emailWhyPassword: "Your email address is your sign-in identity. Changing it costs your current password: a device left open must not be enough to move an account onto somebody else's address.",
+  emailCurrent: "Current address",
+  emailNew: "New address",
+  emailSave: "Save the address",
+  emailSaved: "Address updated. This is the one you sign in with now.",
+
   phoneTitle: "Phone number",
-  phoneWhyPassword: "Your phone number is your sign-in identity. Changing it costs your current password: a device left open must not be enough to move an account onto somebody else's handset.",
+  phoneWhyPassword: "Your phone number is where your Mobile Money payouts go. It is optional and it is not how you sign in. Changing it costs your current password: a device left open must not be enough to redirect somebody's money.",
   phoneCurrent: "Current number",
+  phoneNone: "No number saved",
   phoneNew: "New number",
   phoneSave: "Save the number",
-  phoneSaved: "Number updated. This is the one you sign in with now.",
+  phoneSaved: "Number updated. This is the one we will use for your payouts.",
 
   passwordTitle: "Password",
   passwordCurrent: "Current password",
@@ -130,23 +154,23 @@ const en = {
 const resetFr = {
   forgot: "Mot de passe oublié ?",
   title: "Réinitialiser le mot de passe",
-  intro: "Nous envoyons un code à six chiffres par SMS au numéro de votre compte.",
-  phoneLabel: "Numéro de téléphone",
+  intro: "Nous envoyons un code à six chiffres par e-mail à l'adresse de votre compte.",
+  phoneLabel: "Adresse e-mail",
   request: "Envoyer le code",
   /* WORDED FOR AN ANSWER THAT IS DELIBERATELY THE SAME EITHER WAY. The API
-     returns an identical 202 for a registered number and for one it has never
-     seen, so this sentence must not say "un code a été envoyé" — that would
-     turn the screen into the free "is this person on Kolabo ?" lookup the
-     endpoint refuses to be. "Si ce numéro est enregistré" is the only honest
-     thing the client knows. */
-  sent: "Si ce numéro est enregistré, un code à six chiffres vient d'y être envoyé par SMS.",
-  sentHint: "Nous ne pouvons pas vous dire si ce numéro a un compte : ce serait un moyen, pour n'importe qui, de savoir qui est sur Kolabo.",
-  codeLabel: "Code reçu par SMS",
+     returns an identical 202 for a registered address and for one it has
+     never seen, so this sentence must not say "un code a été envoyé" — that
+     would turn the screen into the free "is this person on Kolabo ?" lookup
+     the endpoint refuses to be. "Si cette adresse est enregistrée" is the
+     only honest thing the client knows. */
+  sent: "Si cette adresse est enregistrée, un code à six chiffres vient d'y être envoyé par e-mail.",
+  sentHint: "Nous ne pouvons pas vous dire si cette adresse a un compte : ce serait un moyen, pour n'importe qui, de savoir qui est sur Kolabo.",
+  codeLabel: "Code reçu par e-mail",
   newPassword: "Nouveau mot de passe",
   confirmPassword: "Confirmer le mot de passe",
   confirm: "Réinitialiser le mot de passe",
   back: "Revenir à la connexion",
-  changePhone: "Utiliser un autre numéro",
+  changePhone: "Utiliser une autre adresse",
   success: "Mot de passe réinitialisé. Connectez-vous avec le nouveau.",
   tooShort: "{{n}} caractères minimum.",
   mismatch: "Les deux mots de passe ne sont pas identiques."
@@ -155,17 +179,17 @@ const resetFr = {
 const resetEn = {
   forgot: "Forgot your password?",
   title: "Reset your password",
-  intro: "We send a six digit code by SMS to your account's number.",
-  phoneLabel: "Phone number",
+  intro: "We send a six digit code by email to your account's address.",
+  phoneLabel: "Email address",
   request: "Send the code",
-  sent: "If that number is registered, a six digit code has just been sent to it by SMS.",
-  sentHint: "We cannot tell you whether that number has an account: it would be a way for anyone to find out who is on Kolabo.",
-  codeLabel: "Code received by SMS",
+  sent: "If that address is registered, a six digit code has just been sent to it by email.",
+  sentHint: "We cannot tell you whether that address has an account: it would be a way for anyone to find out who is on Kolabo.",
+  codeLabel: "Code received by email",
   newPassword: "New password",
   confirmPassword: "Confirm the password",
   confirm: "Reset the password",
   back: "Back to sign in",
-  changePhone: "Use a different number",
+  changePhone: "Use a different address",
   success: "Password reset. Sign in with the new one.",
   tooShort: "{{n}} characters minimum.",
   mismatch: "The two passwords do not match."

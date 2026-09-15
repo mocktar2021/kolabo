@@ -16,15 +16,20 @@ const MIN_PASSWORD_LENGTH = 8;
    Declared on the page rather than in lib/types.ts because exactly one screen
    reads it — the same call ProfileSetup makes for its own BusinessProfileOut.
 
-   The phone is on this payload, and it is the ONE place in the system where
-   that is true: everywhere else a phone number is deliberately withheld,
-   because handing it to the other side of a deal is how a negotiation leaves
-   the platform. Here the reader IS the subject, and a settings screen that
-   cannot show you which number you sign in with is a settings screen you
-   cannot use. */
+   The email address and the phone number are both on this payload, and this
+   is the ONE place in the system where that is true: everywhere else contact
+   details are deliberately withheld, because handing them to the other side
+   of a deal is how a negotiation leaves the platform. Here the reader IS the
+   subject, and a settings screen that cannot show you which address you sign
+   in with is a settings screen you cannot use.
+
+   `phone` IS NULLABLE. users.phone is nullable and signup no longer collects
+   it, so an account that has never added one answers null. Every reader below
+   has to say so rather than print an empty box. */
 type AccountOut = {
   id: string;
-  phone: string;
+  email: string;
+  phone: string | null;
   role: string;
   country_code: string;
   is_verified: boolean;
@@ -33,23 +38,96 @@ type AccountOut = {
 
 type Tab = "details" | "payment" | "notifications" | "account";
 
-/* Changing the number you sign in with.
+/* Changing the address you sign in with.
 
-   Phone numbers really do change here — a better tariff, a lost handset, a
-   move between countries — so this has to be self-service rather than a
-   support ticket. What it must never become is a way to take somebody else's
-   number, which is the whole reason the current password is on the form. */
+   Email addresses really do change — a work address left behind with a job, a
+   provider abandoned — so this has to be self-service rather than a support
+   ticket. What it must never become is a way to take somebody else's account,
+   which is the whole reason the current password is on the form. */
+function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: AccountOut) => void }) {
+  const { t } = useTranslation();
+  const { token } = useAuth();
+  const [email, setEmail] = useState(me.email);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const next = email.trim();
+  const changed = next !== "" && next !== me.email;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!changed || !currentPassword) return;
+    setBusy(true);
+    setError(null);
+    setDone(false);
+    try {
+      // The response is the account as it now stands, so the page takes it
+      // rather than refetching: a screen that shows the old address for one
+      // more render is a screen somebody presses save on twice.
+      const updated = await api<AccountOut>("/auth/me", {
+        method: "PATCH",
+        token,
+        body: { current_password: currentPassword, email: next }
+      });
+      onChanged(updated);
+      setCurrentPassword("");
+      setDone(true);
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>{t("account.emailTitle")}</h3>
+      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("account.emailWhyPassword")}</p>
+      {error && <div className="alert alert-error">{error}</div>}
+      {done && <div className="alert alert-success">{t("account.emailSaved")}</div>}
+      <form onSubmit={submit}>
+        <div className="field">
+          <label className="label" htmlFor="acc-email-current">{t("account.emailCurrent")}</label>
+          <input id="acc-email-current" className="input" value={me.email} readOnly disabled />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="acc-email-new">{t("account.emailNew")}</label>
+          <input id="acc-email-new" className="input" type="email" autoComplete="email" inputMode="email"
+            value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="acc-email-password">{t("account.passwordCurrent")}</label>
+          <PasswordInput id="acc-email-password" value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)} />
+        </div>
+        <button className="btn btn-primary" type="submit" disabled={busy || !changed || !currentPassword}>
+          {busy ? t("auth.working") : t("account.emailSave")}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* Adding or changing the number the money goes to.
+
+   NOT AN IDENTITY FORM ANY MORE, and the copy beside it says so. A number is
+   optional here, signup does not ask for one, and the only thing it does is
+   receive a Mobile Money payout. The current password is still required, for
+   a reason that survived the flip intact: redirecting somebody's payouts is
+   worth as much to an attacker as taking their login was. */
 function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: AccountOut) => void }) {
   const { t } = useTranslation();
   const { token } = useAuth();
-  const [phone, setPhone] = useState(me.phone);
+  const [phone, setPhone] = useState(me.phone ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const next = phone.trim();
-  const changed = next !== "" && next !== me.phone;
+  const changed = next !== "" && next !== (me.phone ?? "");
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -77,7 +155,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   }
 
   return (
-    <div className="card">
+    <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("account.phoneTitle")}</h3>
       <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("account.phoneWhyPassword")}</p>
       {error && <div className="alert alert-error">{error}</div>}
@@ -85,7 +163,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
       <form onSubmit={submit}>
         <div className="field">
           <label className="label" htmlFor="acc-phone-current">{t("account.phoneCurrent")}</label>
-          <input id="acc-phone-current" className="input" value={me.phone} readOnly disabled />
+          <input id="acc-phone-current" className="input" value={me.phone ?? t("account.phoneNone")} readOnly disabled />
         </div>
         <div className="field">
           <label className="label" htmlFor="acc-phone-new">{t("account.phoneNew")}</label>
@@ -106,8 +184,8 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
 }
 
 /* Changing the password, from the inside. The current password is required
-   for the same reason it is on the phone form and for a second one: this is
-   the change a stolen session would make first. */
+   for the same reason it is on the two forms above and for a second one: this
+   is the change a stolen session would make first. */
 function PasswordForm() {
   const { t } = useTranslation();
   const { token } = useAuth();
@@ -205,7 +283,7 @@ function PaymentPanel() {
    switches. Rendering some anyway would be the worst version of this screen:
    somebody turns one off, the next notification arrives regardless, and they
    stop believing anything the product tells them. The list itself is worth
-   showing on its own, because "why did I get an SMS about a contract" is a
+   showing on its own, because "why did I get an email about a contract" is a
    real question with an answer.
 
    The entries mirror the notify() call sites in the backend modules; they
@@ -327,7 +405,7 @@ function SessionPanel() {
 /* The account, for every role.
 
    Not asked the creator/brand question anywhere on this page, and that is not
-   an oversight: every account signs in with a phone number, has a password,
+   an oversight: every account signs in with an email address, has a password,
    is notified about things, and may want to leave. The two sides of the
    market differ in what they DO on Kolabo, not in what an account is. */
 export default function AccountPage() {
@@ -381,6 +459,7 @@ export default function AccountPage() {
             <p className="muted">{t("discover.loading")}</p>
           ) : !me ? null : (
             <>
+              <EmailForm me={me} onChanged={setMe} />
               <PhoneForm me={me} onChanged={setMe} />
               <PasswordForm />
             </>

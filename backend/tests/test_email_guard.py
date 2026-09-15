@@ -6,13 +6,14 @@ a few lines inside update_me, and it is what lets this file grow every time
 somebody finds a spelling it should have refused, or an address it should not
 have.
 
-The refusals are not hypothetical. This value is about to carry a UNIQUE index
-and it is the address notifications are sent to, so two spellings of one
-address are two accounts, and a value with a newline in it is a header
-somebody else wrote. The case rows are the ones worth reading twice: the domain
-is normalised because it is case insensitive by standard, and the local part is
-left alone because it is not, which is a rule almost every provider ignores and
-we therefore cannot.
+The refusals are not hypothetical. This value carries a UNIQUE index and it is
+the address notifications are sent to and the address an account logs in with,
+so two spellings of one address are two accounts, and a value with a newline in
+it is a header somebody else wrote. The case rows are the ones worth reading
+twice, and they say the opposite of what they said when this file was written:
+the WHOLE address is folded now, local part included, because it is the login
+key and a standard nobody implements is not worth locking somebody out of their
+own account over. core/emails.py argues that at length.
 """
 import pytest
 
@@ -34,15 +35,16 @@ CASES = [
     # Trimmed at the edges, because a pasted address arrives with a space on it
     # more often than not.
     ("  ama@example.com  ", "ama@example.com"),
-    # THE CASE RULE, both halves of it. The domain is lowercased because it is
-    # case insensitive by standard; the local part is preserved because RFC
-    # 5321 leaves it to the receiving host, and lowercasing it here would
-    # quietly rewrite the address of everybody whose provider is not one of the
-    # big ones that happen not to care.
+    # THE CASE RULE, and it is now one rule rather than two: the whole address
+    # is folded. The domain because it is case insensitive by standard, the
+    # local part because the address is the login key and no consumer provider
+    # these creators use distinguishes case in it. Registering as Kofi@ and
+    # later typing kofi@ must not be "wrong password".
     ("ama@EXAMPLE.COM", "ama@example.com"),
     ("ama@Example.Com", "ama@example.com"),
-    ("Ama.K@Example.COM", "Ama.K@example.com"),
-    ("AMA@EXAMPLE.COM", "AMA@example.com"),
+    ("Ama.K@Example.COM", "ama.k@example.com"),
+    ("AMA@EXAMPLE.COM", "ama@example.com"),
+    ("Kofi@GMAIL.COM", "kofi@gmail.com"),
     # SPLICED CONTROL CHARACTERS. A subject line is a mail header and a header
     # ends at a newline, so a stored address carrying one is the start of a
     # header somebody else wrote. Refused before anything is parsed, so the raw

@@ -30,12 +30,24 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
-    phone: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    # Unique and indexed, because the address is an identity: no two
-    # accounts may share one, and every lookup by it is on a hot path.
+    # A CONTACT DETAIL, not an identity, and not collected at registration any
+    # more. Nullable and no longer unique: migration f3c0a84e17d9 says why the
+    # uniqueness went as well as the NOT NULL, and what update_me gives up by
+    # being the only thing left that enforces it.
+    #
+    # Kept rather than dropped because accounts created before the flip have a
+    # number in it, a business's number is what payments/checkout.py puts on
+    # the FedaPay customer object, and PATCH /auth/me can still write one.
+    phone: Mapped[str | None] = mapped_column(String, nullable=True)
+    # THE LOGIN IDENTITY. Unique and indexed because no two accounts may be
+    # the same mailbox, and because registration, verification, login and
+    # password reset all start from a lookup on this column.
+    #
     # STILL NULLABLE, and the presence rule lives in the API layer rather
     # than here. Migration e1b7d4c92f08 explains why the column is not
-    # NOT NULL yet and what it would cost to make it so today.
+    # NOT NULL yet and what it would cost to make it so today; the short
+    # version is that 49 of the 60 backend test files build User(phone=...)
+    # with no email and would all fail at flush in their fixtures.
     email: Mapped[str | None] = mapped_column(String, unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     country_code: Mapped[str] = mapped_column(String, nullable=False)
@@ -45,7 +57,7 @@ class User(Base):
     # than a fourth role so every existing role check keeps working unchanged:
     # an admin is also an ordinary marketplace user, with a role of their own.
     # Nothing in the API sets this — app.modules.auth.admins reconciles it
-    # with a configured list of phone numbers on every boot.
+    # with a configured list of email addresses on every boot.
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Referral: a shareable code (minted lazily, see the auth service) and who
     # brought this user in. What that attribution is worth, and when, is
@@ -109,19 +121,19 @@ class OtpChallenge(Base):
 class PasswordResetToken(Base):
     """One reset code, for one account, good once.
 
-    The token column now holds a SIX DIGIT CODE, the same shape the
-    registration OTP uses, because it is delivered the same way: an SMS to the
-    phone that is the login identity. Nobody retypes a 43 character urlsafe
-    string off a lock screen.
+    The token column holds a SIX DIGIT CODE, the same shape the registration
+    OTP uses, because it is delivered the same way: an email to the address
+    that is the login identity. Nobody retypes a 43 character urlsafe string
+    from one window into another.
 
     Which is exactly why the column is INDEXED BUT NOT UNIQUE. Six digits is a
     million values, so across enough resets two accounts WILL be handed the
     same code eventually, and a unique constraint would turn that collision
     into a 500 for whichever user asked second — a locked-out user refused
     entry because somebody unrelated is also resetting. Uniqueness was never
-    the property that mattered: a code is looked up together with the phone it
-    was sent to (see auth.account.confirm_password_reset), so the pair is what
-    identifies it, and a bare code on its own is not meant to be an
+    the property that mattered: a code is looked up together with the address
+    it was sent to (see auth.account.confirm_password_reset), so the pair is
+    what identifies it, and a bare code on its own is not meant to be an
     identifier at all.
 
     Six digits also means it has to be guess-proofed the same way the

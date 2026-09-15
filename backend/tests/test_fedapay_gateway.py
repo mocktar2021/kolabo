@@ -165,8 +165,8 @@ def _collection_handler(token_response, seen=None):
     return handler
 
 
-def _start(gateway):
-    return gateway.start_collection(
+def _start(gateway, **overrides):
+    kwargs = dict(
         amount=50000,
         currency="XOF",
         description="Kolabo contract abcd1234",
@@ -178,6 +178,8 @@ def _start(gateway):
         payer_email="ada@example.com",
         merchant_reference="i1",
     )
+    kwargs.update(overrides)
+    return gateway.start_collection(**kwargs)
 
 
 def test_start_collection_sends_the_right_body_and_returns_a_url():
@@ -204,7 +206,60 @@ def test_start_collection_sends_the_right_body_and_returns_a_url():
     # validation error that does not explain itself.
     assert body["currency"] == {"iso": "XOF"}
     assert body["customer"]["phone_number"] == {"number": "+22997000000", "country": "bj"}
+    assert body["customer"]["email"] == "ada@example.com"
     assert body["merchant_reference"] == "i1"
+
+
+def test_a_payer_with_no_phone_sends_a_customer_without_one():
+    """WHAT CHANGED ON THE WIRE WHEN THE IDENTITY MOVED, and it is worth being
+    explicit about because it is a change to what a third party receives.
+
+    users.phone became nullable when registration stopped collecting a number,
+    so a brand funding their first contract may have none. The key used to be
+    written unconditionally, which would have put {"number": null} in the body
+    — not an absent field, a malformed one. FedaPay answers that with a 400,
+    _request turns it into a GatewayError, and the brand reads "we could not
+    reach the payment provider" about a provider that was perfectly reachable.
+
+    So the key is omitted, exactly as the email key always has been, and the
+    customer is identified by the address instead.
+    """
+    seen = {}
+    _start(_gateway(_collection_handler(TOKEN_RESPONSE, seen)), payer_phone=None)
+
+    customer = seen["create"]["customer"]
+    assert "phone_number" not in customer
+    assert customer["email"] == "ada@example.com"
+    assert customer["firstname"] == "Ada"
+
+
+def test_a_payer_with_a_phone_and_no_email_still_sends_the_phone():
+    """The pre-flip account, which has a number and no address. Nothing about
+    this change may stop those brands paying."""
+    seen = {}
+    _start(_gateway(_collection_handler(TOKEN_RESPONSE, seen)), payer_email=None)
+
+    customer = seen["create"]["customer"]
+    assert customer["phone_number"] == {"number": "+22997000000", "country": "bj"}
+    assert "email" not in customer
+
+
+def test_a_payer_with_neither_is_refused_before_the_request_is_made():
+    """A customer FedaPay cannot identify is refused here rather than posted
+    and refused there, so that whoever is paged reads a sentence about the
+    account rather than FedaPay's validation prose arriving through two layers
+    of translation. It should be unreachable: post-flip accounts have an
+    address and pre-flip accounts have a number."""
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise AssertionError("nothing should have been sent")
+
+    with pytest.raises(GatewayError) as exc:
+        _start(_gateway(handler), payer_phone=None, payer_email=None)
+    assert "phone number or an email address" in str(exc.value)
+    assert calls == []
 
 
 def test_wrapped_token_response_is_still_accepted():

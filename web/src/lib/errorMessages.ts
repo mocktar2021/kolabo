@@ -193,6 +193,7 @@ export const error_fr = {
   campaign_influencer_not_found: "Créateur introuvable.",
   campaign_influencer_not_verified: "Ce créateur n'est pas encore vérifié et ne peut pas être invité.",
   campaign_not_open: "Cette campagne n'accepte pas de propositions.",
+  campaign_deadline_passed: "La date limite de cette campagne est passée, elle n'accepte plus de propositions.",
 
   order_terms_both: "Envoyez soit un pack, soit des conditions personnalisées, pas les deux. Conditions reçues : {{supplied}}",
   order_terms_missing: "Une commande demande soit un pack, soit une offre personnalisée complète ({{fields}}).",
@@ -464,6 +465,7 @@ export const error_en = {
   campaign_influencer_not_found: "Creator not found.",
   campaign_influencer_not_verified: "This creator is not verified yet and cannot be invited.",
   campaign_not_open: "This campaign is not open for proposals.",
+  campaign_deadline_passed: "This brief's deadline has passed, so it is no longer taking proposals.",
 
   order_terms_both: "Send either a package or custom terms, not both. Custom terms received: {{supplied}}",
   order_terms_missing: "An order needs either a package or a full custom offer ({{fields}}).",

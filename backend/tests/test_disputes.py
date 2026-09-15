@@ -56,7 +56,7 @@ def _body(**overrides):
 
 
 def _user(db, phone, role):
-    u = User(phone=phone, password_hash="x", country_code="BJ", role=role, is_verified=True)
+    u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role=role, is_verified=True)
     db.add(u)
     db.commit()
     db.refresh(u)

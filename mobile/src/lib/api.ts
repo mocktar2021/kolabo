@@ -146,12 +146,28 @@ export async function uploadMedia<T>(
 export type Role = "influencer" | "business" | "agency";
 export type TokenResponse = { access_token: string; token_type: string; role: Role };
 export type RegisterResponse = { user_id: string; message: string };
+/* Mirrored BY HAND from backend/app/modules/auth/schemas.py MeOut, field for
+   field and in the same order, because nothing checks the two against each
+   other: a stale field here compiles perfectly and renders undefined.
+
+   BOTH CONTACT COLUMNS ARE NULLABLE, and the types say so rather than wishing
+   otherwise. `email` is the sign-in identity now, but an account registered
+   before the flip has none. `phone` is a contact detail registration no
+   longer collects, so an account created after the flip has none until its
+   owner adds one from the settings screen. Typing either as a bare string
+   would put the word undefined on the account screen for exactly the accounts
+   this change creates.
+
+   `is_admin` is a flag beside the role, not a role: the backend reconciles it
+   from deployment configuration and no request can set it. */
 export type MeOut = {
   id: string;
-  phone: string;
+  phone: string | null;
+  email: string | null;
   role: Role;
   country_code: string;
   is_verified: boolean;
+  is_admin: boolean;
   created_at: string;
   display_name: string | null;
   avatar_url: string | null;

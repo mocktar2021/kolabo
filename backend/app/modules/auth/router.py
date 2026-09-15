@@ -15,7 +15,7 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 def register(payload: schemas.RegisterRequest, db: Session = Depends(get_db)):
-    """Register with a phone number and receive an OTP. See KOL-12, KOL-13."""
+    """Register with an email address and receive an OTP. See KOL-12, KOL-13."""
     return service.register(db, payload)
 
 
@@ -51,14 +51,14 @@ def get_me(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """The caller's own account: id, phone, role, country, verified, joined —
-    and who they are to look at.
+    """The caller's own account: id, email, phone, role, country, verified,
+    joined — and who they are to look at.
 
     display_name and avatar_url ride along so a nav can draw the signed-in
     user without a second request per page. They come from the creator
     profile, else the business profile's company name with a null avatar, else
     both null; they are never assembled from the users table, whose only
-    human-readable column is the phone number.
+    human-readable column is the email address.
 
     Never anyone else's — the subject comes from the bearer token and there is
     no id parameter to walk. The password hash is not on the response and
@@ -73,12 +73,13 @@ def update_me(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    """Change the login phone, the password, or both.
+    """Change the login email, the contact phone, the password, or all three.
 
-    current_password is required for either. The phone IS the login identity,
-    so moving it must cost the password: a stolen bearer token would otherwise
-    be enough to point the account at somebody else's handset and reset it
-    from there. A number already in use answers 409.
+    current_password is required for any of them. The email IS the login
+    identity, so moving it must cost the password: a stolen bearer token would
+    otherwise be enough to point the account at somebody else's mailbox and
+    reset it from there. An address already in use answers 409, and so does a
+    phone number, though only the address has a unique index behind it.
     """
     return account.update_me(db, user_id, payload)
 
@@ -107,11 +108,11 @@ def delete_account(
 def request_password_reset(
     payload: schemas.PasswordResetRequest, db: Session = Depends(get_db)
 ):
-    """Ask for a reset code by SMS. Always 202, always the same body.
+    """Ask for a reset code by email. Always 202, always the same body.
 
-    The answer is identical for a registered phone and an unknown one. Two
-    answers would make this a free "is this number on Kolabo?" lookup for
-    anyone with a list of numbers. Rate limited so an SMS bill cannot be run
+    The answer is identical for a registered address and an unknown one. Two
+    answers would make this a free "is this address on Kolabo?" lookup for
+    anyone with a list of addresses. Rate limited so a send bill cannot be run
     up on us. See KOL-14.
     """
     return account.request_password_reset(db, payload)
@@ -123,7 +124,7 @@ def confirm_password_reset(
 ):
     """Spend a reset code and set the new password. Single use. See KOL-14.
 
-    The code is resolved together with the phone it was sent to, and every
+    The code is resolved together with the address it was sent to, and every
     way of failing answers the same 400.
     """
     return account.confirm_password_reset(db, payload)

@@ -14,6 +14,8 @@ What this feature must not get wrong, in order of how badly it would hurt:
      the page it already uses, and nothing downstream can tell it apart from
      a bid by somebody it invited.
 """
+from datetime import date, timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -27,6 +29,14 @@ from app.modules.auth.models import User
 from app.modules.campaigns import board, models as campaigns
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.profiles.models import BusinessProfile, InfluencerProfile
+
+# Every brief in this file has to be LIVE, and that is now a property the board
+# reads rather than a detail of the fixture: a brief past its deadline is off
+# the board entirely and takes no applications (campaigns.board). A fixed date
+# would therefore describe a brief that is on the board until it arrives and
+# invisible from then on, which empties most of the assertions below on a
+# morning nobody has touched this file.
+LIVE_DEADLINE = date.today() + timedelta(days=90)
 
 
 @pytest.fixture()
@@ -83,7 +93,7 @@ def _brief(client, headers, title, publish=True):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": publish,
     }, headers=headers).json()["id"]
 
@@ -298,7 +308,7 @@ def test_the_row_carries_the_brief_the_buyer_and_the_caller_s_state(client):
     assert row["id"] == cid
     assert row["budget_amount"] == 50000
     assert row["deliverables"] == [{"platform": "instagram", "type": "post", "quantity": 2}]
-    assert row["deadline"] == "2026-09-01"
+    assert row["deadline"] == str(LIVE_DEADLINE)
     assert row["business_company_name"] == "Maison Kola"
     assert row["is_open"] is True
     assert row["has_applied"] is False
@@ -355,7 +365,7 @@ def test_a_brief_created_open_is_open(client):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 1}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": True,
         "is_open": True,
         "target_categories": ["fashion"],

@@ -275,6 +275,12 @@ const resources = {
            named, and the only thing missing is a yes or a no. */
         orderBadge: "Commande directe",
         campaignCancelled: "Campagne annulée",
+        /* L'autre fin qu'une campagne peut atteindre, et elle ferme la carte
+           comme l'annulation : le dossier reste, les formulaires partent. Sa
+           propre pastille plutôt que celle de l'annulation, parce qu'une
+           campagne menée à son terme et une campagne annulée ne sont pas la
+           même nouvelle. */
+        campaignCompleted: "Cette campagne est terminée.",
         orderPrice: "Prix", orderDelay: "Délai", orderNote: "Note de la marque",
         orderExpiresHours: "Expire dans {{n}} h",
         orderExpiresMinutes: "Expire dans {{n}} min",
@@ -554,6 +560,11 @@ const resources = {
            named, and the only thing missing is a yes or a no. */
         orderBadge: "Direct order",
         campaignCancelled: "Campaign cancelled",
+        /* The other end a campaign can reach, and it closes the card the way
+           cancelling does: the record stays, the forms go. Its own badge
+           rather than the cancelled one, because a brief that ran to the end
+           and a brief that was called off are not the same news. */
+        campaignCompleted: "This brief is finished.",
         orderPrice: "Price", orderDelay: "Timeline", orderNote: "Note from the brand",
         orderExpiresHours: "Expires in {{n}} h",
         orderExpiresMinutes: "Expires in {{n}} min",

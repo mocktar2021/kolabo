@@ -7,6 +7,8 @@ people are waiting on actually raise a notification, that the sentence is
 worth reading on its own in an email, and that a notification belongs to
 exactly one person.
 """
+from datetime import date, timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -24,6 +26,12 @@ from app.modules.notifications.router import router as notifications_router
 from app.modules.profiles.models import InfluencerProfile
 
 TERMS = {"rate_amount": 40000, "rate_currency": "XOF", "timeline_days": 7}
+
+# Every brief here is bid on, and a brief past its deadline takes no proposals
+# (campaigns.service), so the date has to stay in the future as the calendar
+# moves. A literal would turn this whole file red on a morning nobody touched
+# it.
+LIVE_DEADLINE = date.today() + timedelta(days=90)
 
 
 @pytest.fixture()
@@ -85,7 +93,7 @@ def _brief(client, headers, title="Launch push", is_open=True):
             "budget_amount": 50000,
             "budget_currency": "XOF",
             "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
-            "deadline": "2026-09-01",
+            "deadline": str(LIVE_DEADLINE),
             "publish": True,
             "is_open": is_open,
         },

@@ -121,6 +121,22 @@ export default function PublicProfilePage() {
      not a buyer yet, so they get the way to become one. */
   const canOrder = isAuthenticated && isBusinessLike(getStoredRole());
 
+  /* WHETHER THERE IS ANYTHING TO BUY FROM THIS CREATOR AT ALL, and a package
+     is only one of the two ways there can be.
+
+     Mobile's CreatorPublicScreen already asks it this way (its canBuy), and
+     the two clients have to agree. Here the whole order rail used to sit
+     inside the selectedPackage branch, so a creator with connected accounts
+     and no active package had the negotiate control disappear along with the
+     price: on web they could not be sent custom terms at all, while in the
+     app the same creator was negotiable.
+
+     That is not a rare profile. MIN_LIVE_PACKAGES keeps a creator with fewer
+     than three active packages out of SEARCH, not off their own page, and a
+     brand arriving from a shared link or an invitation is exactly who lands
+     here. */
+  const sellable = selectedPackage !== null || sellablePlatforms.length > 0;
+
   const audienceAccounts = profile?.social_accounts.filter((a) => a.follower_count !== null) ?? [];
   const audienceAccount = audienceAccounts.find((a) => a.id === audienceTab) ?? audienceAccounts[0] ?? null;
 
@@ -568,7 +584,20 @@ export default function PublicProfilePage() {
                     </select>
                     {pkgChips(selectedPackage)}
                     {selectedPackage.description && <p className="pp-order-desc">{selectedPackage.description}</p>}
+                  </>
+                ) : (
+                  /* No published price. Not the same thing as nothing to buy,
+                     which is why this line no longer takes the rail with
+                     it. */
+                  <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("public.noPackages")}</p>
+                )}
 
+                {/* Everything the buyer can DO, on the one test that says
+                    there is something to do it about. What is offered inside
+                    still narrows further: the package controls need a
+                    package, the offer form needs a platform. */}
+                {sellable && (
+                  <>
                     {orderedCampaignId ? (
                       /* Inline success rather than a redirect: the buyer just
                          acted on this card and losing the page would cost them
@@ -602,7 +631,7 @@ export default function PublicProfilePage() {
                         </button>
                         <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>{t("public.orderBrandsOnly")}</p>
                       </>
-                    ) : orderOpen ? (
+                    ) : orderOpen && selectedPackage ? (
                       <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
                         <span className="label">{t("public.orderConfirm")}</span>
                         <strong style={{ fontFamily: "var(--font-display)", fontSize: 15.5, display: "block" }}>
@@ -673,7 +702,15 @@ export default function PublicProfilePage() {
                             same table (lib/pricing.ts mirrors
                             backend/app/core/pricing.py). A negotiated price
                             cannot undercut it either — that is the point of
-                            having one. */}
+                            having one.
+
+                            Read off the currency PICKER and never off the
+                            selected package, which is what keeps it a real
+                            number (5000 XOF, 100 GHS) on a profile that has
+                            no packages: openNegotiate falls back to
+                            CURRENCIES[0] rather than leaving negCurrency
+                            empty, so the hint can never say "Minimum :
+                            0". */}
                         <p className="hint">{t("profile.minPrice", { n: minPrice(negCurrency), currency: negCurrency })}</p>
 
                         <label className="label" style={{ marginTop: 10 }} htmlFor="neg-days">{t("public.negotiateDays")}</label>
@@ -710,29 +747,45 @@ export default function PublicProfilePage() {
                       </div>
                     ) : (
                       <>
-                        <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
-                          {t("public.order")}
-                        </button>
-                        {/* Beside the order button, not instead of it. One
-                            package from one creator stays a single click;
-                            this is the path for the brand who is still
-                            shopping and will pay for everything at once. */}
-                        <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 8 }} onClick={addPackageToCart}>
-                          {t("cart.add")}
-                        </button>
-                        {/* Secondary on purpose: the published price is still
-                            the fast path, and this is the way out for the
-                            deals that do not fit it — the ones that were
-                            being agreed on WhatsApp instead. */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 0" }}>
-                          <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
-                          <span className="muted" style={{ fontSize: 12.5 }}>{t("public.negotiateOr")}</span>
-                          <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
-                        </div>
-                        <button type="button" className="pp-see-more" style={{ display: "block", margin: "10px auto 0", fontSize: 14 }}
-                          onClick={openNegotiate}>
-                          {t("public.negotiate")}
-                        </button>
+                        {/* The package path, and all three of its parts need a
+                            package: the price to order, the line to put in the
+                            basket, and the divider, which has nothing to be an
+                            alternative TO once the price above it is gone. */}
+                        {selectedPackage && (
+                          <>
+                            <button className="btn btn-primary btn-block" style={{ marginTop: 14 }} onClick={() => setOrderOpen(true)}>
+                              {t("public.order")}
+                            </button>
+                            {/* Beside the order button, not instead of it. One
+                                package from one creator stays a single click;
+                                this is the path for the brand who is still
+                                shopping and will pay for everything at
+                                once. */}
+                            <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 8 }} onClick={addPackageToCart}>
+                              {t("cart.add")}
+                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 0" }}>
+                              <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                              <span className="muted" style={{ fontSize: 12.5 }}>{t("public.negotiateOr")}</span>
+                              <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                            </div>
+                          </>
+                        )}
+                        {/* Secondary where there is a published price, and the
+                            only way through where there is not: these are the
+                            deals that were being agreed on WhatsApp instead.
+
+                            Gated on sellablePlatforms and not on the package,
+                            which is the rule mobile's CreatorPublicScreen
+                            already applies. The offer form below is BUILT from
+                            that list, so an empty one is the only case with
+                            nothing left to negotiate about. */}
+                        {sellablePlatforms.length > 0 && (
+                          <button type="button" className="pp-see-more" style={{ display: "block", margin: "10px auto 0", fontSize: 14 }}
+                            onClick={openNegotiate}>
+                            {t("public.negotiate")}
+                          </button>
+                        )}
                       </>
                     )}
 
@@ -761,8 +814,6 @@ export default function PublicProfilePage() {
                       </ul>
                     )}
                   </>
-                ) : (
-                  <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("public.noPackages")}</p>
                 )}
                 <button className="btn btn-ghost btn-block" style={{ marginTop: 16 }} onClick={() => setShareOpen(true)}>{t("public.share")}</button>
               </div>

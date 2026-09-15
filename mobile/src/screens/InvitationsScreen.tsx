@@ -17,6 +17,22 @@ import type { AppScreenProps } from "../navigation/types";
 const CURRENCIES = ["XOF", "XAF", "GHS", "NGN"];
 const NOTE_MAX_LENGTH = 2000;
 
+/* The campaign states that take no more answers.
+
+   A campaign is draft, published, cancelled or completed, and a creator's
+   invitations carry the last three. BOTH of the closed ones keep their card,
+   because the card is the record of what was offered, and neither accepts new
+   terms: the backend answers campaign_not_open to a proposal on either, so a
+   Send button there could only ever earn a refusal.
+
+   A set rather than a second boolean. The one test in this file used to be
+   `status === "cancelled"` and it drove two separate things, the negotiation
+   thread's readOnly and whether the blank proposal form renders, which is
+   exactly how a finished brief ended up showing a live form to a creator who
+   had never priced it. Naming the closed states once keeps those two in step
+   and makes the next terminal status a one word change. */
+const CLOSED_CAMPAIGN_STATUSES = new Set(["cancelled", "completed"]);
+
 /* A brief nobody has priced yet: the creator's first proposal. The note
    travels with the offer rather than in a message beside it, so the terms and
    the reasoning for them stay in one record — the same record the business
@@ -127,10 +143,11 @@ function InvitationCard({ inv, onDone, onContract }: {
   const c = inv.campaign;
   const order = directOrderOf(inv);
   const live = inv.proposal;
-  /* A creator only ever sees published and cancelled campaigns; a cancelled
-     one keeps its card (the record of what was offered) but takes no more
-     answers — the badge says why the forms are gone, instead of leaving a
-     button that could only earn the backend's campaign_not_open refusal. */
+  /* Closed, and which kind of closed. The badge has to tell the two apart:
+     a campaign somebody called off and a campaign that ran its course are not
+     the same news, and a creator reading "cancelled" on work that finished
+     would be told something untrue. Everything else keys off `closed`. */
+  const closed = CLOSED_CAMPAIGN_STATUSES.has(c.status);
   const cancelled = c.status === "cancelled";
 
   return (
@@ -139,7 +156,13 @@ function InvitationCard({ inv, onDone, onContract }: {
       <View style={styles.titleRow}>
         <Text style={styles.cardTitle} numberOfLines={2}>{c.title}</Text>
         {order ? <Text style={styles.orderBadge}>{t("invitation.orderBadge")}</Text> : null}
-        {cancelled ? <Text style={styles.cancelledBadge}>{t("invitation.campaignCancelled")}</Text> : null}
+        {closed ? (
+          cancelled ? (
+            <Text style={styles.cancelledBadge}>{t("invitation.campaignCancelled")}</Text>
+          ) : (
+            <Text style={styles.completedBadge}>{t("invitation.campaignCompleted")}</Text>
+          )
+        ) : null}
       </View>
       <Text style={styles.status}>{t(`invitation.status_${inv.status}`, { defaultValue: inv.status })}</Text>
 
@@ -177,11 +200,11 @@ function InvitationCard({ inv, onDone, onContract }: {
           live={live}
           history={inv.proposal_history ?? []}
           isOrder={order !== null}
-          readOnly={cancelled}
+          readOnly={closed}
           onDone={onDone}
           onContract={onContract}
         />
-      ) : cancelled ? null : (
+      ) : closed ? null : (
         <View style={styles.proposalWrap}>
           <Text style={styles.delivTitle}>{t("invitation.yourProposal")}</Text>
           <ProposalForm campaignId={inv.campaign_id} onDone={onDone} />
@@ -308,6 +331,20 @@ const styles = StyleSheet.create({
     fontFamily: family.bodyBold,
     color: "#9b2c2c",
     backgroundColor: "#fdecec",
+    borderRadius: radius.pill,
+    paddingHorizontal: space(2),
+    paddingVertical: 3,
+    overflow: "hidden",
+  },
+  /* Neutral, not the cancelled badge's red. A campaign that finished is not a
+     refusal, and colouring it like one would read as bad news about work that
+     went fine. Same muted pill CampaignDetailScreen gives a non-published
+     status on the brand side. */
+  completedBadge: {
+    fontSize: font.tiny,
+    fontFamily: family.bodyBold,
+    color: colors.muted,
+    backgroundColor: colors.surface2,
     borderRadius: radius.pill,
     paddingHorizontal: space(2),
     paddingVertical: 3,

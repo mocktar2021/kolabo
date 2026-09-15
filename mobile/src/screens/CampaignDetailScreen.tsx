@@ -198,7 +198,13 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
   /* The three questions the owner actions are made of, asked once — the
      backend's conditions, mirrored so the buyer meets them as absent buttons
      rather than 400s (editing.py stays the authority either way). */
-  const editable = !!campaign && !campaign.is_direct && campaign.status !== "cancelled";
+  /* Closed covers BOTH terminal statuses. A campaign is draft, published,
+     cancelled or completed, and only cancelled used to be tested here, which
+     left a finished campaign still offering Edit and Cancel: two buttons whose
+     only possible outcome is a refusal, on the screen that is supposed to be
+     the record of what was agreed. */
+  const closed = !!campaign && (campaign.status === "cancelled" || campaign.status === "completed");
+  const editable = !!campaign && !campaign.is_direct && !closed;
   const locked = !!campaign && campaign.status === "published" && campaign.proposals.length > 0;
   const deletable =
     !!campaign &&
@@ -338,7 +344,7 @@ export default function CampaignDetailScreen({ navigation, route }: AppScreenPro
                   disabled={busy}
                 />
               ) : null}
-              {campaign.status !== "cancelled" ? (
+              {!closed ? (
                 <GhostButton
                   title={t("campaign.cancelCampaign")}
                   onPress={() => setConfirming("cancel")}

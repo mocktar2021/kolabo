@@ -16,6 +16,21 @@ import type { Contract, InvitationWithCampaign, Proposal } from "../lib/types";
    the creator has finished typing. */
 const NOTE_MAX_LENGTH = 2000;
 
+/* THE CAMPAIGN STATUSES THAT TAKE NO MORE ANSWERS.
+
+   Campaign.status is exactly draft, published, cancelled and completed, and
+   the last two are the terminal pair: one was called off, the other ran to
+   the end and was paid out. submit_proposal answers 400 campaign_not_open to
+   both, so both have to close this card's forms.
+
+   A single test against "cancelled" covered half of that and left a finished
+   brief showing an invited creator the whole blank rate, currency, days and
+   note form with a live Send button on it, which could only ever earn that
+   refusal. A set rather than a chain of comparisons because there is one
+   question here, asked in three places on this card, and the next status that
+   ends a campaign should join it in one edit. */
+const CLOSED_CAMPAIGN_STATUSES = new Set(["cancelled", "completed"]);
+
 /* "Envoyé il y a 2 h" for one version of a chain, as a key and a number
    rather than as a finished string — the shape lib/notifications.ts already
    uses for the bell, so the caller keeps its own `t` and this stays a pure
@@ -249,10 +264,10 @@ function Negotiation({ campaignId, live, history, isOrder, readOnly = false, onD
      `versions` below, which falls back to the live version alone. */
   history: Proposal[];
   isOrder: boolean;
-  /* True when the campaign underneath is cancelled: the thread stays readable
-     — it is the record of what was offered — but every action goes, because
-     the backend would refuse it with campaign_not_open and a button that only
-     ever earns a refusal is a trap. */
+  /* True when the campaign underneath has ended, cancelled or completed: the
+     thread stays readable — it is the record of what was offered — but every
+     action goes, because the backend would refuse it with campaign_not_open
+     and a button that only ever earns a refusal is a trap. */
   readOnly?: boolean;
   onDone: () => void;
 }) {
@@ -513,10 +528,14 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
   const c = inv.campaign;
   const order = directOrderOf(inv);
   const live = inv.proposal;
-  /* A creator only ever sees published and cancelled campaigns; a cancelled
-     one keeps its card (the record of what was offered) but takes no more
-     answers — the badge says why the forms are gone. */
+  /* A campaign that has ended keeps its card (the record of what was
+     offered) but takes no more answers — the badge says why the forms are
+     gone. The two endings are told apart rather than merged: being called off
+     and running to the end are different news, and a creator reading "annulée"
+     on a brief they delivered would be told something untrue. */
   const cancelled = c.status === "cancelled";
+  const completed = c.status === "completed";
+  const closed = CLOSED_CAMPAIGN_STATUSES.has(c.status);
 
   return (
     <div className="card">
@@ -537,6 +556,13 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
             {cancelled && (
               <span style={{ fontSize: 12, fontWeight: 700, color: "#9b2c2c", background: "#fdecec", padding: "3px 10px", borderRadius: 999 }}>
                 {t("invitation.campaignCancelled")}
+              </span>
+            )}
+            {/* Quiet rather than red: nothing went wrong here, the brief is
+                simply over. */}
+            {completed && (
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", background: "var(--surface-2)", padding: "3px 10px", borderRadius: 999 }}>
+                {t("invitation.campaignCompleted")}
               </span>
             )}
           </div>
@@ -592,10 +618,10 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
              version rather than to nothing. */
           history={inv.proposal_history ?? []}
           isOrder={order !== null}
-          readOnly={cancelled}
+          readOnly={closed}
           onDone={onDone}
         />
-      ) : cancelled ? null : (
+      ) : closed ? null : (
         /* The rule above the line is the brand's; everything below it is the
            creator's answer, so the two are separated visually. */
         <div style={{ borderTop: "1px solid var(--line)", marginTop: 20, paddingTop: 16 }}>

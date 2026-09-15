@@ -1,3 +1,4 @@
+import type { NavigatorScreenParams } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 /* The signed-out stack. Register can be entered with a role preselected (e.g.
@@ -15,6 +16,38 @@ export type AuthStackParamList = {
   ForgotPassword: undefined;
 };
 
+/* The bottom tabs, as a param list of their own.
+
+   EVERY NAME HERE IS ALSO IN AppStackParamList BELOW, and that is deliberate:
+   screens stay typed with AppScreenProps wherever they happen to be mounted,
+   so the shared list cannot lose them. This second list exists for one reason,
+   which is to give navigate("Tabs", { screen: "Discover" }) a type.
+
+   WHY THAT FORM IS NEEDED AT ALL. React Navigation resolves a route name
+   UPWARDS: a tab screen's navigate("Cart") does not match a tab and bubbles
+   out to the stack above, which is why every other navigation in this app is
+   a bare name and works. CartScreen is the only screen that goes the other
+   way, from a stack screen down into a tab. The stack router cannot handle a
+   name outside its own routeNames, so a bare navigate("Discover") from there
+   falls through to the mounted tab navigator: the tab really does change,
+   underneath a Cart screen that stays on top, and the button reads as dead.
+   Naming the host route and the tab inside it dispatches the action where it
+   belongs.
+
+   Both sides of the role fork are listed. RootNavigator mounts Discover and
+   Campaigns for a brand and Board and Invitations for a creator, so which of
+   these exist at runtime depends on who is signed in; the type covers the
+   union, exactly as AppStackParamList always has. */
+export type TabParamList = {
+  Dashboard: undefined;
+  Discover: undefined;
+  Board: undefined;
+  Campaigns: undefined;
+  Invitations: undefined;
+  Contracts: undefined;
+  More: undefined;
+};
+
 /* The signed-in tree. `Tabs` hosts the bottom-tab navigator (whose tab
    screens keep their old names — React Navigation resolves navigate("X")
    across nested navigators, so no call site changed when tabs arrived);
@@ -22,7 +55,9 @@ export type AuthStackParamList = {
    header. All names stay in ONE param list so AppScreenProps keeps typing
    every screen, tab or stacked. */
 export type AppStackParamList = {
-  Tabs: undefined;
+  /* `undefined` stays on the union so a bare navigate("Tabs") is still legal;
+     NavigatorScreenParams is what types the { screen } form the cart uses. */
+  Tabs: NavigatorScreenParams<TabParamList> | undefined;
   More: undefined;
   Dashboard: undefined;
   CreatorProfile: undefined;

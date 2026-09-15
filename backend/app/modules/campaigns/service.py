@@ -49,7 +49,7 @@ favourite all name a creator the same way. The notifications this module
 raises spend that same identity, because a notification that does not name the
 person it is about is one the reader has to open the app to understand.
 """
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from fastapi import status
 from sqlalchemy.orm import Session
@@ -1033,6 +1033,30 @@ def submit_proposal(
             detail="Campaign is not open for proposals",
         )
 
+    # NOTHING ANYWHERE ENFORCED THE DEADLINE until this guard. The column was
+    # read by _publish_ready, by _to_out and by the board's optional filter,
+    # and by nothing at all that decides whether a write is allowed. So a brief
+    # whose date passed last month stayed published, stayed on the board, and
+    # went on taking bids and turning them into contracts. A date a brand
+    # publishes as its cut-off has to BE the cut-off, or it is decoration.
+    #
+    # INCLUSIVE OF ITS OWN DAY, which is why this is `<` and not `<=`. A brief
+    # due on the 1st is live all the way through the 1st: somebody who reads
+    # "due the 1st" means they can still deliver that day. Written down here so
+    # it is not re-litigated into `<=` by somebody reading the comparison on
+    # its own and assuming it is an off-by-one.
+    #
+    # The same test is made in reply_to_proposal, board.apply_to_campaign and
+    # contracts.generate_from_proposal. Four paths, one rule: a guard in only
+    # one of them would be worse than none, because it would teach everybody
+    # the rule holds everywhere.
+    if campaign.deadline is not None and campaign.deadline < date.today():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_deadline_passed",
+            detail="This brief's deadline has passed, so it is no longer taking proposals.",
+        )
+
     # WHO MAY BID ON THIS BRIEF AT ALL. The only campaign question asked here
     # was the status, so any signed-in creator could bid on any published
     # campaign — including a brief the brand deliberately kept closed, and
@@ -1108,6 +1132,23 @@ def submit_proposal(
             detail="This negotiation is closed and cannot be answered",
         )
 
+    # The window the order was placed under, checked on the CREATOR's side too.
+    # reply_to_proposal, orders.accept_direct_order and
+    # contracts.generate_from_proposal have all refused a lapsed order on this
+    # exact column since they were written; this was the one path that never
+    # asked. It matters because expire_stale_orders is admin-triggered with no
+    # scheduler behind it, so a lapsed order sits `submitted` indefinitely, and
+    # a creator could pile counter version onto counter version of an order
+    # that nobody can accept, answer or turn into a contract.
+    #
+    # NULL is a brief, which never expires, and that is the common case here.
+    if latest is not None and latest.expires_at is not None and latest.expires_at <= models.utcnow():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="order_expired",
+            detail="This order has expired.",
+        )
+
     next_version = 1
     if latest is not None:
         # Numbered off the whole chain, business replies included. Two rows
@@ -1135,6 +1176,12 @@ def submit_proposal(
         # the order off the clock entirely: the expiry sweep only touches rows
         # with an expires_at, so a countered order would have sat open
         # forever. Null stays null for a brief, which is what a brief wants.
+        #
+        # KEPT, and the guard above is what makes keeping it right. Before it,
+        # this line could carry an ALREADY PAST timestamp onto a brand new
+        # version, so the counter was born expired; now a lapsed chain is
+        # refused before the constructor is reached, and what is carried
+        # forward is always a window that is still open.
         expires_at=latest.expires_at if latest is not None else None,
     )
     db.add(proposal)
@@ -1231,6 +1278,17 @@ def reply_to_proposal(
             status.HTTP_400_BAD_REQUEST,
             code="campaign_not_open",
             detail="Campaign is not open for proposals",
+        )
+    # And the deadline, on this side too. campaign_deadline_passed is
+    # submit_proposal's code, and submit_proposal carries the reasoning at
+    # length: a reply IS a proposal version, so a brief that is past its date
+    # is shut to the buyer for exactly the reason it is shut to the creator.
+    # Inclusive of the deadline's own day there and here.
+    if campaign.deadline is not None and campaign.deadline < date.today():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_deadline_passed",
+            detail="This brief's deadline has passed, so it is no longer taking proposals.",
         )
     proposal = (
         db.query(models.Proposal)

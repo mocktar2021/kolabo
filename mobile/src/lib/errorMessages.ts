@@ -167,6 +167,7 @@ export const error_fr: Record<string, string> = {
   campaign_influencer_not_found: "Créateur introuvable.",
   campaign_influencer_not_verified: "Ce créateur n'est pas encore vérifié et ne peut pas être invité.",
   campaign_not_open: "Cette campagne n'accepte pas de propositions.",
+  campaign_deadline_passed: "La date limite de cette campagne est passée, elle n'accepte plus de propositions.",
 
   /* Le panier : plusieurs packs d'un même créateur payés en une fois. */
   cart_empty: "Un paiement demande au moins un article.",
@@ -429,6 +430,7 @@ export const error_en: Record<string, string> = {
   campaign_influencer_not_found: "Creator not found.",
   campaign_influencer_not_verified: "This creator is not verified yet and cannot be invited.",
   campaign_not_open: "This campaign is not open for proposals.",
+  campaign_deadline_passed: "This brief's deadline has passed, so it is no longer taking proposals.",
 
   /* The cart: several packages from one creator, paid for in one go. */
   cart_empty: "A checkout needs at least one item.",

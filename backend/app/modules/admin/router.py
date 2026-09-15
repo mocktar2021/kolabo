@@ -2,7 +2,7 @@
 
 Admin identity is a real login: a bearer token belonging to a user whose
 is_admin is set, which app.modules.auth.admins keeps in step with a configured
-list of phone numbers on every boot. It replaced an X-Admin-Id header that
+list of email addresses on every boot. It replaced an X-Admin-Id header that
 accepted any non-empty string — a placeholder that was fine until it stood in
 front of moving money.
 

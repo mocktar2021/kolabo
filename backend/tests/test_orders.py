@@ -6,7 +6,7 @@ reviews) needs no second code path. These tests pin that shape down, plus the
 rules about who may place an order, who may answer one, and what happens when
 nobody does.
 """
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -204,7 +204,12 @@ def _publish_brief(client, biz):
             "budget_amount": 500000,
             "budget_currency": "XOF",
             "deliverables": [{"platform": "instagram", "type": "post", "quantity": 3}],
-            "deadline": "2026-12-01",
+            # Relative, because a brief past its deadline no longer takes
+            # proposals (campaigns.service) and both callers below bid on this
+            # one. A hard-coded date would read as "a live brief" only until
+            # it arrived, and then take them down on a morning nobody had
+            # changed anything.
+            "deadline": str(date.today() + timedelta(days=90)),
             "publish": True,
             # An OPEN brief, because both tests below have a creator nobody
             # invited bid on it — which is what `open` means. The flag is new
@@ -677,6 +682,16 @@ def test_a_campaign_carrying_a_contract_is_never_cancelled_by_the_sweep(client, 
     once the chain is accepted — so it is seeded, because what is being pinned
     is the invariant rather than a path: a campaign that already carries an
     agreement is not the sweep's to cancel, whoever the lapsed row belongs to.
+
+    AND THE WAY IN IS SHUT AT THE OTHER END TOO, which the last assertion
+    covers. Once this row exists it is what latest_in_chain returns, and it is
+    `submitted` — so the accepted-chain guard named above does NOT refuse a
+    further counter on it: the accepted row is not the latest any more. What
+    refuses it is the expiry check submit_proposal gained alongside this,
+    which was the one path in the codebase that never asked. Without it a
+    creator could pile version onto version of an order that no longer has a
+    window, and every one of them would be dead on arrival — unacceptable,
+    unanswerable and uncontractable by anybody.
     """
     biz, creator, pkg = _setup(client)
     order = _order(client, biz, pkg).json()
@@ -706,6 +721,25 @@ def test_a_campaign_carrying_a_contract_is_never_cancelled_by_the_sweep(client, 
     assert client.post("/campaigns/orders/expire", headers=admin_headers).json() == {"expired": 0}
     assert _rows(client, campaigns.Campaign, id=order["campaign_id"])[0].status == campaigns.PUBLISHED
     assert _rows(client, contracts.Contract, id=contract["id"])[0].status == contracts.PENDING
+
+    # The chain takes no further versions either, and order_expired is what
+    # says so. See the docstring for why it is this guard and not the
+    # accepted-chain one.
+    refused = client.post(
+        f"/campaigns/{order['campaign_id']}/proposals",
+        json={"rate_amount": 30000, "rate_currency": "XOF", "timeline_days": 9},
+        headers=_headers(creator),
+    )
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "order_expired"
+    # Two rows still, and the lapsed one was not superseded on the way out:
+    # a refusal that rewrote the chain would be the worse half of the bug.
+    chain = _rows(client, campaigns.Proposal, campaign_id=order["campaign_id"])
+    assert len(chain) == 2
+    assert [p.status for p in sorted(chain, key=lambda p: p.version)] == [
+        campaigns.PROPOSAL_ACCEPTED,
+        campaigns.SUBMITTED,
+    ]
 
 
 def test_a_genuinely_lapsed_order_still_expires_beside_an_orphan_chain(client, admin_headers):

@@ -69,9 +69,9 @@ def world(client):
     """A brand with a company name and a creator to pay."""
     db = client.session_factory()
     try:
-        biz = User(phone="+22990050001", password_hash="x", country_code="BJ",
+        biz = User(phone="+22990050001", email="22990050001@kolabo.test", password_hash="x", country_code="BJ",
                    role="business", is_verified=True)
-        inf = User(phone="+22990050002", password_hash="x", country_code="BJ",
+        inf = User(phone="+22990050002", email="22990050002@kolabo.test", password_hash="x", country_code="BJ",
                    role="influencer", is_verified=True)
         db.add_all([biz, inf]); db.commit(); db.refresh(biz); db.refresh(inf)
         db.add(BusinessProfile(user_id=biz.id, company_name="Maison Kola"))
@@ -85,7 +85,7 @@ def _other_buyer(client, phone="+22990050003", company="Autre Marque"):
     """A second brand, so "filter by counterparty" has two to tell apart."""
     db = client.session_factory()
     try:
-        biz = User(phone=phone, password_hash="x", country_code="BJ",
+        biz = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ",
                    role="business", is_verified=True)
         db.add(biz); db.commit(); db.refresh(biz)
         db.add(BusinessProfile(user_id=biz.id, company_name=company))

@@ -540,6 +540,9 @@ def test_confirming_retires_the_other_outstanding_codes(client):
     _verified_token(client)
     client.post("/auth/password-reset/request", json={"email": EMAIL})
     first = _reset_code(client)
+    # Read so the row is known to exist before the second request; the
+    # assertion below is about both rows being spent, not about this value.
+    assert first
     client.post("/auth/password-reset/request", json={"email": EMAIL})
     second = _reset_code(client)
 

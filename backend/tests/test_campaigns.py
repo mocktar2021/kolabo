@@ -1,4 +1,6 @@
 """Tests for Epic D (KOL-11): campaigns, invitations, proposals."""
+from datetime import date, timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,6 +13,11 @@ from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.profiles.models import BusinessProfile, InfluencerProfile
+
+# A brief past its deadline takes no proposals (campaigns.service), so the
+# briefs here have to stay live as the calendar moves rather than until a
+# literal arrives.
+LIVE_DEADLINE = date.today() + timedelta(days=90)
 
 
 @pytest.fixture()
@@ -76,7 +83,7 @@ def _published_campaign(client, headers):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": True,
         "is_open": True,
     }, headers=headers)
@@ -225,7 +232,7 @@ def test_invitation_carries_the_full_brief_and_company_name(client):
     assert brief["title"] == "Launch push"
     assert brief["budget_amount"] == 50000
     assert brief["budget_currency"] == "XOF"
-    assert brief["deadline"] == "2026-09-01"
+    assert brief["deadline"] == str(LIVE_DEADLINE)
 
 
 def test_invitation_company_name_is_null_without_a_business_profile(client):
@@ -309,7 +316,7 @@ def test_ugc_deliverables_accepted(client):
         "budget_amount": 80000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "ugc", "type": "ugc_video", "quantity": 3}],
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
         "publish": True,
     }, headers=headers)
     assert r.status_code == 201
@@ -324,7 +331,7 @@ def test_publish_still_requires_nonempty_deliverables(client):
         "title": "No deliverables",
         "budget_amount": 10000,
         "budget_currency": "XOF",
-        "deadline": "2026-09-01",
+        "deadline": str(LIVE_DEADLINE),
     }, headers=headers)
     assert r.status_code == 201
     cid = r.json()["id"]

@@ -22,7 +22,7 @@ export default function Register() {
 
   const [role, setRole] = useState<Role>(ROLES.includes(initialRole) ? initialRole : "influencer");
   const [country, setCountry] = useState("BJ");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ export default function Register() {
       await api<RegisterResponse>("/auth/register", {
         method: "POST",
         body: {
-          phone,
+          email,
           password,
           country_code: country,
           role,
@@ -49,7 +49,7 @@ export default function Register() {
         }
       });
       localStorage.setItem("kolabo_role", role);
-      navigate(`/verify?phone=${encodeURIComponent(phone)}`);
+      navigate(`/verify?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(errorText(err, t));
     } finally {
@@ -96,8 +96,9 @@ export default function Register() {
                 </select>
               </div>
               <div className="field">
-                <label className="label" htmlFor="phone">{t("auth.phone")}</label>
-                <input id="phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+229 ..." required />
+                <label className="label" htmlFor="email">{t("auth.email")}</label>
+                <input id="email" className="input" type="email" autoComplete="email" inputMode="email"
+                  value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <div className="field">
                 <label className="label" htmlFor="password">{t("auth.password")}</label>

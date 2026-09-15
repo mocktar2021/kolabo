@@ -9,6 +9,8 @@ signatures are required before the contract is fully signed (which is what
 Epic G will check before unlocking payment), and once signed the contract is
 immutable. A ContractEvent audit row is written for every lifecycle event.
 """
+from datetime import date
+
 from fastapi import status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -145,6 +147,25 @@ def generate_from_proposal(
             status.HTTP_400_BAD_REQUEST,
             code="contract_campaign_not_open",
             detail="This campaign is no longer open, so no new contract can be created from it.",
+        )
+
+    # And its deadline, which until this guard nothing anywhere enforced.
+    # campaigns/service.py::submit_proposal carries the reasoning for the rule;
+    # what makes it matter HERE is what this path does. The other three refuse
+    # a proposal, which costs somebody an evening. This one turns an old bid
+    # into a signed, fundable agreement, so it is both the last place the rule
+    # can be applied and the one place where missing it ends in real money
+    # moving against a brief whose date went by months ago.
+    #
+    # Inclusive of the deadline's own day, exactly as the campaigns-side guards
+    # are. NULL passes untouched: a direct order carries no deadline at all
+    # (service._place_order writes none), and neither do the briefs written
+    # before a deadline was required to publish.
+    if campaign.deadline is not None and campaign.deadline < date.today():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_deadline_passed",
+            detail="This brief's deadline has passed, so it is no longer taking proposals.",
         )
 
     # A proposal id names a negotiation, not a frozen offer. Since the business

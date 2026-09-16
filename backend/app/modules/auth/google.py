@@ -4,10 +4,12 @@ WHAT THIS IS NOT. It is not the subsystem in app/modules/profiles/oauth.py.
 That one asks a creator for permission to read their own Facebook Page and
 stores a token belonging to THEM, against an account that is already signed in.
 This one answers a different question entirely: who is at the door. Nothing
-here is stored, nothing here is a credential of ours, and there is no redirect
-uri, no callback route and no client secret, because there is no server side
-code exchange. The client (a browser or a phone) gets an ID token from Google
-and posts it; this module reads it.
+here is a credential of ours, this module itself writes nothing to any table,
+and there is no redirect uri, no callback route and no client secret, because
+there is no server side code exchange. The client (a browser or a phone) gets
+an ID token from Google and posts it; this module reads it. What is DONE with
+the answer belongs to the caller: auth.service records the `sub` on the account
+it signs in, so that the link is a fact the product can read afterwards.
 
 WHY THE LIBRARY AND NOT A HAND ROLLED VERIFIER. google.oauth2.id_token is what
 Google's own documentation points at, and the two obvious alternatives are both
@@ -89,12 +91,18 @@ class GoogleIdentity:
     `email` is ALREADY NORMALISED. Callers look accounts up with it directly
     and must not re-derive it from anything else.
 
-    `subject` is Google's `sub`, the stable per-account identifier. Nothing
-    stores it yet, and it is carried anyway because it is the only claim that
-    survives somebody changing their Google address: the day this platform
-    wants to notice that two Kolabo accounts are one Google account, or to keep
-    a link alive across an address change, `sub` is the column that does it.
-    Reading it here costs nothing and keeps the option open.
+    `subject` is Google's `sub`, the stable per-account identifier, and since
+    a7f1c6e3d940 it is what users.google_sub holds. The link is kept on this
+    claim rather than on the address because it is the only one that survives
+    somebody changing their Google address: an address can move between Google
+    accounts and a `sub` does not move at all. It is also the value the unique
+    index refuses a second claim on, which is how two Kolabo accounts are
+    stopped from being one Google identity.
+
+    IT NEVER TRAVELS ON A RESPONSE. It is a stable cross site identifier for a
+    person and no client has any use for the value, only for whether there is
+    one, so MeOut carries a boolean instead. What gets written, and when, is
+    decided in auth.service by the helper that links an identity to an account.
     """
 
     email: str

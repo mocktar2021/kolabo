@@ -286,6 +286,32 @@ class Settings(BaseSettings):
     # cap is an open tab on the inference bill.
     bio_generation_limit: int = 10
 
+    # --------------------------------------------------------- google sign in
+    # The OAuth client ids a Google ID token posted to POST /auth/google may be
+    # addressed to, comma separated.
+    #
+    # A LIST RATHER THAN ONE VALUE, and that is not future proofing. Web and
+    # mobile are separate OAuth clients with separate ids, and iOS is a third;
+    # Google stamps whichever one asked into the token's `aud` claim. A single
+    # setting would verify one client and refuse the others, which reaches a
+    # user as a sign in button that works on the website and not on the phone.
+    #
+    # THIS IS NOT A SECRET AND THERE IS NO CLIENT SECRET ANYWHERE NEAR IT. The
+    # flow is an ID token flow: the client obtains a token from Google and
+    # posts it, and the server only ever reads it. There is no code exchange,
+    # so there is nothing to exchange it with. A client id is public by design
+    # and ships inside both apps already.
+    #
+    # WHAT IT IS, THOUGH, IS THE AUDIENCE CHECK. A correctly signed Google ID
+    # token issued to somebody else's application is easy to come by, so a
+    # verifier that skips `aud` accepts every other Google app on the internet
+    # as a way into Kolabo. That check has nothing to compare against until
+    # this is set, which is why empty means the feature is UNAVAILABLE rather
+    # than unrestricted: POST /auth/google answers 503
+    # `auth_google_unavailable` and nobody is signed in. Same rule as
+    # youtube_api_key, the Meta credentials and fedapay_secret_key above.
+    google_client_ids: str = ""
+
     # -------------------------------------------------------------------- mail
     # Transactional email, through Resend. The only thing it carries today
     # is the address verification code, which is why it arrives alongside

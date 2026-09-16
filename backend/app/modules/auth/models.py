@@ -67,6 +67,37 @@ class User(Base):
     # Nothing in the API sets this — app.modules.auth.admins reconciles it
     # with a configured list of email addresses on every boot.
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # THE GOOGLE ACCOUNT THIS ONE IS LINKED TO, as Google's `sub` claim, or
+    # null for the overwhelming majority of rows that have never seen a Google
+    # token. Until a7f1c6e3d940 there was no such state anywhere: the claim was
+    # verified on every sign in and then dropped, so a settings screen could
+    # not say "connected with Google", there was nothing to revoke, and nothing
+    # could tell that two Kolabo accounts were one person's single Google
+    # account.
+    #
+    # A COLUMN RATHER THAN A TABLE because there is exactly one provider and at
+    # most one value per account. A google_identities table would put a join on
+    # the sign in path and give one fact two homes, and it would be justified
+    # only by rows this product cannot have: many providers per user, or many
+    # links per provider. social_accounts and social_tokens are separate tables
+    # for reasons that do not apply here, and the day a second provider arrives
+    # is the day that migration earns itself.
+    #
+    # UNIQUE BECAUSE TWO KOLABO ACCOUNTS MUST NEVER CLAIM ONE GOOGLE IDENTITY,
+    # and that is not something the service layer can promise on its own: two
+    # sign ins racing through the gap between a SELECT and an UPDATE both pass
+    # a check written in Python, and only the database can refuse the second.
+    # Indexed for the reason ix_users_email is indexed, because it is looked up
+    # by value. Nullable because almost no account has one, and both Postgres
+    # and SQLite let any number of rows sit under a unique index with a null in
+    # the indexed column.
+    #
+    # NOT A CREDENTIAL, AND NEVER A RESPONSE FIELD. A `sub` proves nothing on
+    # its own (a token signed by Google is what proves something) and it is a
+    # stable cross site identifier for a person, so it stays on this row: MeOut
+    # carries google_linked, a boolean, because whether the link exists is the
+    # only part of it a client has any use for.
+    google_sub: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
     # Referral: a shareable code (minted lazily, see the auth service) and who
     # brought this user in. What that attribution is worth, and when, is
     # decided in app.modules.auth.referrals.

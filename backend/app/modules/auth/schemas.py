@@ -173,6 +173,25 @@ class MeOut(BaseModel):
     # channel an attacker who has reached the API does not automatically have.
     # AccountPatch below cannot carry it either.
     is_admin: bool = False
+    # WHETHER THIS ACCOUNT CAN BE SIGNED INTO WITH GOOGLE, which is all a
+    # settings screen needs in order to draw the "connected with Google" row
+    # and all any client has ever needed from the link.
+    #
+    # A BOOLEAN, AND DELIBERATELY NOT THE SUBJECT ITSELF. Google's `sub` is a
+    # stable identifier for a person across every site that has seen one of
+    # their tokens, so putting it here would hand every client, every proxy log
+    # and every browser cache a durable cross site handle on the user, in
+    # exchange for nothing: no client has a use for the VALUE, only for whether
+    # there is one. That is the same rule that keeps password_hash off this
+    # schema, and the same reason the docstring above gives for withholding
+    # contact details everywhere except here.
+    #
+    # False for an account that has never signed in with Google, and false for
+    # every row written before users.google_sub existed. The second of those is
+    # the truth rather than a gap: nothing recorded the link before the column
+    # did, and no address can be turned back into a `sub`. Such an account
+    # starts answering true the next time its owner signs in with Google.
+    google_linked: bool = False
     created_at: datetime
     # WHO THE CALLER IS TO LOOK AT, which nothing else on this row answers: a
     # phone number, a role and a country are not things a person recognises

@@ -28,6 +28,7 @@ import secrets
 from datetime import timedelta
 
 from fastapi import status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -550,6 +551,87 @@ def login(db: Session, payload: LoginRequest) -> dict:
     return {"access_token": create_access_token(user.id), "role": user.role}
 
 
+def _link_google_identity(db: Session, user: User, identity: google.GoogleIdentity) -> None:
+    """Record WHICH Google account this is, and never fail a sign in over it.
+
+    BEST EFFORT, LIKE _attribute_referral ABOVE, and for a sharper reason. The
+    sign in itself was authorised by a mailbox Google has confirmed, which is
+    this platform's whole notion of identity. What this function writes is the
+    state a settings screen reads in order to say "connected with Google", and
+    refusing somebody entry to their own account because that bookkeeping could
+    not be done would be paying for a row with a person's access.
+
+    WHEN THE STORED SUBJECT AND THE PRESENTED ONE DISAGREE FOR ONE ADDRESS, THE
+    MAILBOX STILL DECIDES AND THE ROW IS RE-LINKED. The case is real rather
+    than theoretical: a Workspace address can be deleted and recreated, and
+    what stands behind it afterwards is a different Google account carrying a
+    new `sub` at the same address. A `sub` is stable and an address is not,
+    which is exactly why the link is kept on the `sub`, and it is also why the
+    two can come apart.
+
+      THE ALTERNATIVE WAS TO REFUSE THE SIGN IN, and it was rejected because it
+      buys nothing and costs the honest case everything. Whoever holds that
+      mailbox can already take the account by asking for a password reset and
+      reading the code, in about ten minutes, so refusing here keeps no
+      attacker out. It only strands somebody whose employer recreated their
+      address, with a sentence they cannot act on. The disagreement IS logged
+      at WARNING, because it has the shape a takeover through a recreated
+      Workspace address would have and nothing else in the system records it.
+
+    A SUBJECT ANOTHER ACCOUNT ALREADY HOLDS IS NOT TAKEN FROM IT. One Google
+    account can present under two addresses over its life, and each of those
+    addresses may have its own Kolabo account, so this is reachable without
+    anybody doing anything wrong. The second account signs in on the strength
+    of its own mailbox and is left unlinked: the identity belongs to the row
+    that claimed it first, and moving it is precisely what the unique index on
+    users.google_sub exists to prevent.
+
+    THE COMMIT IS GUARDED ANYWAY. The query below and the write after it are
+    not one atomic step, so two sign ins for one Google account arriving
+    together can both pass it. The index refuses the second, and the exception
+    becomes "left unlinked", which is the answer the query itself would have
+    given a moment later. A 500 on a sign in that has otherwise succeeded is
+    not an answer anybody can use.
+
+    THE SUBJECT IS NOT WRITTEN TO THE LOG, on any branch. It identifies a
+    person across every site that has ever seen one of their tokens, and the
+    account id already says which row is being talked about, which is what
+    anybody reading these lines needs.
+    """
+    if user.google_sub == identity.subject:
+        return
+
+    claimed_by = (
+        db.query(User)
+        .filter(User.google_sub == identity.subject, User.id != user.id)
+        .first()
+    )
+    if claimed_by is not None:
+        _log.warning(
+            "Google identity for %s is already linked to account %s, leaving %s unlinked",
+            identity.email,
+            claimed_by.id,
+            user.id,
+        )
+        return
+
+    if user.google_sub is not None:
+        _log.warning(
+            "Google identity for account %s has changed, re-linking to the new one",
+            user.id,
+        )
+
+    user.google_sub = identity.subject
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _log.warning(
+            "Google identity was claimed concurrently, account %s left unlinked",
+            user.id,
+        )
+
+
 def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
     """Sign somebody in with a Google ID token, creating the account if needed.
 
@@ -574,6 +656,13 @@ def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
     The password is left exactly where it is. An account that had one keeps it
     and keeps logging in with it; this adds a second door rather than replacing
     the first.
+
+    THE LINK IS RECORDED ON BOTH BRANCHES, which is what users.google_sub is
+    for. The account created here and the account that already existed and has
+    just been signed into both come away knowing which Google account reaches
+    them, so a settings screen can draw the connected row and a later revoke
+    has something to clear. How it is written, and what happens when the stored
+    subject and the presented one disagree, is _link_google_identity above.
 
     NO OTP IS SENT ON THE CREATE PATH, and the new row is verified from birth.
     Registration sends one to prove the mailbox; Google has just proved it. A
@@ -619,6 +708,13 @@ def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
             db.commit()
         # password_hash is deliberately untouched. An account with a password
         # keeps both ways in.
+        #
+        # AND THE LINK IS RECORDED HERE, not only on the create path below. An
+        # account that registered with a password and has now signed in with
+        # Google IS linked to Google from this moment, and a settings screen
+        # saying otherwise would be describing a door its owner had just walked
+        # through.
+        _link_google_identity(db, user, identity)
         return {"access_token": create_access_token(user.id), "role": user.role}
 
     if payload.role is None or payload.country_code is None:
@@ -665,6 +761,12 @@ def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # The link, on the row that exists only because of it. Written after the
+    # insert rather than as a column on it, so that a subject some other
+    # account already holds costs this one nothing: the account is still
+    # created and still signed in, and only the bookkeeping is skipped.
+    _link_google_identity(db, user, identity)
 
     # Attribution works here for the same reason it works at registration:
     # this IS a registration, and a creator who brought somebody in should not

@@ -161,6 +161,12 @@ def _me_out(db: Session, user: User) -> dict:
         "country_code": user.country_code,
         "is_verified": user.is_verified,
         "is_admin": user.is_admin,
+        # THAT the link exists, never the identifier behind it. See MeOut in
+        # schemas.py for why the subject itself must not leave the server, and
+        # note that this whitelist is what keeps that promise: a response
+        # assembled by excluding fields would have started shipping the column
+        # the day it was added.
+        "google_linked": user.google_sub is not None,
         "created_at": user.created_at,
         "display_name": display_name,
         "avatar_url": avatar_url,

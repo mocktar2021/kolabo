@@ -39,6 +39,8 @@
     ],
     "extra": {
       "apiBaseUrl": "https://api.kolabo.mocktar.com",
+      "googleWebClientId": "",
+      "googleIosClientId": "",
       "eas": {
         "projectId": "aacd1962-68bf-4700-a0cc-f1b33c6cfc6f"
       }

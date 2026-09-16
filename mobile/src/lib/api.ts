@@ -168,6 +168,24 @@ export type MeOut = {
   country_code: string;
   is_verified: boolean;
   is_admin: boolean;
+  /* WHETHER A GOOGLE ACCOUNT REACHES THIS ONE, and deliberately not which.
+     The backend sends a boolean because Google's `sub` is a stable identifier
+     for a person across every site that has ever seen one of their tokens,
+     and no client has a use for the value, only for whether there is one.
+     That is the same rule that keeps the password hash off this shape.
+
+     WHAT IT DOES NOT SAY, which is the whole difficulty on the account
+     screen: it does not say whether the account ALSO has a usable password.
+     An account created through Google has a hash of a secret nobody has ever
+     seen, and an account that registered with a password and later signed in
+     with Google has both doors. Both answer true, nothing on /auth/me tells
+     them apart, and the settings screen has to be right for both. See
+     ProofField in screens/AccountScreen.tsx for what that argument settles.
+
+     Defaulted in the backend rather than here, and false for every row
+     written before users.google_sub existed, which is the truth rather than a
+     gap: nothing recorded the link before the column did. */
+  google_linked: boolean;
   created_at: string;
   display_name: string | null;
   avatar_url: string | null;

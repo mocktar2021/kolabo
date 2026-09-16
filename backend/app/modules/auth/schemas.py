@@ -53,6 +53,41 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleSignInRequest(BaseModel):
+    """A Google ID token, and the two things Google cannot tell us.
+
+    ID TOKEN, NOT AN AUTHORIZATION CODE. The client obtains the token from
+    Google and posts it here; there is no redirect uri, no callback route and
+    no client secret on this path. See app.modules.auth.google.
+
+    role AND country_code ARE OPTIONAL BECAUSE THIS IS TWO REQUESTS, not
+    because they are ever optional for a new account. Google says who somebody
+    is; it cannot say which country they sell in or whether they came here to
+    sell at all. So a token whose address already has an account signs in with
+    neither of these, and a token whose address does not is refused once with
+    `auth_google_profile_required` so the client can ask both questions and
+    call again with the SAME TOKEN. Sending them on the first call is allowed
+    and simply saves the round trip.
+
+    country_code carries the same two character bound registration puts on it,
+    and both values are validated against ROLES and get_enabled_countries in
+    the service, exactly as register validates them. A shape check here is not
+    the rule; it only stops a twenty character string reaching the rule.
+
+    referral_code is here for the same reason it is on RegisterRequest: this
+    IS a registration when the address is new, and a creator who brought
+    somebody in should not lose the attribution because that person happened
+    to tap the Google button. Ignored silently when it resolves to nobody, and
+    ignored entirely on the sign in branch, where there is no new account to
+    attribute.
+    """
+
+    id_token: str
+    role: str | None = None
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    referral_code: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -64,10 +99,28 @@ class TokenResponse(BaseModel):
 
 
 class DeleteAccountRequest(BaseModel):
-    # Deleting an account must cost more than a stolen session token: the
-    # bearer token says who is asking, but only the current password proves
-    # it is really them.
-    password: str
+    """Proof of ownership, in whichever of the two forms this account has.
+
+    Deleting an account must cost more than a stolen session token: the bearer
+    token says a session exists, and it cannot tell an owner from whoever
+    picked the handset up. Something else has to.
+
+    BOTH FIELDS ARE OPTIONAL AND EXACTLY ONE IS REQUIRED, which pydantic cannot
+    say and the service says instead (see auth.account.require_reauth). The
+    reason neither can be mandatory is that an account created through Google
+    HAS NO USABLE PASSWORD: its password_hash is a hash of a secret nobody has
+    ever seen. Leaving `password` required would have meant such an account
+    could never be deleted by its owner at all, which both app stores and data
+    protection regimes expect to work.
+
+    The answer is not to drop the check. It is to accept a different proof of
+    the same fact: a freshly verified Google ID token for the same address.
+    """
+
+    password: str | None = None
+    # A Google ID token, verified exactly as a sign in verifies one and then
+    # required to carry THIS account's address. See auth.account.require_reauth.
+    google_token: str | None = None
 
 
 class MeOut(BaseModel):
@@ -146,10 +199,14 @@ class AccountPatch(BaseModel):
     is the contact detail registration stopped collecting, which means this
     patch is the ONLY way an account ever acquires one.
 
-    current_password is REQUIRED and not optional-per-field. Every one of these
-    changes something the account is reached or identified by, and a bearer
-    token only proves that a session exists — it cannot tell an owner from
-    whoever picked the handset up. The password is what tells them apart.
+    PROOF OF OWNERSHIP IS REQUIRED, in one of its two forms, and the form is
+    what is optional rather than the proof. Every one of these changes
+    something the account is reached or identified by, and a bearer token only
+    proves that a session exists: it cannot tell an owner from whoever picked
+    the handset up. The current password tells them apart, and for an account
+    created through Google, which has no usable password, a freshly verified
+    Google ID token tells them apart instead. Exactly one of the two, and the
+    service enforces that because pydantic cannot.
 
     Partial like every other patch here: a field the client did not send is
     left alone. No field sent at all is refused in the service with a sentence,
@@ -160,7 +217,13 @@ class AccountPatch(BaseModel):
     read, which test_me_is_admin.py asserts rather than assumes.
     """
 
-    current_password: str = Field(min_length=1)
+    current_password: str | None = Field(default=None, min_length=1)
+    # The other proof of the same thing, for an account that has no usable
+    # password to send. THIS IS ALSO WHAT LETS A GOOGLE USER SET A PASSWORD
+    # FOR THE FIRST TIME: new_password below is the only way to acquire one,
+    # and until this field existed it was gated behind a current password that
+    # such an account could never have. See auth.account.require_reauth.
+    google_token: str | None = None
     phone: str | None = Field(default=None, min_length=6, max_length=20)
     # THE LOGIN IDENTITY, so changing it is the single most consequential
     # thing on this schema: it moves where a reset code goes and it moves what

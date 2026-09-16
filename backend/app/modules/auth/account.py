@@ -38,7 +38,7 @@ from app.core.config import settings
 from app.core.emails import normalized_email
 from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
-from app.modules.auth import otp
+from app.modules.auth import google, otp
 from app.modules.auth.models import PasswordResetToken, User, utcnow
 from app.modules.auth.schemas import (
     AccountPatch,
@@ -167,6 +167,86 @@ def _me_out(db: Session, user: User) -> dict:
     }
 
 
+def require_reauth(user: User, password: str | None, google_token: str | None) -> None:
+    """Prove the caller is the OWNER, not merely the holder of a session.
+
+    THE RULE HAS NOT BEEN RELAXED, IT HAS BEEN GIVEN A SECOND FORM. A bearer
+    token says a session exists; it cannot tell an owner from whoever picked
+    the handset up. Changing the login address or destroying the account has
+    always cost more than that, and still does.
+
+    What changed is that an account created through Google HAS NO USABLE
+    PASSWORD. Its password_hash is a hash of a freshly generated secret nobody
+    has ever seen, written so the NOT NULL column stays honest (see
+    auth.service._unusable_password_hash). Left as it was, the password check
+    would have made such an account impossible for its owner to delete or to
+    edit, which is not a rule, it is a trap: both app stores and every data
+    protection regime these markets have expect a person to be able to close
+    their own account.
+
+    So the proof may be a Google ID token instead, verified exactly as a sign
+    in verifies one and then required to carry THIS account's address. That is
+    the same claim the password makes, arriving through a different door.
+
+    EXACTLY ONE, NEVER BOTH AND NEVER NEITHER. Neither is nothing to check.
+    Both is a request whose author does not know which proof they hold, and
+    accepting it would mean deciding, silently, which one counted.
+
+    403 THROUGHOUT, including for "you sent nothing". The request is not
+    malformed, it is refused: the caller has not shown they may do this.
+
+    THE PASSWORD BRANCH GUARDS ITS ARGUMENTS BEFORE IT CALLS verify_password,
+    and that is not defensive habit, it is this function's own doing. passlib
+    raises rather than returning False on the two shapes that only became
+    reachable here: verify(None, hash) raises TypeError because the password
+    is no longer a required field, and verify(raw, "") raises UnknownHashError
+    on an empty stored hash. Either would be a 500 on a request that has a
+    perfectly good 403 waiting for it. (verify(raw, None) does return False,
+    which is the one case that would have been survivable.)
+
+    A WRONG PASSWORD KEEPS auth_password_incorrect; everything else answers
+    auth_reauth_required. The two sentences say different things to do, and
+    telling somebody who sent a Google token that their password is wrong
+    sends them to look for a password they may not have.
+    """
+    supplied = [proof for proof in (password, google_token) if proof]
+    if len(supplied) != 1:
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="auth_reauth_required",
+            detail="We could not confirm it is you. Enter your current password, or confirm with Google, and try again.",
+        )
+
+    if password:
+        if not user.password_hash or not verify_password(password, user.password_hash):
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                # Shared with the delete endpoint: in both places the rule is
+                # that the CURRENT password supplied does not match.
+                code="auth_password_incorrect",
+                detail="Current password is incorrect",
+            )
+        return
+
+    identity = google.verify(google_token)
+    # THE ADDRESS HAS TO BE THIS ACCOUNT'S. A verified Google token proves who
+    # the holder is; it says nothing about which Kolabo account they are
+    # pointing it at. Without this comparison anybody with any Google account
+    # could re-authenticate as anybody else, which is a worse hole than the one
+    # this whole function exists to keep shut. Both sides are normalised: the
+    # token's address by google.verify, the stored one at registration.
+    if identity is None or identity.email != user.email:
+        # Logged, not disclosed. The caller gets one sentence whether the token
+        # was forged, expired, addressed to another application, carried an
+        # unconfirmed address, or simply belonged to somebody else.
+        _log.warning("Re-authentication with a Google token refused for user %s", user.id)
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="auth_reauth_required",
+            detail="We could not confirm it is you. Enter your current password, or confirm with Google, and try again.",
+        )
+
+
 def _require_user(db: Session, user_id: str) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
@@ -225,6 +305,14 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     this has to exist rather than being a support ticket. What it must not
     become is a way to take somebody else's mailbox.
 
+    OR A GOOGLE TOKEN, FOR AN ACCOUNT THAT HAS NO PASSWORD TO SEND. An account
+    created through Google never had one, so a rule written as "the password"
+    would have locked its owner out of their own settings screen. The price is
+    unchanged; what is accepted in payment now includes a freshly verified
+    Google ID token for this same address. See require_reauth above, and note
+    that this is also the ONLY way such an account ever acquires a password:
+    new_password below needs a current one, and there was none.
+
     THE PHONE IS NOT THE LOGIN IDENTITY ANY MORE AND STILL COSTS THE PASSWORD.
     It is no longer what anybody signs in with and no code is sent to it, so
     the takeover argument above does not apply to it. It keeps the price for a
@@ -262,12 +350,7 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     # Checked before anything is looked up or written, and before the 409 on a
     # taken phone: a caller who cannot prove they own this account must not be
     # able to use it to discover whether a number is registered.
-    if not verify_password(payload.current_password, user.password_hash):
-        raise AppError(
-            status.HTTP_403_FORBIDDEN,
-            code="auth_password_incorrect",
-            detail="Current password is incorrect",
-        )
+    require_reauth(user, payload.current_password, payload.google_token)
 
     if new_phone is not None and new_phone != user.phone:
         # Any row at all, verified or not. An unverified registration still

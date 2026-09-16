@@ -18,6 +18,14 @@ definition, and somebody holding the mailbox could already take the account
 back through a password reset. test_a_verified_google_address_signs_into_the_
 account_that_already_holds_it is what stops that being quietly reversed, and
 test_an_unverified_google_address_is_refused is what keeps it safe.
+
+THE LINK IS NOW PERSISTED, and the last section asserts the four things that
+can happen to it: it is written when an account is created, it is written when
+an existing account is linked, it is never taken from an account that already
+holds it, and a subject that has changed under a known address re-links rather
+than refusing somebody entry. The value itself is asserted to stay off the API
+response, because a `sub` on /auth/me would be a stable cross site identifier
+handed to every client for no purpose.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +33,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -426,6 +435,119 @@ def test_an_unverified_account_becomes_verified(client, fake_google):
     assert _sign_in(client, "returning").status_code == 200
     assert _user(client).is_verified is True
     assert client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD}).status_code == 200
+
+
+# --------------------------------------------------------------------------
+# The link: WHICH Google account this Kolabo account is
+# --------------------------------------------------------------------------
+
+
+def test_the_subject_is_stored_on_an_account_google_created(client, fake_google):
+    """Without this the link is verified on every sign in and forgotten every
+    time, which is the state this column was added to end: no connected row on
+    the settings screen, nothing for a revoke to clear, and no way to tell that
+    two accounts are one Google account."""
+    fake_google.issue("newcomer", sub="sub-created")
+    assert _sign_in(client, "newcomer", role="influencer", country_code="BJ").status_code == 200
+    assert _user(client).google_sub == "sub-created"
+
+
+def test_the_subject_is_stored_when_an_existing_account_is_linked(client, fake_google):
+    """An account that registered with a password and then signed in with
+    Google IS linked from that moment. Storing the subject only on the create
+    path would leave exactly the accounts that use both doors unable to see
+    either of them described correctly."""
+    _verified_password_account(client)
+    assert _user(client).google_sub is None
+
+    fake_google.issue("returning", sub="sub-linked")
+    assert _sign_in(client, "returning").status_code == 200
+    assert _user(client).google_sub == "sub-linked"
+    # And the first door is still open, as it was before the column existed.
+    assert client.post("/auth/login", json={"email": EMAIL, "password": PASSWORD}).status_code == 200
+
+
+def test_the_database_refuses_two_accounts_on_one_google_identity(client, fake_google):
+    """THE PROPERTY THE SERVICE LAYER CANNOT PROMISE. Two sign ins racing
+    through the gap between a SELECT and an UPDATE both pass a check written in
+    Python, so the refusal has to come from the unique index. Asserted against
+    the database directly, because a test that only drove the endpoint would be
+    describing the Python check rather than the constraint under it."""
+    fake_google.issue("newcomer", sub="sub-shared")
+    assert _sign_in(client, "newcomer", role="influencer", country_code="BJ").status_code == 200
+
+    db = client.session_factory()
+    try:
+        db.add(
+            models.User(
+                email="second@example.com",
+                password_hash="x",
+                country_code="BJ",
+                role="influencer",
+                is_verified=True,
+                google_sub="sub-shared",
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db.commit()
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_a_second_address_on_one_google_identity_signs_in_and_is_left_unlinked(client, fake_google):
+    """One Google account can present under two addresses over its life, and
+    each of those addresses may have its own Kolabo account, so this is
+    reachable without anybody doing anything wrong. The second account signs in
+    on the strength of its own mailbox, which is what this platform means by
+    identity, and the link stays where it was claimed first. What must NOT
+    happen is the 500 an unguarded write would produce."""
+    fake_google.issue("first", sub="sub-shared")
+    assert _sign_in(client, "first", role="influencer", country_code="BJ").status_code == 200
+
+    fake_google.issue("second", email="moved@example.com", sub="sub-shared")
+    signed_in = _sign_in(client, "second", role="influencer", country_code="BJ")
+    assert signed_in.status_code == 200
+    assert _user(client, "moved@example.com").google_sub is None
+    assert _user(client, EMAIL).google_sub == "sub-shared"
+
+
+def test_a_new_subject_on_a_known_address_re_links_instead_of_refusing(client, fake_google):
+    """A Workspace address can be deleted and recreated, and what stands behind
+    it afterwards is a different Google account with a new subject at the same
+    address. The mailbox is the login identity here, and whoever holds it could
+    already take the account through a password reset, so refusing would keep
+    no attacker out and would strand the honest case with a sentence it cannot
+    act on. The row re-links, and the disagreement is logged."""
+    fake_google.issue("first", sub="sub-old")
+    assert _sign_in(client, "first", role="influencer", country_code="BJ").status_code == 200
+    assert _user(client).google_sub == "sub-old"
+
+    fake_google.issue("recreated", sub="sub-new")
+    again = _sign_in(client, "recreated")
+    assert again.status_code == 200
+    assert _user(client).google_sub == "sub-new"
+
+
+def test_me_says_whether_the_account_is_connected_and_never_says_which(client, fake_google):
+    """What the settings screen needs is the boolean. What it must never be
+    given is the subject: a `sub` is a stable identifier for a person across
+    every site that has seen one of their tokens, and no client has a use for
+    the value, only for whether there is one."""
+    bearer = _google_account(client, fake_google)
+    linked = client.get("/auth/me", headers=_headers(bearer)).json()
+    assert linked["google_linked"] is True
+    assert "google_sub" not in linked
+
+    _verified_password_account(client, email="password-only@example.com")
+    login = client.post(
+        "/auth/login", json={"email": "password-only@example.com", "password": PASSWORD}
+    )
+    password_only = client.get(
+        "/auth/me", headers=_headers(login.json()["access_token"])
+    ).json()
+    assert password_only["google_linked"] is False
+    assert "google_sub" not in password_only
 
 
 # --------------------------------------------------------------------------

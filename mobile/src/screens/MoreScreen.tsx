@@ -14,8 +14,9 @@ type IconName = keyof typeof Ionicons.glyphMap;
    daily loop — the mobile equivalent of the web nav's account menu. The four
    daily surfaces live on the tab bar; everything else is a row here, one tap
    deep, which is exactly where the web puts them (one click, behind the
-   account button). Account settings (password, language, deletion) joins
-   this list when that screen lands. */
+   account button). Account settings (address, phone, password, language,
+   deletion) is the settings-outline row below: that screen landed, and this
+   note used to say it was still coming. */
 export default function MoreScreen({ navigation }: AppScreenProps<"More">) {
   const { t } = useTranslation();
   const { role, logout } = useAuth();

@@ -12,6 +12,18 @@ const ROLE_KEY = "kolabo_role";
 
 export type Role = "influencer" | "business" | "agency";
 
+/* THE SAME THREE, AS A LIST, because more than one screen has to draw them.
+   The register form has always had a local copy; the Google sign in flow needs
+   the identical set, because a Google address with no account behind it is
+   asked the same two questions the register form asks and the answer goes to
+   the same validation (ROLES in backend/app/modules/auth/schemas.py). Two
+   copies of a closed set is how a fourth role reaches one screen and not the
+   other, and the screen that missed it refuses a value the server accepts.
+
+   Here rather than in a file of its own because the TYPE is already here and a
+   list whose members are that type belongs beside it. */
+export const ROLES: readonly Role[] = ["influencer", "business", "agency"];
+
 /* Every read and write of localStorage in this file goes through these two.
 
    Not defensiveness for its own sake: the getter THROWS rather than returning

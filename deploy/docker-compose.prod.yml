@@ -85,6 +85,19 @@ services:
         # Baked into the bundle at build time — see web/Dockerfile. Changing
         # this requires a rebuild, not a restart.
         VITE_API_URL: ${VITE_API_URL}
+        # Same rule, and the one place it is easiest to get wrong. This has to
+        # be a BUILD ARG and not an `environment:` entry: the web service is
+        # nginx serving static files, so it has no process that reads its
+        # environment at all. A value put under `environment:` here would be
+        # accepted by compose, set on a container nothing reads it from, and
+        # the button would simply never appear, with nothing anywhere saying
+        # why.
+        #
+        # Empty is a supported state and means the Google button is absent.
+        # That is the intended configuration until the OAuth client ids exist,
+        # and it matches the backend, whose GOOGLE_CLIENT_IDS being empty makes
+        # POST /auth/google answer 503.
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
     depends_on:
       - backend

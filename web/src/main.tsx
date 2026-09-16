@@ -62,6 +62,13 @@ import "./lib/errorStrings";
    only bundle whose copy is a legal undertaking, and reviewing it is a
    different job from reviewing the app's copy. */
 import "./lib/legalStrings";
+/* Signing in with Google. Joins TWO groups it does not own: auth.* belongs to
+   i18n.ts and account.* belongs to accountStrings.ts, so it carries the same
+   ordering constraint as the four bundles above and has to come after both of
+   them. It is last of the bundles because it is the newest and because its
+   copy is the only copy in this list that a signed-out stranger reads before
+   anything else on the site. */
+import "./lib/googleStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

@@ -3,9 +3,11 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
+import { googleConfigured } from "../lib/googleSignIn";
 
 /* Mirrors MIN_PASSWORD_LENGTH in backend/app/modules/auth/schemas.py. Checked
    here as well so a short password is met as a hint under the field rather
@@ -33,10 +35,162 @@ type AccountOut = {
   role: string;
   country_code: string;
   is_verified: boolean;
+  /* WHETHER A GOOGLE ACCOUNT REACHES THIS ONE, and deliberately not which.
+     MeOut carries a boolean because Google's `sub` is a stable identifier for
+     a person across every site that has ever seen one of their tokens, and no
+     client has a use for the value.
+
+     WHAT IT DOES NOT SAY, which is the whole difficulty on this screen: it
+     does not say whether the account ALSO has a usable password. An account
+     created through Google has a password hash of a secret nobody has ever
+     seen, and an account that registered with a password and later signed in
+     with Google has both doors. Both answer true here, nothing on /auth/me
+     tells them apart, and the settings screen has to be right for both. See
+     ProofField below for what that argument settles. */
+  google_linked: boolean;
   created_at: string;
 };
 
 type Tab = "details" | "payment" | "notifications" | "account";
+
+/* PROOF THAT THE CALLER OWNS THIS ACCOUNT, in whichever of the two forms it
+   has. The backend calls this re-authentication and states the rule once, in
+   auth.account.require_reauth: a current password, or a freshly verified
+   Google ID token for this account's own address, and EXACTLY ONE of the two.
+   A bearer token is not enough on its own, because it says a session exists
+   and cannot tell an owner from whoever picked the handset up. */
+type Proof = { kind: "password"; secret: string } | { kind: "google"; secret: string };
+
+/* THE TWO ENDPOINTS SPELL THE PASSWORD FIELD DIFFERENTLY, and nothing in the
+   type system says so. PATCH /auth/me takes `current_password` (AccountPatch)
+   and DELETE /auth/me takes `password` (DeleteAccountRequest). Sending the
+   wrong one is not a 422 either: pydantic drops the unknown key, the request
+   arrives carrying no proof at all, and require_reauth answers 403
+   auth_reauth_required, which reads like a rejected password. Both spellings
+   live here so there is one place to be wrong in. */
+function patchProof(proof: Proof): Record<string, string> {
+  return proof.kind === "password"
+    ? { current_password: proof.secret }
+    : { google_token: proof.secret };
+}
+
+function deleteProof(proof: Proof): Record<string, string> {
+  return proof.kind === "password" ? { password: proof.secret } : { google_token: proof.secret };
+}
+
+/* The proof control, and the decision this screen turns on.
+
+   THE RULE. An account that is NOT linked to Google sees exactly what it saw
+   before: a password field, and nothing else. An account that IS linked is
+   offered GOOGLE FIRST, with the password reachable behind one plain button
+   that says so.
+
+   WHY THAT ORDER RATHER THAN SHOWING BOTH. google_linked cannot distinguish an
+   account created through Google, which has no usable password at all, from
+   one that registered with a password and later signed in with Google, which
+   has two ways in. Defaulting to the password would put a field in front of
+   the first of those that it can never fill, which is the one thing the
+   backend work shipped to prevent: before AccountPatch and
+   DeleteAccountRequest learned to take a Google token, such an account could
+   not change its own address or close itself at all. Defaulting to Google is
+   the choice that always works for a linked account, and the second button is
+   what keeps the account that genuinely has a password from losing it.
+
+   WHY THE UNLINKED ACCOUNT IS NOT OFFERED GOOGLE. require_reauth would in fact
+   accept a Google token for any account whose address matches, linked or not.
+   But this client has no way to know whether the person holds a Google account
+   at that address, so the button would be a coin flip: most would open a
+   chooser, pick the only address they have, and be refused for a reason the
+   screen cannot explain. A control that usually fails is worse than no control.
+
+   TWO STEPS ON THE GOOGLE BRANCH, ON PURPOSE. The credential arrives and is
+   held; the form is submitted afterwards by its own button. Signing in with
+   Google must not be the gesture that deletes an account. */
+function ProofField({
+  id,
+  me,
+  passwordLabel,
+  value,
+  onChange
+}: {
+  id: string;
+  me: AccountOut;
+  passwordLabel: string;
+  value: Proof | null;
+  onChange: (next: Proof | null) => void;
+}) {
+  const { t } = useTranslation();
+  /* Both halves are required. The link can be real while this build carries no
+     client id, in which case Google is not on offer here any more than it is
+     on the login screen, and the password is the only door left. */
+  const canUseGoogle = me.google_linked && googleConfigured();
+  const [usePassword, setUsePassword] = useState(!canUseGoogle);
+
+  if (usePassword) {
+    return (
+      <div className="field">
+        <label className="label" htmlFor={id}>{passwordLabel}</label>
+        <PasswordInput
+          id={id}
+          value={value?.kind === "password" ? value.secret : ""}
+          onChange={(e) => onChange(e.target.value ? { kind: "password", secret: e.target.value } : null)}
+        />
+        {canUseGoogle && (
+          <button type="button" className="btn btn-ghost" style={{ marginTop: 8, padding: "6px 12px", fontSize: 13 }}
+            onClick={() => { onChange(null); setUsePassword(false); }}>
+            {t("account.proofUseGoogle")}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="field">
+      <span className="label">{t("account.proofLabel")}</span>
+      {value?.kind === "google" ? (
+        <>
+          <div className="alert alert-success">{t("account.proofGoogleReady")}</div>
+          <button type="button" className="btn btn-ghost" style={{ padding: "6px 12px", fontSize: 13 }}
+            onClick={() => onChange(null)}>
+            {t("account.proofGoogleRedo")}
+          </button>
+        </>
+      ) : (
+        <GoogleSignInButton
+          text="continue_with"
+          onCredential={(credential) => onChange({ kind: "google", secret: credential })}
+        />
+      )}
+      <button type="button" className="btn btn-ghost" style={{ marginTop: 8, padding: "6px 12px", fontSize: 13 }}
+        onClick={() => { onChange(null); setUsePassword(true); }}>
+        {t("account.proofUsePassword")}
+      </button>
+    </div>
+  );
+}
+
+/* Whether Google reaches this account, said once and changed nowhere.
+
+   THERE IS NO DISCONNECT BUTTON AND THAT IS NOT AN OVERSIGHT. No endpoint
+   clears users.google_sub: not PATCH /auth/me, which cannot carry the column,
+   and not anything else. A button here would have to either lie or call
+   something that does not exist, so the row is informational and says as much.
+   The day the backend grows a way to unlink, the control belongs here. */
+function GooglePanel({ me }: { me: AccountOut }) {
+  const { t } = useTranslation();
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3 style={{ marginTop: 0 }}>{t("account.googleTitle")}</h3>
+      <p style={{ fontSize: 14.5, marginTop: -4 }}>
+        {me.google_linked ? t("account.googleLinkedYes") : t("account.googleLinkedNo")}
+      </p>
+      {me.google_linked && (
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>{t("account.googleNoDisconnect")}</p>
+      )}
+    </div>
+  );
+}
 
 /* Changing the address you sign in with.
 
@@ -48,7 +202,7 @@ function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   const { t } = useTranslation();
   const { token } = useAuth();
   const [email, setEmail] = useState(me.email);
-  const [currentPassword, setCurrentPassword] = useState("");
+  const [proof, setProof] = useState<Proof | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -58,7 +212,7 @@ function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!changed || !currentPassword) return;
+    if (!changed || !proof) return;
     setBusy(true);
     setError(null);
     setDone(false);
@@ -69,10 +223,10 @@ function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
       const updated = await api<AccountOut>("/auth/me", {
         method: "PATCH",
         token,
-        body: { current_password: currentPassword, email: next }
+        body: { ...patchProof(proof), email: next }
       });
       onChanged(updated);
-      setCurrentPassword("");
+      setProof(null);
       setDone(true);
     } catch (err) {
       setError(errorText(err, t));
@@ -84,7 +238,14 @@ function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>{t("account.emailTitle")}</h3>
-      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("account.emailWhyPassword")}</p>
+      {/* The same argument either way. The variant names what this account can
+          actually pay with, so a person who has no password is not told that
+          one is the price. */}
+      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>
+        {me.google_linked && googleConfigured()
+          ? t("account.emailWhyProof")
+          : t("account.emailWhyPassword")}
+      </p>
       {error && <div className="alert alert-error">{error}</div>}
       {done && <div className="alert alert-success">{t("account.emailSaved")}</div>}
       <form onSubmit={submit}>
@@ -97,12 +258,9 @@ function EmailForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
           <input id="acc-email-new" className="input" type="email" autoComplete="email" inputMode="email"
             value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <div className="field">
-          <label className="label" htmlFor="acc-email-password">{t("account.passwordCurrent")}</label>
-          <PasswordInput id="acc-email-password" value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)} />
-        </div>
-        <button className="btn btn-primary" type="submit" disabled={busy || !changed || !currentPassword}>
+        <ProofField id="acc-email-password" me={me} passwordLabel={t("account.passwordCurrent")}
+          value={proof} onChange={setProof} />
+        <button className="btn btn-primary" type="submit" disabled={busy || !changed || !proof}>
           {busy ? t("auth.working") : t("account.emailSave")}
         </button>
       </form>
@@ -121,7 +279,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   const { t } = useTranslation();
   const { token } = useAuth();
   const [phone, setPhone] = useState(me.phone ?? "");
-  const [currentPassword, setCurrentPassword] = useState("");
+  const [proof, setProof] = useState<Proof | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -131,7 +289,7 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!changed || !currentPassword) return;
+    if (!changed || !proof) return;
     setBusy(true);
     setError(null);
     setDone(false);
@@ -142,10 +300,10 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
       const updated = await api<AccountOut>("/auth/me", {
         method: "PATCH",
         token,
-        body: { current_password: currentPassword, phone: next }
+        body: { ...patchProof(proof), phone: next }
       });
       onChanged(updated);
-      setCurrentPassword("");
+      setProof(null);
       setDone(true);
     } catch (err) {
       setError(errorText(err, t));
@@ -157,7 +315,11 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("account.phoneTitle")}</h3>
-      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("account.phoneWhyPassword")}</p>
+      <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>
+        {me.google_linked && googleConfigured()
+          ? t("account.phoneWhyProof")
+          : t("account.phoneWhyPassword")}
+      </p>
       {error && <div className="alert alert-error">{error}</div>}
       {done && <div className="alert alert-success">{t("account.phoneSaved")}</div>}
       <form onSubmit={submit}>
@@ -170,12 +332,9 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
           <input id="acc-phone-new" className="input" value={phone} placeholder="+229 ..."
             onChange={(e) => setPhone(e.target.value)} />
         </div>
-        <div className="field">
-          <label className="label" htmlFor="acc-phone-password">{t("account.passwordCurrent")}</label>
-          <PasswordInput id="acc-phone-password" value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)} />
-        </div>
-        <button className="btn btn-primary" type="submit" disabled={busy || !changed || !currentPassword}>
+        <ProofField id="acc-phone-password" me={me} passwordLabel={t("account.passwordCurrent")}
+          value={proof} onChange={setProof} />
+        <button className="btn btn-primary" type="submit" disabled={busy || !changed || !proof}>
           {busy ? t("auth.working") : t("account.phoneSave")}
         </button>
       </form>
@@ -183,13 +342,20 @@ function PhoneForm({ me, onChanged }: { me: AccountOut; onChanged: (next: Accoun
   );
 }
 
-/* Changing the password, from the inside. The current password is required
-   for the same reason it is on the two forms above and for a second one: this
-   is the change a stolen session would make first. */
-function PasswordForm() {
+/* Changing the password, from the inside. Proof is required for the same
+   reason it is on the two forms above and for a second one: this is the change
+   a stolen session would make first.
+
+   AND IT IS THE ONLY WAY A GOOGLE CREATED ACCOUNT EVER ACQUIRES A PASSWORD.
+   Such an account has a hash of a secret nobody has ever seen, so the old
+   shape of this form, which demanded a current password, was a door with no
+   handle on the inside: no password, therefore no way to set one. Sending
+   new_password with a Google token is what AccountPatch.google_token exists
+   for, and the proof control below is what makes it reachable. */
+function PasswordForm({ me }: { me: AccountOut }) {
   const { t } = useTranslation();
   const { token } = useAuth();
-  const [currentPassword, setCurrentPassword] = useState("");
+  const [proof, setProof] = useState<Proof | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -198,7 +364,7 @@ function PasswordForm() {
 
   const tooShort = password !== "" && password.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirm !== "" && confirm !== password;
-  const ready = currentPassword !== "" && password.length >= MIN_PASSWORD_LENGTH && confirm === password;
+  const ready = proof !== null && password.length >= MIN_PASSWORD_LENGTH && confirm === password;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -210,9 +376,9 @@ function PasswordForm() {
       await api<AccountOut>("/auth/me", {
         method: "PATCH",
         token,
-        body: { current_password: currentPassword, new_password: password }
+        body: { ...patchProof(proof), new_password: password }
       });
-      setCurrentPassword("");
+      setProof(null);
       setPassword("");
       setConfirm("");
       setDone(true);
@@ -226,14 +392,16 @@ function PasswordForm() {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("account.passwordTitle")}</h3>
+      {/* Says "if", because the server tells us the account is linked and not
+          whether it also has a password. See AccountOut.google_linked. */}
+      {me.google_linked && googleConfigured() && (
+        <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("account.passwordMaybeFirst")}</p>
+      )}
       {error && <div className="alert alert-error">{error}</div>}
       {done && <div className="alert alert-success">{t("account.passwordSaved")}</div>}
       <form onSubmit={submit}>
-        <div className="field">
-          <label className="label" htmlFor="acc-pass-current">{t("account.passwordCurrent")}</label>
-          <PasswordInput id="acc-pass-current" value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)} />
-        </div>
+        <ProofField id="acc-pass-current" me={me} passwordLabel={t("account.passwordCurrent")}
+          value={proof} onChange={setProof} />
         <div className="field">
           <label className="label" htmlFor="acc-pass-new">{t("account.passwordNew")}</label>
           <PasswordInput id="acc-pass-new" value={password}
@@ -326,21 +494,21 @@ function NotificationsPanel() {
    a package should not pass it. It stays last on this tab for the same
    reason it was last there: it must never compete with the everyday
    actions. */
-function DangerZone() {
+function DangerZone({ me }: { me: AccountOut }) {
   const { t } = useTranslation();
   const { token, logout } = useAuth();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
-  const [password, setPassword] = useState("");
+  const [proof, setProof] = useState<Proof | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onDelete() {
-    if (!password) return;
+    if (!proof) return;
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/me", { method: "DELETE", token, body: { password } });
+      await api("/auth/me", { method: "DELETE", token, body: deleteProof(proof) });
       // The account is gone; drop the local session through the provider and
       // land on the marketing homepage.
       logout();
@@ -363,18 +531,18 @@ function DangerZone() {
         </button>
       ) : (
         <div>
-          <div className="field">
-            <label className="label" htmlFor="del-pass">{t("danger.confirmPassword")}</label>
-            <PasswordInput id="del-pass" value={password}
-              onChange={(e) => setPassword(e.target.value)} />
-          </div>
+          {/* The one place the two endpoints disagree about a field name, which
+              deleteProof is there to absorb: DELETE /auth/me reads `password`
+              and PATCH reads `current_password`. */}
+          <ProofField id="del-pass" me={me} passwordLabel={t("danger.confirmPassword")}
+            value={proof} onChange={setProof} />
           <div style={{ display: "flex", gap: 10 }}>
             <button type="button" className="btn btn-ghost" style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
-              disabled={!password || busy} onClick={onDelete}>
+              disabled={!proof || busy} onClick={onDelete}>
               {busy ? t("auth.working") : t("danger.deleteForever")}
             </button>
             <button type="button" className="btn btn-ghost"
-              onClick={() => { setConfirming(false); setPassword(""); setError(null); }}>
+              onClick={() => { setConfirming(false); setProof(null); setError(null); }}>
               {t("onb.cancel")}
             </button>
           </div>
@@ -461,7 +629,11 @@ export default function AccountPage() {
             <>
               <EmailForm me={me} onChanged={setMe} />
               <PhoneForm me={me} onChanged={setMe} />
-              <PasswordForm />
+              <PasswordForm me={me} />
+              {/* Last on the tab, under the two credentials it is about. It is
+                  a statement rather than a control, so it must not sit above
+                  the things somebody came here to change. */}
+              <GooglePanel me={me} />
             </>
           )
         )}
@@ -472,7 +644,14 @@ export default function AccountPage() {
         {tab === "account" && (
           <>
             <SessionPanel />
-            <DangerZone />
+            {/* Waits for /auth/me now, because the delete panel has to know
+                whether this account can prove itself with Google before it
+                decides what to put in front of somebody. */}
+            {loading ? (
+              <p className="muted" style={{ marginTop: 16 }}>{t("discover.loading")}</p>
+            ) : me ? (
+              <DangerZone me={me} />
+            ) : null}
           </>
         )}
       </div>

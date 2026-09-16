@@ -39,7 +39,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.modules.auth import otp, referrals
+from app.modules.auth import google, otp, referrals
 from app.modules.auth.models import (
     REFEREE,
     OtpChallenge,
@@ -50,6 +50,7 @@ from app.modules.auth.models import (
 )
 from app.modules.auth.schemas import (
     DeleteAccountRequest,
+    GoogleSignInRequest,
     LoginRequest,
     RegisterRequest,
     VerifyOtpRequest,
@@ -183,6 +184,34 @@ def _live_otp_challenge_count(db: Session, now) -> int:
         )
         .count()
     )
+
+
+def _unusable_password_hash() -> str:
+    """A hash of a secret that is generated, used once and never revealed.
+
+    users.password_hash IS NOT NULL AND STAYS THAT WAY. Making the column
+    nullable to accommodate accounts that sign in with Google would be a
+    migration whose real effect is to let every other reader of that column
+    meet None, and there are several, in two modules. A row that cannot happen
+    is cheaper to reason about than a None that has to be handled everywhere.
+
+    So a Google created account gets a password it is not possible to use: 32
+    bytes from secrets, hashed, and the plaintext dropped on the floor when
+    this function returns. Nothing shows it to anybody, nothing stores it, and
+    nobody can guess it, so login() keeps working exactly as written and simply
+    always answers auth_bad_credentials for such an account, which is the
+    correct behaviour rather than a special case.
+
+    WHICH IS WHY THE RE-AUTHENTICATION WORK SHIPPED WITH THIS AND NOT AFTER IT.
+    Three places prove ownership by checking the password, and this account has
+    no usable one, so without a second form of proof it could never be deleted
+    or edited by its owner. See auth.account.require_reauth.
+
+    token_urlsafe(32) is about 43 characters, comfortably under the 72 byte
+    ceiling bcrypt silently truncates at, so the whole secret is hashed rather
+    than most of it.
+    """
+    return hash_password(secrets.token_urlsafe(32))
 
 
 def _generate_referral_code() -> str:
@@ -521,6 +550,135 @@ def login(db: Session, payload: LoginRequest) -> dict:
     return {"access_token": create_access_token(user.id), "role": user.role}
 
 
+def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
+    """Sign somebody in with a Google ID token, creating the account if needed.
+
+    THE LINKING RULE IS THE DECISION IN HERE, and it was taken deliberately
+    rather than arrived at. A verified Google address that already belongs to a
+    Kolabo account SIGNS INTO THAT ACCOUNT. It does not refuse, it does not
+    create a second account, and it does not ask for the password first. The
+    reason is the rule this whole module is built on: THE MAILBOX IS THE LOGIN
+    IDENTITY here. Everything about an account resolves from its address, a
+    password reset is a code sent to it, and somebody who can prove they hold
+    that mailbox can already take the account back by that route in ten
+    minutes. Google proving they hold it is the same fact, arriving faster.
+
+    WHICH IS EXACTLY WHY email_verified IS LOAD BEARING. Given this rule, that
+    one claim is the only thing between an attacker and an existing account:
+    an address Google has not confirmed is not evidence of anything, and
+    accepting one would mean anyone could take over a Kolabo account by
+    asserting its owner's address on a domain of their own. auth.google refuses
+    an unverified address outright and the whole of that argument is written
+    down there.
+
+    The password is left exactly where it is. An account that had one keeps it
+    and keeps logging in with it; this adds a second door rather than replacing
+    the first.
+
+    NO OTP IS SENT ON THE CREATE PATH, and the new row is verified from birth.
+    Registration sends one to prove the mailbox; Google has just proved it. A
+    row created unverified here would be one that login() immediately locks out
+    with auth_not_verified, over a code nothing ever sent.
+    """
+    if not google.client_ids():
+        # 503 rather than 404 or 400: the feature exists, this deployment has
+        # not been given what it needs to offer it, and the caller did nothing
+        # wrong. The client hides the button on this one.
+        raise AppError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="auth_google_unavailable",
+            detail="Signing in with Google is not available. Use your email address and password.",
+        )
+
+    identity = google.verify(payload.id_token)
+    if identity is None:
+        # ONE REFUSAL FOR EVERY WAY A TOKEN CAN BE REFUSED, including an
+        # address Google has not confirmed. auth.google has already written
+        # the reason to the log; saying it here as well would tell whoever is
+        # holding a forged token which check caught it, and no honest caller is
+        # helped by the difference.
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            code="auth_google_token_invalid",
+            detail="We could not sign you in with Google. Try again, and check that your Google email address is confirmed.",
+        )
+
+    # Already normalised by auth.google, which is the only reason this lookup
+    # is safe to write in one line. See core.emails for what normalising is
+    # for and what it costs to skip.
+    user = db.query(User).filter(User.email == identity.email).first()
+
+    if user is not None:
+        if not user.is_verified:
+            # A half finished signup, completed by a different route. The
+            # account was created by /auth/register, the code was never
+            # entered, and Google has now proved the mailbox that code was
+            # sent to. Leaving the flag alone would strand the account: it
+            # would hold a token from here and still be refused by login().
+            user.is_verified = True
+            db.commit()
+        # password_hash is deliberately untouched. An account with a password
+        # keeps both ways in.
+        return {"access_token": create_access_token(user.id), "role": user.role}
+
+    if payload.role is None or payload.country_code is None:
+        # NOT AN ERROR, the first leg of a two step flow. Google says who
+        # somebody is and cannot say which country they sell in or whether they
+        # came here to sell. The client asks both questions and calls again
+        # with the same token, which is still good for the best part of an hour.
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_google_profile_required",
+            detail="Tell us your country and whether you are a creator or a business, then sign in with Google again.",
+        )
+
+    # VALIDATED EXACTLY AS register VALIDATES THEM, with the same two codes.
+    # A second opinion about what a role is, or about which markets are open,
+    # would be a second thing to keep in step with country_config the day a
+    # market closes.
+    if payload.role not in ROLES:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_role_unknown",
+            detail=f"Role must be one of {sorted(ROLES)}",
+            values={"roles": ", ".join(sorted(ROLES))},
+        )
+    if payload.country_code not in get_enabled_countries():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_country_unavailable",
+            detail="Country is not available yet",
+        )
+
+    user = User(
+        email=identity.email,
+        # An unusable password ON PURPOSE, so the NOT NULL column stays honest
+        # without a migration and without making it nullable. See
+        # _unusable_password_hash, and see auth.account.require_reauth for how
+        # such an account still proves it owns itself.
+        password_hash=_unusable_password_hash(),
+        country_code=payload.country_code,
+        role=payload.role,
+        # Verified from birth, and no OTP. See the docstring.
+        is_verified=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Attribution works here for the same reason it works at registration:
+    # this IS a registration, and a creator who brought somebody in should not
+    # lose the credit because that person tapped the Google button instead of
+    # filling in the form. Best effort, exactly as there: a code that resolves
+    # to nobody is dropped in silence rather than failing a signup.
+    if payload.referral_code:
+        _attribute_referral(db, user, payload.referral_code)
+
+    # Same contract as verify_otp and login: every token grant says which role
+    # the account has, so the client can mount the right home experience.
+    return {"access_token": create_access_token(user.id), "role": user.role}
+
+
 def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> None:
     """Hard-delete an account and everything that is only theirs.
 
@@ -537,17 +695,23 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
             code="auth_user_not_found",
             detail="User not found",
         )
-    # The bearer token proves possession of a session; the password proves
-    # possession of the account. Destruction requires the stronger proof, so
-    # a stolen token alone cannot erase someone's livelihood.
-    if not verify_password(payload.password, user.password_hash):
-        raise AppError(
-            status.HTTP_403_FORBIDDEN,
-            # Shared with the account screen: in both places the rule is that
-            # the CURRENT password supplied does not match.
-            code="auth_password_incorrect",
-            detail="Password is incorrect",
-        )
+    # The bearer token proves possession of a session; the proof below proves
+    # possession of the ACCOUNT. Destruction requires the stronger one, so a
+    # stolen token alone cannot erase someone's livelihood.
+    #
+    # THE RULE IS SHARED WITH THE SETTINGS SCREEN and lives next door, because
+    # it is one rule: a current password, or a freshly verified Google ID token
+    # for this account's own address, and exactly one of the two. An account
+    # created through Google has no usable password, so without the second form
+    # this endpoint would be unreachable for its owner forever.
+    #
+    # Imported inside the function, like the model imports below and for the
+    # same reason: auth.account reaches into profiles.models at module level,
+    # and auth.service is imported by enough of this codebase that dragging
+    # that in at import time would invert the dependency direction.
+    from app.modules.auth.account import require_reauth
+
+    require_reauth(user, payload.password, payload.google_token)
 
     # Imported here rather than at module level, like the trust_safety import
     # in the profiles service: auth is imported by every module, so top-level

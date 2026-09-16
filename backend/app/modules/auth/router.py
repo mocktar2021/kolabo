@@ -31,6 +31,35 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     return service.login(db, payload)
 
 
+@router.post("/google", response_model=schemas.TokenResponse)
+def google_sign_in(payload: schemas.GoogleSignInRequest, db: Session = Depends(get_db)):
+    """Sign in, or sign up, with a Google ID token.
+
+    ONE ENDPOINT FOR BOTH, because the client cannot know which it is doing:
+    whether a Google address already has a Kolabo account is a question only
+    this server can answer, and asking it separately would be a second request
+    that also doubles as an "is this person on Kolabo" oracle.
+
+    NO REDIRECT URI, NO CALLBACK, NO CLIENT SECRET. The client gets an ID token
+    from Google and posts it. Nothing here touches the subsystem in
+    profiles/oauth.py, which connects a social account to somebody already
+    signed in and is a different thing entirely.
+
+    UNAUTHENTICATED, like /register, /login and the reset endpoints beside it.
+    What stands in for a bearer token is the token in the body: a signature
+    Google made, over an audience that is ours, for an address Google has
+    confirmed. See app.modules.auth.google for what each of those buys.
+
+    Four answers, and a client has exactly four things to do about them. 503
+    `auth_google_unavailable` means the button should not be there at all. 401
+    `auth_google_token_invalid` means try again. 400
+    `auth_google_profile_required` is not an error: it means ask for a country
+    and a role and call again with the same token. Anything else is a token
+    and the role the app should open on.
+    """
+    return service.google_sign_in(db, payload)
+
+
 @router.get("/me/referral", response_model=schemas.ReferralOut)
 def my_referral(
     user_id: str = Depends(get_current_user_id),
@@ -75,11 +104,15 @@ def update_me(
 ):
     """Change the login email, the contact phone, the password, or all three.
 
-    current_password is required for any of them. The email IS the login
-    identity, so moving it must cost the password: a stolen bearer token would
-    otherwise be enough to point the account at somebody else's mailbox and
-    reset it from there. An address already in use answers 409, and so does a
-    phone number, though only the address has a unique index behind it.
+    PROOF OF OWNERSHIP IS REQUIRED FOR ANY OF THEM, as either current_password
+    or google_token, exactly one of the two. The email IS the login identity,
+    so moving it must cost more than a bearer token, which would otherwise be
+    enough to point the account at somebody else's mailbox and reset it from
+    there. An account created through Google has no usable password, so the
+    Google token is what it pays with, and sending new_password with one is
+    how such an account gets a password for the first time. An address already
+    in use answers 409, and so does a phone number, though only the address
+    has a unique index behind it.
     """
     return account.update_me(db, user_id, payload)
 
@@ -92,10 +125,12 @@ def delete_account(
 ):
     """Delete the caller's own account.
 
-    The bearer token identifies the account, but the current password is
+    The bearer token identifies the account, but proof of ownership is
     required in the body: destroying an account must cost more than a stolen
-    session token. Hard delete happens only while the account has no contract
-    or escrow history; otherwise 409 and support closes it instead.
+    session token. That proof is the current password, or a freshly verified
+    Google ID token for this account's own address, and exactly one of the
+    two. Hard delete happens only while the account has no contract or escrow
+    history; otherwise 409 and support closes it instead.
     """
     service.delete_account(db, user_id, payload)
 

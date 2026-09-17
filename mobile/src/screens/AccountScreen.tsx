@@ -4,15 +4,19 @@ import { useTranslation } from "react-i18next";
 import { api, type MeOut } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
-import { setStoredLanguage, type AppLanguage } from "../lib/language";
 import { deleteProof, googleConfigured, patchProof, type Proof } from "../lib/googleSignIn";
 /* FOR ITS SIDE EFFECT. See the same import in LoginScreen. */
 import "../lib/googleStrings";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
+/* The language card, lifted out of this file and into a component of its own
+   so the signed out screens can draw the same control. It is the same card,
+   in the same slot, built from the same two keys: see
+   components/LanguageSwitch.tsx for why it moved and what the second shape of
+   it is for. */
+import { LanguageCard } from "../components/LanguageSwitch";
 import {
   Banner,
   Card,
-  ChoiceGroup,
   Field,
   GhostButton,
   Hint,
@@ -150,7 +154,7 @@ function ProofField({
    (otherwise the catalog's auth_account_has_history sentence points at
    support). See ProofField for which form is offered to whom. */
 export default function AccountScreen(_props: AppScreenProps<"Account">) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { token, logout } = useAuth();
 
   const [me, setMe] = useState<MeOut | null>(null);
@@ -267,11 +271,6 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
     } finally {
       setPwBusy(false);
     }
-  }
-
-  function switchLanguage(lang: string) {
-    void i18n.changeLanguage(lang);
-    void setStoredLanguage(lang as AppLanguage);
   }
 
   async function deleteAccount() {
@@ -465,19 +464,7 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
       </Card>
 
       <View style={{ height: space(4) }} />
-      <Card>
-        <SectionTitle>{t("acct.langTitle")}</SectionTitle>
-        <Hint>{t("acct.langHint")}</Hint>
-        <View style={{ height: space(3) }} />
-        <ChoiceGroup
-          options={[
-            { value: "fr", label: "Français" },
-            { value: "en", label: "English" },
-          ]}
-          value={i18n.language === "en" ? "en" : "fr"}
-          onChange={switchLanguage}
-        />
-      </Card>
+      <LanguageCard />
 
       <View style={{ height: space(4) }} />
       <Card>

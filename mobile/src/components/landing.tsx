@@ -25,7 +25,23 @@ import "../lib/landingStrings";
    aria-hidden. What a slide actually promises is in the headline and the body
    beneath the panel, and those are the sentences that have to be true; a
    reader who cannot see the picture should hear the promise once, not hear an
-   invented person's follower count read out as if it were a fact. */
+   invented person's follower count read out as if it were a fact.
+
+   AND THEY SAY SO ON THE SCREEN, in both languages, under the card:
+   landing.artExample. Hiding them from a screen reader served one audience
+   and left the other looking at an invented five star review under a
+   "Verified review" badge, on the first screen a new install opens, from a
+   platform that has run no collaborations yet. The caption belongs to the
+   drawing rather than to the card, so it sits on the panel outside the white
+   surface, and inside the hidden subtree with it: it labels a picture a
+   reader never hears, so reading the label out would be a word with nothing
+   attached to it.
+
+   The review badge is deleted rather than reworded, because there is no
+   honest wording for a verification nobody performed. The creator card keeps
+   its "Verified" pill: that pill is a drawing of a shipped product feature
+   inside a card the caption now marks as an example, which is not the same
+   thing as asserting that Kolabo verified a particular review. */
 
 /* The mint-to-lavender field behind each card, and the teal-to-blue of the
    app tile and the avatars. Both ends of both ramps are existing theme
@@ -151,6 +167,13 @@ export function Splash() {
   );
 }
 
+/* The creator card. "Tatiana Haina" stays a literal here rather than moving
+   into lib/landingStrings.ts, and so do the initials on the avatar and the
+   10 000 XOF at the foot. A proper name is the same string in both languages,
+   so a key for it would be one sentence written twice and a standing promise
+   that it varies by language, which it never will. What makes this card
+   honest is the caption SlideArt draws under it, not the module the name is
+   stored in. */
 function CreatorCardArt() {
   const { t } = useTranslation();
   const chips = [t("landing.s1Chip1"), t("landing.s1Chip2"), t("landing.s1Chip3")];
@@ -238,16 +261,16 @@ function ReviewCardArt() {
   const chips = [t("landing.s3Chip1"), t("landing.s3Chip2"), t("landing.s3Chip3")];
   return (
     <>
+      {/* Stars only. The "Verified review" badge that used to sit on the
+          right of this row is gone, and the note at the top of the file says
+          why. chipTeal and chipTealText are still worn by the creator card
+          and the escrow card, so neither style is now dead. */}
       <View style={styles.headRow}>
         <View style={styles.starRow}>
           {[0, 1, 2, 3, 4].map((i) => (
             <Ionicons key={i} name="star" size={12} color={colors.teal} />
           ))}
           <Text style={styles.rating}>{t("landing.s3Rating")}</Text>
-        </View>
-        <View style={styles.chipTeal}>
-          <Ionicons name="checkmark" size={10} color={colors.teal600} />
-          <Text style={styles.chipTealText}>{t("landing.s3CardChip")}</Text>
         </View>
       </View>
       <Text style={styles.quote}>{t("landing.s3Quote")}</Text>
@@ -291,15 +314,23 @@ export function SlideArt({
   height: number;
   topInset?: number;
 }) {
+  const { t } = useTranslation();
   return (
     <Gradient from={PANEL_FROM} to={PANEL_TO} style={[styles.panel, { height, paddingTop: topInset }]}>
+      {/* The three accessibility attributes move up one level so the caption
+          is hidden with the thing it captions. Nothing about what a screen
+          reader hears changes: the card was already silent, and a lone
+          "Example" read out next to nothing would be worse than silence. */}
       <View
-        style={styles.card}
+        style={styles.art}
         accessible={false}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
-        {index === 0 ? <CreatorCardArt /> : index === 1 ? <EscrowCardArt /> : <ReviewCardArt />}
+        <View style={styles.card}>
+          {index === 0 ? <CreatorCardArt /> : index === 1 ? <EscrowCardArt /> : <ReviewCardArt />}
+        </View>
+        <Text style={styles.artExample}>{t("landing.artExample")}</Text>
       </View>
     </Gradient>
   );
@@ -327,12 +358,25 @@ const styles = StyleSheet.create({
   },
 
   panel: { width: "100%", alignItems: "center", justifyContent: "center", paddingHorizontal: space(7) },
+  art: { width: "100%" },
   card: {
     width: "100%",
     backgroundColor: colors.white,
     borderRadius: radius.lg,
     padding: space(3.5),
     ...shadow.md,
+  },
+  /* The caption sits on the panel, not on the card: bodySemi at 11 so it
+     reads as a label rather than as one more line of the drawing, and muted
+     ink on the mint end of the field, which is about 5.4:1 and clears AA for
+     text this size. The panel centres its content, so the card rides roughly
+     8 dp higher than it did and nothing crops. */
+  artExample: {
+    fontFamily: family.bodySemi,
+    fontSize: 11,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: space(2.5),
   },
 
   row: { flexDirection: "row", alignItems: "center", gap: space(2.5) },

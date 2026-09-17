@@ -270,7 +270,7 @@ export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
         </Text>
       </View>
       <View style={{ height: space(2) }} />
-      <Hint>{t("dash.comingSoon")}</Hint>
+      <Hint>{t("dash.signupNote")}</Hint>
     </Screen>
   );
 }

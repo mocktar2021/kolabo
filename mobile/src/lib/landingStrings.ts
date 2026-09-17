@@ -21,13 +21,29 @@ import i18n from "../i18n";
    components/landing.tsx: what the slide actually promises is in the headline
    and the body underneath, and those are the sentences that have to be true.
    The only figures here are 10 000 XOF and a follower count on a person who
-   does not exist. */
+   does not exist.
+
+   THAT NOTE USED TO BE THE WHOLE OF IT, and a comment and an accessibility
+   attribute are the two places the person holding the phone cannot read.
+   artExample is the same sentence said out loud, under every card. Two
+   claims went with it, because a caption does not undo a sentence that
+   asserts something untrue: s3CardChip put a "verified review" badge over a
+   review Kolabo never took, and s3When said the collaboration behind it was
+   real. Kolabo has run no collaborations, so the badge is deleted and s3When
+   now names the card for what it is. */
 
 const fr = {
   /* Splash. Two lines because it is set as two lines: the first names the
      market, the second names the span of the product. */
   taglineA: "Le marketing d'influence en Afrique,",
   taglineB: "de la recherche au paiement.",
+
+  /* The caption SlideArt draws under every mock card. One key for all three
+     slides because all three are drawings: an invented creator, an invented
+     escrow, an invented review. It sits on the panel rather than inside the
+     white card, so it reads as a label on the picture and not as one more
+     line of the picture. */
+  artExample: "Exemple",
 
   /* The headlines are split A / accent / B so the teal phrase can be its own
      <Text> inside the sentence — the same three-part shape web's hero uses
@@ -64,10 +80,9 @@ const fr = {
   s3Body:
     "Messagerie, contrats et avis vérifiés réunis sur une seule plateforme. Suivez chaque collaboration, de la découverte à l'avis final.",
   s3Rating: "5,0",
-  s3CardChip: "Avis vérifié",
   s3Quote: "« Collaboration fluide et paiement rapide. Une créatrice au top. »",
   s3Who: "Awa Koné · Marque Beauté",
-  s3When: "Après une collaboration réelle",
+  s3When: "Avis d'exemple",
   s3Chip1: "Messagerie",
   s3Chip2: "Contrats",
   s3Chip3: "Avis",
@@ -84,6 +99,8 @@ const fr = {
 const en = {
   taglineA: "Influencer marketing in Africa,",
   taglineB: "from search to payment.",
+
+  artExample: "Example",
 
   s1HeadA: "Find the creators who make your brand ",
   s1HeadAccent: "grow",
@@ -115,10 +132,9 @@ const en = {
   s3Body:
     "Messaging, contracts and verified reviews on a single platform. Follow every collaboration, from the first search to the final review.",
   s3Rating: "5.0",
-  s3CardChip: "Verified review",
   s3Quote: "“Smooth collaboration, fast payment. A brilliant creator.”",
   s3Who: "Awa Koné · Beauty brand",
-  s3When: "After a real collaboration",
+  s3When: "Example review",
   s3Chip1: "Messaging",
   s3Chip2: "Contracts",
   s3Chip3: "Reviews",

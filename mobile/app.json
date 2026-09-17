@@ -35,12 +35,18 @@
           "cameraPermission": false,
           "microphonePermission": false
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.326489360451-hf5as4mg8u3v3a1dm9amvjgcmjfd1n09"
+        }
       ]
     ],
     "extra": {
       "apiBaseUrl": "https://api.kolabo.mocktar.com",
-      "googleWebClientId": "",
-      "googleIosClientId": "",
+      "googleWebClientId": "326489360451-edara64m52egplpnqh80kqfq4658vu6e.apps.googleusercontent.com",
+      "googleIosClientId": "326489360451-hf5as4mg8u3v3a1dm9amvjgcmjfd1n09.apps.googleusercontent.com",
       "eas": {
         "projectId": "aacd1962-68bf-4700-a0cc-f1b33c6cfc6f"
       }

@@ -1,5 +1,13 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+/* THE CHOICE A VISITOR ALREADY MADE, if they made one. It has to be read
+   HERE and not in a module that runs later, and the reason is the shape of
+   main.tsx: this file is its first import, so init() below has already run by
+   the time any of the twenty string bundles after it is evaluated. A read
+   placed in one of those would be reading a language that had already been
+   decided, and would have to call changeLanguage to correct it, which is a
+   visible flash of French on an English visitor's first paint. */
+import { initialLanguage } from "./lib/language";
 
 /* Bilingual from day one. French is the default because the pilot markets
    (Benin and Togo) are francophone; English is a first class toggle. */
@@ -605,9 +613,19 @@ const resources = {
   }
 };
 
+/* `lng` was the literal "fr" until the switch in the header learned to
+   remember anything. It is still "fr" for everybody who has never touched
+   that switch: see DEFAULT_LANGUAGE in lib/language.ts for why that default
+   is deliberate and why the browser's own language is deliberately not
+   consulted. What changed is only that a visitor who did touch it is not made
+   to touch it again on every page load.
+
+   THE BUNDLES ADDED AFTER THIS DO NOT CARE which language was chosen:
+   addResourceBundle registers both columns of every group whatever `lng`
+   says, so nothing below this line has to be reordered. */
 i18n.use(initReactI18next).init({
   resources,
-  lng: "fr",
+  lng: initialLanguage(),
   fallbackLng: "en",
   interpolation: { escapeValue: false }
 });

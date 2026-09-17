@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
 import { SlideArt } from "../components/landing";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import { Button } from "../components/ui";
 import { markLandingSeen } from "../lib/onboarding";
 import { colors, family, radius, space } from "../theme";
@@ -32,15 +33,23 @@ import "../lib/landingStrings";
    and an identical one in, and it would take the only two tap targets on the
    screen out from under the reader's thumb while a swipe was settling.
 
-   THERE IS NO "CONTINUE WITH GOOGLE" BUTTON, and its absence is deliberate
-   rather than an omission. The design called for one; the API has no social
-   sign-in to put behind it. backend/app/modules/auth/router.py exposes
-   register, verify-otp, login, me, and the two password-reset endpoints and
-   nothing else, there is no OAuth client id anywhere in core/config.py, and
-   neither client ships a provider SDK. A button that opens nothing is worse
-   than no button — it fails App Review under 4.0, and it teaches a first-time
-   user that the app is broken before they have an account. When Google
-   sign-in is actually built, it belongs here under a divider. */
+   THERE IS NO "CONTINUE WITH GOOGLE" BUTTON HERE, and the reason is no
+   longer the one this note used to give. Google sign in exists now: the API
+   answers POST /auth/google, core/config.py carries GOOGLE_CLIENT_IDS, and
+   both clients ship a provider SDK. Every clause of the old note is false and
+   it is replaced rather than deleted, because somebody will ask again.
+
+   The button lives on Login and on Register instead, which is one tap from
+   either door above. It is not on this screen for a reason that is about this
+   screen: the register form collects a role and a country and sends them with
+   the credential on the first call, and nothing on a carousel asks either
+   question, so a button here would either sign people up as whatever the
+   defaults happen to say or open the second step panel that LoginScreen
+   already owns. Neither is worth putting on the slide whose whole job is to
+   get somebody to one of the two doors underneath.
+
+   THE LANGUAGE CONTROL IS HERE, on the other hand, and down with the doors
+   rather than up on the art. See the note on it below. */
 
 type Slide = {
   headA: string;
@@ -265,6 +274,18 @@ export default function LandingScreen({ navigation }: AuthScreenProps<"Landing">
         >
           <Text style={styles.softText}>{t("landing.ctaLogin")}</Text>
         </Pressable>
+        {/* THE ONE CONTROL ON THIS SCREEN THAT IS NOT A DOOR, and the reason
+            it is down here rather than up in a corner: the panel above draws
+            under insets.top by design, so anything floating over it would sit
+            on the art and fight it, and the art is the slide. Here it rides
+            outside the pager with the two buttons, where a thumb already is,
+            at the exact moment somebody is deciding whether this app is for
+            them. A visitor whose phone is set to neither of our languages
+            lands in French (src/i18n.ts), and until now the first way out of
+            that was the account screen, which is behind registering. */}
+        <View style={styles.lang}>
+          <LanguageSwitch />
+        </View>
       </View>
     </View>
   );
@@ -302,6 +323,10 @@ const styles = StyleSheet.create({
   bodyCompact: { fontSize: 14, lineHeight: 20, marginTop: space(2) },
 
   cta: { paddingHorizontal: space(6), paddingTop: space(3), gap: space(2.5) },
+  /* Centred under the two doors. The pill sets alignSelf: "flex-start" on
+     itself so it never stretches, which is what makes centring it a matter of
+     this one line. */
+  lang: { alignItems: "center" },
   ctaCompact: { paddingTop: space(2), gap: space(2) },
   soft: {
     backgroundColor: colors.surface2,

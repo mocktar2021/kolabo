@@ -9,6 +9,7 @@ import { googleConfigured, signInWithGoogle } from "../lib/googleSignIn";
 /* FOR ITS SIDE EFFECT. See the same import in LoginScreen. */
 import "../lib/googleStrings";
 import { GoogleDivider, GoogleSignInButton } from "../components/GoogleSignInButton";
+import { LanguageSwitch } from "../components/LanguageSwitch";
 import {
   Banner,
   Card,
@@ -113,6 +114,19 @@ export default function RegisterScreen({ navigation, route }: AuthScreenProps<"R
 
   return (
     <Screen>
+      {/* THE LANGUAGE CONTROL, ABOVE THE TITLE AND OUT AT THE EDGE, which is
+          where web keeps its own: in the header bar, right of the logo, on
+          every page a signed out visitor can reach. A person who cannot read
+          this screen has to be able to change it without reading it, so it
+          comes before the words rather than after the form.
+
+          Compact rather than the account screen's card, because this screen
+          has one job and a titled settings card would be a second thing to
+          read. Same component either way, so the choice cannot behave
+          differently in the two places. See components/LanguageSwitch.tsx. */}
+      <View style={{ alignItems: "flex-end", marginBottom: space(3) }}>
+        <LanguageSwitch />
+      </View>
       <Title>{t("auth.registerTitle")}</Title>
       <Subtitle>{t("auth.registerSub")}</Subtitle>
       <Card>

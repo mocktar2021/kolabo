@@ -108,6 +108,119 @@ Note that deep links differ under Expo Go — it uses `exp://` rather than the `
 
 ---
 
+## Signing in with Google
+
+The app ships the whole flow already: the button on the login and register
+screens, the two questions a brand new Google address is asked, and the Google
+confirmation the account screen accepts in place of a password. What it does
+**not** ship is any client id, and that is deliberate. With `extra.googleWebClientId`
+empty the button does not render at all and the app behaves exactly as it did
+before the feature existed, so an `eas build` is never blocked on Google
+configuration.
+
+Three things have to be true before the button appears and works on a handset.
+
+### 1. A development build, not Expo Go
+
+Google sign in needs native code. Expo's Google authentication guide says of
+both libraries it lists that they "can't be used in Expo Go because they
+require custom native code", and this app uses
+`@react-native-google-signin/google-signin`. So from the first build that
+contains it, testing the button means an `eas build` (or a local prebuild), not
+scanning a QR code into Expo Go. Everything else in the app still reloads over
+the dev server as before, and Expo Go remains fine for any screen that is not
+this one.
+
+### 2. Three OAuth clients in Google Cloud Console
+
+All three live in the **same** Google Cloud project, under APIs and services,
+Credentials, Create credentials, OAuth client ID.
+
+| Client type | What it needs | Where its id goes |
+|---|---|---|
+| **Web** | Already created for the browser app | `extra.googleWebClientId` in `app.json`, `VITE_GOOGLE_CLIENT_ID` for the web build, and the backend's `GOOGLE_CLIENT_IDS` |
+| **Android** | Package name `com.kolaboafrica.app` plus the SHA-1 of the signing certificate | **Nowhere.** Android is matched by package name and signature, so no id from it is ever put in the bundle |
+| **iOS** | Bundle ID `com.kolaboafrica.app` | `extra.googleIosClientId` in `app.json`, and its reversed form in the config plugin entry (see below) |
+
+**The web client id is the one that matters most, and it is not obvious why.**
+It is what the native library takes as `webClientId`, its *server* client id,
+and it is what makes Google issue an ID token at all: without it the sign in
+succeeds and the token comes back null. Google's own backend verification
+guidance is to check the token's `aud` against this same web client id, which
+is what `backend/app/modules/auth/google.py` does against `GOOGLE_CLIENT_IDS`.
+So the web client id is already the right value in `GOOGLE_CLIENT_IDS` and
+nothing has to be added there for mobile.
+
+**Getting the Android SHA-1.** EAS holds the keystore, so ask it rather than
+looking for a file:
+
+```bash
+cd mobile
+eas credentials -p android
+```
+
+Pick the build profile, then the keystore, and read off the SHA-1 fingerprint.
+Note the fingerprint is per signing certificate, so there can be more than one
+to register: the EAS keystore used for the APKs testers install, and, once the
+app is on Google Play with Play App Signing, the SHA-1 Play shows under Setup,
+App integrity. Add every one of them to the Android OAuth client, or sign in
+fails on whichever build was signed by the missing one. The symptom is
+`DEVELOPER_ERROR`, which says nothing about certificates.
+
+### 3. Fill in `app.json`, and add the plugin entry with the iOS client
+
+Two of the three values go straight into `expo.extra`, which already has empty
+slots for them:
+
+```json
+"extra": {
+  "googleWebClientId": "<the WEB client id>.apps.googleusercontent.com",
+  "googleIosClientId": "<the IOS client id>.apps.googleusercontent.com"
+}
+```
+
+`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+override these at bundle time if a build ever needs to point somewhere else,
+exactly as `EXPO_PUBLIC_API_URL` overrides `apiBaseUrl`.
+
+**The config plugin entry is missing on purpose and must be added with the iOS
+client, not before it.** The library's plugin requires `iosUrlScheme` and
+throws when it is absent or does not begin with `com.googleusercontent.apps`,
+which would fail `expo prebuild` and therefore `eas build`. The value is the
+iOS client id reversed, so it cannot be written down until that client exists.
+Android needs none of this: the plugin does nothing for Android in the non
+Firebase path, and the native module is autolinked by the dependency alone.
+
+When the iOS client exists, add this to `expo.plugins` in `app.json`, beside
+the `expo-image-picker` entry already there:
+
+```json
+[
+  "@react-native-google-signin/google-signin",
+  {
+    "iosUrlScheme": "com.googleusercontent.apps.<the IOS client id, reversed>"
+  }
+]
+```
+
+The reversed form is the iOS client id with its two halves swapped: an id of
+`123-abc.apps.googleusercontent.com` becomes
+`com.googleusercontent.apps.123-abc`. Google Cloud Console shows it on the iOS
+client as the **iOS URL scheme**, so copy it from there rather than assembling
+it by hand.
+
+### What happens if only some of this is done
+
+| State | Behaviour |
+|---|---|
+| No ids at all | No button anywhere, on either platform. The app is exactly as it was |
+| Web id set, no Android client in Google Cloud | Button appears, Android sign in fails with `DEVELOPER_ERROR` |
+| Web id set, Android client registered | Android works. This is the pilot configuration |
+| iOS id set but no plugin entry | iOS sign in cannot complete, because nothing registered the URL scheme it returns through |
+| Plugin entry added with no iOS client id to put in it | `eas build` fails at prebuild. Do not add the entry until the client exists |
+
+---
+
 ## The free tier
 
 Expo's free plan includes a limited number of low-priority builds per month, reset monthly — enough for a pilot. Builds queue behind paying customers, so expect to wait. Starter is $19/month for build credit if the wait becomes tedious.

@@ -15,6 +15,18 @@ import type { Role } from "./api";
 const TOKEN_KEY = "kolaboToken";
 const ROLE_KEY = "kolaboRole";
 
+/* THE CLOSED SET OF ROLES, in one place. RegisterScreen has always kept a
+   local copy and the Google flow needs the identical set: a Google address
+   with no account behind it is asked the same two questions the register form
+   asks, and the answer goes to the same ROLES check in
+   backend/app/modules/auth/schemas.py.
+
+   Two copies of a closed set is how a fourth role reaches one screen and not
+   the other, and the screen that missed it then refuses a value the server
+   accepts. Kept here, beside the type, exactly as web/src/lib/auth.tsx keeps
+   its own. */
+export const ROLES: Role[] = ["influencer", "business", "agency"];
+
 /* Agencies buy creator services the way businesses do, so they get the
    business experience until agency-specific tooling exists. Every role branch
    in the app goes through this helper rather than comparing to "business". */

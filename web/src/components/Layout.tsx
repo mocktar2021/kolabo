@@ -5,6 +5,7 @@ import { Logo } from "./Logo";
 import { NotificationsBell } from "./NotificationsBell";
 import { api, mediaSrc } from "../lib/api";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
+import { setStoredLanguage, type AppLanguage } from "../lib/language";
 import { useCart } from "../lib/cart";
 import { awaitingMyAnswer } from "../lib/disputes";
 import { useMe } from "../lib/me";
@@ -17,10 +18,25 @@ import type { Dispute, MessageThread } from "../lib/types";
    bar — so exactly one copy is ever in the document flow. */
 function LanguageSwitch({ className }: { className?: string }) {
   const { i18n } = useTranslation();
+  /* THE CHOICE IS WRITTEN DOWN, which the two handlers here used not to do.
+     changeLanguage alone lives in one JavaScript heap: the switch worked, and
+     then a refresh, a second tab or tomorrow put the reader back into French
+     with nothing on screen to say why. The paired write is what makes this a
+     setting rather than a filter, and src/i18n.ts reads it back at init. See
+     lib/language.ts.
+
+     Doing nothing when the language is already the one asked for keeps a
+     second press on the lit button from writing a value that is already
+     there, and from making i18next re-render the tree for no change. */
+  function choose(lang: AppLanguage) {
+    if (i18n.language === lang) return;
+    i18n.changeLanguage(lang);
+    setStoredLanguage(lang);
+  }
   return (
     <div className={className ? `lang-switch ${className}` : "lang-switch"} role="group" aria-label="Language">
-      <button className={i18n.language === "fr" ? "active" : ""} onClick={() => i18n.changeLanguage("fr")}>FR</button>
-      <button className={i18n.language === "en" ? "active" : ""} onClick={() => i18n.changeLanguage("en")}>EN</button>
+      <button className={i18n.language === "fr" ? "active" : ""} onClick={() => choose("fr")}>FR</button>
+      <button className={i18n.language === "en" ? "active" : ""} onClick={() => choose("en")}>EN</button>
     </div>
   );
 }

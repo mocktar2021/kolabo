@@ -45,6 +45,54 @@ TIMEOUT_SECONDS = 6.0
 MAX_FETCHED_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+def _safe_error(exc: Exception, *secrets: str | None) -> str:
+    """What an upstream failure is allowed to say in a log line.
+
+    NEVER LOG THE EXCEPTION OBJECT FROM ONE OF THESE CALLS. Every API read in
+    this module takes its credential as a query parameter, so the credential is
+    part of the request url, and httpx puts the whole url, query string
+    included, inside the message of the HTTPStatusError it raises. Logging that
+    object therefore writes YOUTUBE_API_KEY or META_GRAPH_TOKEN into the
+    application log in clear text, once per failed request, for anyone who can
+    read the container's output. Measured against the pinned httpx 0.27.2
+    rather than assumed, and pinned by a test that asserts the raw exception
+    really does carry the credential before asserting the log does not.
+
+    So the line is rebuilt here out of parts that cannot carry a credential,
+    and then every secret the caller names is struck out of the result as a
+    second layer, because this function cannot know what a future exception
+    type will choose to put in its own message.
+
+    The rebuild says MORE than the line it replaces, not less. A failure that
+    got as far as a response carries the provider's own error object, whose
+    code and message are the difference between "enrichment returned nothing"
+    and "that field name no longer exists". Before this, an expired token, a
+    quota refusal and a dead network all read identically in the log.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        detail = f"{type(exc).__name__}: {exc}"
+    else:
+        detail = f"{type(exc).__name__}: HTTP {getattr(response, 'status_code', '?')}"
+        try:
+            body = response.json()
+        except Exception:
+            body = None
+        error = body.get("error") if isinstance(body, dict) else None
+        if isinstance(error, dict):
+            named = ", ".join(
+                f"{key}={error[key]}"
+                for key in ("code", "error_subcode", "type", "message")
+                if error.get(key) not in (None, "")
+            )
+            if named:
+                detail = f"{detail}, {named}"
+    for secret in secrets:
+        if secret:
+            detail = detail.replace(secret, "[redacted]")
+    return detail
+
+
 class EnrichedProfile(dict):
     """Keys, all optional: display_name, avatar_image_url, follower_count, bio."""
 
@@ -87,7 +135,11 @@ class YouTubeEnricher:
             res.raise_for_status()
             items = res.json().get("items") or []
         except Exception as exc:  # network, quota, or malformed response
-            _log.warning("YouTube enrichment failed for %s: %s", handle, exc)
+            _log.warning(
+                "YouTube enrichment failed for %s: %s",
+                handle,
+                _safe_error(exc, self.api_key),
+            )
             return None
         if not items:
             return None
@@ -131,7 +183,14 @@ def _graph_get(version: str, node: str, params: dict) -> dict | None:
         res.raise_for_status()
         return res.json()
     except Exception as exc:  # network, quota, expired token, or malformed body
-        _log.warning("Meta Graph request failed for %s: %s", node, exc)
+        # The token is read back out of params rather than passed in, so this
+        # keeps working whoever calls it. IF THE TOKEN EVER STOPS BEING A QUERY
+        # PARAMETER, this line must move with it or the redaction goes quiet.
+        _log.warning(
+            "Meta Graph request failed for %s: %s",
+            node,
+            _safe_error(exc, params.get("access_token")),
+        )
         return None
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -16,6 +16,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "react-i18next";
+import {
+  displayFromParts,
+  monthMatrix,
+  monthNames,
+  partsFromDisplay,
+  weekdayInitials,
+} from "../lib/dates";
 import { colors, family, font, radius, shadow, space } from "../theme";
 
 /* The shared primitives, restyled to match web/src/styles/theme.css so the
@@ -393,6 +401,270 @@ export function Select({
   );
 }
 
+/* A day, as every date control in this app carries one. */
+export type DateParts = { day: number; month: number; year: number };
+
+/* One comparable number per day, so a range check is one comparison instead
+   of three nested ones. The order of the multipliers is what makes it work:
+   20260918 sorts after 20251231 the way the days do. */
+function dayOrdinal(p: DateParts): number {
+  return p.year * 10000 + p.month * 100 + p.day;
+}
+
+function todayParts(): DateParts {
+  const now = new Date();
+  return { day: now.getDate(), month: now.getMonth() + 1, year: now.getFullYear() };
+}
+
+/* The month the sheet opens on. An EMPTY value opens on maxDate rather than
+   on today, and for a birth date that is the whole difference between landing
+   in the creator's own decade and landing eighteen years away from it. */
+function openingMonth(value: string, maxDate?: DateParts): { year: number; month: number } {
+  const at = partsFromDisplay(value) ?? maxDate ?? todayParts();
+  return { year: at.year, month: at.month };
+}
+
+/* A fixed row height, because the year list has to be scrolled to a position
+   before anything has measured it. */
+const YEAR_ROW = 44;
+
+/* A date field that opens a calendar, in place of a text box that asked
+   somebody to type slashes in the right order on a phone keyboard.
+
+   NO PICKER PACKAGE. Every one of them ships a native module, so the cost is
+   a rebuild of both binaries and one more thing to carry across Expo
+   upgrades, in exchange for a grid and two arrows. The arithmetic that is
+   genuinely easy to get wrong (leap Februaries, where a month starts, what
+   counts as 18) already lives in lib/dates under test, so what is left here
+   is layout.
+
+   THE YEAR LIST IS THE POINT, not a convenience. A birth date sits a decade
+   or two behind today, and a month-at-a-time control puts it roughly three
+   hundred taps away. The header is a button: tapping it swaps the grid for a
+   list of years, so 1998 is two taps from anywhere.
+
+   It follows Select deliberately, down to the backdrop and the sheet that
+   swallows taps, so a person who has used the country dropdown already knows
+   how this one dismisses. */
+export function DateField({
+  label,
+  value,
+  onChange,
+  hint,
+  placeholder,
+  maxDate,
+  minDate,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+  placeholder?: string;
+  maxDate?: DateParts;
+  minDate?: DateParts;
+}) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [pickingYear, setPickingYear] = useState(false);
+  const [view, setView] = useState(() => openingMonth(value, maxDate));
+  const yearList = useRef<ScrollView | null>(null);
+  /* The year list is scrolled into place once per opening. Without the latch
+     every layout pass would drag the list back to the selection, which is the
+     one thing a scrolling list must not do under a thumb. */
+  const aligned = useRef(false);
+
+  const selected = partsFromDisplay(value);
+  const months = useMemo(() => monthNames(i18n.language), [i18n.language]);
+  const weekdays = useMemo(() => weekdayInitials(i18n.language), [i18n.language]);
+  const grid = useMemo(() => monthMatrix(view.year, view.month), [view.year, view.month]);
+
+  /* A hundred years back from the newest selectable one. With no maxDate the
+     field is not a birth date, so the ceiling sits a few years ahead instead
+     of on today: a deadline is in the future by definition. minDate raises
+     the floor when it is later, so a list never offers a year every day of
+     which is refused. */
+  const maxYear = maxDate ? maxDate.year : todayParts().year + 5;
+  const minYear = Math.max(minDate ? minDate.year : maxYear - 100, maxYear - 100);
+  const years = useMemo(() => {
+    const out: number[] = [];
+    for (let y = maxYear; y >= minYear; y -= 1) out.push(y);
+    return out;
+  }, [maxYear, minYear]);
+  /* Two rows above the selection rather than flush at the top, so the years
+     on either side of it are visible and the list reads as scrollable. */
+  const yearOffset = Math.max(0, (maxYear - view.year - 2) * YEAR_ROW);
+
+  function openPicker() {
+    setView(openingMonth(value, maxDate));
+    setPickingYear(false);
+    aligned.current = false;
+    setOpen(true);
+  }
+
+  function step(delta: number) {
+    setView((v) => {
+      const m = v.month + delta;
+      if (m < 1) return { year: v.year - 1, month: 12 };
+      if (m > 12) return { year: v.year + 1, month: 1 };
+      return { year: v.year, month: m };
+    });
+  }
+
+  function blocked(day: number): boolean {
+    const ord = dayOrdinal({ day, month: view.month, year: view.year });
+    if (maxDate && ord > dayOrdinal(maxDate)) return true;
+    if (minDate && ord < dayOrdinal(minDate)) return true;
+    return false;
+  }
+
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={openPicker}
+        style={({ pressed }) => [styles.selectBox, pressed && { backgroundColor: colors.surface }]}
+      >
+        <Text style={[styles.selectValue, !value && { color: colors.muted }]} numberOfLines={1}>
+          {value || (placeholder ?? "")}
+        </Text>
+        <Ionicons name="calendar-outline" size={18} color={colors.muted} />
+      </Pressable>
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.selectBackdrop} onPress={() => setOpen(false)}>
+          {/* Same guard as Select: the sheet eats taps so choosing a day does
+              not also dismiss through to the backdrop. */}
+          <Pressable style={styles.calSheet} onPress={() => undefined}>
+            <View style={styles.calHeader}>
+              <View style={styles.calArrow}>
+                {pickingYear ? null : (
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => step(-1)}>
+                    <Ionicons name="chevron-back" size={20} color={colors.ink} />
+                  </Pressable>
+                )}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                style={styles.calTitleWrap}
+                onPress={() => {
+                  aligned.current = false;
+                  setPickingYear((v) => !v);
+                }}
+              >
+                <Text style={styles.calTitle}>
+                  {months[view.month - 1]} {view.year}
+                </Text>
+                <Ionicons
+                  name={pickingYear ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color={colors.muted}
+                />
+              </Pressable>
+              <View style={styles.calArrow}>
+                {pickingYear ? null : (
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => step(1)}>
+                    <Ionicons name="chevron-forward" size={20} color={colors.ink} />
+                  </Pressable>
+                )}
+              </View>
+            </View>
+
+            {pickingYear ? (
+              <ScrollView
+                ref={yearList}
+                style={styles.calYears}
+                onLayout={() => {
+                  if (aligned.current) return;
+                  aligned.current = true;
+                  yearList.current?.scrollTo({ y: yearOffset, animated: false });
+                }}
+              >
+                {years.map((y) => (
+                  <Pressable
+                    key={y}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setView((v) => ({ year: y, month: v.month }));
+                      setPickingYear(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.calYear,
+                      pressed && { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <Text style={[styles.calYearLabel, y === view.year && styles.calYearSelected]}>
+                      {y}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <>
+                <View style={styles.calWeek}>
+                  {weekdays.map((w, i) => (
+                    <Text key={i} style={styles.calWeekday} numberOfLines={1}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+                {grid.map((row, r) => (
+                  <View key={r} style={styles.calRow}>
+                    {row.map((day, c) => {
+                      if (day === null) return <View key={c} style={styles.calCell} />;
+                      const off = blocked(day);
+                      const isSelected =
+                        !!selected &&
+                        selected.day === day &&
+                        selected.month === view.month &&
+                        selected.year === view.year;
+                      return (
+                        <Pressable
+                          key={c}
+                          accessibilityRole="button"
+                          disabled={off}
+                          onPress={() => {
+                            onChange(displayFromParts(day, view.month, view.year));
+                            setOpen(false);
+                          }}
+                          style={({ pressed }) => [
+                            styles.calCell,
+                            isSelected && styles.calCellSelected,
+                            pressed && !off && !isSelected && { backgroundColor: colors.surface },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.calDay,
+                              off && styles.calDayOff,
+                              isSelected && styles.calDaySelected,
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </>
+            )}
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setOpen(false)}
+              style={({ pressed }) => [styles.calCancel, pressed && { backgroundColor: colors.surface }]}
+            >
+              <Text style={styles.calCancelLabel}>{t("common.cancel")}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 /* The multi-select sibling of ChoiceGroup — categories, languages: tap to add
    or remove, no single-selection constraint. */
 export function MultiChoiceGroup({
@@ -550,6 +822,55 @@ const styles = StyleSheet.create({
   },
   selectRowLabel: { fontSize: font.body, fontFamily: family.body, color: colors.ink, flexShrink: 1 },
   selectRowSelected: { fontFamily: family.bodySemi, color: colors.indigo },
+  calSheet: {
+    backgroundColor: colors.white,
+    borderRadius: radius.md,
+    padding: space(3),
+    maxHeight: "80%",
+    ...shadow.md,
+  },
+  calHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: space(2),
+  },
+  calArrow: { width: 32, alignItems: "center" },
+  calTitleWrap: { flexDirection: "row", alignItems: "center", gap: space(1) },
+  calTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
+  calWeek: { flexDirection: "row", paddingBottom: space(1) },
+  calWeekday: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: font.tiny,
+    fontFamily: family.body,
+    color: colors.muted,
+  },
+  calRow: { flexDirection: "row" },
+  calCell: {
+    flex: 1,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+  },
+  calCellSelected: { backgroundColor: colors.indigo },
+  calDay: { fontSize: font.small, fontFamily: family.body, color: colors.ink },
+  /* Refused days stay legible rather than vanishing: a greyed 19 explains
+     why the tap did nothing, a blank square does not. */
+  calDayOff: { color: colors.line },
+  calDaySelected: { color: colors.white, fontFamily: family.bodySemi },
+  calYears: { maxHeight: YEAR_ROW * 6 },
+  calYear: { height: YEAR_ROW, alignItems: "center", justifyContent: "center", borderRadius: radius.sm },
+  calYearLabel: { fontSize: font.body, fontFamily: family.body, color: colors.ink },
+  calYearSelected: { fontFamily: family.bodySemi, color: colors.indigo },
+  calCancel: {
+    alignItems: "center",
+    paddingVertical: space(3),
+    marginTop: space(1),
+    borderRadius: radius.sm,
+  },
+  calCancelLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.muted },
   choiceWrap: { flexDirection: "row", flexWrap: "wrap", gap: space(2) },
   choice: {
     borderWidth: 1,

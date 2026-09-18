@@ -6,13 +6,14 @@ import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { pickImage } from "../lib/imagePicker";
 import { CITIES, COUNTRIES, countryName, joinLocation, splitLocation } from "../lib/countries";
-import { fromIsoDay, toIsoDay } from "../lib/dates";
+import { fromIsoDay, maxBirthDate, toIsoDay } from "../lib/dates";
 import { CATEGORIES } from "../lib/categories";
 import type { InfluencerProfile, InfluencerProfileInput, OnboardingStatus } from "../lib/profileTypes";
 import {
   Banner,
   Card,
   ChoiceGroup,
+  DateField,
   Field,
   GhostButton,
   Hint,
@@ -130,7 +131,14 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
     if (!userId) return;
     /* The date is validated here, at the same edge where it is converted:
        the web's <input type="date"> makes a bad day untypeable, so the API
-       has never needed to be graceful about one. */
+       has never needed to be graceful about one.
+
+       THE BRANCH BELOW STAYS, even though the calendar cannot trip it any
+       more. birthDate is also filled from the API in loadProfile, so the
+       value being checked has never come from one place only, and a guard
+       dropped because one of its two callers stopped needing it is a guard
+       dropped from the other caller as well. It costs a parse of eleven
+       characters. */
     const isoBirth = birthDate.trim() ? toIsoDay(birthDate) : null;
     if (birthDate.trim() && !isoBirth) {
       setSaved(false);
@@ -289,13 +297,20 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
           />
         )}
 
-        <Field
+        {/* A calendar rather than a text box. The state stays DD/MM/YYYY and
+            toIsoDay still runs at the save edge, so nothing about the wire
+            format moved; what changed is that the only days reachable are
+            days that parse. maxBirthDate is the 18+ rule the backend
+            enforces in profiles service._require_adult, applied before the
+            round trip instead of after it, so a fifteen year old is told by
+            a greyed-out square rather than by a server error. */}
+        <DateField
           label={t("profile.birthDate")}
           value={birthDate}
-          onChangeText={setBirthDate}
+          onChange={setBirthDate}
           placeholder={t("profile.birthDateFormat")}
-          autoCapitalize="none"
           hint={t("profile.birthDateHint")}
+          maxDate={maxBirthDate()}
         />
 
         <Field label={t("profile.bio")} value={bio} onChangeText={setBio} multiline numberOfLines={4} />

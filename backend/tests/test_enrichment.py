@@ -342,3 +342,96 @@ def test_fetch_image_rechecks_where_a_redirect_landed(monkeypatch):
     monkeypatch.setattr(enrichment.httpx, "stream", lambda *a, **k: stream)
     assert enrichment.fetch_image("https://img.example/redirects") is None
     assert stream.served == []
+
+
+# --- The credential must never reach the log (KOL-108) ------------------------
+#
+# Every enricher here sends its credential as a query parameter, so it is part
+# of the request url, and httpx puts that whole url inside the message of the
+# HTTPStatusError it raises. These three pin the one thing that has to stay
+# true however the logging is rewritten later: a failed call explains itself,
+# and does not spell out our key while doing it.
+#
+# httpx is reached as enrichment.httpx rather than imported, and the log level
+# is set by name rather than with logging.WARNING, so this block needs no new
+# imports at the top of the file.
+
+FB_TOKEN = "EAAtest-pretend-this-is-a-real-meta-token-0123456789"
+YT_KEY = "AIzaTestPretendThisIsARealYouTubeKey0123456789"
+
+
+def _refuses(status, payload):
+    """An httpx.get that fails the way a provider fails."""
+    httpx = enrichment.httpx
+
+    def refuse(url, params=None, **kwargs):
+        request = httpx.Request("GET", url, params=params)
+        response = httpx.Response(status, request=request, json=payload)
+        # raise_for_status() rather than building the error by hand, because
+        # the leak IS the message httpx composes here: it interpolates the
+        # whole request url, query string and credential included. An error
+        # constructed with a message of our own would not reproduce the bug.
+        response.raise_for_status()
+        return response
+
+    return refuse
+
+
+def test_a_failed_graph_call_does_not_write_the_token_into_the_log(monkeypatch, caplog):
+    refuse = _refuses(
+        400,
+        {
+            "error": {
+                "message": "Invalid OAuth access token.",
+                "type": "OAuthException",
+                "code": 190,
+            }
+        },
+    )
+
+    # This assertion is the point of the test. If the fake ever stops carrying
+    # the token in the exception, the assertion below it passes for the wrong
+    # reason and the regression it guards against walks straight back in.
+    try:
+        refuse(f"{enrichment.GRAPH_HOST}/v26.0/kolabo", params={"access_token": FB_TOKEN})
+    except Exception as exc:
+        assert FB_TOKEN in str(exc)
+    else:
+        raise AssertionError("the fake was supposed to raise")
+
+    monkeypatch.setattr(enrichment.httpx, "get", refuse)
+    caplog.set_level("WARNING", logger="kolabo.profiles.enrichment")
+    assert enrichment.FacebookEnricher(FB_TOKEN, "v26.0").fetch("facebook", "kolabo") is None
+
+    assert FB_TOKEN not in caplog.text
+    # And what replaced it says more than the old line did, not less.
+    assert "HTTP 400" in caplog.text
+    assert "code=190" in caplog.text
+
+
+def test_a_failed_youtube_call_does_not_write_the_api_key_into_the_log(monkeypatch, caplog):
+    refuse = _refuses(403, {"error": {"code": 403, "message": "quotaExceeded"}})
+    monkeypatch.setattr(enrichment.httpx, "get", refuse)
+    caplog.set_level("WARNING", logger="kolabo.profiles.enrichment")
+    assert enrichment.YouTubeEnricher(YT_KEY).fetch("youtube", "@kolabo") is None
+
+    assert YT_KEY not in caplog.text
+    assert "HTTP 403" in caplog.text
+    assert "message=quotaExceeded" in caplog.text
+
+
+def test_a_network_failure_still_reads_as_a_network_failure(monkeypatch, caplog):
+    """The rebuilt line must not throw away the ordinary case. An exception that
+    never reached a response keeps its type and its message, so a dead network
+    still looks different in the log from a refused token."""
+
+    def fail(*a, **k):
+        raise RuntimeError("graph down")
+
+    monkeypatch.setattr(enrichment.httpx, "get", fail)
+    caplog.set_level("WARNING", logger="kolabo.profiles.enrichment")
+    assert enrichment.FacebookEnricher(FB_TOKEN, "v26.0").fetch("facebook", "kolabo") is None
+
+    assert "RuntimeError" in caplog.text
+    assert "graph down" in caplog.text
+    assert FB_TOKEN not in caplog.text

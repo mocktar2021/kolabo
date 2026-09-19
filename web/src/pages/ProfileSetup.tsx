@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
@@ -10,13 +10,17 @@ import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries
 import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import { MIN_LIVE_PACKAGES, deactivationHidesProfile, minPrice } from "../lib/pricing";
-import { SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
+import { CONNECTABLE_PLATFORMS, SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
 type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null };
+/* What POST /profiles/oauth/{platform}/start answers with: the platform's own
+   consent screen, already carrying the state and the scopes. Nothing else is
+   in the body. */
+type OAuthStartOut = { authorize_url: string };
 
 /* Small neutral chips for quantity (×3) and duration (30 s) on package rows;
    the same shape is used in onboarding step 2. */
@@ -118,11 +122,65 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
   const [newHandle, setNewHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* The success banner this section owns, beside the error one it already
+     had. Its own state rather than a flag on `error`, because the two answers
+     a creator can come back from a consent screen with are a success and a
+     failure, and they must not look alike. */
+  const [notice, setNotice] = useState<string | null>(null);
+  /* Which platform's Connect button is mid-handshake, or null. NOT the `busy`
+     flag above, which gates the handle modal and the inline editor: a creator
+     whose browser is on its way to Facebook should not find the edit buttons
+     of their other accounts disabled for the moment that takes. */
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   function load() {
     api<SocialAccount[]>(`/profiles/${userId}/social-accounts`).then(setAccounts).catch(() => undefined);
   }
   useEffect(load, [userId]);
+
+  /* COMING BACK FROM A CONSENT SCREEN, and the other half of startConnect
+     below. The API 302s to this page with ?connected=<platform> when it
+     worked and ?social_error=<code> when it did not; see finish_social_oauth
+     in backend/app/modules/profiles/router.py. This effect is the only place
+     a creator is told which of the two happened.
+
+     THE FAILURE SENTENCE IS NOT WRITTEN HERE. The code on the query string is
+     one complete_authorization already raises (oauth_exchange_failed,
+     oauth_state_expired, oauth_state_invalid) and both catalogues already
+     carry a French and an English sentence for each, so errorText does the
+     same lookup it does for every other refusal in this file. New copy for
+     them would be a second sentence for the same fact, free to drift from the
+     first.
+
+     THE ACCOUNTS ARE RE-READ because the handle and the follower count only
+     exist after the exchange: what is on screen was fetched before the
+     creator ever left for the consent screen.
+
+     THE MARKER IS CLEARED AS SOON AS IT IS READ, through the router rather
+     than history.replaceState so react-router's own idea of the location
+     stays true, and with replace so the back button does not gain a step.
+     Left on the URL it would mean a refresh, a bookmark or the back button
+     re-announcing a handshake that happened once and may have been hours
+     ago. */
+  const connectedParam = searchParams.get("connected");
+  const socialErrorParam = searchParams.get("social_error");
+  useEffect(() => {
+    if (!connectedParam && !socialErrorParam) return;
+    if (connectedParam) {
+      const platform = SOCIAL_PLATFORMS.find((p) => p.id === connectedParam);
+      setError(null);
+      setNotice(t("profile.socialConnected", { platform: platform?.label ?? connectedParam }));
+    } else if (socialErrorParam) {
+      setNotice(null);
+      setError(errorText({ code: socialErrorParam }, t));
+    }
+    load();
+    const next = new URLSearchParams(searchParams);
+    next.delete("connected");
+    next.delete("social_error");
+    setSearchParams(next, { replace: true });
+  }, [connectedParam, socialErrorParam]);
 
   function startEdit(a: SocialAccount) {
     setEditingId(a.id);
@@ -187,12 +245,48 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
     }
   }
 
+  /* Hand the browser to the platform's own consent screen.
+
+     `redirect_to` IS WHAT MAKES THE ROUND TRIP END BACK HERE, and getting it
+     wrong fails silently. The backend checks it against an allowlist built
+     from the configured web origin and DISCARDS a value that fails rather
+     than refusing the request, deliberately, so that a client bug never costs
+     a creator their connection (oauth_service._allowlisted_or_discarded). The
+     cost of that kindness is that a wrong origin produces no error anywhere:
+     the handshake completes and the creator lands on the callback's raw JSON.
+     window.location.origin is what keeps it right for local, staging and
+     production out of one build, because it is the origin the creator is
+     actually on rather than one compiled in.
+
+     window.location.href rather than the router, and it is not a shortcut:
+     authorize_url is on facebook.com, which is not a route this app has or
+     could ever have. */
+  async function startConnect(platform: string) {
+    setConnecting(platform);
+    setError(null);
+    setNotice(null);
+    try {
+      const started = await api<OAuthStartOut>(`/profiles/oauth/${platform}/start`, {
+        method: "POST", token,
+        body: { redirect_to: `${window.location.origin}/profile` }
+      });
+      /* `connecting` is deliberately not cleared here. The browser is leaving;
+         putting the button back to its resting label for the moment that takes
+         would read as though the click had done nothing. */
+      window.location.href = started.authorize_url;
+    } catch (err) {
+      setError(errorText(err, t));
+      setConnecting(null);
+    }
+  }
+
   const connected = new Set(accounts.map((a) => a.platform));
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("profile.socialTitle")}</h3>
       {error && <div className="alert alert-error">{error}</div>}
+      {notice && <div className="alert alert-success">{notice}</div>}
 
       {accounts.length === 0 ? (
         <p className="muted" style={{ fontSize: 13.5 }}>{t("profile.socialEmpty")}</p>
@@ -250,6 +344,33 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
           })}
         </div>
       )}
+
+      {/* THE CONNECT PATH, AND IT SITS ABOVE THE TILES ON PURPOSE. Typing a
+          handle CLAIMS an account; connecting PROVES it, and the follower
+          count that comes back with it is the platform's own answer about its
+          own Page rather than a number somebody typed into a box. Facebook is
+          the only platform that can do this today, and it is also the one
+          where typing was never going to be enough: the Graph API will not
+          answer questions about a Page this app does not administer, so a
+          Facebook handle in a box buys the link and nothing else.
+
+          THE TILES BELOW STAY, and that is a product decision rather than an
+          omission. A creator who declines the consent screen, who runs no
+          Page, or who simply will not hand an app permissions must still be
+          able to say where they are; the follower provenance model already
+          tells a typed number from a platform-stated one, so the two paths do
+          not have to pretend to be worth the same. Removing the typed path to
+          make room for this one would take a working feature away from every
+          platform that has no provider, which is all of them but one. */}
+      {CONNECTABLE_PLATFORMS.map((p) => (
+        <div key={p.id} style={{ marginBottom: 14 }}>
+          <button type="button" className="btn btn-primary" disabled={connecting !== null}
+            onClick={() => startConnect(p.id)}>
+            {connecting === p.id ? t("auth.working") : t("profile.socialConnectWith", { platform: p.label })}
+          </button>
+          <div className="hint">{t("profile.socialConnectHint", { platform: p.label })}</div>
+        </div>
+      ))}
 
       <span className="label">{t("profile.socialAdd")}</span>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>

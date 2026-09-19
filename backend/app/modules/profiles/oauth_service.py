@@ -27,18 +27,22 @@ THE THREE RULES THAT ARE EASY TO GET WRONG, and where each is enforced:
      the rule that covers both is "absent means unchanged, present means
      replace".
 
-  3. NOTHING HERE VERIFIES A HANDLE, EVEN NOW THAT A REAL PROVIDER EXISTS.
-     There is a Meta provider (see oauth.MetaOAuthProvider), so a Facebook
-     connection is a genuine authorization by the creator against a real app —
-     and every account this creates is still PENDING, exactly like a manual
-     one. The `status = VERIFIED` conditional that service.connect_social_account
-     removed is NOT restored here. A reviewed provider is a much better
-     argument for a badge than a string in a request body ever was, and the
-     case for turning it on is made in the pull request that added the
-     provider; but a badge is a product promise about who somebody is, and
-     switching it on is a decision to take deliberately rather than to inherit
-     from a plumbing change. What the provider DOES earn honestly is the
-     follower number: see _apply_audience.
+  3. NOTHING HERE VERIFIES A PERSON, AND CONNECTED IS NOT VERIFIED. An
+     account this module writes lands in models.CONNECTED: the creator signed
+     in on the platform's own consent screen, granted the permissions, and the
+     account was read back through the platform's own API with a token issued
+     to them. That is a real fact about the account, and it earned a state of
+     its own because the alternative was showing it as PENDING next to a
+     handle somebody had typed into a box, which was wrong on screen and wrong
+     to a brand reading it.
+     It is still not models.VERIFIED, and the `status = VERIFIED` conditional
+     that service.connect_social_account removed is NOT restored here. A
+     social login proves control of an account and says nothing at all about
+     who is holding it; VERIFIED is an admin having checked an identity
+     document, is written in exactly one place (admin.service.decide_social),
+     and goes on meaning only that. models.CONNECTED carries the argument in
+     full. What the provider also earns honestly is the follower number: see
+     _apply_audience.
 """
 import logging
 from datetime import timedelta
@@ -439,8 +443,9 @@ def _account_for(
     Page. Where it cannot, the id remains on show, which is ugly and honest and
     is fixed by the creator choosing a Page in the app.
 
-    The account stays PENDING either way, so nothing on a storefront is badged
-    off the back of it.
+    The account is CONNECTED either way, which says the creator authorised us
+    on the platform and says nothing more than that. No identity badge is put
+    on a storefront off the back of it.
     """
     if provider_user_id:
         existing = (
@@ -457,6 +462,13 @@ def _account_for(
             .first()
         )
         if existing is not None:
+            # A RE-AUTHORISATION PROVES CONTROL AGAIN, so a row that had
+            # fallen back to PENDING earns CONNECTED a second time. That
+            # happens to a creator who edited the handle by hand and then
+            # reconnected, which is the ordinary way back. _mark_connected
+            # owns the rule, including what it refuses to touch.
+            _mark_connected(db, existing)
+            db.refresh(existing)
             return existing
 
     account = models.SocialAccount(
@@ -464,11 +476,16 @@ def _account_for(
         platform=platform,
         handle=provider_user_id or platform,
         method="oauth",
-        # PENDING, like every other connection. See this module's docstring:
-        # a real reviewed provider is a better argument for a badge than
-        # anything that came before it, and turning one on is still a decision
-        # somebody makes rather than a consequence of adding a provider.
-        status=models.PENDING,
+        # CONNECTED, and this is the one place a row is born in that state.
+        # The creator has just come back from the platform's own consent
+        # screen and a token was issued to them, so "a typed handle nobody has
+        # checked" is not an honest description of this row, and PENDING is
+        # exactly what it used to say.
+        #
+        # STILL NOT VERIFIED. Control of an account is not identity, and
+        # widening that word would cost the product the one thing it means.
+        # See models.CONNECTED and this module's docstring.
+        status=models.CONNECTED,
         # No number is claimed by an authorization, so no provenance is
         # recorded — the rule connect_social_account already follows: null
         # count means null source, never "a report of nothing". If the provider
@@ -481,6 +498,30 @@ def _account_for(
     db.commit()
     db.refresh(account)
     return account
+
+
+def _mark_connected(db: Session, account: models.SocialAccount) -> None:
+    """Record that control of this account has just been proved on the platform.
+
+    ONLY EVER OUT OF PENDING, which is the whole of the rule and the reason
+    this is a function rather than an assignment at each call site. The four
+    states it can be handed are four different answers:
+
+      * PENDING is a typed handle nobody checked, or a row that a creator's
+        own handle edit demoted back (service.update_social_account). An
+        authorization, or a Page selection, is exactly the proof it lacked, so
+        it moves.
+      * CONNECTED is already here. Writing it again is a commit for nothing.
+      * VERIFIED is an admin's decision about a PERSON. A social login must
+        not be able to hand that out, and must not overwrite or refresh it
+        either, so it is left exactly where it is.
+      * REJECTED is an admin having said no. Reconnecting must not be a quiet
+        way to undo that; the route back is the review queue, not the button.
+    """
+    if account.status != models.PENDING:
+        return
+    account.status = models.CONNECTED
+    db.commit()
 
 
 def _apply_audience(
@@ -950,6 +991,13 @@ def select_page(db: Session, user_id: str, platform: str, page_id: str) -> dict:
     WRITES THROUGH _write_audience, the same function the automatic path uses,
     so the two cannot record different things. All three provenance columns go
     together per #161: the count, models.PLATFORM_API and the date.
+
+    AND MARKS THE ACCOUNT CONNECTED, if it was not already. Choosing a Page is
+    the second half of an authorisation rather than a separate act: the list it
+    was chosen from was read live with this creator's own token, which is the
+    same proof the connection itself rested on. A row that had fallen back to
+    PENDING therefore earns CONNECTED here too. An admin's decision is never
+    touched, in either direction. See _mark_connected.
     """
     account, pages = _own_pages(db, user_id, platform)
     chosen = next((page for page in pages if page.id == page_id), None)
@@ -964,6 +1012,7 @@ def select_page(db: Session, user_id: str, platform: str, page_id: str) -> dict:
         account,
         oauth.AudienceSnapshot(handle=chosen.name, follower_count=chosen.follower_count),
     )
+    _mark_connected(db, account)
     db.refresh(account)
     # service._social_out for the same reason complete_authorization uses it: a
     # new column on SocialAccount must not have to be remembered in a sixth

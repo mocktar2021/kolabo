@@ -8,11 +8,26 @@ import i18n from "../i18n";
    SocialsSection imports this module for its side effect. Anything that
    outgrows one section's worth of copy belongs back in strings.ts.
 
-   TWO GROUPS, ONE SECTION. socialConnect* is the handshake. socialPage* is
-   the question that follows it for a creator who administers more than one
-   Facebook Page: the connection worked perfectly, and the backend recorded no
-   follower count on purpose rather than guess which of somebody's businesses
-   is the one they sell. See oauth_service.list_pages and select_page.
+   THREE GROUPS NOW, AND THE THIRD IS READ BY A SECOND SCREEN.
+   socialConnect* is the handshake. socialPage* is the question that follows
+   it for a creator who administers more than one Facebook Page: the
+   connection worked perfectly, and the backend recorded no follower count on
+   purpose rather than guess which of somebody's businesses is the one they
+   sell. See oauth_service.list_pages and select_page.
+
+   socialStatus*, socialFollowers* and socialAudienceTitle are the third
+   group: what an account's state is called, and where its follower number
+   came from. They are rendered by SocialsSection AND by CreatorPublicScreen,
+   which is why that screen now carries the same side-effect import. They
+   stay in this bundle rather than moving to strings.ts because they are the
+   same feature as the two groups above, and splitting one feature's copy
+   across two files is how half of it ends up translated.
+
+   "pending" AND "verified" KEEP THE KEYS THEY ALREADY HAD, profile.pending
+   and profile.verified in strings.ts. Only the two states that had no copy
+   at all, connected and rejected, are written here. A second translation of
+   the word verified in this file would be exactly the duplication the
+   paragraph below refuses for error sentences.
 
    NO FAILURE SENTENCE IS WRITTEN HERE, and that is the point rather than an
    accident. A social_error code coming back on the callback is one of
@@ -70,6 +85,32 @@ const fr = {
     "Aucune page n'est rattachée à ce compte {{platform}}. Créez une page sur {{platform}}, puis reconnectez le compte ici.",
   socialPageChosen:
     "Page enregistrée. Le nom et le nombre d'abonnés affichés viennent maintenant de {{platform}}.",
+
+  /* L'état du compte, pour les deux valeurs qui n'avaient aucun libellé.
+     « connecté » n'est pas « vérifié » et ne doit pas en avoir l'air : le
+     créateur a prouvé qu'il contrôle le compte, personne n'a vérifié qui il
+     est. */
+  socialStatusConnected: "Connecté",
+  socialStatusRejected: "Refusé",
+
+  /* LA PROVENANCE DU CHIFFRE, DITE DES DEUX CÔTÉS.
+
+     Un nombre lu chez la plateforme porte la date de la lecture. Un nombre
+     saisi par le créateur le dit franchement. Ne marquer qu'un seul des deux
+     et laisser deviner l'autre, c'est exactement le défaut que ces lignes
+     corrigent : sur la page qu'une marque lit avant de dépenser, un chiffre
+     tapé dans un formulaire s'affichait comme un chiffre contrôlé.
+
+     Le mot « vérifié » ne sort JAMAIS pour un chiffre déclaré, et il nomme
+     la plateforme : c'est le compte qui a été vérifié, pas l'identité de la
+     personne. */
+  socialFollowersChecked: "Vérifié auprès de {{platform}} le {{date}}",
+  socialFollowersCheckedUndated: "Vérifié auprès de {{platform}}",
+  socialFollowersSelf: "Chiffre annoncé par le créateur, non vérifié",
+
+  /* Le titre de la section sur la page publique, là où une marque lit ces
+     chiffres avant de dépenser. */
+  socialAudienceTitle: "Audience par plateforme",
 };
 
 const en = {
@@ -90,6 +131,15 @@ const en = {
     "There are no Pages on this {{platform}} account. Create one on {{platform}}, then connect the account again here.",
   socialPageChosen:
     "Page saved. The name and follower count shown now come from {{platform}} itself.",
+
+  socialStatusConnected: "Connected",
+  socialStatusRejected: "Rejected",
+
+  socialFollowersChecked: "Verified with {{platform}} on {{date}}",
+  socialFollowersCheckedUndated: "Verified with {{platform}}",
+  socialFollowersSelf: "The creator's own figure, not checked",
+
+  socialAudienceTitle: "Audience by platform",
 };
 
 i18n.addResourceBundle("fr", "translation", { profile: fr }, true, true);

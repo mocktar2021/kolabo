@@ -595,6 +595,48 @@ export type Package = {
 
 export type PortfolioItem = { id: string; media_id: string; url: string };
 
+/* One social account, as the public page and the profile form both read it.
+   Mirror of _social_out in backend/app/modules/profiles/service.py, which is
+   the single serialiser every one of that module's four call sites goes
+   through.
+
+   status HAS FOUR VALUES AND THEY DO NOT COLLAPSE INTO TWO:
+
+     pending    a handle somebody typed into a form. An unproven claim.
+     connected  the creator signed in to the platform, granted the
+                permissions, and Kolabo read the account back through the
+                platform's own API on a token issued to them. Control of the
+                account is proved. Nothing about the person is.
+     verified   an admin read a real identity document. Reserved, written in
+                exactly one place server-side (admin.service.decide_social),
+                and deliberately never widened to cover a social login.
+     rejected   an admin looked and said no.
+
+   Kept as a plain string rather than a union, because that is what
+   SocialAccountOut.status is server-side and because a value this client has
+   not heard of should render as no badge at all rather than break the one
+   page a brand reads before it spends.
+
+   follower_source AND follower_verified_at ANSWER A DIFFERENT QUESTION FROM
+   status, and the separation is the point. status says whether the creator
+   controls the handle, which is what an admin decides by reading a proof
+   link. These two say who supplied the number underneath it, which nobody
+   decides by reading anything: a verified handle whose count is still
+   self_reported is a real and ordinary state, and is in fact the state of
+   almost every reviewed account on the platform today.
+
+     null           no number is recorded, or the row predates these columns.
+     self_reported  the creator typed it. Nothing has checked it.
+     platform_api   the platform stated it, in an API response about its own
+                    account. The only source that earns a date.
+
+   Both were shipped by the backend on every account and dropped on the floor
+   here, because they were missing from this type: a count confirmed against
+   the creator's own OAuth token rendered identically to a number somebody
+   invented.
+
+   follower_verified_at arrives naive UTC like every other datetime from this
+   API, so it goes through parseApiDate before it is formatted. */
 export type SocialAccountPublic = {
   id: string;
   platform: string;
@@ -602,6 +644,8 @@ export type SocialAccountPublic = {
   method: string;
   status: string;
   follower_count: number | null;
+  follower_source: "self_reported" | "platform_api" | null;
+  follower_verified_at: string | null;
 };
 
 /* A revealed review as the public page shows it. reviewer_display_name is

@@ -39,9 +39,11 @@ go live" is a private answer about somebody's account, not part of the
 storefront.
 """
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.errors import AppError
 from app.modules.auth.deps import get_current_user_id
 from app.modules.profiles import oauth_service, schemas, service
 
@@ -381,5 +383,44 @@ def finish_social_oauth(
     written on the state row. A creator holding somebody else's callback URL
     connects an account to THEM, not to themselves — which is why the state has
     to be unguessable and is spent on first use.
+
+    TWO ANSWERS, AND WHICH ONE ARRIVES DEPENDS ENTIRELY ON WHETHER THERE IS
+    SOMEWHERE TO SEND THE CREATOR. Whoever reaches this route is sitting in a
+    browser at the end of a consent screen, so when `start` was given an
+    allowlisted `redirect_to` they get a 302 back to it, carrying
+    `connected=<platform>` when it worked and `social_error=<code>` when it did
+    not. When there is none they get exactly the JSON body this route has
+    always returned. Until this change there was no client to go back to, so
+    everybody got the JSON and a creator finishing a Facebook consent screen
+    landed on a page of it.
+
+    KEEPING THE JSON PATH IS THE DESIGN, not a leftover. It is what makes this
+    additive: no existing caller sends a `redirect_to`, so no existing caller
+    sees a redirect, every test written against the old contract still
+    describes it, and the two clients opt in one at a time by starting to send
+    one.
+
+    A FAILURE REDIRECTS TOO, when there is a destination to redirect to.
+    Declining a permission on the consent screen is an ordinary thing to do,
+    and answering it with a JSON error page is the same defect as answering a
+    success with one. The code in the query string is the AppError's own, so
+    the client shows the sentence it already has; no error code is invented for
+    this feature, and none needed adding to either translation catalogue.
     """
-    return oauth_service.complete_authorization(db, platform, code, state)
+    try:
+        result = oauth_service.complete_authorization(db, platform, code, state)
+    except AppError as exc:
+        target = oauth_service.failure_redirect(db, platform, state, exc.code)
+        if target is None:
+            raise
+        return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+
+    target = oauth_service.success_redirect(result["redirect_to"], platform)
+    if target is None:
+        # No destination, or one on a row old enough to predate the allowlist
+        # and carrying something we will not honour. Either way the answer is
+        # the JSON body, and it does not echo back a destination this API has
+        # just declined to send anybody to.
+        result["redirect_to"] = None
+        return result
+    return RedirectResponse(target, status_code=status.HTTP_302_FOUND)

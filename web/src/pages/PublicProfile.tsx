@@ -10,6 +10,11 @@ import { CURRENCIES } from "../lib/campaignOptions";
 import { useCart } from "../lib/cart";
 import { deliverablesFor, PLATFORM_LABELS } from "../lib/platforms";
 import { minPrice } from "../lib/pricing";
+/* follower_verified_at arrives naive UTC ("2026-09-19T09:12:00", no suffix)
+   like every other datetime from this API, and JavaScript reads that as LOCAL
+   time. parseApiDate is the app's existing answer to that, already used by
+   every screen that prints an API date. */
+import { parseApiDate } from "../lib/orders";
 import type { CreatorIdentity, DirectOrder, Package, PublicProfile } from "../lib/types";
 
 /* Mirrors MAX_NOTE_LENGTH in backend/app/modules/campaigns/schemas.py, so the
@@ -350,14 +355,94 @@ export default function PublicProfilePage() {
     );
   };
 
-  /* Verified accounts get a quiet checkmark; pending ones simply show none:
-     the absence of the checkmark is the signal. A loud "unverified" label
-     would punish every pilot creator while OAuth verification does not exist
-     yet. */
-  const verifiedMark = (status: string) =>
-    status === "verified" ? (
-      <span title={t("public.verifiedAccount")} style={{ color: "var(--success)", marginRight: 4 }}>✓</span>
-    ) : null;
+  /* THE ACCOUNT MARK, AND IT NOW HAS THREE ANSWERS RATHER THAN TWO.
+
+     verified is an admin who read a real identity document, and it keeps the
+     strong mark: the green checkmark is the only thing on this page that says
+     a PERSON was checked, and it is worth something only while it keeps
+     costing an identity document.
+
+     connected is the creator having signed in to the platform, granted the
+     permissions and let Kolabo read the account back through the platform's
+     own API on a token issued to them. That proves control of the handle and
+     nothing whatever about who holds it, so it gets a quieter mark of its
+     own: the same checkmark in the muted colour, with its own tooltip saying
+     what was proved and what was not. Until now it rendered as nothing at all
+     here, which put an authorised account behind the same silence as a typed
+     claim.
+
+     pending and rejected still carry no mark. An absent mark understates
+     rather than overstates, which is the only safe direction on the page a
+     brand reads before it spends. */
+  const accountMark = (status: string) => {
+    if (status === "verified") {
+      return <span title={t("public.verifiedAccount")} style={{ color: "var(--success)", marginRight: 4 }}>✓</span>;
+    }
+    if (status === "connected") {
+      return <span title={t("public.connectedAccount")} style={{ color: "var(--muted)", marginRight: 4 }}>✓</span>;
+    }
+    return null;
+  };
+
+  /* WHERE A FOLLOWER NUMBER CAME FROM, said on every number and not only on
+     the flattering half of them.
+
+     A count read out of the platform's own API and a count somebody typed
+     into a form used to render identically on this page, which made the
+     checked one worth nothing: a brand that cannot tell them apart has to
+     treat both as claims. So platform_api carries the date it was read, and
+     self_reported says plainly that it is the creator's own figure. The word
+     "verified" is never used for the second one.
+
+     A NULL SOURCE IS ITS OWN ANSWER, NOT A THIRD SILENCE. Rows written before
+     the provenance columns existed carry a number with no source, and
+     backend/app/modules/profiles/models.py is explicit about why it stays
+     null: nobody knows where those numbers came from and a guess would read
+     as a fact. Picking either real label for them would invent the very thing
+     this exists to stop, and leaving them blank would leave exactly the
+     unmarked number it exists to remove. So they say the origin was never
+     recorded, which is true, and which stops being shown the moment the
+     creator edits the count or reconnects the account.
+
+     A platform_api row arriving with no date falls into the same branch, on
+     purpose: "verified" with no "when" is a weaker claim than it looks, and
+     this page has nothing honest to print in place of the date. */
+  const followerSource = (source: string | null, verifiedAt: string | null) => {
+    const unrecorded = {
+      checked: false,
+      short: t("profile.followerUnknownShort"),
+      full: t("profile.followerUnknown")
+    };
+    if (source === "platform_api") {
+      if (!verifiedAt) return unrecorded;
+      /* Formatted exactly as the review dates below are, in the reader's own
+         language, so one page does not print two kinds of date. */
+      const date = new Date(parseApiDate(verifiedAt))
+        .toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+      return {
+        checked: true,
+        short: t("profile.followerCheckedShort"),
+        full: t("profile.followerChecked", { date })
+      };
+    }
+    if (source === "self_reported") {
+      return {
+        checked: false,
+        short: t("profile.followerDeclaredShort"),
+        full: t("profile.followerDeclared")
+      };
+    }
+    return unrecorded;
+  };
+
+  /* The provenance of the big number in the audience section. Computed here
+     rather than inside the JSX so the marker and the sentence are read off one
+     call and can never disagree; it resolves to the unrecorded wording when
+     there is no account on show, which is the case where nothing renders. */
+  const audienceSource = followerSource(
+    audienceAccount?.follower_source ?? null,
+    audienceAccount?.follower_verified_at ?? null
+  );
 
   const toggleDesc = (id: string) =>
     setExpandedDesc((prev) => {
@@ -420,13 +505,23 @@ export default function PublicProfilePage() {
 
               {profile.social_accounts.length > 0 && (
                 <div className="pp-chips">
-                  {profile.social_accounts.map((a) => (
-                    <span key={a.id} className="pp-chip">
-                      {verifiedMark(a.status)}
-                      {platformLabel(a.platform)}
-                      {a.follower_count !== null && ` · ${compact.format(a.follower_count)}`}
-                    </span>
-                  ))}
+                  {profile.social_accounts.map((a) => {
+                    const src = followerSource(a.follower_source, a.follower_verified_at);
+                    return (
+                      /* THE NUMBER AND THE WORD FOR WHAT IT IS WORTH, TOGETHER.
+                         This row is where a brand reads the whole audience at
+                         a glance, so a bare "12.3k" here is the unmarked
+                         number the change exists to remove. The short form
+                         fits the chip; the sentence with the date is one
+                         section down, on the tab for this same account, and
+                         rides along as the tooltip here. */
+                      <span key={a.id} className="pp-chip" title={a.follower_count !== null ? src.full : undefined}>
+                        {accountMark(a.status)}
+                        {platformLabel(a.platform)}
+                        {a.follower_count !== null && ` · ${compact.format(a.follower_count)} · ${src.short}`}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
 
@@ -484,10 +579,13 @@ export default function PublicProfilePage() {
                 )}
               </section>
 
-              {/* Real, connected data only: no self-reported demographics. A
-                  buyer must never see a figure the platform cannot back, per
-                  product decision. Pending accounts appear too, without the
-                  checkmark. */}
+              {/* Real, connected data only: no self-reported DEMOGRAPHICS. A
+                  buyer must never see an age or a gender split the platform
+                  cannot back, per product decision. The follower COUNT is the
+                  one figure that is shown whatever its source, because hiding
+                  it emptied this section for every pilot creator; what makes
+                  that honest is the line under the number saying which of the
+                  two it is. */}
               {audienceAccounts.length > 0 && (
                 <section className="pp-section" id="analytics">
                   <h2>{t("public.audienceTitle")}</h2>
@@ -495,7 +593,7 @@ export default function PublicProfilePage() {
                     {audienceAccounts.map((a) => (
                       <button key={a.id} type="button" className={`pp-tab${audienceAccount?.id === a.id ? " active" : ""}`}
                         aria-pressed={audienceAccount?.id === a.id} onClick={() => setAudienceTab(a.id)}>
-                        {a.status === "verified" && <span title={t("public.verifiedAccount")} style={{ marginRight: 4 }}>✓</span>}
+                        {accountMark(a.status)}
                         {platformLabel(a.platform)}
                       </button>
                     ))}
@@ -504,6 +602,19 @@ export default function PublicProfilePage() {
                     <>
                       <div className="pp-big-number">{(audienceAccount.follower_count ?? 0).toLocaleString(locale)}</div>
                       <div className="muted" style={{ fontSize: 14 }}>{t("public.audienceUnit")}</div>
+                      {/* Directly under the biggest number on the page, and
+                          not in a tooltip: this is the figure a brand
+                          shortlists on, so what it is worth has to be as
+                          readable as the figure itself. Both sources are
+                          named. A checked count is the only one that gets the
+                          mark and the colour. */}
+                      <div style={{
+                        fontSize: 13, marginTop: 6, fontWeight: 600,
+                        color: audienceSource.checked ? "var(--success)" : "var(--muted)"
+                      }}>
+                        {audienceSource.checked && <span aria-hidden="true" style={{ marginRight: 4 }}>✓</span>}
+                        {audienceSource.full}
+                      </div>
                       <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>{t("public.audienceNote")}</p>
                     </>
                   )}

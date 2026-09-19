@@ -16,11 +16,24 @@ import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
-type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null };
+type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null; method: string };
 /* What POST /profiles/oauth/{platform}/start answers with: the platform's own
    consent screen, already carrying the state and the scopes. Nothing else is
    in the body. */
 type OAuthStartOut = { authorize_url: string };
+/* One Page out of GET /profiles/oauth/{platform}/pages: what the creator is
+   choosing between, read live from the platform and stored nowhere until they
+   pick one. Both nullable fields are nullable on the server too, so neither is
+   safe to assume. `name` is null for a Page the platform named nothing for,
+   and `follower_count` is null for one it stated no number for, which the
+   picker renders as nothing at all rather than as a zero. */
+type SocialPage = { id: string; name: string | null; follower_count: number | null };
+
+/* The ids of the platforms a Connect button exists for, as a set, so a row can
+   be tested in one lookup instead of a scan. Derived from the same
+   CONNECTABLE_PLATFORMS the buttons are rendered from, so a platform cannot be
+   connectable for one and not the other. */
+const CONNECTABLE_IDS = new Set(CONNECTABLE_PLATFORMS.map((p) => p.id));
 
 /* Small neutral chips for quantity (×3) and duration (30 s) on package rows;
    the same shape is used in onboarding step 2. */
@@ -132,6 +145,19 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
      whose browser is on its way to Facebook should not find the edit buttons
      of their other accounts disabled for the moment that takes. */
   const [connecting, setConnecting] = useState<string | null>(null);
+  /* THE PAGE PICKER. `pagePicker` is which platform is being chosen for, or
+     null for closed. `pages` is deliberately three-valued and not an array
+     with a separate loading flag: null means the list has not come back yet,
+     an empty array means the platform answered and this creator runs no
+     Pages, and those two must not look alike on screen. One of them is a
+     spinner and the other is a sentence about creating a Page. */
+  const [pagePicker, setPagePicker] = useState<{ platform: string; label: string } | null>(null);
+  const [pages, setPages] = useState<SocialPage[] | null>(null);
+  /* Mid-selection, which disables the rows so a second tap cannot post a
+     different Page while the first answer is still in flight. Its own flag
+     rather than `busy`, for the reason `connecting` has its own: the inline
+     editor and the handle modal have nothing to do with this. */
+  const [choosing, setChoosing] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   function load() {
@@ -280,6 +306,88 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
     }
   }
 
+  /* WHETHER THIS ROW IS THE FOUR PAGE CASE, asked of the row rather than of
+     the platform, because it is a property of one connection and not of
+     Facebook.
+
+     THREE CONDITIONS, AND EACH ONE EXCLUDES A ROW THAT MUST NOT BE OFFERED
+     THIS. A typed account has no token behind it, so there is no list to
+     read; a platform with no provider answers oauth_platform_unsupported; and
+     an account that already carries a follower count has nothing to choose,
+     which is exactly the creator who manages precisely one Page and whose
+     number the server filled in at connect time. That last one is why a
+     one Page creator never sees any of this.
+
+     IT DOES NOT CLAIM THE CREATOR HAS SEVERAL PAGES, because a row cannot
+     know that. A missing count is also what a creator with no Page at all
+     looks like from here. The list is the only thing that can tell those two
+     apart, and it says so itself when it comes back empty. */
+  function needsPage(a: SocialAccount): boolean {
+    return a.method === "oauth" && a.follower_count === null && CONNECTABLE_IDS.has(a.platform);
+  }
+
+  /* Open the picker and fetch the Pages. The modal is opened BEFORE the
+     request rather than after it, so the tap has a visible consequence
+     immediately and the list arrives into a frame that is already there.
+
+     A FAILED FETCH CLOSES THE MODAL AGAIN and puts the refusal in the
+     section's error banner. Rendering it inside the modal would mean a second
+     place that shows errors, and the banner is where every other refusal in
+     this section already lands. */
+  async function openPages(platform: string, label: string) {
+    setPagePicker({ platform, label });
+    setPages(null);
+    setError(null);
+    setNotice(null);
+    try {
+      setPages(await api<SocialPage[]>(`/profiles/oauth/${platform}/pages`, { token }));
+    } catch (err) {
+      setPagePicker(null);
+      setError(errorText(err, t));
+    }
+  }
+
+  /* Record the choice, then re-read the accounts so the row on screen becomes
+     the Page: its name in place of the numeric id, and its follower count
+     beside it.
+
+     load() RATHER THAN THE RESPONSE BODY, even though the endpoint answers
+     with the updated account. The row is rendered from `accounts`, and one
+     list that is always read the same way beats a second path that patches a
+     single entry and has to be kept in step with it.
+
+     A REFUSAL CLOSES THE PICKER, which is not giving up. oauth_page_not_found
+     means the list this creator is looking at is out of date, and its own
+     sentence tells them to refresh it and choose again; closing is what makes
+     the next tap on "Choose your Page" fetch a fresh one. The sentence comes
+     from errorText like every other refusal here, so no copy is written for
+     it in either language. */
+  async function choosePage(page: SocialPage) {
+    if (!pagePicker) return;
+    setChoosing(true);
+    setError(null);
+    try {
+      await api(`/profiles/oauth/${pagePicker.platform}/pages/${encodeURIComponent(page.id)}`, {
+        method: "POST", token
+      });
+      setPagePicker(null);
+      setPages(null);
+      setNotice(t("profile.socialPageSelected", { page: page.name || t("profile.socialPageUnnamed") }));
+      load();
+    } catch (err) {
+      setPagePicker(null);
+      setPages(null);
+      setError(errorText(err, t));
+    } finally {
+      setChoosing(false);
+    }
+  }
+
+  function closePages() {
+    setPagePicker(null);
+    setPages(null);
+  }
+
   const connected = new Set(accounts.map((a) => a.platform));
 
   return (
@@ -327,6 +435,13 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                         empty chip: the server never stores one for it. */}
                     @{a.handle}{a.follower_count !== null && ` · ${a.follower_count.toLocaleString()} ${t("public.audienceUnit")}`}
                   </div>
+                  {/* THE EXPLANATION THAT WAS MISSING. Until now a creator who
+                      manages several Pages came back from the consent screen
+                      to a row showing a numeric id and no number, with nothing
+                      on screen saying why either was so. The button beside it
+                      is the answer; this is the sentence that sends them to
+                      it. */}
+                  {needsPage(a) && <div className="hint">{t("profile.socialPageWhy")}</div>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{
@@ -336,6 +451,12 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                   }}>
                     {a.status === "verified" ? t("profile.socialVerified") : t("profile.socialPending")}
                   </span>
+                  {needsPage(a) && (
+                    <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }}
+                      onClick={() => openPages(a.platform, PLATFORM_LABELS[a.platform] ?? a.platform)}>
+                      {t("profile.socialChoosePage")}
+                    </button>
+                  )}
                   <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => startEdit(a)}>{t("profile.socialEdit")}</button>
                   <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }} onClick={() => remove(a.id)}>{t("profile.socialDelete")}</button>
                 </div>
@@ -410,6 +531,63 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
               <button className="btn btn-primary" disabled={!newHandle || busy} onClick={() => add(newHandle)}>
                 {busy ? t("auth.working") : t("onb.addToProfile")}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CHOOSING WHICH PAGE THE CREATOR SELLS ON.
+
+          The same overlay the handle modal above uses, deliberately: a second
+          pattern for the same job would be a second thing to keep in step,
+          and a creator who has met one of these already knows how this one
+          closes.
+
+          EVERY ROW CARRIES A NAME AND A NUMBER, which is the whole point of
+          asking rather than guessing. A creator recognises AfriGossip from
+          Oceanix Tech Solutions by name, and tells the Page they actually
+          sell on from the client account they merely administer by size. A
+          Page the platform stated no number for shows nothing in that line
+          rather than a zero, for the same reason the account row above says
+          nothing about a null.
+
+          NOTHING IS PRESELECTED. The list arrives ordered by size, which is
+          the server's doing and is only an ordering; the write happens on a
+          tap and never before it. */}
+      {pagePicker && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(21,24,36,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20 }}
+          onClick={closePages}>
+          <div className="card" style={{ maxWidth: 460, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>{t("profile.socialPageTitle", { platform: pagePicker.label })}</h3>
+            <div className="hint">{t("profile.socialPageHint")}</div>
+            {pages === null ? (
+              <p className="muted" style={{ fontSize: 13.5, marginBottom: 0 }}>{t("auth.working")}</p>
+            ) : pages.length === 0 ? (
+              /* A CREATOR WITH NO PAGE AT ALL, and they are told what to do
+                 rather than shown an empty box. The account itself is fine
+                 and stays on their profile; what is missing is a Page to put
+                 a name and a number on it. */
+              <p className="muted" style={{ fontSize: 13.5, marginBottom: 0 }}>
+                {t("profile.socialPageEmpty", { platform: pagePicker.label })}
+              </p>
+            ) : (
+              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                {pages.map((page) => (
+                  <button key={page.id} type="button" className="btn btn-ghost" disabled={choosing}
+                    style={{ flexDirection: "column", alignItems: "flex-start", padding: "10px 12px", textAlign: "left" }}
+                    onClick={() => choosePage(page)}>
+                    <span style={{ fontWeight: 600 }}>{page.name || t("profile.socialPageUnnamed")}</span>
+                    {page.follower_count !== null && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {`${page.follower_count.toLocaleString()} ${t("public.audienceUnit")}`}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+              <button className="btn btn-ghost" onClick={closePages}>{t("onb.cancel")}</button>
             </div>
           </div>
         </div>

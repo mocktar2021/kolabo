@@ -7,7 +7,16 @@
    The keys are deep-merged into the profile.* group i18n.ts already owns:
    addResourceBundle runs with deep=true and overwrite=true, and main.tsx
    imports this after "./i18n", so they join that group rather than replacing
-   it. */
+   it.
+
+   TWO GROUPS NOW, NOT ONE. public.connectedAccount joins the public.* group
+   that i18n.ts also owns, under the same ordering rule and for a plain
+   reason: it is the tooltip that sits beside public.verifiedAccount on the
+   creator page, and two sentences a reader compares should be findable side
+   by side. Everything else stays in profile.*, including the follower
+   provenance sentences, which the public page reads from there rather than
+   owning a second copy of: one fact, one wording, two screens that cannot
+   drift apart. */
 import i18n from "../i18n";
 
 const fr = {
@@ -58,7 +67,45 @@ const fr = {
   socialPageSelected: "C'est noté. Votre profil affiche maintenant {{page}} et son nombre d'abonnés.",
   /* Le nom peut manquer : SocialPageOut le déclare nullable, et une ligne
      sans étiquette n'est pas un choix qu'on peut faire. */
-  socialPageUnnamed: "Page sans nom"
+  socialPageUnnamed: "Page sans nom",
+  /* LES QUATRE ÉTATS D'UN COMPTE, dits en quatre mots différents.
+
+     « Connecté » n'est pas « En attente ». Un créateur qui s'était connecté
+     à Facebook, avait donné les permissions et avait choisi sa Page lisait
+     jusqu'ici la même pastille que quelqu'un qui avait tapé un identifiant
+     dans une case sans rien prouver. Et « Vérifié » reste réservé à la
+     décision d'un administrateur qui a lu une pièce d'identité : une
+     connexion sociale prouve qu'on détient les identifiants d'un compte,
+     jamais qui on est.
+
+     « Refusé » gagne aussi son propre mot, pour la même raison : il
+     s'affichait en « En attente », c'est-à-dire comme une décision qui
+     n'aurait pas encore eu lieu, alors qu'elle a eu lieu et qu'elle était
+     négative. */
+  socialConnectedBadge: "Connecté",
+  socialRejected: "Refusé",
+  /* D'OÙ VIENT LE NOMBRE D'ABONNÉS, et les deux côtés sont marqués.
+
+     Un chiffre sans mention oblige la marque à deviner ce qu'il vaut, et
+     c'est exactement ce qui est corrigé ici : un nombre lu dans l'API de la
+     plateforme porte la date de sa lecture, un nombre saisi par le créateur
+     le dit. Le mot « vérifié » ne sert jamais au second.
+
+     followerUnknown couvre les lignes écrites avant que l'origine soit
+     enregistrée. Elles gardent leur nombre et ne reçoivent aucune des deux
+     autres mentions : nous ne savons pas d'où vient ce chiffre, et choisir
+     « déclaré » ou « vérifié » au hasard serait affirmer une chose que
+     personne n'a constatée.
+
+     Les formes courtes tiennent dans la pastille de la page publique, juste
+     après le nombre lui-même ; les formes longues portent la date et
+     s'affichent sous le grand chiffre et sur le formulaire du créateur. */
+  followerChecked: "Vérifié auprès de la plateforme le {{date}}",
+  followerDeclared: "Déclaré par le créateur, non vérifié",
+  followerUnknown: "Origine non enregistrée : ce compte est antérieur au suivi de la provenance des chiffres",
+  followerCheckedShort: "vérifié",
+  followerDeclaredShort: "déclaré",
+  followerUnknownShort: "origine inconnue"
 };
 
 const en = {
@@ -72,8 +119,30 @@ const en = {
   socialPageHint: "Kolabo does not pick one for you. You keep one Page per account: the one you choose here gives your profile its name and its follower count.",
   socialPageEmpty: "{{platform}} returns no Page for this account. Create a Page, then reconnect the account. Until then your account stays on your profile, without a follower count.",
   socialPageSelected: "Done. Your profile now shows {{page}} and its follower count.",
-  socialPageUnnamed: "Unnamed Page"
+  socialPageUnnamed: "Unnamed Page",
+  socialConnectedBadge: "Connected",
+  socialRejected: "Rejected",
+  followerChecked: "Verified with the platform on {{date}}",
+  followerDeclared: "Declared by the creator, not checked",
+  followerUnknown: "Source not recorded: this account predates the tracking of where follower numbers come from",
+  followerCheckedShort: "checked",
+  followerDeclaredShort: "declared",
+  followerUnknownShort: "source unknown"
 };
 
-i18n.addResourceBundle("fr", "translation", { profile: fr }, true, true);
-i18n.addResourceBundle("en", "translation", { profile: en }, true, true);
+/* The tooltip on the quiet mark the public page gives a connected account,
+   beside the public.verifiedAccount that the strong mark already carries.
+
+   IT SAYS BOTH HALVES, because saying only the flattering one is how
+   "connected" would quietly come to mean "verified" in a reader's head. The
+   platform confirmed the account. Nobody confirmed the person. */
+const publicFr = {
+  connectedAccount: "Compte connecté : le créateur s'est authentifié auprès de la plateforme, qui a confirmé le compte. L'identité de la personne n'a pas été vérifiée."
+};
+
+const publicEn = {
+  connectedAccount: "Connected account: the creator signed in with the platform and the platform confirmed the account. The person's identity has not been checked."
+};
+
+i18n.addResourceBundle("fr", "translation", { profile: fr, public: publicFr }, true, true);
+i18n.addResourceBundle("en", "translation", { profile: en, public: publicEn }, true, true);

@@ -3,7 +3,7 @@
    PublicProfileOut from modules/profiles/schemas.py (the fields this client
    renders), and OrderOut from modules/campaigns/schemas.py. */
 
-import type { Package } from "./profileTypes";
+import type { Package, SocialAccount } from "./profileTypes";
 
 export type SocialSummary = {
   platform: string;
@@ -47,7 +47,11 @@ export type PublicProfileData = {
   average_stars: number | null;
   review_count: number;
   packages: Package[];
-  social_accounts: { platform: string; handle: string; follower_count: number | null }[];
+  /* THE WHOLE ACCOUNT, NOT THREE FIELDS OF IT. The payload has been
+     list[SocialAccountOut] since this endpoint existed; typing a three field
+     subset of it here is what kept the account status and both provenance
+     columns off the one page a brand reads before it spends. */
+  social_accounts: SocialAccount[];
 };
 
 /* What the buyer gets back from POST /campaigns/orders: where the order

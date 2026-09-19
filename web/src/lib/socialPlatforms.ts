@@ -59,3 +59,42 @@ export const SOCIAL_PLATFORMS: SocialPlatform[] = [
 export function platformHasAudience(platformId: string): boolean {
   return SOCIAL_PLATFORMS.find((p) => p.id === platformId)?.hasAudience ?? true;
 }
+
+/* The platforms a creator can connect by authorising Kolabo ON the platform,
+   instead of by typing a handle into the box.
+
+   THIS IS A COPY OF oauth.build_default_providers() IN THE BACKEND, AND
+   NOTHING ENFORCES THAT IT STAYS ONE. There is no endpoint that reports which
+   platforms have a provider, so this list is a decision made in
+   backend/app/modules/profiles/oauth.py and written down again here by hand.
+   It is a constant rather than something inferred precisely so that the
+   coupling is visible: a reader can see what it has to agree with.
+
+   The two ways it can drift are not equally loud, which is why they are worth
+   naming:
+
+     a platform listed here that the backend has no provider for shows a
+     Connect button whose POST answers `oauth_platform_unsupported`. The
+     creator reads that as a broken button, but somebody does at least find
+     out;
+
+     a platform the backend HAS a provider for and that is missing here shows
+     no Connect button at all. Nothing fails, nothing is logged, and the
+     feature is simply invisible. This is the direction that goes unnoticed,
+     and it is the one to check when a provider is added.
+
+   FACEBOOK ALONE TODAY. build_default_providers registers MetaOAuthProvider
+   and nothing else, and registers even that only where the deployment carries
+   both a Meta app id and a secret. A deployment with neither is the first
+   kind of drift above, but it is a configuration question rather than a code
+   one: the button is right, the server is not set up. */
+export const CONNECTABLE_PLATFORMS: string[] = ["facebook"];
+
+/* Whether to offer the Connect action for a platform. Unknown ids answer
+   false, which is the opposite of platformHasAudience above and is the right
+   default for the opposite reason: that one decides whether to collect
+   something and guesses generously, this one decides whether to send somebody
+   on a handshake, and a handshake we have no provider for cannot succeed. */
+export function canConnect(platformId: string): boolean {
+  return CONNECTABLE_PLATFORMS.includes(platformId);
+}

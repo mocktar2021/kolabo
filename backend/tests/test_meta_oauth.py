@@ -62,6 +62,30 @@ TWO_PAGES = [
     {"id": "page-2", "name": "Adjo Traiteur", "followers_count": 800},
 ]
 
+# THE LIVE CASE THE PICKER EXISTS FOR, with the names changed. One creator,
+# four Pages: a gossip page, their own buzz page, a beauty page, and a tech
+# company whose account they merely administer. Four is a question and not a
+# fact, so read_audience answered it with None and the creator was left looking
+# at a numeric app-scoped id where a name should be, no follower count, and
+# nothing on screen to say why.
+#
+# DELIBERATELY NOT IN SIZE ORDER. The platform's order is the platform's
+# business, and the list endpoint is the thing that has to impose one.
+FOUR_PAGES = [
+    {"id": "page-tech", "name": "Zinsou Technologies", "followers_count": 300},
+    {"id": "page-gossip", "name": "Cotonou Gossip", "followers_count": 184000},
+    {"id": "page-beauty", "name": "Beaute by Adjo", "followers_count": 9100},
+    {"id": "page-buzz", "name": "Adjo Buzz", "followers_count": 42000},
+]
+PAGE_BY_ID = {page["id"]: page for page in FOUR_PAGES}
+
+# Somebody else's Page entirely, and the largest one in this file. Used to
+# prove that a page_id from a client is worth nothing on its own: the only
+# thing that makes a Page selectable is the creator's own token seeing it.
+STRANGER_PAGES = [
+    {"id": "page-stranger", "name": "Someone Else Media", "followers_count": 990000},
+]
+
 
 # --------------------------------------------------------------------------
 # The fake Graph
@@ -443,6 +467,106 @@ def test_a_failed_pages_lookup_returns_none_and_never_raises(monkeypatch):
 
 
 # --------------------------------------------------------------------------
+# The split: list_pages reports, read_audience decides
+#
+# THE REGRESSION GUARD ON THE REFACTOR, and the part of this file that must not
+# be skipped. The Graph call moved out of read_audience into list_pages so that
+# the picker could read the same data; the exactly-one rule did not move and
+# did not change. The four tests below say so from both ends: what list_pages
+# reports, and what read_audience still refuses to do with it.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "pages,expected",
+    [
+        ([], []),
+        (ONE_PAGE, ["Chez Adjo"]),
+        (TWO_PAGES, ["Chez Adjo", "Adjo Traiteur"]),
+        (
+            FOUR_PAGES,
+            ["Zinsou Technologies", "Cotonou Gossip", "Beaute by Adjo", "Adjo Buzz"],
+        ),
+    ],
+)
+def test_list_pages_reports_every_page_in_the_order_meta_gave_them(
+    monkeypatch, pages, expected
+):
+    """The provider REPORTS. It does not filter, count or reorder.
+
+    Ordering is oauth_service.list_pages's job, and keeping it out of here is
+    what lets read_audience trust the length of this list: a provider that
+    quietly dropped an entry would change which creators are treated as
+    ambiguous.
+    """
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=pages))
+    assert [page.name for page in _provider().list_pages(_tokens())] == expected
+
+
+def test_list_pages_carries_the_id_and_the_count_that_read_audience_would_use(
+    monkeypatch,
+):
+    """The same normalisation, because it is the same function. Whatever a
+    creator sees in the picker is the name and the number a one-Page connection
+    would have recorded on its own."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=ONE_PAGE))
+    only = _provider().list_pages(_tokens())[0]
+    assert (only.id, only.name, only.follower_count) == ("page-1", "Chez Adjo", 12400)
+
+
+def test_list_pages_says_none_when_it_could_not_ask_and_empty_when_there_are_none(
+    monkeypatch,
+):
+    """None IS NOT []. None means we could not ask; [] means we asked and the
+    creator manages no Pages. A caller that treats them alike will one day tell
+    somebody they have no Pages because a socket timed out."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(raise_on={"accounts"}))
+    assert _provider().list_pages(_tokens()) is None
+
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(fail={"accounts"}))
+    assert _provider().list_pages(_tokens()) is None
+
+    # No id to ask about at all, so there is no question to put.
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    assert (
+        _provider().list_pages(
+            oauth.TokenSet(
+                access_token=LONG_LIVED,
+                refresh_token=None,
+                access_expires_in=5184000,
+                refresh_expires_in=None,
+                scope=None,
+                provider_user_id=None,
+            )
+        )
+        is None
+    )
+
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=[]))
+    assert _provider().list_pages(_tokens()) == []
+
+
+@pytest.mark.parametrize("pages", [[], TWO_PAGES, FOUR_PAGES])
+def test_read_audience_still_refuses_to_guess_after_the_split(monkeypatch, pages):
+    """THE RULE THAT DID NOT MOVE.
+
+    Zero Pages and several Pages are both questions, and the answer is still no
+    number at all. Put the exactly-one rule into list_pages, or let
+    read_audience take the first or the largest entry now that it can see them
+    all, and this goes red.
+    """
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=pages))
+    assert _provider().read_audience(_tokens()) is None
+
+
+def test_read_audience_still_reports_exactly_one_page_after_the_split(monkeypatch):
+    """The other half of the same rule: one Page is a fact and is recorded."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=ONE_PAGE))
+    snapshot = _provider().read_audience(_tokens())
+    assert (snapshot.handle, snapshot.follower_count) == ("Chez Adjo", 12400)
+
+
+# --------------------------------------------------------------------------
 # End to end, through the router
 # --------------------------------------------------------------------------
 
@@ -722,3 +846,334 @@ def test_a_meta_refusal_reaches_the_creator_as_one_readable_sentence(
     assert done.json()["code"] == "oauth_exchange_failed"
     assert "OAuthException" not in done.text
     assert auth_client.get(f"/profiles/{uid}/social-accounts").json() == []
+
+
+# --------------------------------------------------------------------------
+# The picker: the creator answering the question read_audience refuses to
+#
+# WHAT THESE ARE FOR. read_audience declining to guess is correct and is pinned
+# above. The cost of that refusal was a creator staring at an app-scoped id and
+# no follower count, and these two endpoints are how they fix it themselves.
+#
+# THE ONE THAT MATTERS is
+# test_a_page_the_creator_does_not_manage_is_refused_and_changes_nothing. Every
+# other test here describes a convenience; that one describes the difference
+# between a follower number a platform stated and a follower number somebody
+# typed into a URL.
+# --------------------------------------------------------------------------
+
+
+def _pages(client, user_id, platform=PLATFORM):
+    return client.get(f"/profiles/oauth/{platform}/pages", headers=_headers(user_id))
+
+
+def _choose(client, user_id, page_id, platform=PLATFORM):
+    return client.post(
+        f"/profiles/oauth/{platform}/pages/{page_id}", headers=_headers(user_id)
+    )
+
+
+def _only_account(client, user_id):
+    accounts = client.get(f"/profiles/{user_id}/social-accounts").json()
+    assert len(accounts) == 1, accounts
+    return accounts[0]
+
+
+def test_the_picker_needs_a_token(auth_client):
+    """Both halves. The list is every Page somebody manages, including the
+    client account they merely administer, and the select writes to their
+    profile. Neither is anybody else's business."""
+    assert auth_client.get(f"/profiles/oauth/{PLATFORM}/pages").status_code == 401
+    assert (
+        auth_client.post(f"/profiles/oauth/{PLATFORM}/pages/page-gossip").status_code
+        == 401
+    )
+
+
+def test_the_picker_lists_every_page_the_creator_manages(auth_client, monkeypatch):
+    """THE LIVE CASE, FROM THE CREATOR'S SIDE.
+
+    Four Pages, so the connection recorded no number. The list is what turns
+    that dead end into a question somebody can answer: all four, largest first,
+    with the name and the count for each.
+    """
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    uid, done = _connect(auth_client, monkeypatch, "+22990003010")
+    assert done.status_code == 200, done.text
+    assert done.json()["account"]["follower_count"] is None
+
+    listed = _pages(auth_client, uid)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    # LARGEST FIRST, which is not the order Meta handed them over in. Ordering
+    # is not choosing: nothing is recorded until the creator taps one.
+    assert [page["id"] for page in body] == [
+        "page-gossip",
+        "page-buzz",
+        "page-beauty",
+        "page-tech",
+    ]
+    assert body[0] == {
+        "id": "page-gossip",
+        "name": "Cotonou Gossip",
+        "follower_count": 184000,
+    }
+
+
+def test_a_page_of_unknown_size_sorts_last_rather_than_leading(auth_client, monkeypatch):
+    """"We do not know" is a worse thing to lead a list with than any number."""
+    monkeypatch.setattr(
+        oauth.httpx,
+        "get",
+        FakeGraph(
+            pages=[
+                {"id": "page-unknown", "name": "Sans Chiffre"},
+                {"id": "page-small", "name": "Petite Page", "followers_count": 12},
+            ]
+        ),
+    )
+    uid, _done = _connect(auth_client, monkeypatch, "+22990003011")
+    body = _pages(auth_client, uid).json()
+    assert [page["id"] for page in body] == ["page-small", "page-unknown"]
+    assert body[-1]["follower_count"] is None
+
+
+def test_choosing_a_page_records_it_as_the_platforms_own_word(auth_client, monkeypatch):
+    """All three provenance columns, exactly as a one-Page connection writes
+    them, and on the row that already existed rather than on a new one."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    uid, done = _connect(auth_client, monkeypatch, "+22990003012")
+    account_id = done.json()["account"]["id"]
+    # What the creator was actually looking at before this feature existed.
+    assert done.json()["account"]["handle"] == ME_ID
+
+    chosen = _choose(auth_client, uid, "page-beauty")
+    assert chosen.status_code == 200, chosen.text
+    body = chosen.json()
+
+    assert body["id"] == account_id
+    assert body["handle"] == "Beaute by Adjo"
+    assert body["follower_count"] == 9100
+    assert body["follower_source"] == "platform_api"
+    assert body["follower_verified_at"] is not None
+    # AND NOT THE BIGGEST ONE, which is the whole argument for asking. The
+    # gossip page has twenty times the audience and is not what she sells.
+    assert body["follower_count"] != 184000
+
+    stored = _only_account(auth_client, uid)
+    assert stored["handle"] == "Beaute by Adjo"
+    assert stored["follower_count"] == 9100
+    # Still PENDING: choosing a Page is not a badge, and turning one on stays
+    # somebody's deliberate decision.
+    assert stored["status"] == "pending"
+
+
+def test_a_page_the_creator_does_not_manage_is_refused_and_changes_nothing(
+    auth_client, monkeypatch
+):
+    """THE SECURITY TEST, AND THE ONE WORTH KEEPING ABOVE ALL THE OTHERS.
+
+    Adjo manages four Pages. A stranger manages one, and it is enormous. If the
+    page_id in the URL were believed on sight, Adjo could post the stranger's
+    id and this API would stamp "Someone Else Media" and 990,000 followers onto
+    her profile as platform_api: a platform-verified-looking claim to an
+    audience she has never had, on the one number a brand reads before it
+    spends. The provenance columns exist precisely to make that impossible.
+
+    So the list is fetched again, with ADJO'S OWN token, and only a Page that
+    comes back may be written. Delete the re-fetch in oauth_service._own_pages,
+    or match the id against anything a client supplied, and this goes red.
+
+    Nothing is a 403 here. A 404 is the honest answer, and it is also the one
+    that declines to confirm to a prober that some other id was real.
+    """
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=STRANGER_PAGES))
+    stranger, stranger_done = _connect(auth_client, monkeypatch, "+22990003013")
+    assert stranger_done.status_code == 200, stranger_done.text
+    # The stranger's own connection is a perfectly ordinary one-Page one.
+    assert _only_account(auth_client, stranger)["follower_count"] == 990000
+
+    adjo_graph = FakeGraph(pages=FOUR_PAGES)
+    monkeypatch.setattr(oauth.httpx, "get", adjo_graph)
+    adjo, adjo_done = _connect(auth_client, monkeypatch, "+22990003014")
+    assert adjo_done.status_code == 200, adjo_done.text
+
+    before = _only_account(auth_client, adjo)
+    calls_before = len(adjo_graph.calls)
+
+    refused = _choose(auth_client, adjo, "page-stranger")
+    assert refused.status_code == 404
+    assert refused.json()["code"] == "oauth_page_not_found"
+
+    # META WAS ASKED, with this creator's token, before the refusal. The answer
+    # is the result of a question actually put to the platform rather than a
+    # guess about the shape of an id.
+    assert adjo_graph.steps()[calls_before:] == ["accounts"]
+    assert adjo_graph.calls[-1][2]["access_token"] == LONG_LIVED
+    assert adjo_graph.calls[-1][1].endswith(f"/{ME_ID}/accounts")
+
+    # AND NOTHING MOVED. Not the handle, not the count, not the provenance.
+    after = _only_account(auth_client, adjo)
+    assert after == before
+    assert after["handle"] == ME_ID
+    assert after["follower_count"] is None
+    assert after["follower_source"] is None
+    assert after["follower_verified_at"] is None
+
+    # The stranger's own row is untouched too: a refused pick writes nowhere.
+    assert _only_account(auth_client, stranger)["handle"] == "Someone Else Media"
+
+
+def test_choosing_again_replaces_the_answer_rather_than_adding_a_row(
+    auth_client, monkeypatch
+):
+    """One row per platform is the model, and it is unchanged by this feature.
+    A creator who picked the wrong Page is changing their mind, not opening a
+    second storefront."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    uid, _done = _connect(auth_client, monkeypatch, "+22990003015")
+
+    first = _choose(auth_client, uid, "page-buzz").json()
+    assert first["handle"] == "Adjo Buzz"
+    assert first["follower_count"] == 42000
+
+    second = _choose(auth_client, uid, "page-beauty").json()
+    assert second["id"] == first["id"]
+    assert second["handle"] == "Beaute by Adjo"
+    assert second["follower_count"] == 9100
+    _only_account(auth_client, uid)
+
+
+def test_choosing_a_page_records_exactly_what_a_one_page_connection_would_have(
+    auth_client, monkeypatch
+):
+    """THE TWO PATHS CANNOT DISAGREE, written as a test.
+
+    One creator whose single Page was read for them at connection, one who
+    chose the same Page out of four. Same handle, same count, same provenance,
+    because oauth_service._write_audience is literally the same function on
+    both paths.
+    """
+    monkeypatch.setattr(
+        oauth.httpx, "get", FakeGraph(pages=[PAGE_BY_ID["page-beauty"]])
+    )
+    _auto_uid, auto_done = _connect(auth_client, monkeypatch, "+22990003016")
+    automatic = auto_done.json()["account"]
+
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    picked_uid, _picked_done = _connect(auth_client, monkeypatch, "+22990003017")
+    picked = _choose(auth_client, picked_uid, "page-beauty").json()
+
+    for field in ("handle", "follower_count", "follower_source"):
+        assert automatic[field] == picked[field], field
+    assert automatic["follower_verified_at"] is not None
+    assert picked["follower_verified_at"] is not None
+
+
+def test_listing_without_a_connected_account_is_refused_cleanly(
+    auth_client, monkeypatch, graph
+):
+    """Nothing is connected, so there is no token to read a Page list with.
+    oauth_token_expired is this module's one sentence for "no usable
+    credentials", which load_access_token already answers for a missing token
+    row, and it names the only thing that helps."""
+    monkeypatch.setattr(oauth_service, "providers", {PLATFORM: _provider()})
+    uid = _user(auth_client, "+22990003018")
+
+    refused = _pages(auth_client, uid)
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "oauth_token_expired"
+    assert graph.calls == [], "nothing was asked of Meta"
+
+
+def test_selecting_without_a_connected_account_is_refused_cleanly(
+    auth_client, monkeypatch, graph
+):
+    """Same refusal, and no account is conjured to hang the answer on."""
+    monkeypatch.setattr(oauth_service, "providers", {PLATFORM: _provider()})
+    uid = _user(auth_client, "+22990003019")
+
+    refused = _choose(auth_client, uid, "page-gossip")
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "oauth_token_expired"
+    assert graph.calls == []
+    assert auth_client.get(f"/profiles/{uid}/social-accounts").json() == []
+
+
+def test_a_platform_with_no_provider_cannot_be_asked_for_pages(auth_client):
+    """Deliberately NOT monkeypatched: this is the honest answer on a platform
+    this deployment holds no credentials for, and it is the same sentence
+    `start` gives."""
+    uid = _user(auth_client, "+22990003020")
+    refused = _pages(auth_client, uid, platform="tiktok")
+    assert refused.status_code == 400
+    assert refused.json()["code"] == "oauth_platform_unsupported"
+
+
+def test_a_lapsed_connection_cannot_be_used_to_list_pages(auth_client, monkeypatch):
+    """The picker goes through load_access_token, so it gets the right refusal
+    for a dead Meta token without knowing anything about Meta."""
+    graph = FakeGraph(pages=FOUR_PAGES)
+    monkeypatch.setattr(oauth.httpx, "get", graph)
+    uid, done = _connect(auth_client, monkeypatch, "+22990003021")
+    account_id = done.json()["account"]["id"]
+
+    db = auth_client.session_factory()
+    try:
+        row = (
+            db.query(models.SocialToken)
+            .filter(models.SocialToken.social_account_id == account_id)
+            .first()
+        )
+        row.access_expires_at = models.utcnow() - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+
+    calls_before = len(graph.calls)
+    refused = _pages(auth_client, uid)
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "oauth_token_expired"
+    assert len(graph.calls) == calls_before, "a dead token is not spent on a request"
+
+
+def test_a_page_list_that_cannot_be_read_refuses_rather_than_answering_empty(
+    auth_client, monkeypatch
+):
+    """"We could not ask" is not "you manage no Pages".
+
+    Answering an unreachable Graph with [] would tell a creator with four Pages
+    that they have none, which is the one wrong answer available here.
+    """
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=FOUR_PAGES))
+    uid, _done = _connect(auth_client, monkeypatch, "+22990003022")
+
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(raise_on={"accounts"}))
+    refused = _pages(auth_client, uid)
+    assert refused.status_code == 502
+    assert refused.json()["code"] == "oauth_exchange_failed"
+
+    # And the same for a pick, which must not fall through to a write.
+    before = _only_account(auth_client, uid)
+    assert _choose(auth_client, uid, "page-beauty").status_code == 502
+    assert _only_account(auth_client, uid) == before
+
+
+def test_a_creator_with_no_pages_gets_an_empty_list_rather_than_a_refusal(
+    auth_client, monkeypatch
+):
+    """Zero Pages is an ordinary answer: somebody who has not made one, or who
+    declined pages_show_list on the consent screen. It is not an error, and the
+    client shows an empty picker and says so in its own words."""
+    monkeypatch.setattr(oauth.httpx, "get", FakeGraph(pages=[]))
+    uid, done = _connect(auth_client, monkeypatch, "+22990003023")
+    assert done.status_code == 200, done.text
+
+    listed = _pages(auth_client, uid)
+    assert listed.status_code == 200, listed.text
+    assert listed.json() == []
+
+    # And nothing can be chosen out of nothing.
+    refused = _choose(auth_client, uid, "page-gossip")
+    assert refused.status_code == 404
+    assert refused.json()["code"] == "oauth_page_not_found"

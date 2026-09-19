@@ -248,6 +248,32 @@ class AudienceSnapshot:
     follower_count: int | None
 
 
+@dataclass
+class PlatformPage:
+    """One Page a creator manages, as the platform describes it right now.
+
+    A DIFFERENT QUESTION FROM AudienceSnapshot, which is why it is a second
+    dataclass rather than a reuse of the first. A snapshot is the audience an
+    account has settled on, and writing one to a profile is a claim. This is a
+    CHOICE ON OFFER: one of several things a creator might be selling, none of
+    them yet claimed by anybody. Nothing built out of one of these is stored
+    until the creator has said which one they mean.
+
+    `id` is the platform's own id for the Page and is what a creator sends back
+    to choose it. Optional, because an entry that arrives without one cannot be
+    chosen at all, and carrying that as None is more honest than inventing an
+    empty string that would look selectable.
+
+    `name` and `follower_count` are normalised by exactly the code that used to
+    normalise them inside read_audience, because they land in exactly the same
+    two columns.
+    """
+
+    id: str | None
+    name: str | None
+    follower_count: int | None
+
+
 class AudienceReader(Protocol):
     """The OPTIONAL second half of a provider: what it can read once connected.
 
@@ -267,6 +293,31 @@ class AudienceReader(Protocol):
     """
 
     def read_audience(self, tokens: TokenSet) -> AudienceSnapshot | None:
+        ...
+
+
+class PageLister(Protocol):
+    """The other optional half of a provider: the choices it can offer.
+
+    THE SAME OPT-IN AS AudienceReader, for the same reason. A platform where
+    one authorization means exactly one sellable account has nothing to list
+    and should not have to grow a method saying so, and the FakeProvider that
+    pins the mechanism in test_social_oauth.py must not have to be edited
+    because a real provider grew a capability. oauth_service looks for
+    `list_pages` with getattr and refuses the two picker endpoints cleanly for
+    a provider that has none.
+
+    RETURNS None RATHER THAN RAISING for the failures it can name, because
+    read_audience calls it and read_audience must never raise. A caller that
+    wants to tell a creator something about the failure reads the None and
+    decides for itself what to say.
+
+    AN EMPTY LIST IS NOT None. [] is "we asked, and there are none", which is
+    an ordinary answer. None is "we could not ask". Collapsing the two would
+    let a network blip tell a creator they manage no Pages.
+    """
+
+    def list_pages(self, tokens: TokenSet) -> list[PlatformPage] | None:
         ...
 
 
@@ -548,12 +599,68 @@ class MetaOAuthProvider:
         stays null and, per #161's rule, so does its provenance, because a null
         count with a source attached would claim a report nobody made. The
         connection still succeeds, the tokens are still stored, and the creator
-        picks their Page in the UI that comes with the follow-up PR. That the
-        count is missing is visible on their own profile, which is a better
-        prompt than any sentence this code could return.
+        picks their Page through oauth_service.list_pages and select_page,
+        which read the same list this does. That the count is missing is
+        visible on their own profile, which is a better prompt than any
+        sentence this code could return.
 
         NEVER RAISES — see AudienceReader. Every failure is a log line and a
         None, because the account is already connected by the time this runs.
+
+        THE LOOKUP ITSELF MOVED TO list_pages BELOW and nothing else changed.
+        This method still asks the same question of the same endpoint, still
+        applies the exactly-one rule, still logs the same two lines, and still
+        answers None in every case it answered None in before. The split buys
+        one thing only: a second caller can now read the same list for a
+        different purpose, which is what the picker endpoints do.
+        """
+        pages = self.list_pages(tokens)
+        if pages is None:
+            return None
+        if len(pages) != 1:
+            # INFO, not WARNING: nothing is wrong. Zero Pages is a creator who
+            # has not made one, or who declined pages_show_list on the consent
+            # screen — which is their right and is exactly the case
+            # SocialToken.scope's docstring worries about being misread as a
+            # broken integration.
+            _log.info(
+                "Meta connection manages %d Pages, so no follower count was recorded",
+                len(pages),
+            )
+            return None
+
+        page = pages[0]
+        snapshot = AudienceSnapshot(handle=page.name, follower_count=page.follower_count)
+        # Nothing usable came back. Returning None rather than an empty
+        # snapshot keeps "we read nothing" and "we read that there is nothing"
+        # from looking the same to the caller.
+        if snapshot.handle is None and snapshot.follower_count is None:
+            return None
+        return snapshot
+
+    def list_pages(self, tokens: TokenSet) -> list[PlatformPage] | None:
+        """Every Page this creator manages, or None when we could not ask.
+
+        THE ONE-PAGE RULE IS NOT HERE, DELIBERATELY. This reports what Meta
+        said. read_audience above decides what may be recorded from it, and
+        oauth_service.select_page decides what the creator may choose out of
+        it. Keeping the lookup and the rule apart is the whole point of the
+        split: two callers want the same facts and want very different things
+        done with them.
+
+        None AND [] ARE DIFFERENT ANSWERS. None means we could not ask: no
+        provider id to ask about, a Graph that refused or could not be reached,
+        a body that was not shaped like a list. [] means we asked and this
+        creator manages no Pages, which is ordinary for somebody who has not
+        made one or who declined pages_show_list on the consent screen. A
+        caller that treats the two alike will one day tell a creator they have
+        no Pages because a socket timed out.
+
+        DOES NOT RAISE FOR EITHER OF THOSE, because read_audience calls it and
+        read_audience may never raise. Every entry that came back is carried
+        through, including one with no usable id: dropping those here would
+        change the COUNT read_audience sees, and the count is what decides
+        whether a creator is treated as ambiguous.
         """
         if not tokens.provider_user_id:
             return None
@@ -577,19 +684,17 @@ class MetaOAuthProvider:
         if not isinstance(pages, list):
             _log.warning("Meta Pages lookup returned no data array")
             return None
-        if len(pages) != 1:
-            # INFO, not WARNING: nothing is wrong. Zero Pages is a creator who
-            # has not made one, or who declined pages_show_list on the consent
-            # screen — which is their right and is exactly the case
-            # SocialToken.scope's docstring worries about being misread as a
-            # broken integration.
-            _log.info(
-                "Meta connection manages %d Pages, so no follower count was recorded",
-                len(pages),
-            )
-            return None
+        return [self._page_of(page) for page in pages]
 
-        page = pages[0]
+    @staticmethod
+    def _page_of(page) -> PlatformPage:
+        """One entry of {user-id}/accounts, normalised.
+
+        Exactly the normalisation read_audience used to do inline, moved with
+        its comment so the two paths cannot drift apart: whatever a creator
+        sees in the picker is the same name and the same number that a
+        single-Page connection would have recorded on its own.
+        """
         # followers_count is the number to show. fan_count is Page likes and is
         # kept only as a fallback for Pages that still report the two
         # separately — the same order, and the same reason, as
@@ -598,16 +703,12 @@ class MetaOAuthProvider:
         if followers is None:
             followers = page.get("fan_count")
         name = page.get("name")
-        snapshot = AudienceSnapshot(
-            handle=name.strip() if isinstance(name, str) and name.strip() else None,
+        page_id = page.get("id")
+        return PlatformPage(
+            id=page_id if isinstance(page_id, str) and page_id else None,
+            name=name.strip() if isinstance(name, str) and name.strip() else None,
             follower_count=_int_at_least(followers, 0),
         )
-        # Nothing usable came back. Returning None rather than an empty
-        # snapshot keeps "we read nothing" and "we read that there is nothing"
-        # from looking the same to the caller.
-        if snapshot.handle is None and snapshot.follower_count is None:
-            return None
-        return snapshot
 
     # -- HTTP --------------------------------------------------------------
 

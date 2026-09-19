@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,6 +21,27 @@ from app.modules.payments.router import router as payments_router
 from app.modules.payments.webhooks import router as payment_webhooks_router
 from app.modules.profiles.router import router as profiles_router
 from app.modules.trust_safety.router import router as trust_safety_router
+
+# THE API CONFIGURED NO LOGGING AT ALL, and every `_log.info` in this codebase
+# was being thrown away because of it. Uvicorn sets levels on its OWN loggers
+# ("uvicorn", "uvicorn.error", "uvicorn.access") and leaves the root logger
+# alone, so an application logger with no handler falls through to Python's
+# last-resort handler: WARNING and above, written to stderr with no timestamp,
+# no level and no logger name.
+#
+# That is not a tidiness complaint. oauth.MetaOAuthProvider.read_audience logs
+# "Meta connection manages %d Pages, so no follower count was recorded" at
+# INFO, which is the one line that explains the bug this PR fixes, and it has
+# never once reached a log file. Diagnosing a creator with four Pages and no
+# follower count took a database query because of this, and the next
+# best-effort path that declines to guess will be just as invisible.
+#
+# The same three arguments app/jobs/sweeps.py already passes, so the API
+# container and the job container format their lines identically.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 
 @asynccontextmanager

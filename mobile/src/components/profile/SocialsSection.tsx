@@ -6,13 +6,25 @@ import { api } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
 import { SOCIAL_PLATFORMS, platformHasAudience, type SocialPlatform } from "../../lib/socialPlatforms";
 import { oauthReturnUrl, readCallbackParams } from "../../lib/socialConnect";
+import { followerText, needsPageChoice, type SocialPage } from "../../lib/socialPages";
 import { PLATFORM_LABELS } from "../../lib/platforms";
 import type { SocialAccount } from "../../lib/profileTypes";
-import { Banner, Button, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
+import {
+  Banner,
+  Button,
+  ChoiceSheet,
+  Field,
+  GhostButton,
+  Hint,
+  PrimaryButton,
+  SectionTitle,
+  type Choice,
+} from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
 /* Imported for its side effect, the way PackagesSection imports
-   packageStrings: the module registers the three profile.socialConnect* keys
-   on i18n, and without this line every one of them renders as its own key. */
+   packageStrings: the module registers the profile.socialConnect* and
+   profile.socialPage* keys on i18n, and without this line every one of them
+   renders as its own key. */
 import "../../lib/socialConnectStrings";
 
 /* Connected accounts, and the two ways a creator can add one.
@@ -37,6 +49,23 @@ import "../../lib/socialConnectStrings";
    platform's own API against the creator's own token, which is why a
    successful connect reloads the list rather than patching a row.
 
+   CHOOSE YOUR PAGE is the third thing this section does, and it is here
+   because a Facebook connection can succeed completely and still leave a row
+   with nothing readable on it. oauth.MetaOAuthProvider.read_audience records
+   a follower count only where the creator manages EXACTLY ONE Page, because
+   with four of them any pick would publish a number the creator never chose,
+   on the one figure a brand reads before it spends. So a creator who
+   administers four Pages gets a row showing the numeric app-scoped id the
+   token exchange returned, no count, and until now no explanation of any
+   kind. The action on the row asks them which Page they sell on, and
+   oauth_service.select_page writes the answer through the same
+   _write_audience the one-Page path uses, so the two cannot record different
+   things.
+
+   A CREATOR WITH ONE PAGE NEVER SEES ANY OF IT: their count was filled in at
+   connect time, and needsPageChoice reads exactly that. A creator with none
+   gets the sheet's empty sentence rather than an empty sheet.
+
    If the manual connect response says it enriched, the parent reloads so the
    auto-filled profile fields show at once. */
 export function SocialsSection({
@@ -48,7 +77,7 @@ export function SocialsSection({
   token: string | null;
   onChanged: () => void | Promise<void>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [adding, setAdding] = useState<SocialPlatform | null>(null);
   const [handle, setHandle] = useState("");
@@ -60,6 +89,16 @@ export function SocialsSection({
      tapped, which matters the day a second provider is registered. */
   const [connecting, setConnecting] = useState<string | null>(null);
   const [connectedNote, setConnectedNote] = useState<string | null>(null);
+  /* The account whose Page sheet is open, or null. The ACCOUNT rather than a
+     boolean, because choosing has to post to the platform the sheet was
+     opened from and the row it came out of is gone from the closure by the
+     time the answer lands. */
+  const [picking, setPicking] = useState<SocialAccount | null>(null);
+  const [pages, setPages] = useState<SocialPage[]>([]);
+  /* The account whose Page list is in flight, so the waiting sits on the row
+     that was tapped rather than on the whole section. */
+  const [loadingPagesFor, setLoadingPagesFor] = useState<string | null>(null);
+  const [pageNote, setPageNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +113,21 @@ export function SocialsSection({
   }, [load]);
 
   const connected = new Set(accounts.map((a) => a.platform));
+
+  /* The sheet's rows, built from what the platform said a moment ago rather
+     than from anything stored. A Page the platform named no audience for says
+     so on its second line instead of showing a zero it never earned, which is
+     the same rule SocialAccountOut keeps about a null count. */
+  const pageOptions: Choice[] = pages.map((p) => {
+    const followers = followerText(p.follower_count, i18n.language);
+    return {
+      value: p.id,
+      label: p.name || t("profile.socialPageUnnamed"),
+      description: followers
+        ? t("profile.socialPageFollowers", { followers })
+        : t("profile.socialPageFollowersUnknown"),
+    };
+  });
 
   async function add() {
     if (!adding || !handle.trim()) return;
@@ -174,6 +228,69 @@ export function SocialsSection({
     }
   }
 
+  /* THE LIST IS FETCHED BEFORE THE SHEET OPENS, not while it is open. A sheet
+     that has not answered yet and a sheet for a creator with no Pages look
+     identical, and only one of those two is telling the truth. Fetching first
+     means the sheet only ever opens onto a settled answer, and the row
+     carries the waiting.
+
+     NOTHING IS CACHED BETWEEN OPENINGS. oauth_service._own_pages re-reads the
+     list on BOTH of its endpoints, deliberately, so that a Page somebody lost
+     access to yesterday is not selectable today. Holding a copy on this side
+     would put the screen back out of step with the only check that matters. */
+  async function openPages(account: SocialAccount) {
+    if (loadingPagesFor !== null) return;
+    setLoadingPagesFor(account.id);
+    setError(null);
+    setPageNote(null);
+    try {
+      const list = await api<SocialPage[]>(`/profiles/oauth/${account.platform}/pages`, { token });
+      setPages(list);
+      setPicking(account);
+    } catch (e) {
+      /* oauth_token_expired for an account with no stored credentials and
+         oauth_exchange_failed for a Graph that could not be reached are both
+         backend codes, so errorText finds their French and English sentences
+         in errorMessages.ts and no copy is written for them here. */
+      setError(errorText(e, t));
+    } finally {
+      setLoadingPagesFor(null);
+    }
+  }
+
+  /* RELOADED RATHER THAN PATCHED IN, for the reason connect() reloads. The
+     select endpoint does answer with the updated account, but the list is the
+     only place the row on screen reads from, and filling one row from a
+     response while its neighbours come from a fetch is how the two drift.
+
+     The id is encoded on the way into the path because it is a platform's
+     string and nothing here is entitled to assume what is in it. The backend
+     does not trust it either: select_page re-reads the creator's own Page
+     list and writes only a Page that appears in it, which is what makes
+     oauth_page_not_found a refusal rather than a stamp on somebody else's
+     audience. */
+  async function choosePage(pageId: string) {
+    const account = picking;
+    if (!account) return;
+    setPicking(null);
+    setLoadingPagesFor(account.id);
+    setError(null);
+    const label = PLATFORM_LABELS[account.platform] ?? account.platform;
+    try {
+      await api<SocialAccount>(
+        `/profiles/oauth/${account.platform}/pages/${encodeURIComponent(pageId)}`,
+        { method: "POST", token }
+      );
+      await load();
+      setPageNote(t("profile.socialPageChosen", { platform: label }));
+      await onChanged();
+    } catch (e) {
+      setError(errorText(e, t));
+    } finally {
+      setLoadingPagesFor(null);
+    }
+  }
+
   async function remove(id: string) {
     try {
       await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token });
@@ -190,6 +307,7 @@ export function SocialsSection({
       {error ? <Banner kind="error">{error}</Banner> : null}
       {enrichedNote ? <Banner kind="success">{t("profile.enriched")}</Banner> : null}
       {connectedNote ? <Banner kind="success">{connectedNote}</Banner> : null}
+      {pageNote ? <Banner kind="success">{pageNote}</Banner> : null}
 
       {accounts.length === 0 ? (
         <Hint>{t("profile.socialEmpty")}</Hint>
@@ -202,9 +320,27 @@ export function SocialsSection({
                 <Text style={styles.rowSub}>
                   @{a.handle}
                   {a.follower_count !== null && a.follower_count !== undefined
-                    ? ` · ${a.follower_count.toLocaleString()}`
+                    ? ` · ${a.follower_count.toLocaleString(i18n.language)}`
                     : ""}
                 </Text>
+                {needsPageChoice(a) ? (
+                  <>
+                    <Text style={styles.rowWhy}>
+                      {t("profile.socialPageWhy", {
+                        platform: PLATFORM_LABELS[a.platform] ?? a.platform,
+                      })}
+                    </Text>
+                    <Text
+                      style={styles.choosePage}
+                      onPress={() => void openPages(a)}
+                      accessibilityRole="button"
+                    >
+                      {loadingPagesFor === a.id
+                        ? t("common.working")
+                        : t("profile.socialPageChoose")}
+                    </Text>
+                  </>
+                ) : null}
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
                 <Text style={[styles.chip, a.status === "verified" ? styles.chipOk : styles.chipMuted]}>
@@ -275,6 +411,7 @@ export function SocialsSection({
                     setHandle("");
                     setError(null);
                     setConnectedNote(null);
+                    setPageNote(null);
                   }}
                   style={[styles.tile, on && styles.tileOn]}
                 >
@@ -285,6 +422,24 @@ export function SocialsSection({
           </View>
         </View>
       )}
+
+      {/* One sheet for the whole section rather than one per row. Only one
+          can be open at a time by construction, and `picking` is the row it
+          belongs to. */}
+      <ChoiceSheet
+        open={picking !== null}
+        title={t("profile.socialPageTitle")}
+        options={pageOptions}
+        empty={
+          picking
+            ? t("profile.socialPageNone", {
+                platform: PLATFORM_LABELS[picking.platform] ?? picking.platform,
+              })
+            : ""
+        }
+        onChange={(pageId) => void choosePage(pageId)}
+        onClose={() => setPicking(null)}
+      />
     </View>
   );
 }
@@ -302,6 +457,8 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
   rowSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  rowWhy: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: space(1.5), lineHeight: 17 },
+  choosePage: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.indigo, marginTop: space(1.5) },
   chip: { fontSize: font.tiny, fontFamily: family.bodySemi, overflow: "hidden", borderRadius: radius.pill, paddingHorizontal: space(2), paddingVertical: 3 },
   chipOk: { backgroundColor: "#e7f6f0", color: colors.success },
   chipMuted: { backgroundColor: colors.surface2, color: colors.muted },

@@ -401,6 +401,98 @@ export function Select({
   );
 }
 
+/* Select's sheet, without Select's field.
+
+   THE SAME BACKDROP, THE SAME SHEET AND THE SAME ROWS, reusing Select's
+   styles rather than copying them, so the two dismiss identically and go on
+   doing so. What it drops is the trigger. Some choices are offered by a line
+   inside a row that is already saying something, rather than by a form field
+   with a current value sitting under a label, and wrapping Select in that
+   case would put an empty input box on screen to open a list with.
+
+   THE CALLER OWNS `open`. DateField follows Select by holding its own, which
+   is right for a control that is its own trigger; here the thing that opens
+   the sheet has to fetch before it can fill it, so the state lives where the
+   fetching does.
+
+   `description` IS RENDERED HERE AND NOT IN Select, and it is the one real
+   difference between the two. A country needs no second line. A Page
+   somebody is choosing between needs its follower count on screen, because
+   the count is most of what makes one Page the right answer rather than
+   another.
+
+   `empty` IS A SENTENCE, NOT A BLANK SHEET. A list can legitimately come back
+   with nothing in it, and an empty sheet says only that something is broken.
+   The cancel row stays for the same reason: on an empty sheet the backdrop
+   would otherwise be the only way out, which is a way out nobody can see. */
+export function ChoiceSheet({
+  open,
+  title,
+  options,
+  value,
+  empty,
+  onChange,
+  onClose,
+}: {
+  open: boolean;
+  title?: string;
+  options: Choice[];
+  value?: string;
+  empty?: string;
+  onChange: (v: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.selectBackdrop} onPress={onClose}>
+        {/* Same guard as Select: the sheet eats taps so choosing does not
+            also dismiss through to the backdrop. */}
+        <Pressable style={styles.selectSheet} onPress={() => undefined}>
+          {title ? <Text style={styles.selectSheetTitle}>{title}</Text> : null}
+          {options.length === 0 ? (
+            <Text style={styles.selectSheetEmpty}>{empty ?? ""}</Text>
+          ) : (
+            <ScrollView style={{ flexGrow: 0 }}>
+              {options.map((o) => {
+                const selected = o.value === value;
+                return (
+                  <Pressable
+                    key={o.value}
+                    accessibilityRole="button"
+                    onPress={() => onChange(o.value)}
+                    style={({ pressed }) => [
+                      styles.selectRow,
+                      pressed && { backgroundColor: colors.surface },
+                    ]}
+                  >
+                    <View style={{ flexShrink: 1 }}>
+                      <Text style={[styles.selectRowLabel, selected && styles.selectRowSelected]}>
+                        {o.label}
+                      </Text>
+                      {o.description ? (
+                        <Text style={styles.selectRowDesc}>{o.description}</Text>
+                      ) : null}
+                    </View>
+                    {selected ? <Ionicons name="checkmark" size={18} color={colors.indigo} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [styles.calCancel, pressed && { backgroundColor: colors.surface }]}
+          >
+            <Text style={styles.calCancelLabel}>{t("common.cancel")}</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 /* A day, as every date control in this app carries one. */
 export type DateParts = { day: number; month: number; year: number };
 
@@ -822,6 +914,15 @@ const styles = StyleSheet.create({
   },
   selectRowLabel: { fontSize: font.body, fontFamily: family.body, color: colors.ink, flexShrink: 1 },
   selectRowSelected: { fontFamily: family.bodySemi, color: colors.indigo },
+  selectRowDesc: { fontSize: font.tiny, fontFamily: family.body, color: colors.muted, marginTop: 2 },
+  selectSheetEmpty: {
+    fontSize: font.small,
+    fontFamily: family.body,
+    color: colors.muted,
+    paddingHorizontal: space(4),
+    paddingVertical: space(3),
+    lineHeight: 19,
+  },
   calSheet: {
     backgroundColor: colors.white,
     borderRadius: radius.md,

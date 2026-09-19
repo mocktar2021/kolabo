@@ -25,3 +25,25 @@ export const SOCIAL_PLATFORMS: SocialPlatform[] = [
 export function platformHasAudience(platformId: string): boolean {
   return SOCIAL_PLATFORMS.find((p) => p.id === platformId)?.hasAudience ?? true;
 }
+
+/* The platforms a creator can connect by authorising Kolabo ON the platform,
+   instead of by typing a handle. Mirrored from web/src/lib/socialPlatforms.ts,
+   and through it from oauth.build_default_providers() in the backend.
+
+   NOTHING ENFORCES THAT THIS STAYS IN STEP WITH build_default_providers.
+   There is no endpoint reporting which platforms have a provider, so this is
+   a hand-kept copy of a decision made in
+   backend/app/modules/profiles/oauth.py. A platform listed here with no
+   provider behind it shows a button that answers
+   `oauth_platform_unsupported`; a platform with a provider and no entry here
+   shows no button at all, which is the quiet direction and the one to check
+   when a provider is added. Facebook alone today. */
+export const CONNECTABLE_PLATFORMS: string[] = ["facebook"];
+
+/* Unknown ids answer false, unlike platformHasAudience above: that one
+   decides whether to collect something and guesses generously, this one
+   decides whether to send somebody on a handshake that cannot succeed
+   without a provider. */
+export function canConnect(platformId: string): boolean {
+  return CONNECTABLE_PLATFORMS.includes(platformId);
+}

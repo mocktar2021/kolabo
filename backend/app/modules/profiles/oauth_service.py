@@ -535,7 +535,26 @@ def _apply_audience(
         return
     if snapshot is None:
         return
+    _write_audience(db, account, snapshot)
 
+
+def _write_audience(
+    db: Session, account: models.SocialAccount, snapshot: oauth.AudienceSnapshot
+) -> None:
+    """Put a snapshot on the account, or as much of it as may honestly be put.
+
+    SPLIT OUT OF _apply_audience SO THAT THE TWO PATHS CANNOT DISAGREE. The
+    automatic path above reaches here with what a provider read at connection
+    time, when there was exactly one Page and therefore nothing to ask. The
+    picker reaches here with the Page a creator chose out of several. They are
+    the same write, with the same provenance rule and the same guard, because
+    they are literally the same function: there is no version of this feature
+    in which choosing a Page records something a one-Page connection would not
+    have recorded, or the other way round.
+
+    NOT A PLACE TO ADD A SECOND RULE. Anything that should be true of one
+    caller here is true of both, which is exactly the property worth keeping.
+    """
     changed = False
     if snapshot.handle and snapshot.handle != account.handle:
         # The numeric id _account_for stood in with, replaced by something a
@@ -727,3 +746,226 @@ def revoke(db: Session, social_account_id: str) -> None:
         return
     db.delete(row)
     db.commit()
+
+
+# --------------------------------------------------------------------------
+# Choosing WHICH account on a platform a creator is selling
+#
+# WHY THIS EXISTS. {user-id}/accounts answers with every Page a person manages,
+# and a creator who manages four of them has said nothing about which one is
+# the audience they are selling. oauth.MetaOAuthProvider.read_audience refuses
+# to guess, which is right and is unchanged by this feature; the price of that
+# refusal is an account row showing a numeric app-scoped id where a name should
+# be and no follower count at all, with nothing on screen to explain it. These
+# two functions are the creator answering the question themselves. The model is
+# unchanged: ONE row per platform, one audience sold, now chosen rather than
+# inferred.
+#
+# THE SECURITY RULE, WHICH IS THE PART WORTH READING TWICE. `page_id` arrives
+# from a client, so on its own it is worth nothing. Both functions go through
+# _own_pages, which re-reads the creator's Page list with the creator's OWN
+# stored token, and select_page writes only a Page that appears in what came
+# back. Take that away and a request body naming any Page id on Facebook would
+# have this API stamp that Page's name and follower count onto the sender's
+# profile as models.PLATFORM_API: a platform-verified-looking claim to somebody
+# else's audience, on the one number a brand reads before it spends. Matching
+# against a freshly fetched list is what makes the creator's token, rather than
+# their request body, the thing that decides which Pages are theirs.
+#
+# IT IS ALSO WHY THE LIST IS FETCHED TWICE rather than cached between the two
+# calls. A cache keyed by anything a client sends is the same hole again, and a
+# server-side one would let a Page a creator lost access to yesterday still be
+# selectable today.
+# --------------------------------------------------------------------------
+
+
+def _connected_account(db: Session, user_id: str, platform: str) -> models.SocialAccount:
+    """This creator's authorised account on a platform, or a refusal they can act on.
+
+    JOINED TO social_tokens, so only an account with stored credentials is ever
+    found. A manual row somebody typed by hand has no token and no Page behind
+    it; matching one here and then failing to read it would turn a clear
+    refusal into a confusing one.
+
+    THE REFUSAL IS `oauth_token_expired`, WHICH IS A REUSE AND NOT AN
+    APPROXIMATION. load_access_token already answers exactly this for a missing
+    token row, so the module has one sentence for "there are no usable
+    credentials for this account" and this is it. It names the only action that
+    helps, which is to connect the platform from the profile, and it is the
+    same action whether nothing was ever connected or what was connected has
+    lapsed. See _reconnect_needed.
+    """
+    account = (
+        db.query(models.SocialAccount)
+        .join(
+            models.SocialToken,
+            models.SocialToken.social_account_id == models.SocialAccount.id,
+        )
+        .filter(
+            models.SocialAccount.user_id == user_id,
+            models.SocialAccount.platform == platform,
+        )
+        .first()
+    )
+    if account is None:
+        raise _reconnect_needed()
+    return account
+
+
+def _own_pages(
+    db: Session, user_id: str, platform: str
+) -> tuple[models.SocialAccount, list[oauth.PlatformPage]]:
+    """This creator's account, and the Pages their own token can actually reach.
+
+    THE ONE FUNCTION BOTH ENDPOINTS GO THROUGH, which is what makes the rule
+    above a property of the feature rather than of whichever call site
+    remembered it. Listing and selecting read the same list, through the same
+    token, so there is no path on which a Page can be chosen that the creator
+    was never shown, and no path on which the check is skipped because somebody
+    added a third caller.
+    """
+    provider = _provider(platform)
+    lister = getattr(provider, "list_pages", None)
+    if lister is None:
+        # A configured provider with nothing to list. Paired with "no provider
+        # at all" for the same reason _provider pairs unconfigured with
+        # unimplemented: from the creator's side the button does not work, and
+        # nothing they can do changes that.
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="oauth_platform_unsupported",
+            detail="This platform cannot be connected automatically yet.",
+        )
+
+    account = _connected_account(db, user_id, platform)
+    # load_access_token rather than decrypting the column here. It is the
+    # single entry point that decides what "expired" means and renews where a
+    # platform allows it, and going around it would be the second opinion this
+    # module exists to prevent. For Meta it also produces the right refusal on
+    # a lapsed connection without this function knowing anything about Meta.
+    access_token = load_access_token(db, account.id)
+    row = (
+        db.query(models.SocialToken)
+        .filter(models.SocialToken.social_account_id == account.id)
+        .first()
+    )
+
+    # A TokenSet ASSEMBLED RATHER THAN RECEIVED, and worth a sentence because
+    # it is the one place in this module that builds one. oauth.PageLister
+    # takes a TokenSet because read_audience does, and read_audience is handed
+    # what a fresh exchange produced. Here the credentials come off the stored
+    # row instead. list_pages reads exactly two fields of it, the access token
+    # and the platform's id for the person, so the expiry numbers describe an
+    # exchange that is not happening and nothing downstream stores this object.
+    tokens = oauth.TokenSet(
+        access_token=access_token,
+        refresh_token=None,
+        access_expires_in=0,
+        refresh_expires_in=None,
+        scope=row.scope if row is not None else None,
+        provider_user_id=row.provider_user_id if row is not None else None,
+    )
+
+    try:
+        pages = lister(tokens)
+    except Exception as exc:
+        # PageLister promises not to raise for the failures it can name, and
+        # this catches the implementation that forgets, exactly as
+        # _apply_audience catches for read_audience.
+        _log.warning("Page lookup failed for %s: %s", platform, exc)
+        pages = None
+    if pages is None:
+        # "We could not ask" is not "you manage no Pages", and answering an
+        # unreachable Graph with an empty list would tell a creator the second
+        # when only the first is true. `oauth_exchange_failed` is reused rather
+        # than joined by a new code: its sentence says the platform refused and
+        # that nothing was saved, and both halves of that are true here.
+        raise AppError(
+            status.HTTP_502_BAD_GATEWAY,
+            code="oauth_exchange_failed",
+            detail="The platform refused the connection. Nothing was saved.",
+        )
+    return account, pages
+
+
+def list_pages(db: Session, user_id: str, platform: str) -> list[oauth.PlatformPage]:
+    """The Pages a creator manages, read live, ordered so a person can choose.
+
+    ORDERED BY FOLLOWER COUNT, LARGEST FIRST, then by name, then by id, with
+    Pages of unknown size last. Three reasons, in that order of weight.
+
+    A TOTAL ORDER WITH NO TIES LEFT IN IT. The platform's own order is its
+    business and is not promised to be stable between calls; a picker whose
+    rows move between two loads moves one under a thumb that is already coming
+    down. Name and id break the ties that a follower count leaves, so the same
+    four Pages come back in the same four positions every time.
+
+    IT IS THE FASTEST LIST TO SCAN. A creator recognises their own Pages by
+    size well before they have finished reading four names.
+
+    AND ORDERING IS NOT CHOOSING, which is the distinction this whole feature
+    rests on. read_audience refuses to record the largest Page because that
+    would be us deciding which of somebody's businesses is their identity, and
+    it is exactly wrong for the creator whose biggest Page belongs to a client.
+    Putting that Page at the top of a list somebody then has to tap is a
+    different act: nothing is written until they say so. If a later change ever
+    pre-selects the first row, that argument stops holding and this comment is
+    the one to come back to.
+
+    A PAGE WITH NO ID IS DROPPED HERE, AND ONLY HERE. It cannot be chosen, so
+    showing it would be offering a row that does nothing when tapped.
+    oauth.MetaOAuthProvider.list_pages deliberately keeps it, because the COUNT
+    is what read_audience uses to decide whether a creator is ambiguous, and
+    quietly shrinking that count would change who gets a follower number.
+    """
+    _account, pages = _own_pages(db, user_id, platform)
+    return sorted(
+        [page for page in pages if page.id],
+        key=lambda page: (
+            page.follower_count is None,
+            -(page.follower_count or 0),
+            (page.name or "").lower(),
+            page.id or "",
+        ),
+    )
+
+
+def select_page(db: Session, user_id: str, platform: str, page_id: str) -> dict:
+    """Record the Page a creator has chosen as the one they sell on.
+
+    THE LIST IS FETCHED AGAIN AND THE ID IS MATCHED AGAINST IT. That is the
+    whole security of this endpoint and it is worth stating as a rule rather
+    than leaving it to be read out of the code: the only Pages that can be
+    written here are the ones this creator's own token says they manage, at the
+    moment they ask. A creator cannot attach a stranger's Page to their own
+    profile, and cannot attach their own Page to a stranger's, because the
+    account written to is the one belonging to the bearer of the token and the
+    Page written is one that the same token could see.
+
+    A REFUSAL IS A 404 AND SAYS NOTHING ABOUT WHETHER THE PAGE EXISTS. The
+    honest reading of "that is not one of yours" is that this API has nothing
+    to offer under that id, which is also the answer that declines to confirm
+    to a prober that some other id was real.
+
+    WRITES THROUGH _write_audience, the same function the automatic path uses,
+    so the two cannot record different things. All three provenance columns go
+    together per #161: the count, models.PLATFORM_API and the date.
+    """
+    account, pages = _own_pages(db, user_id, platform)
+    chosen = next((page for page in pages if page.id == page_id), None)
+    if chosen is None:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="oauth_page_not_found",
+            detail="That is not one of the Pages you manage. Refresh the list and choose again.",
+        )
+    _write_audience(
+        db,
+        account,
+        oauth.AudienceSnapshot(handle=chosen.name, follower_count=chosen.follower_count),
+    )
+    db.refresh(account)
+    # service._social_out for the same reason complete_authorization uses it: a
+    # new column on SocialAccount must not have to be remembered in a sixth
+    # place.
+    return service._social_out(account)

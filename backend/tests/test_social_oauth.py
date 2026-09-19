@@ -192,6 +192,12 @@ def _callback(client, state, code="the-code", platform=PLATFORM, headers=None):
         f"/profiles/oauth/{platform}/callback",
         params={"code": code, "state": state},
         headers=headers or {},
+        # NEVER FOLLOWED, and TestClient follows by default. The callback may
+        # now answer a 302 to the web app or to a kolabo:// deep link: httpx
+        # would route the first back into this test app and refuse the second
+        # outright as an unsupported protocol. What these tests are about is
+        # the Location header itself, not what lies on the other end of it.
+        follow_redirects=False,
     )
 
 
@@ -316,9 +322,15 @@ def test_start_then_callback_connects_the_account_and_stores_the_tokens(auth_cli
     assert row["redirect_to"] == "kolabo://profile"
 
     r = _callback(auth_client, state)
-    assert r.status_code == 200, r.text
-    body = r.json()
-    account = body["account"]
+    # A 302 WHERE THIS ONCE READ A JSON BODY, because this test starts with a
+    # redirect_to and the callback now honours one. Nothing it guards has been
+    # dropped: the account is read back off the profile instead of out of the
+    # body, and the JSON answer is pinned by
+    # test_no_redirect_to_still_answers_json_exactly_as_it_always_did below.
+    assert r.status_code == 302, r.text
+    assert r.headers["location"] == f"kolabo://profile?connected={PLATFORM}"
+
+    account = _accounts(auth_client, uid)[0]
     assert account["platform"] == PLATFORM
     assert account["method"] == "oauth"
     # PENDING like every other connection: no provider has been reviewed, so
@@ -328,7 +340,6 @@ def test_start_then_callback_connects_the_account_and_stores_the_tokens(auth_cli
     # Nothing claims a follower number, so nothing claims a provenance either.
     assert account["follower_count"] is None
     assert account["follower_source"] is None
-    assert body["redirect_to"] == "kolabo://profile"
 
     # The verifier stayed on the server and was presented at the exchange —
     # that is the whole of PKCE.
@@ -491,6 +502,262 @@ def test_a_refused_exchange_saves_nothing_and_spends_the_state(auth_client, monk
     assert r.json()["code"] == "oauth_exchange_failed"
     assert _accounts(auth_client, uid) == []
     assert _state_row(auth_client, state)["consumed"] is True
+
+
+# --------------------------------------------------------------------------
+# Coming back to the client, and the allowlist that bounds where that can be
+#
+# The callback answers a 302 when the state row carries a validated
+# redirect_to, and the JSON body it has always answered when it does not. The
+# tests below pin both halves, and the one that matters most is the one that
+# proves a destination we refused never reaches the response at all.
+# --------------------------------------------------------------------------
+
+
+WEB_ORIGIN = "https://app.kolabo.test"
+
+
+@pytest.fixture()
+def web_origin(monkeypatch):
+    """Pin the allowlisted web origin for a test.
+
+    Set here rather than relied on from config.py, so that these tests say what
+    they assume and do not quietly start passing or failing the day somebody
+    changes a development default.
+    """
+    monkeypatch.setattr(oauth_service.settings, "web_public_base_url", WEB_ORIGIN)
+    return WEB_ORIGIN
+
+
+def test_no_redirect_to_still_answers_json_exactly_as_it_always_did(
+    auth_client, monkeypatch
+):
+    """THE OLD CONTRACT, PINNED, and the reason this change is additive.
+
+    Every caller that existed before this feature sends no redirect_to, so
+    every one of them still gets the same 200 and the same body. If somebody
+    later decides the callback should always redirect, this is the test that
+    says which callers that would break.
+    """
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002070")
+
+    r = _callback(auth_client, _state_in(_start(auth_client, uid)))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["account"]["platform"] == PLATFORM
+    assert body["account"]["status"] == "pending"
+    assert body["redirect_to"] is None
+    assert "location" not in r.headers
+
+
+def test_an_allowlisted_web_redirect_sends_the_creator_back_to_the_app(
+    auth_client, monkeypatch, web_origin
+):
+    """The case this whole change exists for: a creator who finished a consent
+    screen lands back on their own settings page, not on a page of JSON."""
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002071")
+    state = _state_in(
+        _start(auth_client, uid, redirect_to=f"{web_origin}/settings/socials")
+    )
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 302
+    assert (
+        r.headers["location"] == f"{web_origin}/settings/socials?connected={PLATFORM}"
+    )
+    # The redirect is the ANSWER, not a substitute for the work: the account is
+    # connected and its credentials are stored, exactly as on the JSON path.
+    accounts = _accounts(auth_client, uid)
+    assert len(accounts) == 1
+    assert _stored_token(auth_client, accounts[0]["id"]) is not None
+
+
+def test_a_mobile_deep_link_is_allowlisted_because_a_phone_has_no_origin(
+    auth_client, monkeypatch, web_origin
+):
+    """kolabo:// is the second half of the allowlist. The app registers the
+    scheme with the operating system, so there is no origin to compare and the
+    scheme is the narrowest honest check available."""
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002072")
+    state = _state_in(_start(auth_client, uid, redirect_to="kolabo://oauth/facebook"))
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 302
+    assert r.headers["location"] == f"kolabo://oauth/facebook?connected={PLATFORM}"
+
+
+def test_a_redirect_to_outside_the_allowlist_never_appears_in_the_response(
+    auth_client, monkeypatch, web_origin
+):
+    """THE OPEN-REDIRECT GUARD, and the test in this section worth keeping
+    above all the others.
+
+    An open redirect on a route a creator reaches mid-handshake is a phishing
+    machine: the link starts on kolabo.africa, the browser bar says so, and the
+    page it lands on is somebody else's. So a destination that fails the
+    allowlist must not reach a Location header, must not reach the JSON body,
+    and must not reach the state row where a later reader could trust it.
+
+    Note what is NOT asserted: a refusal. The creator's connection completes,
+    because a bad redirect_to is a client bug and never something they did. See
+    oauth_service._allowlisted_or_discarded.
+    """
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002073")
+    evil = "https://evil.example.com/steal"
+
+    state = _state_in(_start(auth_client, uid, redirect_to=evil))
+    assert _state_row(auth_client, state)["redirect_to"] is None
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 200, r.text
+    assert "location" not in r.headers
+    assert r.json()["redirect_to"] is None
+    assert "evil.example.com" not in r.text
+    assert "evil.example.com" not in str(r.headers)
+    # And the connection was not the price of refusing it.
+    assert len(_accounts(auth_client, uid)) == 1
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://evil.example.com/steal",
+        # A PREFIX MATCH WOULD ADMIT THIS ONE: the host is evil.example.
+        "https://app.kolabo.test.evil.example/",
+        # And this one, whose host is also evil.example. Everything before the
+        # @ is userinfo, which a browser reads and discards.
+        "https://app.kolabo.test@evil.example/",
+        # Right host, wrong scheme: a downgrade to cleartext.
+        "http://app.kolabo.test/settings",
+        # No scheme at all, which a browser reads as protocol relative and
+        # resolves to https://evil.example/steal.
+        "//evil.example/steal",
+        "/settings/socials",
+        "javascript:alert(1)",
+        # Close enough to the deep link scheme to be worth naming.
+        "kolabo.example://oauth",
+        "",
+    ],
+)
+def test_the_allowlist_refuses_the_usual_open_redirect_tricks(web_origin, target):
+    """The unit half of the test above. Each of these is a way an allowlist
+    written as a prefix comparison, or as "does it contain our domain", quietly
+    lets somebody else's host through."""
+    assert oauth_service.redirect_allowed(target) is False
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://app.kolabo.test",
+        "https://app.kolabo.test/settings/socials",
+        "https://app.kolabo.test/settings?tab=socials#done",
+        "kolabo://oauth/facebook",
+        "kolabo://profile",
+    ],
+)
+def test_the_allowlist_accepts_the_web_origin_and_the_mobile_scheme(web_origin, target):
+    """The other direction, so that a tightening which refuses everything is a
+    failing test rather than a feature nobody notices is dead."""
+    assert oauth_service.redirect_allowed(target) is True
+
+
+def test_a_failed_exchange_with_a_redirect_to_carries_the_error_code_home(
+    auth_client, monkeypatch, web_origin
+):
+    """A creator whose exchange failed goes back to the app with the reason,
+    instead of reading a 502 in JSON.
+
+    The code in the query string is one that already exists, which is the whole
+    trick: the client renders the French or English sentence it already has for
+    oauth_exchange_failed, and no new code had to be added to two 50 KB
+    translation catalogues to ship this.
+    """
+    _register(monkeypatch, BrokenProvider())
+    uid = _user(auth_client, "+22990002074")
+    state = _state_in(
+        _start(auth_client, uid, redirect_to=f"{web_origin}/settings/socials")
+    )
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 302
+    assert (
+        r.headers["location"]
+        == f"{web_origin}/settings/socials?social_error=oauth_exchange_failed"
+    )
+    # Everything the JSON path promises about a failure still holds.
+    assert _accounts(auth_client, uid) == []
+    assert _state_row(auth_client, state)["consumed"] is True
+
+
+def test_an_expired_state_with_a_redirect_to_goes_home_rather_than_to_json(
+    auth_client, monkeypatch, web_origin
+):
+    """Taking eleven minutes over a consent screen is an ordinary thing to do,
+    and the creator can act on this one. Telling them so on their own settings
+    page is worth more than telling them so in a JSON body."""
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002075")
+    state = _state_in(_start(auth_client, uid, redirect_to=f"{web_origin}/settings"))
+
+    db = auth_client.session_factory()
+    try:
+        row = db.query(models.OAuthState).filter(models.OAuthState.state == state).first()
+        row.expires_at = models.utcnow() - timedelta(minutes=1)
+        db.commit()
+    finally:
+        db.close()
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 302
+    assert (
+        r.headers["location"] == f"{web_origin}/settings?social_error=oauth_state_expired"
+    )
+
+
+def test_an_unknown_state_names_no_destination_so_it_stays_on_json(
+    auth_client, monkeypatch, web_origin
+):
+    """There is no row, so there is no destination anybody ever validated, so
+    there is nowhere to go. The refusal keeps its old shape."""
+    _register(monkeypatch, FakeProvider())
+    r = _callback(auth_client, "not-a-state-anybody-minted")
+    assert r.status_code == 400
+    assert r.json()["code"] == "oauth_state_invalid"
+    assert "location" not in r.headers
+
+
+def test_a_redirect_to_that_already_has_a_query_string_keeps_it(
+    auth_client, monkeypatch, web_origin
+):
+    """Appended with urllib rather than with a "?", which is the difference
+    between a URL the client can parse and one with two question marks in it.
+    The existing parameters survive, the marker joins them, and the path is
+    untouched."""
+    _register(monkeypatch, FakeProvider())
+    uid = _user(auth_client, "+22990002076")
+    state = _state_in(
+        _start(
+            auth_client,
+            uid,
+            redirect_to=f"{web_origin}/settings?tab=socials&from=onboarding",
+        )
+    )
+
+    r = _callback(auth_client, state)
+    assert r.status_code == 302
+    location = r.headers["location"]
+    assert location.count("?") == 1
+    assert urlparse(location).path == "/settings"
+    assert parse_qs(urlparse(location).query) == {
+        "tab": ["socials"],
+        "from": ["onboarding"],
+        "connected": [PLATFORM],
+    }
 
 
 # --------------------------------------------------------------------------

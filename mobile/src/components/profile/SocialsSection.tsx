@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { api } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
-import { SOCIAL_PLATFORMS, platformHasAudience, type SocialPlatform } from "../../lib/socialPlatforms";
+import { readConnectResult } from "../../lib/socialConnect";
+import {
+  SOCIAL_PLATFORMS,
+  canConnect,
+  platformHasAudience,
+  type SocialPlatform,
+} from "../../lib/socialPlatforms";
 import { PLATFORM_LABELS } from "../../lib/platforms";
 import type { SocialAccount } from "../../lib/profileTypes";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
 
-/* Connected accounts + an inline add flow. Connecting always goes in as a
-   manual proof (status "pending") — there is no OAuth handshake in the UI yet,
-   the same as web. If the connect response says it enriched, the parent
-   reloads so the auto-filled profile fields show at once. */
+/* Connected accounts, plus the two ways to add one.
+
+   TYPING A HANDLE goes in as a manual proof and stays PENDING until an admin
+   looks at it. It is still the only route for every platform except Facebook,
+   and it stays on screen for Facebook too: a creator who opens the consent
+   screen and decides against granting permissions has to be able to carry on.
+   If the connect response says it enriched, the parent reloads so the
+   auto-filled profile fields show at once.
+
+   AUTHORISING ON THE PLATFORM is the other, and only where canConnect says a
+   provider exists. See connect() below for why it needs no deep link
+   configuration. */
 export function SocialsSection({
   userId,
   token,
@@ -29,6 +45,11 @@ export function SocialsSection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enrichedNote, setEnrichedNote] = useState(false);
+  /* The one-line answer the OAuth round trip comes back with. It carries its
+     own tone because the two things it can say are not the same kind of news:
+     a connection is a success, and backing out of a consent screen is not a
+     failure and must not be dressed as one. */
+  const [notice, setNotice] = useState<{ kind: "info" | "success"; text: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +95,96 @@ export function SocialsSection({
     }
   }
 
+  /* Connecting by authorising Kolabo on the platform itself.
+
+     openAuthSessionAsync IS WHAT MAKES THIS NEED NO DEEP LINK SETUP, and that
+     is the whole reason it is used rather than Linking.openURL plus a
+     listener. It opens the system authentication browser, WATCHES for a
+     redirect to the returnUrl it was given, closes itself the moment one
+     arrives, and hands the url straight back as its return value. Nothing is
+     routed into the app, so there is no scheme handler to register beyond the
+     one app.json already declares, no `linking` prop on the navigator, and no
+     subscription to tear down. The whole handshake is this one await.
+
+     THE RETURN URL COMES FROM Linking.createURL, which builds it from
+     expo.scheme in app.json. That is already "kolabo", which is what makes
+     this work at all: the backend allowlist accepts the configured web origin
+     or anything under kolabo://, and refuses everything else SILENTLY. A
+     refused value is not an error a creator sees, it is a creator who ends up
+     looking at the callback's JSON inside the in-app browser while this await
+     never resolves, until they close it by hand and land on the cancel branch
+     below.
+
+     THAT IS EXACTLY WHAT HAPPENS IN EXPO GO, and it is worth knowing before
+     somebody tries it there. Launched from Expo Go, createURL answers an
+     exp://... url rather than a kolabo:// one, which the allowlist refuses.
+     This flow can only be exercised in a development or production build. */
+  async function connect(platform: SocialPlatform) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const returnUrl = Linking.createURL("profile/social-connected");
+      const { authorize_url } = await api<{ authorize_url: string }>(
+        `/profiles/oauth/${platform.id}/start`,
+        { method: "POST", token, body: { redirect_to: returnUrl } }
+      );
+      const outcome = await WebBrowser.openAuthSessionAsync(authorize_url, returnUrl);
+
+      /* READ STRUCTURALLY, BY ASKING FOR THE url, rather than by comparing
+         `type` against a string literal. Across expo-web-browser versions
+         that field has been both a string union and a string ENUM, and under
+         `strict` a string enum does not compare equal to a string literal at
+         all: `outcome.type === "success"` is a type error on one of those
+         spellings and silently fine on the other. Asking whether there is a
+         url avoids the question, and it is also the question actually being
+         asked, because the redirect result is the only variant that carries
+         one. It narrows outcome.url for the parse below at the same time. */
+      if (!("url" in outcome)) {
+        const how = String(outcome.type);
+        /* Backed out: closed the browser, or pressed the system Done button.
+           An ordinary thing to do and the commonest non-success by a
+           distance, so it is said quietly and never in red. */
+        if (how === "cancel" || how === "dismiss") {
+          setNotice({ kind: "info", text: t("profile.socialConnectCancelled") });
+          return;
+        }
+        /* Anything else: "locked" today, and whatever a later SDK adds.
+           Nothing is known about what happened, so nothing is claimed about
+           it, and errorText answers a null with the generic sentence. */
+        setError(errorText(null, t));
+        return;
+      }
+
+      const marker = readConnectResult(outcome.url);
+      if (marker === null) {
+        /* A redirect to our own returnUrl that carries neither marker. It
+           should not be reachable: the callback appends one or the other
+           before it redirects at all. */
+        setError(errorText(null, t));
+        return;
+      }
+      if (marker.kind === "failed") {
+        /* The backend's own code, so this reuses the sentence
+           errorMessages.ts already holds for it in both languages. No failure
+           copy is written for this feature. */
+        setError(errorText({ code: marker.code }, t));
+        return;
+      }
+
+      setNotice({ kind: "success", text: t("profile.socialConnected") });
+      /* The list first, for the follower number the authorisation just
+         earned, then the parent for the profile fields it may have filled in.
+         Same order, and the same two calls, as the handle path above. */
+      await load();
+      await onChanged();
+    } catch (e) {
+      setError(errorText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove(id: string) {
     try {
       await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token });
@@ -88,6 +199,7 @@ export function SocialsSection({
       <SectionTitle>{t("profile.socialTitle")}</SectionTitle>
       <Hint>{t("profile.socialSub")}</Hint>
       {error ? <Banner kind="error">{error}</Banner> : null}
+      {notice ? <Banner kind={notice.kind}>{notice.text}</Banner> : null}
       {enrichedNote ? <Banner kind="success">{t("profile.enriched")}</Banner> : null}
 
       {accounts.length === 0 ? (
@@ -150,6 +262,20 @@ export function SocialsSection({
         </View>
       ) : (
         <View style={{ marginTop: space(3) }}>
+          {/* Connect, for the platforms with a provider behind them. Above the
+              tiles rather than inside one, because a tile opens the handle
+              form and these are the alternative to it, not a variant of it.
+              Only while the account is not already connected, which is the
+              same condition that disables a tile. */}
+          {SOCIAL_PLATFORMS.filter((p) => canConnect(p.id) && !connected.has(p.id)).map((p) => (
+            <View key={p.id} style={{ marginBottom: space(3) }}>
+              <PrimaryButton
+                title={busy ? t("common.working") : t("profile.socialConnect", { platform: p.label })}
+                onPress={() => connect(p)}
+                loading={busy}
+              />
+            </View>
+          ))}
           <Text style={styles.addLabel}>{t("profile.socialAdd")}</Text>
           <View style={styles.tiles}>
             {SOCIAL_PLATFORMS.map((p) => {

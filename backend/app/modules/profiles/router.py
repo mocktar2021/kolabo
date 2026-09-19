@@ -279,11 +279,15 @@ def connect_social_account(
     db: Session = Depends(get_db),
     owner_id: str = Depends(profile_owner),
 ):
-    """Connect a social account. KOL-17.
+    """Connect a social account by naming a handle. KOL-17.
 
-    Every connection starts PENDING, whatever `method` the client sends: OAuth
-    is not built, so it cannot verify anything. The badge comes from admin
-    review — see service.connect_social_account.
+    A connection made here starts PENDING, whatever `method` the client sends:
+    the string in the body has checked nothing, so it decides nothing. The
+    verified badge comes from admin review, in admin.service.decide_social.
+
+    The OAuth routes at the bottom of this file are the other way in, and an
+    account created through one of them starts CONNECTED instead. That is a
+    third state rather than a badge: see app.modules.profiles.models.CONNECTED.
     """
     return service.connect_social_account(db, owner_id, payload)
 
@@ -296,8 +300,9 @@ def update_social_account(
     db: Session = Depends(get_db),
     owner_id: str = Depends(profile_owner),
 ):
-    """Edit a connected account. Changing the handle of a verified account
-    resets it to pending: the badge was earned by the old handle."""
+    """Edit a connected account. Changing the handle drops a VERIFIED or a
+    CONNECTED account back to pending: both of those were earned by the old
+    handle, and a newly typed one has proved nothing."""
     return service.update_social_account(db, owner_id, account_id, payload)
 
 
@@ -483,6 +488,8 @@ def select_oauth_page(
     choosing one of several offers, not editing a field.
 
     Answers the updated account, so a client can render the new handle and the
-    new follower count without a second request.
+    new follower count without a second request. The account is CONNECTED once
+    a Page has been chosen, if it was not already; an admin's verified or
+    rejected decision is never overwritten here.
     """
     return oauth_service.select_page(db, owner_id, platform, page_id)

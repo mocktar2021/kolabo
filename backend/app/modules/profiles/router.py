@@ -424,3 +424,65 @@ def finish_social_oauth(
         result["redirect_to"] = None
         return result
     return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+
+
+# --------------------------------------------------------------------------
+# Choosing which Page a Facebook connection is actually selling.
+#
+# BOTH AUTHENTICATED, on the ordinary rule of this router: the creator is the
+# bearer of the token, through `profile_owner`, and no path id is consulted.
+# Unlike the callback above there is nothing unusual to say about these two.
+# They are ordinary profile writes that happen to read a platform on the way.
+#
+# ROUTE ORDER: both start with the literal segment `oauth`, so no
+# `/{user_id}/...` route above can shadow them. The list is three segments and
+# the only three-segment patterns above need a literal `packages`, `portfolio`
+# or `social-accounts` in the middle; the select is four segments, and nothing
+# else in this router has four.
+#
+# `page_id` IS IN THE PATH AND IS STILL NOT TRUSTED. Where it travels says
+# nothing about whether it is true. oauth_service.select_page re-reads the
+# creator's own Page list with the creator's own stored token and matches
+# against that, which is the only thing that makes the id mean anything.
+# --------------------------------------------------------------------------
+
+
+@router.get("/oauth/{platform}/pages", response_model=list[schemas.SocialPageOut])
+def list_oauth_pages(
+    platform: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """The Pages this creator manages on a platform, read live from it.
+
+    NOT PUBLIC, unlike the three list reads further up this file. Those return
+    what the storefront already renders. This returns every Page somebody
+    manages, including the ones they have decided not to sell on and a client's
+    account they merely administer, which is nobody's business but theirs.
+
+    Read live rather than stored, because a stored list goes stale in exactly
+    the way that matters: a Page somebody lost access to last week must not
+    still be selectable today.
+    """
+    return oauth_service.list_pages(db, owner_id, platform)
+
+
+@router.post(
+    "/oauth/{platform}/pages/{page_id}", response_model=schemas.SocialAccountOut
+)
+def select_oauth_page(
+    platform: str,
+    page_id: str,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """Record which Page this creator sells on, and its follower count with it.
+
+    A POST rather than a PUT on the account, because the thing being named is
+    the PAGE and the account row is where the answer lands. The creator is
+    choosing one of several offers, not editing a field.
+
+    Answers the updated account, so a client can render the new handle and the
+    new follower count without a second request.
+    """
+    return oauth_service.select_page(db, owner_id, platform, page_id)

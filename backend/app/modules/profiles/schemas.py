@@ -111,6 +111,23 @@ class SocialAccountOut(BaseModel):
     platform: str
     handle: str
     method: str
+    # ONE OF FOUR VALUES, THREE OF WHICH A STOREFRONT HAS TO TELL APART:
+    #
+    #   "pending"    a handle somebody typed. Nothing has checked it.
+    #   "connected"  the creator authorised Kolabo on the platform and the
+    #                account was read back through the platform's own API.
+    #                Control of the account is proved; identity is not.
+    #   "verified"   an admin checked a real identity document.
+    #   "rejected"   an admin looked and said no.
+    #
+    # A BADGE SAYING "VERIFIED" MUST GO ON THE THIRD ONE AND ON NOTHING ELSE.
+    # See app.modules.profiles.models.CONNECTED for why the word was not
+    # widened to cover a social login, which is the whole reason this field
+    # grew a third value rather than reusing one that already existed.
+    #
+    # A client that has only ever heard of "pending" and "verified" renders
+    # "connected" as neither, which is wrong but safe: it understates. The web
+    # and mobile changes that give it a badge of its own follow separately.
     status: str
     follower_count: int | None = None
     # WHERE follower_count CAME FROM: "self_reported" (the creator typed it)

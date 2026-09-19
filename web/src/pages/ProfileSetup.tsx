@@ -10,13 +10,25 @@ import { CITIES, COUNTRIES, joinLocation, splitLocation } from "../lib/countries
 import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import { MIN_LIVE_PACKAGES, deactivationHidesProfile, minPrice } from "../lib/pricing";
-import { SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
+import { SOCIAL_PLATFORMS, canConnect, platformHasAudience } from "../lib/socialPlatforms";
+import { readConnectResult, stripConnectMarkers } from "../lib/socialConnect";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
 type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null };
+
+/* Where the OAuth callback sends a creator back to, as a path. It is this
+   page, so it is this file's own route in App.tsx, written out because a
+   component cannot ask the router what it is mounted at.
+
+   THE ORIGIN IS NOT HERE, and is read from window.location at the moment the
+   handshake starts instead. A constant would be a third place the deployment
+   URL is written down (after VITE_API_URL and the backend's
+   WEB_PUBLIC_BASE_URL), and the one that would silently send a creator from a
+   preview build back to production. */
+const PROFILE_PATH = "/profile";
 
 /* Small neutral chips for quantity (×3) and duration (30 s) on package rows;
    the same shape is used in onboarding step 2. */
@@ -118,11 +130,97 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
   const [newHandle, setNewHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* The one-line success note the OAuth callback comes back with. Its own
+     state rather than sharing `error`, because the two are opposite answers
+     and a page that showed a green sentence in a red box would be lying about
+     one of them. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   function load() {
     api<SocialAccount[]>(`/profiles/${userId}/social-accounts`).then(setAccounts).catch(() => undefined);
   }
   useEffect(load, [userId]);
+
+  /* Sending the creator to the platform's consent screen.
+
+     TWO STEPS AND A FULL PAGE NAVIGATION. The POST mints a state row against
+     this creator's bearer token and answers with the platform's own
+     authorize_url; the browser then leaves Kolabo entirely. `busy` is
+     deliberately not cleared on the way out, because there is no "after this"
+     on the success path, and a button that goes back to saying Connect while
+     the navigation is still being set up invites a second click on a second
+     state row.
+
+     redirect_to IS BUILT FROM window.location.origin rather than from a
+     constant, so a preview deployment sends the creator back to the preview.
+     The backend allowlists it against settings.web_public_base_url and
+     DISCARDS ANYTHING ELSE SILENTLY (see oauth_service._allowlisted_or_discarded),
+     which means a deployment whose WEB_PUBLIC_BASE_URL is missing or wrong
+     does not fail here, or anywhere a creator can see: the connection
+     completes and they land on the callback's JSON instead of back on this
+     page. There is nothing this file can do about that, and it is the first
+     thing to check when Connect "does nothing". */
+  async function startConnect(platformId: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await api<{ authorize_url: string }>(`/profiles/oauth/${platformId}/start`, {
+        method: "POST",
+        token,
+        body: { redirect_to: `${window.location.origin}${PROFILE_PATH}` }
+      });
+      window.location.assign(res.authorize_url);
+    } catch (err) {
+      /* The refusal a deployment with no Meta credentials gives is
+         `oauth_platform_unsupported`, which errorMessages.ts already says in
+         both languages. Only this branch clears `busy`: the other one never
+         comes back. */
+      setError(errorText(err, t));
+      setBusy(false);
+    }
+  }
+
+  /* Coming back from one. The callback appends `connected=<platform>` or
+     `social_error=<code>` to this page's URL, and readConnectResult is the
+     pure half of reading it (see lib/socialConnect.ts, and its test).
+
+     THE MARKER IS STRIPPED BEFORE THE BANNER IS SET, so a refresh does not
+     replay it. Without that, a creator who reloaded the profile page would be
+     congratulated on a connection they made yesterday, and one who hit an
+     expired link would be told so again every time they came back to fix it.
+     replaceState rather than pushState: the marker was never a destination
+     anybody chose, so it should not cost a press of the back button.
+
+     Runs once, on mount, with no dependencies. A query string does not change
+     under a page that is not routing, and re-running this on every render of
+     `t` would fight the strip above. */
+  useEffect(() => {
+    const result = readConnectResult(window.location.search);
+    if (result === null) return;
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${stripConnectMarkers(window.location.search)}${window.location.hash}`
+    );
+    if (result.kind === "connected") {
+      setNotice(t("profile.socialConnected"));
+      /* Belt and braces, and worth saying which half is which. Arriving here
+         is a full page load, so the list effect above has already fetched the
+         accounts AFTER the connection was written, and the new follower
+         number is in that response. This second call covers the case that
+         does not: a browser restoring this page from its back-forward cache
+         runs neither effect on the restore, and a creator should not be shown
+         a success banner over a stale list. */
+      load();
+    } else {
+      /* No copy is written for a failure. The code is the backend's own, and
+         errorMessages.ts has carried a French and an English sentence for
+         each of oauth_exchange_failed, oauth_state_expired and
+         oauth_state_invalid since they were introduced. */
+      setError(errorText({ code: result.code }, t));
+    }
+  }, []);
 
   function startEdit(a: SocialAccount) {
     setEditingId(a.id);
@@ -193,6 +291,7 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("profile.socialTitle")}</h3>
       {error && <div className="alert alert-error">{error}</div>}
+      {notice && <div className="alert alert-success">{notice}</div>}
 
       {accounts.length === 0 ? (
         <p className="muted" style={{ fontSize: 13.5 }}>{t("profile.socialEmpty")}</p>
@@ -250,6 +349,30 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
           })}
         </div>
       )}
+
+      {/* Connect, for the platforms that have a provider behind them.
+
+          IT SITS BESIDE THE HANDLE PATH RATHER THAN REPLACING IT, and the
+          tile grid below still offers Facebook like any other platform. That
+          is deliberate on three counts. Typing a handle is the ONLY route for
+          YouTube, Instagram and everything else, because
+          build_default_providers registers one provider. A creator who
+          reaches Facebook's consent screen and decides not to grant
+          permissions has to be able to put their handle in and carry on
+          rather than be left with a button that is the only door. And a
+          deployment with no Meta credentials answers this button
+          `oauth_platform_unsupported`, which would otherwise leave Facebook
+          unusable on a server where the manual path works perfectly.
+
+          Only for platforms not already connected: the tiles below disable
+          themselves the same way, and re-authorising an account that is
+          already there is a reconnection flow rather than this one. */}
+      {SOCIAL_PLATFORMS.filter((p) => canConnect(p.id) && !connected.has(p.id)).map((p) => (
+        <button key={p.id} type="button" className="btn btn-primary" style={{ marginBottom: 12 }}
+          disabled={busy} onClick={() => startConnect(p.id)}>
+          {busy ? t("auth.working") : t("profile.socialConnect", { platform: p.label })}
+        </button>
+      ))}
 
       <span className="label">{t("profile.socialAdd")}</span>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 8 }}>

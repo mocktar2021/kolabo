@@ -210,6 +210,35 @@ class Settings(BaseSettings):
     # is a one-line misconfiguration whose error message names nothing, which
     # is exactly the kind that belongs in the example file.
     api_public_base_url: str = "http://localhost:8000"
+    # Where the WEB APP is served from, with no trailing slash.
+    #
+    # It is the allowlist an OAuth `redirect_to` is checked against: once a
+    # social connection finishes, a creator may be sent back to any URL on
+    # this origin, or to a kolabo:// deep link on mobile, and to nothing else.
+    # See profiles.oauth_service.redirect_allowed.
+    #
+    # THE SIBLING OF api_public_base_url ABOVE, AND NOT THE SAME VALUE. That
+    # one is where the API answers, which is where a platform sends a browser
+    # back to. This one is where the person doing the connecting actually is,
+    # which is where they have to end up afterwards. On any real deployment
+    # they are two different hosts, and confusing them leaves every creator
+    # looking at a JSON payload on the API instead of at their own profile.
+    #
+    # NOT DERIVED FROM cors_origins, though that is also a list of browser
+    # origins. It answers a different question: which origins may CALL this
+    # API, and it carries two local tooling ports for convenience. Where we
+    # may SEND somebody's browser is a shorter list and a deliberate one, and
+    # folding the two together would mean that widening CORS quietly widened
+    # this.
+    #
+    # THE DEFAULT IS THE LOCAL VITE SERVER, WHICH IS WRONG ON EVERY SERVER,
+    # and it is wrong the same quiet way api_public_base_url is. A deployment
+    # that never sets WEB_PUBLIC_BASE_URL refuses the real web app's
+    # redirect_to, logs it at WARNING and completes the connection anyway:
+    # nothing raises, nobody is turned away, and the creator simply lands on
+    # the callback's JSON rather than back in the app. That is why it is
+    # written out in .env.example rather than left to be discovered.
+    web_public_base_url: str = "http://localhost:5173"
     # YouTube Data API v3 key. Public channel data needs only a key (no OAuth,
     # no app review), so setting this turns on YouTube profile auto fill.
     youtube_api_key: str = ""

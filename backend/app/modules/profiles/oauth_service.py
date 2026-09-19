@@ -42,6 +42,7 @@ THE THREE RULES THAT ARE EASY TO GET WRONG, and where each is enforced:
 """
 import logging
 from datetime import timedelta
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import status
 from sqlalchemy.orm import Session
@@ -64,6 +65,13 @@ STATE_TTL_MINUTES = 10
 # fetched for actually lands. Clocks drift and requests take time; a minute
 # costs nothing and removes a whole class of intermittent failure.
 REFRESH_SKEW_SECONDS = 60
+
+# The mobile app's deep link scheme, and the second half of the redirect
+# allowlist. A phone has no origin to compare: the app registers kolabo:// with
+# the operating system, and the browser hands any such URL to whatever claims
+# it. There is nothing narrower to check than the scheme, which is why the web
+# half of the allowlist is an origin and this half is a prefix.
+MOBILE_REDIRECT_SCHEME = "kolabo://"
 
 # Selected from configured credentials at import time, exactly as
 # service.social_enricher is. A MODULE ATTRIBUTE rather than a call to
@@ -108,6 +116,139 @@ def redirect_uri(platform: str) -> str:
     return f"{settings.api_public_base_url.rstrip('/')}/profiles/oauth/{platform}/callback"
 
 
+def redirect_allowed(target: str) -> bool:
+    """Whether a client's `redirect_to` is somewhere we are willing to send a browser.
+
+    TWO THINGS ARE ALLOWED AND NOTHING ELSE IS: any URL on the web app's own
+    origin (settings.web_public_base_url), and any kolabo:// deep link.
+
+    AN ORIGIN COMPARISON, NOT A PREFIX ONE, and that distinction is the whole
+    security value of this function. "https://app.kolabo.africa" is a prefix of
+    "https://app.kolabo.africa.evil.example", and
+    "https://app.kolabo.africa@evil.example" is a URL whose HOST is
+    evil.example and whose first half a browser discards as userinfo. Both are
+    the standard way an allowlist leaks, and both are refused here because
+    neither one's netloc EQUALS the configured netloc. Scheme is compared too,
+    so an https deployment cannot be redirected to its own cleartext twin.
+    """
+    if target.lower().startswith(MOBILE_REDIRECT_SCHEME):
+        return True
+    base = urlsplit(settings.web_public_base_url)
+    if not base.scheme or not base.netloc:
+        # A deployment with no web origin configured allows no web redirect at
+        # all. For an allowlist whose only job is to be narrow, refusing
+        # everything is the correct reading of "not configured".
+        return False
+    here = urlsplit(target)
+    return (here.scheme.lower(), here.netloc.lower()) == (
+        base.scheme.lower(),
+        base.netloc.lower(),
+    )
+
+
+def _allowlisted_or_discarded(
+    redirect_to: str | None, user_id: str, platform: str
+) -> str | None:
+    """The destination to store on the state row, or None if we will not honour it.
+
+    DISCARDED, NEVER RAISED, and that trade is the reason this function exists
+    rather than an inline `if`. A redirect_to outside the allowlist is a client
+    bug or somebody probing for an open redirect. It is never something a
+    creator typed, chose or can fix, so failing their connection over it
+    punishes the only party in the exchange who did nothing wrong. The value is
+    dropped, the handshake continues, and the creator ends up on the callback's
+    JSON instead of back in the app.
+
+    IT ALSO KEEPS THIS CHANGE FREE OF A NEW ERROR CODE. Refusing would need
+    one, and a new code needs a French and an English sentence in both
+    web/src/lib/errorMessages.ts and mobile/src/lib/errorMessages.ts, each
+    about 50 KB, or test_error_codes.py and errorMessages.test.ts go red.
+    Churning two translation catalogues to deliver a refusal that no creator
+    can act on is the wrong way round.
+
+    %r rather than %s on the value: it is attacker-controlled text on its way
+    into a log file, and repr escapes the newlines somebody would otherwise use
+    to forge a log line of their own around it.
+    """
+    if redirect_to is None or redirect_allowed(redirect_to):
+        return redirect_to
+    _log.warning(
+        "Discarding redirect_to outside the allowlist for user %s on %s: %r "
+        "(allowed: the %s origin, or %s)",
+        user_id,
+        platform,
+        redirect_to,
+        settings.web_public_base_url,
+        MOBILE_REDIRECT_SCHEME,
+    )
+    return None
+
+
+def _client_redirect(redirect_to: str | None, key: str, value: str) -> str | None:
+    """`redirect_to` with one marker on its query string, or None to stay on JSON.
+
+    THE ONLY PLACE A Location VALUE IS BUILT, which is what makes the allowlist
+    a property of the callback rather than of the call sites that remembered to
+    ask. Nothing failing redirect_allowed can come out of here, whatever is on
+    the row. That is not belt and braces for the check in start_authorization:
+    rows written before that check existed hold whatever a client sent, and at
+    the moment this ships some of them have ten minutes of life left.
+
+    BUILT WITH urllib RATHER THAN BY CONCATENATION, because both halves of the
+    input are awkward. `redirect_to` may already carry a query string, and
+    gluing "?connected=x" onto one produces a URL with two question marks and a
+    parameter nobody can parse; it may carry a fragment, which has to stay
+    after the query rather than before it; and kolabo:// is a custom scheme
+    that urlsplit understands and a hand-rolled "?" does not.
+    """
+    if not redirect_to or not redirect_allowed(redirect_to):
+        return None
+    parts = urlsplit(redirect_to)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    query.append((key, value))
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def success_redirect(redirect_to: str | None, platform: str) -> str | None:
+    """Where to send a creator whose connection worked, if anywhere.
+
+    The marker names the platform, so a client that offered two connect buttons
+    on one screen can tell which one has just come back.
+    """
+    return _client_redirect(redirect_to, "connected", platform)
+
+
+def failure_redirect(db: Session, platform: str, state: str, code: str) -> str | None:
+    """Where to send a creator whose connection failed, if anywhere.
+
+    A FAILURE HAS TO REDIRECT TOO, and saying so is this function's whole
+    reason for existing. A creator who declines a permission on the consent
+    screen, or who takes eleven minutes over it, has done nothing unusual;
+    leaving them on a JSON error page is the same defect as leaving a
+    successful one there, and it is the more likely of the two to be met with
+    "the app is broken".
+
+    `code` is the AppError's own code, carried so the client can render the
+    sentence it already holds for it. NOTHING NEW IS INVENTED HERE: every
+    string this can carry is one that already exists in both translation
+    catalogues.
+
+    RE-READS THE STATE ROW rather than having complete_authorization carry a
+    destination out through each of the four places it raises. One SELECT, on a
+    path that is ending a request anyway, against threading an HTTP concern
+    through a function whose subject is the handshake.
+    """
+    row = db.query(models.OAuthState).filter(models.OAuthState.state == state).first()
+    if row is None or row.platform != platform:
+        # An unknown state names no destination anybody ever validated, so
+        # there is nowhere to go and the JSON refusal stands. The platform is
+        # compared for the same reason complete_authorization compares it: a
+        # state minted for tiktok must not get to choose where instagram's
+        # callback sends somebody.
+        return None
+    return _client_redirect(row.redirect_to, "social_error", code)
+
+
 def start_authorization(
     db: Session, user_id: str, platform: str, redirect_to: str | None = None
 ) -> dict:
@@ -126,9 +267,22 @@ def start_authorization(
     unused row costs one short string that is discarded within ten minutes,
     which is a far better trade than making the shape of the state row depend
     on which platform it was minted for.
+
+    `redirect_to` IS CHECKED HERE, WHILE THE CREATOR IS STILL ON KOLABO. The
+    callback turns that value into a 302, which makes it an open-redirect
+    surface and means it needs an allowlist; the only real question is where
+    the allowlist runs. Here, because the alternative is discovering that a
+    destination is refused at the callback, which is AFTER the creator has
+    already read a consent screen and granted permissions on somebody else's
+    platform. Refusing somebody before they leave costs them a click; refusing
+    them after costs them the whole errand.
+
+    A value that fails the check is dropped rather than refused, and
+    _allowlisted_or_discarded says why.
     """
     service._require_user(db, user_id)
     provider = _provider(platform)
+    redirect_to = _allowlisted_or_discarded(redirect_to, user_id, platform)
 
     state_value = oauth.new_state()
     verifier = oauth.new_code_verifier()
@@ -155,6 +309,13 @@ def complete_authorization(db: Session, platform: str, code: str, state: str) ->
     never can be. Everything about the request except the state row is under
     the control of whoever holds the URL, which is why the row is checked
     before it is used and used exactly once.
+
+    THE ROW'S `redirect_to` COMES BACK WITH THE ACCOUNT, and the router decides
+    what to do with it: a 302 when there is one, and the JSON body this has
+    always returned when there is not. That decision is HTTP shape rather than
+    handshake, so it belongs there. What belongs here is the guarantee behind
+    it, which is that the value on the row was allowlisted by
+    start_authorization before it was ever written down.
     """
     row = db.query(models.OAuthState).filter(models.OAuthState.state == state).first()
 

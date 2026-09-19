@@ -600,9 +600,9 @@ class MetaOAuthProvider:
         count with a source attached would claim a report nobody made. The
         connection still succeeds, the tokens are still stored, and the creator
         picks their Page through oauth_service.list_pages and select_page,
-        which read the same list this does. That the
-        count is missing is visible on their own profile, which is a better
-        prompt than any sentence this code could return.
+        which read the same list this does. That the count is missing is
+        visible on their own profile, which is a better prompt than any
+        sentence this code could return.
 
         NEVER RAISES — see AudienceReader. Every failure is a log line and a
         None, because the account is already connected by the time this runs.

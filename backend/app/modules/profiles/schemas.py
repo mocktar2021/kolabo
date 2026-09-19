@@ -189,6 +189,30 @@ class OAuthCallbackOut(BaseModel):
     redirect_to: str | None = None
 
 
+class SocialPageOut(BaseModel):
+    """One Page a creator manages, offered so they can say which one they sell on.
+
+    NOT A SocialAccountOut, AND THE DIFFERENCE IS THE POINT. A SocialAccountOut
+    is a row on somebody's profile: a claim this platform is making on their
+    behalf, with provenance columns behind it. This is a CHOICE, read live from
+    the platform and stored nowhere. Nothing on this model has been recorded
+    about anybody, and nothing will be until the creator posts the id back.
+
+    `id` is the platform's own id for the Page. It is the only field a client
+    ever sends back, and the server treats it as untrusted when it arrives: see
+    oauth_service.select_page, which re-reads the creator's own list rather
+    than believing it.
+
+    `follower_count` is null for a Page the platform did not state a number
+    for. A client should show nothing there rather than a zero, for the same
+    reason SocialAccountOut says nothing about a null.
+    """
+
+    id: str
+    name: str | None = None
+    follower_count: int | None = None
+
+
 class OnboardingStatusOut(BaseModel):
     has_bio: bool
     has_categories: bool

@@ -3,9 +3,12 @@
 KOL-15: influencer profile with required fields enforced before it is
 searchable, and a completion percentage.
 KOL-16: business verification document upload, stored encrypted.
-KOL-17: connect a social account. EVERY connection starts pending; the badge
-comes from admin review, never from what the client says the method was —
-see connect_social_account for why.
+KOL-17: connect a social account. A handle typed into this module's form
+starts PENDING, and the verified badge still comes from admin review rather
+than from what the client says the method was: see connect_social_account for
+why. An account the creator actually authorised on the platform is written by
+profiles.oauth_service instead and starts CONNECTED, which is a third state
+and is not a badge. See models.CONNECTED.
 
 A media id in a request body is a CLAIM, never a permission. Every one of
 them is checked against its owner before it is attached to anything — see
@@ -423,8 +426,12 @@ def connect_social_account(db: Session, user_id: str, payload: schemas.SocialAcc
     #
     # `method` is still recorded, because it is what the creator says they did
     # and it is what the OAuth path will set the day it ships. It no longer
-    # decides the status. The conditional comes back next to a callback that
-    # can honestly justify it, not here.
+    # decides the status. The conditional DID come back next to a callback
+    # that can honestly justify it: oauth_service._account_for writes
+    # models.CONNECTED. It is still not here, because nothing on THIS path has
+    # checked anything at all. A request body carrying the string "oauth" is
+    # the same worthless claim it always was, so a handle arriving through
+    # this function is PENDING whatever it says about how it got here.
     new_status = models.PENDING
     account = models.SocialAccount(
         user_id=user_id,
@@ -643,10 +650,22 @@ def update_social_account(db: Session, user_id: str, account_id: str, payload: s
     account = _require_own_social_account(db, user_id, account_id)
     data = payload.model_dump(exclude_unset=True)
     if "handle" in data and data["handle"] != account.handle:
-        # A verified badge belongs to the account that was verified. A new
-        # handle points at a different account, so the badge must not survive
-        # the edit: back to pending until that account passes review too.
-        if account.status == models.VERIFIED:
+        # A STATUS BELONGS TO THE ACCOUNT IT WAS EARNED ON. A new handle points
+        # at a different account, so neither of the two states that had to be
+        # earned survives the edit.
+        #
+        # VERIFIED was an admin reading a proof link for the OLD handle.
+        # CONNECTED was the platform answering about the OLD handle, through a
+        # token issued for it. Typing a new one is neither of those things, and
+        # without this line a creator could authorise a small account, collect
+        # CONNECTED, then retype the handle as somebody far larger and keep a
+        # badge saying the platform vouched for it. That is the same trick the
+        # follower_count branch below refuses, played on the other field.
+        #
+        # Back to PENDING, which is the honest description of a handle
+        # somebody has just typed. Reconnecting earns CONNECTED again (see
+        # oauth_service._mark_connected) and an admin can still verify it.
+        if account.status in (models.VERIFIED, models.CONNECTED):
             account.status = models.PENDING
         account.handle = data["handle"]
     if "follower_count" in data:

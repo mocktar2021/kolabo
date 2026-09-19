@@ -29,6 +29,51 @@ APPROVED = "approved"
 REJECTED = "rejected"
 VERIFIED = "verified"
 
+# A SOCIAL ACCOUNT HAS THREE STATES, NOT TWO, AND CONNECTED IS THE NEW MIDDLE
+# ONE. It is only ever written to social_accounts.status; a verification
+# document has nothing it could be connected to.
+#
+#   PENDING     a handle somebody typed into a form. An unproven claim, and
+#               the state every manually connected account still starts in.
+#   CONNECTED   the creator signed in to the platform, granted the
+#               permissions, and Kolabo read the account back through the
+#               platform's own API using the creator's own token. Control of
+#               the account is proved. Nothing about the person is.
+#   VERIFIED    an admin read a real identity document and decided. Unchanged
+#               by this constant arriving, and still written in exactly one
+#               place: admin.service.decide_social.
+#
+# "VERIFIED" MEANS ONE THING ACROSS THE WHOLE PRODUCT AND IS NOT BEING
+# WIDENED. That is the entire reason a third state exists rather than the
+# easier change of promoting an OAuth connection straight to VERIFIED. A
+# social login proves somebody holds the credentials to an account; it proves
+# nothing whatever about who they are, and cannot tell a creator apart from
+# the agency that runs their Page or from whoever bought the login. A brand
+# reading "verified" next to a name is being told that a person was checked,
+# and that promise only stays worth something while it keeps costing an
+# identity document. Widening the word would be free here and expensive for
+# the rest of this product's life, because it would then mean two different
+# things depending on which row it sat on.
+#
+# The third state exists because the two-state version was ALSO wrong on
+# screen: a creator who had logged in to Facebook, granted permissions and
+# chosen their Page saw the same "En attente" badge as somebody who had typed
+# a handle into a box, and so did every brand looking at them.
+CONNECTED = "connected"
+
+# The social account states that nobody with an identity document in front of
+# them has decided on yet: what the admin verification queue and the dashboard
+# count beside it both mean by "waiting".
+#
+# BOTH OF THEM, NOT JUST PENDING, so that the queue holds exactly what it held
+# before CONNECTED existed. An authorised account used to be written as
+# PENDING and therefore stood in front of an admin; it is written as CONNECTED
+# now, and a filter on PENDING alone would have silently dropped it out of the
+# queue and out of the count on the day this shipped. Proving control of an
+# account is not the act an admin performs, so a connected account is still
+# waiting for one.
+AWAITING_SOCIAL_REVIEW = (PENDING, CONNECTED)
+
 # Where a follower number came from, which until now nothing recorded at all.
 #
 #   None            no number is recorded — nobody has claimed anything, and
@@ -133,6 +178,16 @@ class SocialAccount(Base):
     # so a client can render "verified on <date>" instead of an undated claim,
     # and so a stale verification can be told from a fresh one.
     follower_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # PENDING, CONNECTED or VERIFIED, plus REJECTED when an admin said no. The
+    # constants above say what each one promises, and in particular why an
+    # authorisation earns CONNECTED and never VERIFIED.
+    #
+    # A PLAIN STRING COLUMN WITH PYTHON CONSTANTS, not a SQLAlchemy Enum and
+    # not a native database enum, which is why a third value needed no
+    # migration at all: the database has only ever seen a VARCHAR here (see
+    # alembic/versions/5f3a9c80d26f_initial_schema.py) and the closed set
+    # lives in this module. Anybody turning this into a real enum later owns
+    # writing the migration for every value in it.
     status: Mapped[str] = mapped_column(String, default=PENDING, nullable=False)
     proof_url: Mapped[str | None] = mapped_column(String, nullable=True)
     reviewer_id: Mapped[str | None] = mapped_column(String, nullable=True)

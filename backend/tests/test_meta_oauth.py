@@ -787,10 +787,11 @@ def test_one_page_stamps_the_count_as_the_platforms_own_word(
     # The numeric app-scoped id the exchange returned, replaced by something a
     # brand can read.
     assert account["handle"] == "Chez Adjo"
-    # PENDING. A reviewed provider is a better argument for a badge than
-    # anything before it, and turning one on is still somebody's decision
-    # rather than a consequence of adding a provider.
-    assert account["status"] == "pending"
+    # CONNECTED. The creator authorised a real app on Meta's own consent
+    # screen and the number came back through Meta's API on their token, so
+    # "pending, like a handle somebody typed" was never a fair description of
+    # this row. It is still not verified: see models.CONNECTED.
+    assert account["status"] == "connected"
     assert account["method"] == "oauth"
 
     listed = auth_client.get(f"/profiles/{uid}/social-accounts").json()
@@ -963,9 +964,9 @@ def test_choosing_a_page_records_it_as_the_platforms_own_word(auth_client, monke
     stored = _only_account(auth_client, uid)
     assert stored["handle"] == "Beaute by Adjo"
     assert stored["follower_count"] == 9100
-    # Still PENDING: choosing a Page is not a badge, and turning one on stays
-    # somebody's deliberate decision.
-    assert stored["status"] == "pending"
+    # CONNECTED, and choosing a Page is still not a badge: verifying an
+    # identity stays an admin's deliberate decision and nothing here writes it.
+    assert stored["status"] == "connected"
 
 
 def test_a_page_the_creator_does_not_manage_is_refused_and_changes_nothing(

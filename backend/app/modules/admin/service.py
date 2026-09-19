@@ -27,7 +27,21 @@ def list_verification_queue(db: Session, item_type: str | None = None, item_stat
         social_query = social_query.filter(profiles.SocialAccount.status == item_status)
     else:
         doc_query = doc_query.filter(profiles.VerificationDocument.status == profiles.PENDING)
-        social_query = social_query.filter(profiles.SocialAccount.status == profiles.PENDING)
+        # THE DEFAULT QUEUE IS EVERYTHING AWAITING AN IDENTITY DECISION, which
+        # since profiles.CONNECTED exists is two states rather than one. An
+        # account the creator authorised on the platform used to be written as
+        # PENDING and therefore appeared here; it is written as CONNECTED now,
+        # and a filter on PENDING alone would have dropped it out of this queue
+        # the day that shipped. What an admin decides here is who the PERSON
+        # is, and a connected account has not answered that, so it is still
+        # waiting.
+        #
+        # An explicit `item_status` is left literal in the branch above: an
+        # admin asking for "pending" gets pending, and can now ask for
+        # "connected" on its own.
+        social_query = social_query.filter(
+            profiles.SocialAccount.status.in_(profiles.AWAITING_SOCIAL_REVIEW)
+        )
 
     documents = []
     social = []
@@ -128,6 +142,12 @@ def decide_social(db: Session, admin_id: str, social_id: str, decision: str, rea
             code="profile_social_not_found",
             detail="Social account not found",
         )
+    # THE ONLY PLACE profiles.VERIFIED IS EVER WRITTEN, and profiles.CONNECTED
+    # arriving changes nothing whatever about that. An account reaches this
+    # function from either waiting state and leaves it verified or rejected on
+    # identical terms: a creator who authorised the platform is decided exactly
+    # as one who typed a handle is, because the question settled here is who
+    # the person is and neither state has answered it.
     account.status = profiles.VERIFIED if decision == "approved" else profiles.REJECTED
     account.reviewer_id = admin_id
     account.reviewed_at = utcnow()
@@ -194,9 +214,16 @@ def dashboard_summary(db: Session) -> dict:
         .filter(profiles.VerificationDocument.status == profiles.PENDING)
         .count()
     )
+    # THE SAME SET list_verification_queue SHOWS BY DEFAULT, and for the same
+    # reason: this number is the size of that queue, so the two have to read
+    # the same states or the dashboard sends an admin to a page carrying a
+    # different number of rows. It counted authorised connections before
+    # profiles.CONNECTED existed, because they were PENDING, and it counts them
+    # still. The response key keeps its name, so no client changes, and what it
+    # has always meant is "social accounts nobody has decided on yet".
     pending_social = (
         db.query(profiles.SocialAccount)
-        .filter(profiles.SocialAccount.status == profiles.PENDING)
+        .filter(profiles.SocialAccount.status.in_(profiles.AWAITING_SOCIAL_REVIEW))
         .count()
     )
     open_disputes = (

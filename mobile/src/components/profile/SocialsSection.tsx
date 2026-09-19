@@ -7,6 +7,7 @@ import { errorText } from "../../lib/errorMessages";
 import { SOCIAL_PLATFORMS, platformHasAudience, type SocialPlatform } from "../../lib/socialPlatforms";
 import { oauthReturnUrl, readCallbackParams } from "../../lib/socialConnect";
 import { followerText, needsPageChoice, type SocialPage } from "../../lib/socialPages";
+import { followerNote, socialStatusChip } from "../../lib/socialStatus";
 import { PLATFORM_LABELS } from "../../lib/platforms";
 import type { SocialAccount } from "../../lib/profileTypes";
 import {
@@ -26,6 +27,48 @@ import { colors, family, font, radius, space } from "../../theme";
    profile.socialPage* keys on i18n, and without this line every one of them
    renders as its own key. */
 import "../../lib/socialConnectStrings";
+
+/* The state chip on one row: four states now, not two.
+
+   A COMPONENT RATHER THAN THE TERNARY THAT USED TO SIT HERE. That ternary
+   asked one question, "is this verified", and answered everything else with
+   the pending chip, so a creator who had signed in to Facebook, granted the
+   permissions and chosen their Page was shown the same badge as somebody who
+   had typed a name into a box, and an account an admin had REFUSED was shown
+   it too. Which chip goes with which state lives in lib/socialStatus so the
+   public page reads the same rule. */
+function StatusChip({ status }: { status: string }) {
+  const { t } = useTranslation();
+  const chip = socialStatusChip(status);
+  const tone = {
+    strong: styles.chipStrong,
+    quiet: styles.chipQuiet,
+    neutral: styles.chipMuted,
+    bad: styles.chipBad,
+  }[chip.tone];
+  return <Text style={[styles.chip, tone]}>{t(chip.key)}</Text>;
+}
+
+/* Where the number on the line above came from, or nothing at all.
+
+   THE CREATOR IS SHOWN THIS TOO, not only the brand, and that is deliberate:
+   the person best placed to notice that a figure is still their own word is
+   the person who typed it, and the fix for it is the Connect button two
+   sections down. followerNote decides what may be claimed, including that a
+   row from before the provenance columns existed claims nothing. */
+function SourceLine({ account }: { account: SocialAccount }) {
+  const { t, i18n } = useTranslation();
+  const note = followerNote(account, i18n.language);
+  if (!note) return null;
+  return (
+    <Text style={[styles.rowSource, note.checked ? styles.rowSourceChecked : null]}>
+      {t(note.key, {
+        platform: PLATFORM_LABELS[account.platform] ?? account.platform,
+        date: note.date,
+      })}
+    </Text>
+  );
+}
 
 /* Connected accounts, and the two ways a creator can add one.
 
@@ -323,6 +366,7 @@ export function SocialsSection({
                     ? ` · ${a.follower_count.toLocaleString(i18n.language)}`
                     : ""}
                 </Text>
+                <SourceLine account={a} />
                 {needsPageChoice(a) ? (
                   <>
                     <Text style={styles.rowWhy}>
@@ -343,9 +387,7 @@ export function SocialsSection({
                 ) : null}
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
-                <Text style={[styles.chip, a.status === "verified" ? styles.chipOk : styles.chipMuted]}>
-                  {a.status === "verified" ? t("profile.verified") : t("profile.pending")}
-                </Text>
+                <StatusChip status={a.status} />
                 <Text style={styles.remove} onPress={() => remove(a.id)}>
                   {t("profile.remove")}
                 </Text>
@@ -457,11 +499,21 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: font.body, fontFamily: family.bodySemi, color: colors.ink },
   rowSub: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  rowSource: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2, lineHeight: 16 },
+  /* The checked figure is the only one that gets colour. A marker that looks
+     the same as the sentence beside it is not a marker. */
+  rowSourceChecked: { fontFamily: family.bodySemi, color: colors.success },
   rowWhy: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: space(1.5), lineHeight: 17 },
   choosePage: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.indigo, marginTop: space(1.5) },
   chip: { fontSize: font.tiny, fontFamily: family.bodySemi, overflow: "hidden", borderRadius: radius.pill, paddingHorizontal: space(2), paddingVertical: 3 },
-  chipOk: { backgroundColor: "#e7f6f0", color: colors.success },
+  /* One style per tone in lib/socialStatus, and the distance between them is
+     the message. chipStrong is an identity document an admin read.
+     chipQuiet is the platform answering about its own account: real, and
+     deliberately not dressed as the first. */
+  chipStrong: { backgroundColor: "#e7f6f0", color: colors.success },
+  chipQuiet: { backgroundColor: colors.surface, color: colors.indigo },
   chipMuted: { backgroundColor: colors.surface2, color: colors.muted },
+  chipBad: { backgroundColor: "#fbeaea", color: colors.danger },
   remove: { fontSize: font.small, color: colors.danger, fontFamily: family.bodySemi },
   addLabel: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginBottom: space(2) },
   tiles: { flexDirection: "row", flexWrap: "wrap", gap: space(2) },

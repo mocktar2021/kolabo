@@ -9,7 +9,8 @@ import type { CreatorSnapshot } from "../lib/cartTotals";
 import { PLATFORM_LABELS, deliverableLabel, deliverablesFor } from "../lib/platforms";
 import { MIN_PACKAGE_PRICE, minPrice } from "../lib/pricing";
 import type { DirectOrder, PublicProfileData } from "../lib/discoveryTypes";
-import type { Package } from "../lib/profileTypes";
+import type { Package, SocialAccount } from "../lib/profileTypes";
+import { followerNote, socialStatusChip } from "../lib/socialStatus";
 import {
   Banner,
   Card,
@@ -26,6 +27,11 @@ import { colors, family, font, radius, space } from "../theme";
 /* Side-effect import: registers the cart.* and public.negotiate* copy on the
    i18n instance. Without it the two new controls below render raw keys. */
 import "../lib/cartStrings";
+/* Side-effect import: the audience block below reads profile.socialStatus*,
+   profile.socialFollowers* and profile.socialAudienceTitle, registered on
+   i18n by lib/socialConnectStrings. Without this line a brand reads raw keys
+   on the one page that most needs to be readable. */
+import "../lib/socialConnectStrings";
 import type { AppScreenProps } from "../navigation/types";
 
 /* A creator's storefront, seen by a buyer. Mirrors the web PublicProfile's
@@ -96,6 +102,56 @@ function PackageRow({ p, selected, onSelect }: {
         {p.quantity > 1 ? ` · ×${p.quantity}` : ""}
       </Text>
     </Pressable>
+  );
+}
+
+/* One connected account, as the buyer reads it: which platform, which handle,
+   how big the audience is, WHERE THAT SIZE CAME FROM, and what state the
+   account itself is in.
+
+   THIS SCREEN USED TO RENDER NONE OF IT. social_accounts was fetched and read
+   only to work out which platforms could be ordered and whom to name on a
+   basket line, so a follower number read back through the creator's own OAuth
+   token and a number somebody typed into a form reached the buyer as the same
+   thing, which is to say as nothing at all. The provenance line is the reason
+   this component exists; the chip beside it is the second half of the same
+   sentence, because a number's source and a handle's state are two different
+   questions and one badge cannot answer both.
+
+   EVERY ACCOUNT IS LISTED, whatever its state, which is the rule
+   get_public_profile already applies server side: it selects every row and
+   lets the client say what each one is. A brand is better served by seeing an
+   unproven handle labelled as one than by not seeing it. */
+function SocialRow({ a }: { a: SocialAccount }) {
+  const { t, i18n } = useTranslation();
+  const label = PLATFORM_LABELS[a.platform] ?? a.platform;
+  const chip = socialStatusChip(a.status);
+  const note = followerNote(a, i18n.language);
+  const tone = {
+    strong: styles.chipStrong,
+    quiet: styles.chipQuiet,
+    neutral: styles.chipMuted,
+    bad: styles.chipBad,
+  }[chip.tone];
+  return (
+    <View style={styles.social}>
+      <View style={{ flexShrink: 1 }}>
+        <Text style={styles.socialTitle}>
+          {label} · @{a.handle}
+        </Text>
+        {a.follower_count !== null && a.follower_count !== undefined ? (
+          <Text style={styles.socialCount}>
+            {a.follower_count.toLocaleString(i18n.language)} {t("public.audienceUnit")}
+          </Text>
+        ) : null}
+        {note ? (
+          <Text style={[styles.socialSource, note.checked ? styles.socialSourceChecked : null]}>
+            {t(note.key, { platform: label, date: note.date })}
+          </Text>
+        ) : null}
+      </View>
+      <Text style={[styles.chip, tone]}>{t(chip.key)}</Text>
+    </View>
   );
 }
 
@@ -382,6 +438,20 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
 
           {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
+          {/* ABOVE THE PACKAGES, because the audience is what the price is
+              being judged against, and a buyer who has already picked a pack
+              has stopped reading. */}
+          {profile.social_accounts.length > 0 ? (
+            <>
+              <SectionTitle>{t("profile.socialAudienceTitle")}</SectionTitle>
+              <View style={{ gap: space(2), marginBottom: space(2) }}>
+                {profile.social_accounts.map((a) => (
+                  <SocialRow key={a.id} a={a} />
+                ))}
+              </View>
+            </>
+          ) : null}
+
           <SectionTitle>{t("public.packages")}</SectionTitle>
           {packages.length === 0 ? (
             <Hint>{t("public.noPackages")}</Hint>
@@ -592,6 +662,36 @@ const styles = StyleSheet.create({
   audience: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(1) },
   cats: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginBottom: space(2) },
   bio: { fontFamily: family.body, fontSize: font.small, color: colors.ink, marginBottom: space(2) },
+  social: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.sm,
+    padding: space(3),
+    gap: space(2),
+  },
+  socialTitle: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink },
+  socialCount: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
+  socialSource: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2, lineHeight: 16 },
+  /* Only the checked figure is coloured. A positive marker that looks like
+     the muted line above it is not a marker. */
+  socialSourceChecked: { fontFamily: family.bodySemi, color: colors.success },
+  chip: {
+    fontSize: font.tiny,
+    fontFamily: family.bodySemi,
+    overflow: "hidden",
+    borderRadius: radius.pill,
+    paddingHorizontal: space(2),
+    paddingVertical: 3,
+  },
+  /* The same four tones SocialsSection paints, so the creator and the brand
+     are looking at one visual language for one set of states. */
+  chipStrong: { backgroundColor: "#e7f6f0", color: colors.success },
+  chipQuiet: { backgroundColor: colors.surface, color: colors.indigo },
+  chipMuted: { backgroundColor: colors.surface2, color: colors.muted },
+  chipBad: { backgroundColor: "#fbeaea", color: colors.danger },
   pkg: {
     backgroundColor: colors.white,
     borderWidth: 1,

@@ -110,15 +110,21 @@ export const error_fr: Record<string, string> = {
   profile_file_too_large: "Ce fichier est trop volumineux. Les images doivent faire moins de {{max}} Mo.",
   profile_image_not_found: "Image introuvable.",
 
-  /* Connecter un compte social via OAuth. Toutes ces phrases pointent vers la
-     même suite, parce qu'il n'y en a qu'une : recommencer depuis le profil. Un
-     lien de connexion ne sert qu'une fois et vit dix minutes, donc « réessayez »
-     serait un conseil qui ne peut pas marcher. */
+  /* Connecter un compte social via OAuth. Les cinq premières phrases pointent
+     vers la même suite, parce qu'il n'y en a qu'une : recommencer depuis le
+     profil. Un lien de connexion ne sert qu'une fois et vit dix minutes, donc
+     « réessayez » serait un conseil qui ne peut pas marcher.
+
+     oauth_page_not_found est la seule à dire autre chose, parce que la suite y
+     est autre chose. La liste des Pages est relue en direct à chaque appel, et
+     une Page qui n'y figure plus se règle en rechargeant la liste, pas en
+     refaisant toute la connexion. */
   oauth_platform_unsupported: "Cette plateforme ne peut pas encore être connectée automatiquement.",
   oauth_state_invalid: "Ce lien de connexion n'est pas valide. Recommencez depuis votre profil.",
   oauth_state_expired: "Ce lien de connexion a expiré. Recommencez depuis votre profil.",
   oauth_exchange_failed: "La plateforme a refusé la connexion. Rien n'a été enregistré.",
   oauth_token_expired: "Votre connexion à cette plateforme a expiré. Reconnectez-la depuis votre profil.",
+  oauth_page_not_found: "Cette Page ne fait pas partie de celles que vous gérez. Rechargez la liste et choisissez de nouveau.",
 
   contract_not_found: "Contrat introuvable.",
   contract_not_a_party: "Vous n'êtes pas partie à ce contrat.",
@@ -402,15 +408,21 @@ export const error_en: Record<string, string> = {
   profile_file_too_large: "This file is too large. Images must be under {{max}} MB.",
   profile_image_not_found: "Image not found.",
 
-  /* Connecting a social account over OAuth. All five point at the same next
-     step, because there is only one: start again from your profile. A
+  /* Connecting a social account over OAuth. The first five point at the same
+     next step, because there is only one: start again from your profile. A
      connection link is single-use and ten minutes old, so "try again" would
-     be advice that cannot work. */
+     be advice that cannot work.
+
+     oauth_page_not_found is the one that says something else, because its next
+     step is something else. The Page list is re-read live on every call, so a
+     Page that is no longer in it is put right by reloading the list rather
+     than by doing the whole connection again. */
   oauth_platform_unsupported: "This platform cannot be connected automatically yet.",
   oauth_state_invalid: "This connection link is not valid. Start again from your profile.",
   oauth_state_expired: "This connection link has expired. Start again from your profile.",
   oauth_exchange_failed: "The platform refused the connection. Nothing was saved.",
   oauth_token_expired: "Your connection to this platform has expired. Reconnect it from your profile.",
+  oauth_page_not_found: "That is not one of the Pages you manage. Refresh the list and choose again.",
 
   contract_not_found: "Contract not found.",
   contract_not_a_party: "You are not a party to this contract.",

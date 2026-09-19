@@ -1,18 +1,44 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import * as WebBrowser from "expo-web-browser";
 import { api } from "../../lib/api";
 import { errorText } from "../../lib/errorMessages";
 import { SOCIAL_PLATFORMS, platformHasAudience, type SocialPlatform } from "../../lib/socialPlatforms";
+import { oauthReturnUrl, readCallbackParams } from "../../lib/socialConnect";
 import { PLATFORM_LABELS } from "../../lib/platforms";
 import type { SocialAccount } from "../../lib/profileTypes";
-import { Banner, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
+import { Banner, Button, Field, GhostButton, Hint, PrimaryButton, SectionTitle } from "../ui";
 import { colors, family, font, radius, space } from "../../theme";
+/* Imported for its side effect, the way PackagesSection imports
+   packageStrings: the module registers the three profile.socialConnect* keys
+   on i18n, and without this line every one of them renders as its own key. */
+import "../../lib/socialConnectStrings";
 
-/* Connected accounts + an inline add flow. Connecting always goes in as a
-   manual proof (status "pending") — there is no OAuth handshake in the UI yet,
-   the same as web. If the connect response says it enriched, the parent
-   reloads so the auto-filled profile fields show at once. */
+/* Connected accounts, and the two ways a creator can add one.
+
+   CONNECT is an OAuth handshake. POST /profiles/oauth/{platform}/start hands
+   back an authorize_url, the system browser runs the platform's own consent
+   screen, and the backend redirects into the app with the answer. Offered
+   only where canConnect is true in lib/socialPlatforms, which today is
+   Facebook and nothing else, because oauth.build_default_providers registers
+   exactly one provider.
+
+   TYPE A HANDLE is the path that was here first, and it stays. It goes in as
+   a manual proof (status "pending"). A creator who will not hand us a token,
+   or whose platform has no provider behind it, still gets to claim their
+   name. Removing it would make seven of these eight tiles unclaimable.
+
+   NEITHER PATH BADGES ANYTHING. Both land on status "pending", because
+   oauth_service._account_for says so: a reviewed provider is a far better
+   argument for a badge than a typed string was, and switching one on stays a
+   decision somebody makes rather than one a plumbing change makes for them.
+   What the handshake DOES earn is the follower number, read from the
+   platform's own API against the creator's own token, which is why a
+   successful connect reloads the list rather than patching a row.
+
+   If the manual connect response says it enriched, the parent reloads so the
+   auto-filled profile fields show at once. */
 export function SocialsSection({
   userId,
   token,
@@ -29,6 +55,11 @@ export function SocialsSection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enrichedNote, setEnrichedNote] = useState(false);
+  /* The platform whose consent screen is open, or null. A platform id rather
+     than a boolean so the spinner sits on the button that was actually
+     tapped, which matters the day a second provider is registered. */
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [connectedNote, setConnectedNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +105,75 @@ export function SocialsSection({
     }
   }
 
+  /* THE OAUTH PATH: three steps and one browser.
+
+     openAuthSessionAsync(authorizeUrl, returnUrl) opens the consent screen in
+     a system browser, WATCHES for a redirect to returnUrl, closes the browser
+     itself and resolves with the final URL. That last part is why nothing in
+     navigation/RootNavigator.tsx changes: the answer arrives as the resolved
+     value of this promise, not as a deep link delivered to the app, so the
+     NavigationContainer needs no `linking` prop and there is no route to
+     register for it. Adding one would be a second way into this state with
+     nothing keeping the two in step.
+
+     THE RETURN URL IS THE LITERAL kolabo:// SCHEME, built by oauthReturnUrl
+     rather than by Linking.createURL. lib/socialConnect.ts argues that at
+     length; the short version is that createURL yields an exp:// URL under
+     Expo Go, the backend allowlist discards it without refusing it, and the
+     creator is stranded on raw JSON. THE COST IS THAT THIS NEEDS A
+     DEVELOPMENT BUILD, since only a build that declares the scheme registers
+     it with the operating system. lib/googleSignIn.ts already carries the
+     same constraint, so it asks nothing new of the pilot. */
+  async function connect() {
+    if (!adding || !adding.canConnect) return;
+    const platform = adding;
+    setConnecting(platform.id);
+    setError(null);
+    setConnectedNote(null);
+    const returnUrl = oauthReturnUrl(platform.id);
+    try {
+      const { authorize_url } = await api<{ authorize_url: string }>(
+        `/profiles/oauth/${platform.id}/start`,
+        { method: "POST", token, body: { redirect_to: returnUrl } }
+      );
+      const result = await WebBrowser.openAuthSessionAsync(authorize_url, returnUrl);
+      /* "dismiss" is the creator closing the sheet, "cancel" is the system
+         closing it for them, and NEITHER IS AN ERROR. Backing out of a
+         consent screen is an ordinary thing to do. Answering it with a red
+         banner tells somebody who simply changed their mind that they broke
+         something, so the section is left exactly as they found it. */
+      if (result.type !== "success") return;
+
+      const { connected: platformBack, socialError } = readCallbackParams(result.url);
+      if (socialError) {
+        /* AN EXISTING BACKEND CODE, so errorMessages.ts already holds a
+           French and an English sentence for it and no new copy is written
+           for it here. It is also the only value off this URL that reaches a
+           screen, and it reaches one through a catalogue lookup that falls
+           back to the generic sentence, so a code somebody made up cannot put
+           words of its own in front of a creator. */
+        setError(errorText({ code: socialError }, t));
+        return;
+      }
+      if (!platformBack) return;
+
+      setAdding(null);
+      setHandle("");
+      /* RELOADED RATHER THAN PATCHED IN. The callback is where the backend
+         writes the follower count, its PLATFORM_API provenance and the real
+         handle in place of the numeric id, and none of that is in anything
+         this function is holding. The list is the only place those values
+         exist. */
+      await load();
+      setConnectedNote(t("profile.socialConnected", { platform: platform.label }));
+      await onChanged();
+    } catch (e) {
+      setError(errorText(e, t));
+    } finally {
+      setConnecting(null);
+    }
+  }
+
   async function remove(id: string) {
     try {
       await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token });
@@ -89,6 +189,7 @@ export function SocialsSection({
       <Hint>{t("profile.socialSub")}</Hint>
       {error ? <Banner kind="error">{error}</Banner> : null}
       {enrichedNote ? <Banner kind="success">{t("profile.enriched")}</Banner> : null}
+      {connectedNote ? <Banner kind="success">{connectedNote}</Banner> : null}
 
       {accounts.length === 0 ? (
         <Hint>{t("profile.socialEmpty")}</Hint>
@@ -120,6 +221,17 @@ export function SocialsSection({
 
       {adding ? (
         <View style={{ marginTop: space(3) }}>
+          {adding.canConnect ? (
+            <View style={{ marginBottom: space(4) }}>
+              <Button
+                title={t("profile.socialConnectCta", { platform: adding.label })}
+                onPress={connect}
+                loading={connecting === adding.id}
+                disabled={connecting !== null}
+              />
+              <Hint>{t("profile.socialConnectHint", { platform: adding.label })}</Hint>
+            </View>
+          ) : null}
           <Field
             label={t("profile.handleFor", { platform: adding.label })}
             value={handle}
@@ -162,6 +274,7 @@ export function SocialsSection({
                     setAdding(p);
                     setHandle("");
                     setError(null);
+                    setConnectedNote(null);
                   }}
                   style={[styles.tile, on && styles.tileOn]}
                 >

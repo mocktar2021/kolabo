@@ -143,14 +143,20 @@ class OAuthStartIn(BaseModel):
 
     # Where to send the creator's browser once the callback has finished: a web
     # route, or a kolabo:// deep link on mobile. Stored on the state row and
-    # echoed back by the callback rather than being carried through the
+    # read back by the callback rather than being carried through the
     # platform's `state`, which has to stay an opaque unguessable token.
     #
-    # NOT VALIDATED AS AN ALLOWED DESTINATION HERE, and that is a gap worth
-    # naming: the day this value is turned into an actual 302 it becomes an
-    # open-redirect surface, and the fix is an allowlist of prefixes at that
-    # point. Today it is only ever echoed in a JSON body, where it can redirect
-    # nobody.
+    # VALIDATED AGAINST AN ALLOWLIST, AND NOT BY THIS SCHEMA. The callback now
+    # answers a real 302 to this value, which makes it an open-redirect
+    # surface, so oauth_service.redirect_allowed decides it: the web app's own
+    # origin (settings.web_public_base_url) or a kolabo:// deep link, and
+    # nothing else. Not a pydantic pattern here, for two reasons. The rule
+    # depends on deployment configuration rather than on the shape of the
+    # string, and a schema refusal would be a 422 at the one moment the right
+    # answer is to carry on without the value: a destination we will not honour
+    # is dropped and logged, and the connection still completes. See
+    # oauth_service.start_authorization, which is where the check runs, and
+    # _allowlisted_or_discarded, which is why it does not raise.
     redirect_to: str | None = None
 
 
@@ -162,14 +168,21 @@ class OAuthStartOut(BaseModel):
 
 
 class OAuthCallbackOut(BaseModel):
-    """What the callback answers once the account is connected.
+    """What the callback answers when there is nowhere to send the creator.
 
-    JSON RATHER THAN A 302, for now. There is no client in this change to
-    redirect to — no web page and no mobile screen — and a payload is what
-    makes the handshake testable end to end. `redirect_to` is echoed so that
-    turning this into a browser hop, when there is somewhere to hop to, is a
-    change to this one function rather than to the state row, the service or
-    the schema.
+    THE OTHER ANSWER IS A 302, and which of the two a caller gets depends on
+    whether `start` was given an allowlisted `redirect_to`. With one, the
+    callback redirects to it and this model is never built. Without one, this
+    is the body, byte for byte what it has been since #167. That is what keeps
+    the redirect additive: a caller that sends no `redirect_to` cannot tell
+    from the outside that redirects exist at all.
+
+    `redirect_to` STAYS ON THE MODEL AND IS ALWAYS NULL HERE, which reads like
+    a contradiction and is not. A request that produced this body either named
+    no destination or named one the allowlist refused, and the router blanks
+    the second case rather than echo a URL it has just declined to send
+    anybody to. The field remains because it has been part of the documented
+    response since #167 and removing it is a client change, not a server one.
     """
 
     account: SocialAccountOut

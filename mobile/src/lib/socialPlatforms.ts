@@ -39,3 +39,18 @@ export const SOCIAL_PLATFORMS: SocialPlatform[] = [
 export function platformHasAudience(platformId: string): boolean {
   return SOCIAL_PLATFORMS.find((p) => p.id === platformId)?.hasAudience ?? true;
 }
+
+/* Whether this platform has an OAuth provider behind it, and therefore
+   whether an account on it can have arrived by handshake rather than by
+   somebody typing a handle. Reads the same `canConnect` flag the tiles read,
+   so the Connect button and everything that follows a connection cannot
+   disagree about which platforms the handshake covers.
+
+   AN UNKNOWN ID ANSWERS FALSE, which is the opposite default to
+   platformHasAudience above and is deliberate. There, "we do not recognise
+   this" must not hide a field a creator may legitimately fill. Here it would
+   offer somebody a Page picker on a platform with no provider to ask, and
+   that sheet could only ever come back empty. */
+export function platformCanConnect(platformId: string): boolean {
+  return SOCIAL_PLATFORMS.find((p) => p.id === platformId)?.canConnect ?? false;
+}

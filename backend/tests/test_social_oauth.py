@@ -333,10 +333,11 @@ def test_start_then_callback_connects_the_account_and_stores_the_tokens(auth_cli
     account = _accounts(auth_client, uid)[0]
     assert account["platform"] == PLATFORM
     assert account["method"] == "oauth"
-    # PENDING like every other connection: no provider has been reviewed, so
-    # nothing here has honestly verified anything yet. See oauth_service's
-    # module docstring.
-    assert account["status"] == "pending"
+    # CONNECTED: not pending, and not verified either. The creator came back
+    # from a consent screen and a token was issued to them, which is more than
+    # a typed handle and a great deal less than an identity check. See
+    # models.CONNECTED.
+    assert account["status"] == "connected"
     # Nothing claims a follower number, so nothing claims a provenance either.
     assert account["follower_count"] is None
     assert account["follower_source"] is None
@@ -546,7 +547,10 @@ def test_no_redirect_to_still_answers_json_exactly_as_it_always_did(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["account"]["platform"] == PLATFORM
-    assert body["account"]["status"] == "pending"
+    # The SHAPE of the body is what this test pins, and it is unchanged. The
+    # status reads "connected" because an authorised account is written that
+    # way now, on this path and on the redirect one alike.
+    assert body["account"]["status"] == "connected"
     assert body["redirect_to"] is None
     assert "location" not in r.headers
 

@@ -11,12 +11,36 @@ import { CURRENCIES } from "../lib/campaignOptions";
 import { PLATFORM_LABELS, SELLABLE_PLATFORMS, deliverablesFor } from "../lib/platforms";
 import { MIN_LIVE_PACKAGES, deactivationHidesProfile, minPrice } from "../lib/pricing";
 import { CONNECTABLE_PLATFORMS, SOCIAL_PLATFORMS, platformHasAudience } from "../lib/socialPlatforms";
+/* follower_verified_at arrives naive UTC (no suffix) like every other
+   datetime from this API, which JavaScript reads as LOCAL time. parseApiDate
+   is the app's existing answer to that, shared with every screen that prints
+   an API date. */
+import { parseApiDate } from "../lib/orders";
 import type { InfluencerProfile, Package, PortfolioItem } from "../lib/types";
 
 type Kind = "influencer" | "business";
 type MediaOut = { id: string; url: string };
 type BusinessProfileOut = { user_id: string; company_name: string; industry: string | null; description: string | null };
-type SocialAccount = { id: string; platform: string; handle: string; status: string; follower_count: number | null; method: string };
+/* One row of GET /profiles/{userId}/social-accounts, as this form reads it.
+   The same shape as SocialAccountPublic in lib/types.ts, kept local because
+   this form also creates and patches these rows and has never leaned on the
+   public page's type.
+
+   follower_source and follower_verified_at were missing from BOTH, so every
+   client threw away the one fact that tells a number the platform stated
+   apart from a number somebody typed. status carries four values (pending,
+   connected, verified, rejected); lib/types.ts spells out what each one
+   promises and why verified was not widened to cover a social login. */
+type SocialAccount = {
+  id: string;
+  platform: string;
+  handle: string;
+  status: string;
+  follower_count: number | null;
+  follower_source: "self_reported" | "platform_api" | null;
+  follower_verified_at: string | null;
+  method: string;
+};
 /* What POST /profiles/oauth/{platform}/start answers with: the platform's own
    consent screen, already carrying the state and the scopes. Nothing else is
    in the body. */
@@ -126,7 +150,12 @@ function PortfolioSection({ userId, token }: { userId: string; token: string | n
    anybody else's. Offering the box anyway would collect a guess and then show
    it on a profile card as though the platform had confirmed it. */
 function SocialSection({ userId, token }: { userId: string; token: string | null }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  /* The reader's own language for the one date this section prints: when a
+     platform last confirmed a follower count. Derived the way
+     PublicProfile.tsx derives it, so the same fact is not spelled two
+     different ways on the two screens that state it. */
+  const locale = i18n.language.startsWith("en") ? "en-US" : "fr-FR";
   const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editHandle, setEditHandle] = useState("");
@@ -390,6 +419,66 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
 
   const connected = new Set(accounts.map((a) => a.platform));
 
+  /* THE BADGE, AND IT NOW HAS A WORD FOR EACH OF THE FOUR STATES.
+
+     It used to have two: "Verified" for verified, "Pending" for absolutely
+     everything else. That put a creator who had signed in to Facebook,
+     granted the permissions and chosen their Page behind the same word as
+     somebody who had typed a handle into a box and proved nothing, and it
+     told a creator whose account an admin had REFUSED that a decision was
+     still coming.
+
+     Four words, three weights. verified stays the strong green one: it is the
+     only state that cost an identity document, and it is written in exactly
+     one place server-side. connected is quiet and neutral, outlined rather
+     than filled, because proving control of a handle is a real thing that is
+     not the same thing. pending keeps the muted chip it always had. rejected
+     borrows the danger colour, because it is the one state the creator has to
+     act on and the only one that was actively lying before. */
+  function badgeFor(status: string): { label: string; background: string; color: string; border: string } {
+    if (status === "verified") {
+      return { label: t("profile.socialVerified"), background: "#e7f6f0", color: "var(--success)", border: "none" };
+    }
+    if (status === "connected") {
+      return { label: t("profile.socialConnectedBadge"), background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)" };
+    }
+    if (status === "rejected") {
+      return { label: t("profile.socialRejected"), background: "var(--surface-2)", color: "var(--danger)", border: "none" };
+    }
+    return { label: t("profile.socialPending"), background: "var(--surface-2)", color: "var(--muted)", border: "none" };
+  }
+
+  /* WHERE THE NUMBER ON THIS ROW CAME FROM, or null when there is no number
+     to describe one way or the other.
+
+     The same three answers the public page gives a brand, shown to the
+     creator on their own form so the two screens cannot disagree about a
+     figure: a count the platform stated carries the date it was read, a count
+     the creator typed says so, and a row written before the provenance
+     columns existed says its origin was never recorded rather than guessing
+     at one. That last case is the honest reading of a null source in
+     backend/app/modules/profiles/models.py, which keeps it null precisely
+     because nobody knows and a guess would read as a fact.
+
+     A platform_api row with no date falls into the same branch on purpose:
+     "verified" with no "when" is a weaker claim than it looks, and there is
+     nothing honest to print in place of the date.
+
+     This is also the sentence that makes connecting worth doing. A creator
+     comparing "declared by the creator, not checked" against "verified with
+     the platform on 19 September" is reading exactly the difference a brand
+     reads on their storefront. */
+  function sourceFor(a: SocialAccount): string | null {
+    if (a.follower_count === null) return null;
+    if (a.follower_source === "platform_api" && a.follower_verified_at) {
+      const date = new Date(parseApiDate(a.follower_verified_at))
+        .toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+      return t("profile.followerChecked", { date });
+    }
+    if (a.follower_source === "self_reported") return t("profile.followerDeclared");
+    return t("profile.followerUnknown");
+  }
+
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("profile.socialTitle")}</h3>
@@ -402,6 +491,8 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
           {accounts.map((a) => {
             const withAudience = platformHasAudience(a.platform);
+            const badge = badgeFor(a.status);
+            const source = sourceFor(a);
             return editingId === a.id ? (
               <div key={a.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "10px 12px" }}>
                 <strong style={{ fontSize: 14 }}>{PLATFORM_LABELS[a.platform] ?? a.platform}</strong>
@@ -435,6 +526,11 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                         empty chip: the server never stores one for it. */}
                     @{a.handle}{a.follower_count !== null && ` · ${a.follower_count.toLocaleString()} ${t("public.audienceUnit")}`}
                   </div>
+                  {/* Right under the number it describes, and shown for a
+                      self-reported count as much as for a checked one: a
+                      creator who only ever sees the marker on somebody else's
+                      good number has no reason to go and earn it. */}
+                  {source && <div className="hint">{source}</div>}
                   {/* THE EXPLANATION THAT WAS MISSING. Until now a creator who
                       manages several Pages came back from the consent screen
                       to a row showing a numeric id and no number, with nothing
@@ -446,10 +542,9 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{
                     fontSize: 11.5, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
-                    background: a.status === "verified" ? "#e7f6f0" : "var(--surface-2)",
-                    color: a.status === "verified" ? "var(--success)" : "var(--muted)"
+                    background: badge.background, color: badge.color, border: badge.border
                   }}>
-                    {a.status === "verified" ? t("profile.socialVerified") : t("profile.socialPending")}
+                    {badge.label}
                   </span>
                   {needsPage(a) && (
                     <button type="button" className="btn btn-ghost" style={{ padding: "5px 10px", fontSize: 13 }}

@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.db import SessionLocal, init_db
 from app.core.errors import AppError, app_error_handler
+from app.core.logging import configure_logging
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.admins import sync_admins
 from app.modules.auth.router import router as auth_router
@@ -38,10 +38,22 @@ from app.modules.trust_safety.router import router as trust_safety_router
 #
 # The same three arguments app/jobs/sweeps.py already passes, so the API
 # container and the job container format their lines identically.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+#
+# THOSE ARGUMENTS NOW LIVE IN app.core.logging, ALONG WITH A SECOND ONE THIS
+# FILE LEARNED THE HARD WAY. Turning application logging on here also turned on
+# httpx's own per-request INFO record, which carries the full request url; every
+# credential Kolabo sends to Meta or to Google travels as a QUERY PARAMETER, so
+# every SUCCESSFUL outbound call was writing one out in clear text. That is not
+# the error-path bug #183 fixed, it is the success path, and it fires every time
+# rather than only when something breaks.
+#
+# The answer is not to turn logging back off. configure_logging() applies
+# exactly the level and the format that used to be spelled out here, and then
+# holds the HTTP client loggers at WARNING so their per-request chatter stops.
+# Both entrypoints ask for it rather than each keeping a copy, so that the next
+# fix cannot land in one process and miss the other. READ THAT MODULE'S
+# DOCSTRING BEFORE RAISING ANY LOG LEVEL.
+configure_logging()
 
 
 @asynccontextmanager

@@ -1178,3 +1178,234 @@ def test_a_creator_with_no_pages_gets_an_empty_list_rather_than_a_refusal(
     refused = _choose(auth_client, uid, "page-gossip")
     assert refused.status_code == 404
     assert refused.json()["code"] == "oauth_page_not_found"
+
+
+# --- The app secret cannot reach a log line (KOL-108) -------------------------
+#
+# #183 fixed this class of bug in enrichment.py, where every enricher sent its
+# credential as a query parameter and both handlers logged the exception object
+# raise_for_status() had composed, url and all. KOL-108 asked the same question
+# of this module, which sends META_APP_SECRET the same way and is worse to lose:
+# the app secret acts as the whole Kolabo app, and rotating it breaks every live
+# creator connection at once.
+#
+# WHAT WAS MEASURED, against the pinned httpx 0.27.2 rather than assumed:
+# no transport error httpx raises out of a GET carries the url in str(exc) or
+# repr(exc) (it is attached to the object as `.request` instead), and the ONLY
+# place httpx interpolates a url into an exception message is
+# Response.raise_for_status(), which _graph never calls. So the #183 mechanism
+# is genuinely absent here. The redaction exists for the two things the
+# measurement does not cover: Meta's own `message` field, which may echo a
+# request parameter back and which Meta's documentation does not promise will
+# not, and the next httpx bump.
+#
+# THE ASSERTION ORDER BELOW IS COPIED FROM #183 ON PURPOSE. Each test proves
+# the raw exception or envelope really does carry the secret BEFORE it asserts
+# that the log does not, so a fake that drifts away from the thing it imitates
+# fails loudly instead of passing for the wrong reason.
+#
+# Every credential here is obviously fake and is not a value from any account.
+
+LEAKY_APP_SECRET = "SECRET-abc123-app-secret-that-must-never-be-logged"
+LEAKY_USER_TOKEN = "SECRET-def456-creator-token-that-must-never-be-logged"
+
+# Meta's ordinary refusal, with nothing echoed back.
+REFUSAL = {
+    "error": {
+        "message": "Invalid OAuth access token.",
+        "type": "OAuthException",
+        "code": 190,
+        "fbtrace_id": "AbC123",
+    }
+}
+
+
+def _leaky_provider():
+    return oauth.MetaOAuthProvider(APP_ID, LEAKY_APP_SECRET, VERSION)
+
+
+def test_the_app_secret_really_does_travel_in_the_request_url():
+    """THE PREMISE EVERYTHING BELOW RESTS ON, asserted rather than assumed.
+
+    exchange_code puts client_secret in `params`, and httpx renders params into
+    the query string, so the app secret is part of the request url. If that
+    ever stops being true the exposure this section guards against stops
+    existing, and these tests should be re-read rather than trusted.
+    """
+    request = oauth.httpx.Request(
+        "GET",
+        f"{oauth.META_GRAPH_HOST}/{VERSION}/oauth/access_token",
+        params={"client_id": APP_ID, "client_secret": LEAKY_APP_SECRET},
+    )
+    assert LEAKY_APP_SECRET in str(request.url)
+
+
+def test_raise_for_status_is_still_what_would_name_the_url(monkeypatch):
+    """THE #183 MECHANISM, PINNED, AND THE REASON _graph DOES NOT USE IT.
+
+    Measured against the pinned httpx: raise_for_status() is the one place a
+    url is interpolated into an exception message, which is exactly how #183
+    wrote a credential into the log. Asserting it here keeps the claim in
+    _graph's docstring checkable instead of letting it age quietly, and a
+    version bump that changed it turns this red rather than silently
+    invalidating the audit.
+
+    Then the same REAL httpx.Response is handed to _graph, whose 400 branch
+    reads status_code itself and never calls raise_for_status at all.
+    """
+    httpx = oauth.httpx
+    request = httpx.Request(
+        "GET",
+        f"{oauth.META_GRAPH_HOST}/{VERSION}/oauth/access_token",
+        params={"client_id": APP_ID, "client_secret": LEAKY_APP_SECRET},
+    )
+    response = httpx.Response(400, request=request, json=REFUSAL)
+
+    with pytest.raises(httpx.HTTPStatusError) as leaked:
+        response.raise_for_status()
+    assert LEAKY_APP_SECRET in str(leaked.value)
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: response)
+    with pytest.raises(oauth.MetaOAuthError) as refused:
+        _leaky_provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+    assert LEAKY_APP_SECRET not in str(refused.value)
+    # And the refusal still says what went wrong, which is the whole reason
+    # _error_of reads the envelope by name instead of dropping it.
+    assert "HTTP 400" in str(refused.value)
+    assert "code=190" in str(refused.value)
+    assert "fbtrace_id=AbC123" in str(refused.value)
+
+
+def test_a_transport_error_that_names_the_url_still_never_reaches_the_log(
+    monkeypatch, caplog
+):
+    """WHAT AN httpx BUMP WOULD LOOK LIKE, and the guard that survives it.
+
+    No transport error in the pinned httpx carries the url in its message, so
+    this forces the other case deliberately: it is what an httpx that started
+    naming the url in a ConnectError would do to this module. The redaction is
+    what keeps that from being a second #183.
+    """
+    httpx = oauth.httpx
+    url = f"{oauth.META_GRAPH_HOST}/{VERSION}/oauth/access_token"
+
+    def explode(url, params=None, timeout=None):
+        request = httpx.Request("GET", url, params=params)
+        raise httpx.ConnectError(f"failed to establish a connection to {request.url}")
+
+    # The premise: this fake really does put the secret in the message.
+    try:
+        explode(url, params={"client_secret": LEAKY_APP_SECRET})
+    except Exception as exc:
+        assert LEAKY_APP_SECRET in str(exc)
+    else:
+        raise AssertionError("the fake was supposed to raise")
+
+    monkeypatch.setattr(httpx, "get", explode)
+    caplog.set_level("WARNING", logger="kolabo.profiles.oauth")
+    with pytest.raises(oauth.MetaOAuthError) as refused:
+        _leaky_provider().exchange_code("the-code", "verifier", "https://api.example/cb")
+
+    assert LEAKY_APP_SECRET not in str(refused.value)
+    assert LEAKY_APP_SECRET not in caplog.text
+    assert "[redacted]" in str(refused.value)
+    # A dead network still reads as a dead network.
+    assert "ConnectError" in str(refused.value)
+
+
+def test_a_refused_exchange_that_echoes_the_secret_back_does_not_log_it(
+    auth_client, monkeypatch, caplog
+):
+    """THE ONE EXPOSURE THE MEASUREMENT DOES NOT RULE OUT, end to end.
+
+    _error_of reads Meta's error envelope by name, which is safer than logging
+    the body whole but is not itself a guarantee: `message` is precisely the
+    field that quotes input back, and nothing in Meta's documentation
+    establishes that a request parameter cannot appear in it. That is treated
+    as unverified rather than as safe, so this drives the whole callback with
+    an envelope that does echo the secret and asserts it survives nowhere:
+    not in the log, and not in what the creator is handed.
+    """
+    echoed = {
+        "error": {
+            "message": f"Invalid parameter: client_secret={LEAKY_APP_SECRET}",
+            "type": "OAuthException",
+            "code": 100,
+            "fbtrace_id": "AbC123",
+        }
+    }
+    # The premise: the envelope really does name the secret.
+    assert LEAKY_APP_SECRET in echoed["error"]["message"]
+
+    def refuse(url, params=None, timeout=None):
+        return FakeResponse(echoed, status_code=400)
+
+    monkeypatch.setattr(oauth.httpx, "get", refuse)
+    caplog.set_level("WARNING", logger="kolabo.profiles.oauth")
+
+    monkeypatch.setattr(oauth_service, "providers", {PLATFORM: _leaky_provider()})
+    uid = _user(auth_client, "+22990003031")
+    started = auth_client.post(
+        f"/profiles/oauth/{PLATFORM}/start", json={}, headers=_headers(uid)
+    )
+    assert started.status_code == 200, started.text
+    state = parse_qs(urlparse(started.json()["authorize_url"]).query)["state"][0]
+    done = auth_client.get(
+        f"/profiles/oauth/{PLATFORM}/callback", params={"code": "the-code", "state": state}
+    )
+
+    assert done.status_code == 502
+    assert done.json()["code"] == "oauth_exchange_failed"
+
+    # NOT IN THE LOG, which is what KOL-108 was opened about.
+    assert LEAKY_APP_SECRET not in caplog.text
+    assert "OAuth code exchange failed" in caplog.text
+    assert "[redacted]" in caplog.text
+
+    # AND NOT IN THE ANSWER EITHER. A secret must not travel to a client any
+    # more than to a log file, and the sentence a creator reads is a fixed
+    # string that carries nothing from the platform at all.
+    assert LEAKY_APP_SECRET not in done.text
+    assert "OAuthException" not in done.text
+    assert auth_client.get(f"/profiles/{uid}/social-accounts").json() == []
+
+
+def test_a_refused_pages_lookup_does_not_log_the_creators_own_token(
+    monkeypatch, caplog
+):
+    """THE OTHER CREDENTIAL THROUGH THE SAME FUNCTION.
+
+    _graph serves four calls: two token exchanges carrying client_secret, and
+    /me and {user-id}/accounts carrying the creator's own long-lived token. A
+    redaction that named only the app secret would leave a live bearer
+    credential for somebody's Facebook Pages in the log instead, which is why
+    META_CREDENTIAL_PARAMS names both.
+    """
+    echoed = {
+        "error": {
+            "message": f"Invalid OAuth access token: access_token={LEAKY_USER_TOKEN}",
+            "type": "OAuthException",
+            "code": 190,
+        }
+    }
+    assert LEAKY_USER_TOKEN in echoed["error"]["message"]
+
+    monkeypatch.setattr(
+        oauth.httpx, "get", lambda url, params=None, timeout=None: FakeResponse(echoed, 400)
+    )
+    caplog.set_level("WARNING", logger="kolabo.profiles.oauth")
+
+    tokens = oauth.TokenSet(
+        access_token=LEAKY_USER_TOKEN,
+        refresh_token=None,
+        access_expires_in=5184000,
+        refresh_expires_in=None,
+        scope=None,
+        provider_user_id=ME_ID,
+    )
+    # list_pages never raises, so the only place this could surface is the log.
+    assert _provider().list_pages(tokens) is None
+
+    assert LEAKY_USER_TOKEN not in caplog.text
+    assert "Meta Pages lookup failed" in caplog.text
+    assert "[redacted]" in caplog.text

@@ -30,6 +30,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.core.config import settings
+from app.core.redaction import redact
 from app.core.urls import is_public_host, normalized_public_url
 
 _log = logging.getLogger("kolabo.profiles.enrichment")
@@ -63,6 +64,12 @@ def _safe_error(exc: Exception, *secrets: str | None) -> str:
     second layer, because this function cannot know what a future exception
     type will choose to put in its own message.
 
+    THE STRIKING ITSELF NOW LIVES IN app.core.redaction, because KOL-108 gave
+    profiles/oauth.py a use for the same last line of defence, over the Meta
+    app secret. Nothing about the behaviour here changed and the three tests at
+    the bottom of test_enrichment.py still pin it; what moved is only where the
+    loop is written, so that the two callers cannot drift apart.
+
     The rebuild says MORE than the line it replaces, not less. A failure that
     got as far as a response carries the provider's own error object, whose
     code and message are the difference between "enrichment returned nothing"
@@ -87,10 +94,7 @@ def _safe_error(exc: Exception, *secrets: str | None) -> str:
             )
             if named:
                 detail = f"{detail}, {named}"
-    for secret in secrets:
-        if secret:
-            detail = detail.replace(secret, "[redacted]")
-    return detail
+    return redact(detail, *secrets)
 
 
 class EnrichedProfile(dict):

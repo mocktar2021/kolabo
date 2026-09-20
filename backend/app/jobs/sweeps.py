@@ -38,13 +38,30 @@ import sys
 import time
 
 from app.core.db import SessionLocal, import_all_models
+from app.core.logging import configure_logging
 from app.modules.payments import disputes, payouts
 from app.modules.payments import service as payments_service
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+# THIS CONTAINER HAS HAD THE httpx HOLE OPEN FOR LONGER THAN THE API HAS. The
+# two lines that used to be written out here have been on since this module
+# shipped, and INFO on the root logger is exactly what lets httpx write one
+# record per request with the whole url in it. The API only acquired that in
+# #188; this process was born with it.
+#
+# WHAT THAT ACTUALLY COST HERE IS LESS THAN IT SOUNDS, and it was checked rather
+# than assumed. What these four jobs reach over HTTP is FedaPay, through
+# payments/gateways/fedapay.py, and Resend, through notifications/email.py when
+# a job notifies somebody. BOTH AUTHENTICATE WITH AN Authorization HEADER, and
+# httpx's record names the method and the url and no headers at all, so no
+# secret of ours has gone into this log. What has gone in is one request line
+# per payout and per notification: FedaPay endpoints with their own transaction
+# and payout ids in the path, which is operational detail rather than a
+# credential. The process that was leaking is the API. See app/core/logging.py
+# for what leaked there and what to rotate.
+#
+# Both entrypoints now take the same setup from one place, so a change to it
+# cannot land in one container and miss the other.
+configure_logging()
 logger = logging.getLogger("kolabo.sweeps")
 
 DEFAULT_INTERVAL_SECONDS = 300

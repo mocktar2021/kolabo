@@ -63,6 +63,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.core.config import settings
+from app.core.redaction import redact
 
 _log = logging.getLogger("kolabo.profiles.oauth")
 
@@ -358,6 +359,30 @@ META_SCOPES = ("pages_show_list", "pages_read_engagement")
 # reconnect a little early, and the cost of overstating it is a connection that
 # reports itself healthy while every call it makes is refused.
 META_LONG_LIVED_FALLBACK_SECONDS = 60 * 24 * 60 * 60
+
+# The Graph parameters whose VALUE is a credential, and which therefore must
+# never survive into a MetaOAuthError, a log line, or anything a creator sees.
+#
+# READ BACK OUT OF `params` RATHER THAN PASSED IN, the same way
+# enrichment._graph_get reads its token back, and for the same reason: _graph
+# is one function serving four different calls that carry four different
+# secrets. Naming them here means a fifth call is covered by adding its
+# parameter to this tuple, at the one place somebody would think to look.
+#
+#   client_secret      THE APP SECRET, and the worst of the four. It acts as
+#                      the whole Kolabo app rather than as one creator, and
+#                      rotating it breaks every live connection at once.
+#   access_token       a creator's own long-lived token, sent on /me and on
+#                      {user-id}/accounts.
+#   fb_exchange_token  the short-lived token, on its way to being exchanged.
+#   code               the authorization code, which is still spendable at the
+#                      moment the first token call fails.
+META_CREDENTIAL_PARAMS = ("client_secret", "access_token", "fb_exchange_token", "code")
+
+
+def _without_credentials(message: str, params: dict) -> str:
+    """`message`, with every credential that was in `params` struck out of it."""
+    return redact(message, *(params.get(name) for name in META_CREDENTIAL_PARAMS))
 
 
 class MetaOAuthError(RuntimeError):
@@ -720,14 +745,50 @@ class MetaOAuthProvider:
         leaves a field empty, and this one's failure means there is no
         connection, so it has to be impossible to mistake for a successful call
         that happened to return nothing.
+
+        WHAT KOL-108 ASKED AND WHAT WAS MEASURED, written here so that nobody
+        has to audit it again from scratch. `params` carries client_secret on
+        both token calls, so the app secret is part of the request url, which
+        is exactly the shape that leaked in #183. It does NOT leak the same
+        way, and both halves of that were MEASURED against the pinned
+        httpx 0.27.2 rather than reasoned about:
+
+          * THE TRANSPORT BRANCH IS CLEAN. Every exception httpx maps out of a
+            GET (ConnectError, ConnectTimeout, ReadTimeout, WriteTimeout,
+            PoolTimeout, ReadError, WriteError, NetworkError,
+            RemoteProtocolError, LocalProtocolError, ProxyError,
+            UnsupportedProtocol and the rest) carries nothing of the url in
+            either str(exc) or repr(exc). The url is attached to the object as
+            `.request`, and is never rendered into the message.
+          * THE ONLY PLACE httpx 0.27.2 PUTS A URL INTO AN EXCEPTION MESSAGE
+            is Response.raise_for_status(), which composes HTTPStatusError. So
+            the #183 mechanism is absent here for one specific reason: this
+            method never calls raise_for_status(). It reads status_code itself
+            and builds its own sentence, which is what the 400 branch below is.
+
+        THE REDACTION IS STILL HERE, AND IT IS NOT DECORATION, for two reasons
+        that the measurement does not cover. _error_of reads Meta's `message`
+        field, and whether Meta can echo a request parameter back inside it is
+        NOT established by Meta's documentation, so it is treated as unverified
+        rather than as safe. And a measurement pins one version of one library:
+        a bump that moved the url into a transport message would reopen #183
+        here, silently, in the one place holding the app secret. Striking the
+        credentials out makes the property hold by construction rather than by
+        a dependency's undocumented behaviour.
         """
         url = f"{META_GRAPH_HOST}/{self.version}/{path}"
         try:
             res = httpx.get(url, params=params, timeout=HTTP_TIMEOUT_SECONDS)
         except Exception as exc:  # DNS, connect, read timeout
-            raise MetaOAuthError(f"{path}: {type(exc).__name__}: {exc}") from exc
+            raise MetaOAuthError(
+                _without_credentials(f"{path}: {type(exc).__name__}: {exc}", params)
+            ) from exc
         if res.status_code >= 400:
-            raise MetaOAuthError(f"{path}: HTTP {res.status_code}: {self._error_of(res)}")
+            raise MetaOAuthError(
+                _without_credentials(
+                    f"{path}: HTTP {res.status_code}: {self._error_of(res)}", params
+                )
+            )
         try:
             body = res.json()
         except Exception as exc:
@@ -744,6 +805,14 @@ class MetaOAuthProvider:
         rather than logged whole: fbtrace_id is what Meta support asks for, and
         a body dumped verbatim is unbounded and routinely quotes its own input
         back — which, at a token endpoint, is a token.
+
+        READING BY NAME IS NOT ITSELF THE GUARANTEE, and KOL-108 is the reason
+        that is now written down rather than assumed. `message` is precisely
+        the field that quotes input back, and nothing in Meta's documentation
+        establishes that it cannot contain a request parameter. Treat that as
+        unverified, not as safe: the caller strikes the credentials out of
+        whatever this returns. See _graph, which is the only caller, and which
+        wraps this in _without_credentials.
         """
         try:
             error = (res.json() or {}).get("error") or {}

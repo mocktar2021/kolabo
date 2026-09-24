@@ -24,7 +24,7 @@
 # safer for refusing to start.
 #
 # WHAT THIS DELIBERATELY DOES NOT CHECK. The secrets. config.py's
-# _refuse_insecure_production validator already refuses to boot with
+# _refuse_committed_secrets_in_production validator already refuses to boot with
 # ENV=production while JWT_SECRET or DOCUMENT_ENCRYPTION_KEY is the committed
 # default, or while FEDAPAY_SECRET_KEY is set with no webhook secret. That check
 # lives next to the values it reads and runs on every boot, not only when

@@ -193,6 +193,11 @@ services:
       # the server to point at a second environment works exactly until the next
       # `git pull` reverts it and takes TLS down with it.
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Site blocks for anything else this box fronts, imported by the last
+      # line of the Caddyfile. Gitignored apart from one placeholder, so a box
+      # that fronts only Kolabo mounts a directory with nothing in it and a box
+      # that fronts three products keeps its routing out of this repository.
+      - ./caddy-extra:/etc/caddy/extra:ro
       # Certificates and ACME account keys. NAMED VOLUMES, so a
       # `docker compose down` does not throw away the certificates and send you
       # back to Let's Encrypt for new ones. Their rate limit is five per week

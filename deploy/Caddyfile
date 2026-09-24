@@ -1,4 +1,4 @@
-# Kolabo dev environment edge.
+# Kolabo edge, for EVERY environment rather than one named deployment.
 #
 # Caddy is here for one reason above all others: FedaPay will not talk to this
 # deployment over plain HTTP. The hosted checkout redirects the payer back to
@@ -7,18 +7,35 @@
 # obtains and renews them from Let's Encrypt with no cron and no certbot.
 #
 # TWO HOSTNAMES, deliberately:
-#   kolabo.mocktar.com      the built SPA, served as static files
-#   api.kolabo.mocktar.com  FastAPI
+#   {$WEB_HOSTNAME}  the built SPA, served as static files
+#   {$API_HOSTNAME}  FastAPI
 #
 # The split is what CORS_ORIGINS in the backend already assumes, and it means
 # the API can move to its own box later without touching the web deploy.
+#
+# THE HOSTNAMES USED TO BE WRITTEN OUT HERE AS kolabo.mocktar.com AND
+# api.kolabo.mocktar.com, and that single fact was the reason a second
+# environment could not exist. This file is tracked in git and bind mounted
+# read only into the caddy container, so the dev box's hostnames were compiled
+# into the repository: standing up production meant either editing a tracked
+# file on the server (which the next `git pull` reverts, silently, taking TLS
+# with it) or maintaining a fork of the deploy directory. Both hostnames now
+# come from deploy/.env, which is per box and gitignored, so one branch serves
+# both environments and neither can be pulled out from under the other.
+#
+# AN UNSET VALUE IS A REFUSAL TO START, NOT A DEFAULT. Caddy substitutes the
+# empty string and then cannot parse a site block with no address, so the
+# container exits and says so. That is deliberate: the alternative to a loud
+# failure here is a box that answers on the wrong name, or answers everything,
+# and gets a certificate to match. bootstrap-env.sh lists both variables in the
+# set-these-by-hand block for the same reason.
 
 {
 	# Let's Encrypt sends expiry warnings here. Set ACME_EMAIL in deploy/.env.
 	email {$ACME_EMAIL}
 }
 
-kolabo.mocktar.com {
+{$WEB_HOSTNAME} {
 	encode zstd gzip
 	reverse_proxy web:80
 
@@ -33,7 +50,7 @@ kolabo.mocktar.com {
 	}
 }
 
-api.kolabo.mocktar.com {
+{$API_HOSTNAME} {
 	encode zstd gzip
 	reverse_proxy backend:8000
 
@@ -50,7 +67,7 @@ api.kolabo.mocktar.com {
 	# The webhook endpoint is deliberately NOT special-cased. It needs no
 	# allowlist at this layer: FedaPay does not publish stable egress IPs, and
 	# the real gate is the HMAC signature, the 300-second replay window and the
-	# idempotency key — see backend/app/modules/payments/webhooks.py. An IP
+	# idempotency key, see backend/app/modules/payments/webhooks.py. An IP
 	# rule here would give a false sense of protection and break silently the
 	# day they change ranges.
 }

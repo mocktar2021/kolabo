@@ -1,0 +1,31 @@
+# Per box additions to docker-compose.prod.yml. Copy this file to
+# docker-compose.local.yml, which is gitignored, and deploy/up.sh includes it
+# automatically as a second -f.
+#
+#   cp docker-compose.local.yml.example docker-compose.local.yml
+#
+# MOST BOXES NEED NOTHING HERE and should not have the file at all.
+#
+# WHAT IT IS ACTUALLY FOR, with the case that made it necessary. On the dev box
+# the caddy container is the shared TLS edge for three products, and the site
+# blocks in caddy-extra/ proxy to containers belonging to other compose
+# projects. A container name only resolves on a network caddy has joined, so
+# caddy has to join theirs.
+#
+# That cannot live in docker-compose.prod.yml. `external: true` means "this
+# network already exists and I will not create it", so compose refuses to start
+# anything at all when it does not, which would be true of production and of any
+# box that fronts Kolabo alone. A per box file is the only place it works.
+#
+# Replace the name below with the real network. `docker network ls` gives it,
+# and it is usually <that project's directory>_<its network name>.
+services:
+  caddy:
+    networks:
+      - default
+      - shared_edge
+
+networks:
+  shared_edge:
+    external: true
+    name: CHANGE-ME_shared_edge

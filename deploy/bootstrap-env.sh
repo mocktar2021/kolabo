@@ -18,8 +18,8 @@ cd "$(dirname "$0")"
 
 if [[ -f .env ]]; then
   echo "deploy/.env already exists. Refusing to overwrite it."
-  echo "Delete it first if you really mean to regenerate every secret —"
-  echo "note that rotating JWT_SECRET signs out every user, and rotating"
+  echo "Delete it first if you really mean to regenerate every secret."
+  echo "Note that rotating JWT_SECRET signs out every user, and rotating"
   echo "DOCUMENT_ENCRYPTION_KEY makes already-stored verification documents"
   echo "permanently unreadable."
   exit 1
@@ -34,7 +34,7 @@ echo "Generating secrets..."
 JWT_SECRET="$(openssl rand -hex 32)"
 POSTGRES_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
 
-# Fernet needs a specific shape — 32 url-safe base64 encoded bytes — so this
+# Fernet needs a specific shape (32 url-safe base64 encoded bytes), so this
 # cannot be `openssl rand`. Generated with the same library that will read it,
 # which is the only way to be sure it is valid before the app tries to boot.
 DOCUMENT_ENCRYPTION_KEY="$(python3 - <<'PY'
@@ -64,7 +64,35 @@ cat <<'EOF'
 deploy/.env created, mode 600, with three generated secrets:
   JWT_SECRET, POSTGRES_PASSWORD, DOCUMENT_ENCRYPTION_KEY
 
-STILL TO FILL IN BY HAND — the stack will not work without them:
+WHICH ENVIRONMENT IS THIS BOX. Answer it first, because the eight values
+below all follow from the answer and nothing in .env.example names a deployment
+any more. It used to: this file copied the dev box's own hostnames onto every
+new server, which booted clean and pointed at the wrong environment.
+
+  ENV                      development or production, and not decorative.
+                           development PRINTS EVERY OTP CODE to the container
+                           logs, advertises mock payments, and serves /docs.
+                           A production box says production, before first boot.
+
+  WEB_HOSTNAME             the two names this box answers on, hostnames only,
+  API_HOSTNAME             no scheme and no path. Caddy takes them straight
+                           from this file as its site addresses and gets a
+                           certificate for each, so their DNS must already
+                           point here. Either one unset is a caddy container
+                           that refuses to start.
+
+THE FIVE URLS THAT MUST AGREE WITH THOSE TWO HOSTNAMES. Every one of them has
+been wrong at least once, each time with no error message anywhere:
+
+  CORS_ORIGINS             https://$WEB_HOSTNAME
+  API_PUBLIC_BASE_URL      https://$API_HOSTNAME
+  WEB_PUBLIC_BASE_URL      https://$WEB_HOSTNAME
+  PAYMENT_RETURN_URL       https://$WEB_HOSTNAME/checkout/return
+  VITE_API_URL             https://$API_HOSTNAME   (compiled into the web
+                           bundle, so changing it needs a rebuild and not a
+                           restart)
+
+AND THE REST:
 
   ADMIN_EMAILS             the email address you registered your account with.
                            Empty means NOBODY is an admin, so no dispute
@@ -75,7 +103,13 @@ STILL TO FILL IN BY HAND — the stack will not work without them:
   FEDAPAY_WEBHOOK_SECRET   the dashboard's Webhooks tab, prefixed wh_.
                            NOT the same value as FEDAPAY_SECRET_KEY.
 
-Then:
+Then CHECK IT BEFORE STARTING ANYTHING, because a box that starts on a bad
+hostname still spends one of Let's Encrypt's five certificate attempts per
+hostname per week:
+
+  bash checks/preflight-env.sh
+
+And only once that passes:
   docker compose -f docker-compose.prod.yml up -d --build
 
 EOF

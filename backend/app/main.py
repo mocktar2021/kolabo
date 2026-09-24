@@ -58,8 +58,10 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Creates tables from model metadata. Alembic migrations replace this in
-    # Epic I (KOL-34).
+    # NO LONGER CREATES ANY SCHEMA. `alembic upgrade head` in the container
+    # command is the only thing that builds tables now; this seeds the country
+    # table and configures the mappers. See app/core/db.py for why create_all
+    # leaving here was a correctness fix and not a tidy-up.
     init_db()
     # Then make the admin list in the database agree with the configured one.
     # On EVERY boot, and it revokes as well as grants: removing somebody's
@@ -73,11 +75,36 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# OPENAPI DOCS ARE OFF IN PRODUCTION, and this is the third behaviour to hang
+# off ENV rather than the first. auth/otp.py prints every OTP code to the logs
+# when ENV is "development" and gateway_router advertises mock payments when ENV
+# is not "production"; a box whose ENV is wrong is already in trouble, and this
+# adds one more reason to get it right rather than a new kind of risk.
+#
+# WHAT IS ACTUALLY AT STAKE. /docs and /openapi.json publish every route, every
+# request schema and every field name in the API, including the admin surface
+# and the payout endpoints, to anyone who asks for the URL. None of that is a
+# secret in the sense that knowing it grants access, and all of it is a map:
+# the fastest way to find the one endpoint whose authorization is weaker than
+# its neighbours is to read the list. The API is bilingual and public-facing,
+# so the list is worth something to somebody.
+#
+# NOT SECURITY BY OBSCURITY IN PLACE OF AUTHORIZATION. Every route keeps the
+# authorization it had. This removes a free index of them.
+#
+# openapi_url has to go too, not just docs_url. FastAPI serves the schema from
+# its own path, and leaving it reachable while hiding the two HTML viewers is
+# the version of this change that looks done and is not.
+_docs_enabled = settings.env != "production"
+
 app = FastAPI(
     title="Kolabo API",
     description="Bilingual influencer marketing marketplace for Africa",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
 )
 
 # Allow the browser based web app to call the API cross origin. Origins are

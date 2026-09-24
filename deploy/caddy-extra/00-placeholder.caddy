@@ -1,0 +1,31 @@
+# Keep this file. It is the only tracked thing in this directory and its whole
+# job is to make sure `import /etc/caddy/extra/*.caddy` in deploy/Caddyfile
+# matches at least one file on every box.
+#
+# An import glob that matches nothing is, depending on the Caddy version,
+# either a warning or a refusal to load the config. There is no reason to find
+# out which on a box that terminates TLS for more than one product, so the glob
+# is never allowed to come up empty.
+#
+# It contains no configuration, which is valid: an imported file is spliced in
+# where the import sits, and splicing in nothing but comments adds nothing.
+#
+# REAL SITE BLOCKS GO IN SIBLING FILES, named so the order is obvious, for
+# example 10-shared-edge.caddy. Everything in here except this file is
+# gitignored and therefore specific to the box it is on.
+#
+# A block here that proxies to a container in ANOTHER compose project also
+# needs caddy to be on that project's network. Copy
+# docker-compose.local.yml.example to docker-compose.local.yml and add it
+# there; deploy/up.sh picks that file up on its own.
+#
+# After editing anything in this directory, validate before you reload. From
+# deploy/:
+#
+#   docker run --rm --env-file .env \
+#     -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+#     -v "$PWD/caddy-extra:/etc/caddy/extra:ro" \
+#     caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#
+# That reads the same two mounts the real container gets and touches nothing
+# that is running.

@@ -6,13 +6,16 @@
 # in git, which is what deploy/Caddyfile no longer being able to name a hostname
 # is there to guarantee.
 #
-# Run from this directory:
-#   bash checks/preflight-env.sh
-#   docker compose -f docker-compose.prod.yml up -d --build
+# DO NOT RUN THIS FILE DIRECTLY. From this directory:
 #
-# The preflight first, every time. It costs a second and it refuses on the
-# misconfigurations that otherwise present as a working box pointed at the wrong
-# environment.
+#   bash up.sh
+#
+# up.sh runs checks/preflight-env.sh first and refuses on the misconfigurations
+# that otherwise present as a working box pointed at the wrong environment, and
+# it adds docker-compose.local.yml when the box has one. A bare
+# `docker compose -f docker-compose.prod.yml up` skips both, and on a box whose
+# caddy fronts more than Kolabo the second of those takes two other products'
+# hostnames to 502 with nothing saying why.
 #
 # HOW THIS DIFFERS FROM THE ROOT docker-compose.yml, which stays as it is for
 # local development:

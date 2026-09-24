@@ -50,22 +50,26 @@ x-logging: &default-logging
 
 services:
   db:
-    # NOT PINNED TIGHTER THAN THE MAJOR VERSION, and that is a known gap rather
-    # than a preference. `postgres:16` is a moving tag: the next `up` after
-    # upstream publishes a new 16.x quietly restarts the database on a different
-    # binary, which is exactly the class of change a production box should make
-    # deliberately.
+    # PINNED BY DIGEST, NOT BY TAG. `postgres:16` is a moving tag: the next `up`
+    # after upstream published a new 16.x would have quietly restarted the
+    # database on a different binary, which is not a change a box holding the
+    # only copy of the product's data should make as a side effect of a deploy.
     #
-    # The right pin is a digest, and a digest can only be read from a machine
-    # that has already pulled the image, so it cannot be written here from a
-    # chat window without guessing at a tag that may not exist. On the server:
+    # THIS DIGEST IS THE IMAGE THE DEV BOX WAS ALREADY RUNNING when it was
+    # pinned on 2026-09-24, read off that box rather than guessed at. So pinning
+    # it changed nothing at the moment it was pinned, which is the point: the pin
+    # freezes what is known good, it does not move to something new.
     #
+    # TO MOVE IT FORWARD, deliberately, on a box whose database is backed up:
+    #
+    #   docker pull postgres:16
     #   docker image inspect postgres:16 --format '{{index .RepoDigests 0}}'
     #
-    # then replace this line with that exact postgres@sha256:... value. Do the
-    # same for caddy:2-alpine below. Until then, a `docker compose pull` is a
-    # thing to do on purpose and not as part of a routine deploy.
-    image: postgres:16
+    # then put that value here in a pull request, and expect a database restart
+    # on the next up. A digest pin also means no upstream fix reaches this
+    # service until somebody does that, so it is worth doing on purpose every
+    # few months rather than never.
+    image: postgres@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -181,8 +185,12 @@ services:
       - backend
 
   caddy:
-    # Same moving-tag caveat as the postgres image above, and the same fix.
-    image: caddy:2-alpine
+    # Pinned by digest for the reason given on the db service above, and with
+    # more at stake here: this container terminates TLS for three products on the
+    # dev box, so an unannounced Caddy version change is an unannounced change to
+    # all three at once. Same digest the box was already running on 2026-09-24,
+    # and the same procedure above to move it forward with `caddy:2-alpine`.
+    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     restart: unless-stopped
     logging: *default-logging
     ports:

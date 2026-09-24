@@ -175,5 +175,5 @@ if (( errors > 0 )); then
 fi
 echo "No problems, $warnings warning(s). deploy/.env is consistent."
 echo
-echo "Next:  docker compose -f docker-compose.prod.yml up -d --build"
+echo "Run from deploy/:  bash up.sh   (which is what just called this)"
 exit 0

@@ -71,3 +71,27 @@
 	# rule here would give a false sense of protection and break silently the
 	# day they change ranges.
 }
+
+# ANYTHING ELSE THIS BOX FRONTS. One line, and it is the one that stops this
+# file from being edited on a server ever again.
+#
+# THE DEV BOX WAS ALREADY DOING THAT, and nothing in git could show it. This
+# container is the shared TLS edge for three products, not one: Kolabo's two
+# hostnames plus FastaNow's three and Educazzi's three, eight in total, added
+# straight into this tracked file on the box on at least three separate
+# occasions (Caddyfile.before-fastanow, .before-fastanow-web, .before-educazzi
+# were sitting beside it). So the repository's copy of this file was a fiction,
+# `git pull` refused to run, and the first deploy that forced past that refusal
+# would have taken two other products down with no warning and no obvious cause.
+#
+# Site blocks for anything that is not Kolabo now go in deploy/caddy-extra/,
+# which is gitignored and therefore per box. Nothing about the other products
+# enters this repository, and nothing this repository ships can delete their
+# routing.
+#
+# WHAT THE IMPORTED BLOCKS CAN AND CANNOT REACH. Caddy resolves an upstream name
+# when a request arrives, not when the config loads, so a block naming a
+# container that is not on any network caddy has joined loads fine and answers
+# 502. Joining that network is the other half, and it belongs in
+# docker-compose.local.yml rather than here: see the .example beside it.
+import /etc/caddy/extra/*.caddy

@@ -103,13 +103,15 @@ AND THE REST:
   FEDAPAY_WEBHOOK_SECRET   the dashboard's Webhooks tab, prefixed wh_.
                            NOT the same value as FEDAPAY_SECRET_KEY.
 
-Then CHECK IT BEFORE STARTING ANYTHING, because a box that starts on a bad
-hostname still spends one of Let's Encrypt's five certificate attempts per
+Then ONE COMMAND brings it up. It runs the preflight first and refuses to start
+anything if deploy/.env cannot work, which matters because a box that starts on
+a bad hostname still spends one of Let's Encrypt's five certificate attempts per
 hostname per week:
 
-  bash checks/preflight-env.sh
+  bash up.sh
 
-And only once that passes:
-  docker compose -f docker-compose.prod.yml up -d --build
+To see the preflight's findings without starting anything:
+
+  bash checks/preflight-env.sh
 
 EOF

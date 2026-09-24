@@ -23,3 +23,30 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Deploy: everything in here is per box and none of it belongs in git.
+#
+# THIS SECTION EXISTS BECAUSE OF WHAT WAS FOUND SITTING IN deploy/ ON THE DEV
+# BOX, untracked and NOT ignored: two copies of the live .env, a full
+# kolabo-*.sql.gz database dump, and four hand-made backups of tracked files.
+# `.env` was ignored; `.env.save` was not, because the pattern has no wildcard.
+# One `git add -A` in that directory would have committed every credential the
+# stack has plus every user row, every verification document ciphertext and
+# every social OAuth token, into a history that cannot be cleanly rewritten.
+# Nothing was committed. The window is now closed rather than left open.
+deploy/.env.save*
+deploy/.env.bak*
+deploy/*.sql
+deploy/*.sql.gz
+deploy/*.dump
+deploy/*.before-*
+deploy/Caddyfile.*
+
+# Per box compose additions, picked up automatically by deploy/up.sh. The
+# .example beside it stays tracked.
+deploy/docker-compose.local.yml
+
+# Site blocks for whatever else a box fronts. The placeholder stays tracked so
+# the import glob in deploy/Caddyfile always matches at least one file.
+deploy/caddy-extra/*.caddy
+!deploy/caddy-extra/00-placeholder.caddy

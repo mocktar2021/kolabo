@@ -6,13 +6,16 @@
 # in git, which is what deploy/Caddyfile no longer being able to name a hostname
 # is there to guarantee.
 #
-# Run from this directory:
-#   bash checks/preflight-env.sh
-#   docker compose -f docker-compose.prod.yml up -d --build
+# DO NOT RUN THIS FILE DIRECTLY. From this directory:
 #
-# The preflight first, every time. It costs a second and it refuses on the
-# misconfigurations that otherwise present as a working box pointed at the wrong
-# environment.
+#   bash up.sh
+#
+# up.sh runs checks/preflight-env.sh first and refuses on the misconfigurations
+# that otherwise present as a working box pointed at the wrong environment, and
+# it adds docker-compose.local.yml when the box has one. A bare
+# `docker compose -f docker-compose.prod.yml up` skips both, and on a box whose
+# caddy fronts more than Kolabo the second of those takes two other products'
+# hostnames to 502 with nothing saying why.
 #
 # HOW THIS DIFFERS FROM THE ROOT docker-compose.yml, which stays as it is for
 # local development:
@@ -193,6 +196,11 @@ services:
       # the server to point at a second environment works exactly until the next
       # `git pull` reverts it and takes TLS down with it.
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Site blocks for anything else this box fronts, imported by the last
+      # line of the Caddyfile. Gitignored apart from one placeholder, so a box
+      # that fronts only Kolabo mounts a directory with nothing in it and a box
+      # that fronts three products keeps its routing out of this repository.
+      - ./caddy-extra:/etc/caddy/extra:ro
       # Certificates and ACME account keys. NAMED VOLUMES, so a
       # `docker compose down` does not throw away the certificates and send you
       # back to Let's Encrypt for new ones. Their rate limit is five per week

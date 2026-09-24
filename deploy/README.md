@@ -12,13 +12,17 @@ This page is written from the dev box as the worked example. Substitute your own
 | API | `https://api.kolabo.mocktar.com` (`API_HOSTNAME=api.kolabo.mocktar.com`) |
 | Payments | **FedaPay sandbox only.** No real money can move. |
 
-Five URLs in `deploy/.env` have to agree with those two hostnames, and each of them has been wrong at least once with no error message anywhere. Do not check them by eye:
+**One command brings an environment up, on every box:**
+
+```bash
+cd kolabo/deploy && bash up.sh
+```
+
+`up.sh` runs `checks/preflight-env.sh` first and stops if it refuses, then composes. Five URLs in `deploy/.env` have to agree with the two hostnames, and each of them has been wrong at least once with no error message anywhere, so the check is inside the command rather than beside it in this file. The preflight refuses on anything empty, on a hostname carrying a scheme or a port, and on `CORS_ORIGINS`, `API_PUBLIC_BASE_URL`, `WEB_PUBLIC_BASE_URL`, `PAYMENT_RETURN_URL` or `VITE_API_URL` disagreeing with the pair. Run it on its own any time:
 
 ```bash
 bash checks/preflight-env.sh
 ```
-
-It refuses on anything empty, on a hostname carrying a scheme or a port, and on `CORS_ORIGINS`, `API_PUBLIC_BASE_URL`, `WEB_PUBLIC_BASE_URL`, `PAYMENT_RETURN_URL` or `VITE_API_URL` disagreeing with the pair. Run it before every `up`, not only the first one.
 
 **The dev box is a development environment on a public hostname.** Those two facts pull in opposite directions: it is reachable by anyone, and it is configured for convenience. Everything under "Before you start" exists because of that tension, in particular the two committed default secrets, which protect nothing until you replace them. A production box is the same stack with `ENV=production`, which turns off the OTP codes in the logs, the mock payment fallback and the OpenAPI docs, and makes `config.py` refuse to boot on either committed default secret.
 
@@ -95,9 +99,7 @@ cd kolabo/deploy
 bash bootstrap-env.sh   # generates the three secrets into a new .env, mode 600
 $EDITOR .env            # ENV, the two hostnames, the five URLs, FedaPay keys
 
-bash checks/preflight-env.sh   # refuses rather than letting you start wrong
-
-docker compose -f docker-compose.prod.yml up -d --build
+bash up.sh              # preflights, refuses if wrong, then builds and starts
 docker compose -f docker-compose.prod.yml logs -f
 ```
 
@@ -114,6 +116,33 @@ The first build takes a few minutes (the web image runs `tsc && vite build`, so 
 | `sweeps` | The four money jobs on a timer. See §8 — without it the money path is incomplete. |
 | `web` | nginx serving the built SPA, with the fallback that makes `/checkout/return` work. |
 | `caddy` | TLS for both hostnames. The only service that publishes ports. |
+
+### If this box fronts more than Kolabo
+
+The dev box's `caddy` is the shared TLS edge for three products: Kolabo's two hostnames plus FastaNow's three and Educazzi's three. **That arrangement is supported and none of it lives in this repository.**
+
+Two per box pieces, both gitignored:
+
+| Piece | What it does |
+|---|---|
+| `deploy/caddy-extra/*.caddy` | Site blocks for the other products. The last line of `deploy/Caddyfile` is `import /etc/caddy/extra/*.caddy`, and the directory is mounted read only into the container. `00-placeholder.caddy` is tracked and only exists so the glob always matches something. |
+| `deploy/docker-compose.local.yml` | Puts caddy on the other projects' network, so `reverse_proxy api:8000` in those blocks resolves. Copy it from the `.example`. `up.sh` includes it automatically; a box without it behaves exactly as before. |
+
+The network cannot go in `docker-compose.prod.yml`, because `external: true` makes compose refuse to start anything at all where that network does not exist, which is every other box.
+
+**How this used to work, and why it stopped.** The extra site blocks were added straight into the tracked `Caddyfile` on the server, three separate times. `git pull` then refused to run, and the first deploy that forced past that refusal would have replaced an eight hostname config with a two hostname one and taken two other products offline, with nothing in this repository able to hint that they existed.
+
+**Validate before you reload, because a bad config here takes down every product on the box**, not only Kolabo. This reads the same two mounts the real container gets and touches nothing that is running:
+
+```bash
+cd kolabo/deploy
+docker run --rm --env-file .env \
+  -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  -v "$PWD/caddy-extra:/etc/caddy/extra:ro" \
+  caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+Caddy resolves an upstream container name when a request arrives rather than when the config loads, so a block naming a container on a network caddy has not joined validates and starts fine, and answers 502. A 502 on one product's hostname with the others healthy means the network, not the Caddyfile.
 
 ---
 
@@ -226,21 +255,35 @@ A quiet pass logs nothing at INFO — that is deliberate, so the pass that actua
 
 ```bash
 cd kolabo && git pull
-cd deploy && docker compose -f docker-compose.prod.yml up -d --build
+cd deploy && bash up.sh
 ```
 
 Migrations run automatically on backend start.
 
-**Changing `VITE_API_URL` needs a rebuild, not a restart.** Vite substitutes it into the bundle at build time, so there is no runtime environment left to read. `docker compose -f docker-compose.prod.yml up -d --build web`.
+**`git pull` refusing with "local changes would be overwritten" is the system working.** Somebody has edited a tracked file on this box. Find out what it was before you discard it, because on a box that fronts more than one product those edits may be the only copy of another product's routing:
+
+```bash
+git status --short
+git diff -- deploy/ > ~/deploy-local-changes.patch && cat ~/deploy-local-changes.patch
+```
+
+Anything in that diff that is genuinely per box belongs in `deploy/caddy-extra/` or `deploy/docker-compose.local.yml`, both gitignored. Anything that is not belongs in a pull request.
+
+**Changing `VITE_API_URL` needs a rebuild, not a restart.** Vite substitutes it into the bundle at build time, so there is no runtime environment left to read. `bash up.sh web`.
 
 ### Backups
 
-Nothing here backs up the database. For a dev environment that may be fine — but decide deliberately rather than by omission:
+Nothing here backs up the database. For a dev environment that may be fine, but decide deliberately rather than by omission:
 
 ```bash
+mkdir -p ~/kolabo-backups
 docker compose -f docker-compose.prod.yml exec -T db \
-  pg_dump -U kolabo kolabo | gzip > kolabo-$(date +%F).sql.gz
+  pg_dump -U kolabo kolabo | gzip > ~/kolabo-backups/kolabo-$(date +%F).sql.gz
 ```
+
+**Note the destination, because the earlier version of this line did not have one** and therefore wrote the dump into `deploy/`, inside the git working tree. That is how a `kolabo-2026-09-01.sql.gz` came to be sitting there untracked, one `git add -A` away from putting every user row, every verification document ciphertext and every social OAuth token into the repository's history. `.gitignore` now covers `deploy/*.sql.gz` as well, but the right answer is not to write it there in the first place.
+
+**A dump alone is not a recovery plan.** Restoring it without the matching `DOCUMENT_ENCRYPTION_KEY` leaves every verification document and every stored social token permanently unreadable, so the key has to be backed up separately and somewhere else. And a backup nobody has restored is not a backup: take a dump, restore it into a scratch database, confirm a document decrypts. Until that has been done once, treat the environment as unprotected.
 
 ---
 
@@ -258,7 +301,8 @@ docker compose -f docker-compose.prod.yml exec -T db \
 | Webhook stopped being delivered at all | The webhook's "disable on errors" toggle is on and FedaPay switched it off. Turn the toggle off (§6.2) and re-enable the endpoint. |
 | Checkout link no longer works | The token is single-use and expires after 24 hours. Start a new checkout rather than reusing the URL. |
 | CORS errors in the browser | `CORS_ORIGINS` must include exactly `https://$WEB_HOSTNAME`, scheme included, no trailing slash. `bash checks/preflight-env.sh` checks this. |
-| `caddy` exits immediately on start | `WEB_HOSTNAME` or `API_HOSTNAME` is unset in `deploy/.env`, so Caddy is parsing a site block with no address. Deliberate: the alternative to failing here is a box answering on the wrong name and getting a certificate to match. |
+| `caddy` exits immediately on start | `WEB_HOSTNAME` or `API_HOSTNAME` is unset in `deploy/.env`, so Caddy is parsing a site block with no address. Deliberate: the alternative to failing here is a box answering on the wrong name and getting a certificate to match. A bad file in `caddy-extra/` does the same thing; validate it with the command in §5 before reloading. |
+| Another product on this box suddenly answers 502 while Kolabo is fine | caddy came back up without `docker-compose.local.yml`, so it is not on that product's network and the container name in its site block no longer resolves. Use `bash up.sh`, which includes that file, rather than a bare `docker compose` command. |
 | Social connect finishes but the browser never returns to the page | `WEB_PUBLIC_BASE_URL` is unset or wrong, so `oauth_service.redirect_allowed` refuses the web app's own `redirect_to`, logs one line at WARNING and completes the connection anyway. `docker compose -f docker-compose.prod.yml logs backend \| grep -i redirect`. |
 | Escrow funded but stuck `pending` | Webhook not reaching you *and* the payer never returned. Check the webhook URL and the dashboard's delivery log. |
 | Creator never paid after release | Check the `payouts` table and the `sweeps` logs. `awaiting_method` means no wallet on file — expected, not an error. |
@@ -275,3 +319,4 @@ docker compose -f docker-compose.prod.yml exec -T db \
 - **Payments are UEMOA-only** (Benin, Togo, Côte d'Ivoire). Ghana and Cameroon refuse by design — see `docs/PAYMENTS_FEDAPAY.md`.
 - **`ENV` is now a required choice and `.env.example` ships it empty.** Three behaviours read it, all of them wrong in the unsafe direction on a box left saying `development`: `auth/otp.py` prints every OTP code to the container logs, `gateway_router.py` advertises `mock_payments` so checkout can settle without money moving, and `main.py` serves `/docs`, `/redoc` and `/openapi.json`. `config.py` separately refuses to boot with `ENV=production` while `JWT_SECRET` or `DOCUMENT_ENCRYPTION_KEY` is a committed default, which is the one check `checks/preflight-env.sh` deliberately does not duplicate.
 - **No database backup exists.** §9 has the `pg_dump` one-liner and nothing runs it. This is the outstanding blocker for putting real users on any environment, dev box included.
+- **The dev box's caddy is a single point of failure for three products.** Kolabo, FastaNow and Educazzi all terminate TLS through one container that this repository ships, so a Kolabo deploy that breaks the edge breaks all three. Supported now rather than accidental (§5), and still the wrong shape: the edge is shared infrastructure and wants to be its own small project that each product joins, rather than a service inside one of them. Production is a separate box and fronts Kolabo alone, so this is a dev box question only.

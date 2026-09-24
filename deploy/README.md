@@ -1,14 +1,26 @@
-# Deploying the Kolabo dev environment
+# Deploying a Kolabo environment
 
 One VPS, Docker Compose, Caddy for TLS.
 
-| | |
+**Nothing in `deploy/` names an environment any more.** Both hostnames come from `WEB_HOSTNAME` and `API_HOSTNAME` in `deploy/.env`, which is per box and gitignored, so the same branch and the same compose file stand up the dev box and production. `deploy/Caddyfile` used to spell out `kolabo.mocktar.com`, and because it is tracked in git and bind mounted read only into the container, that one fact was the whole reason a second environment could not exist: the only ways to change it were to edit a tracked file on the server, which the next `git pull` silently reverts and takes TLS down with it, or to fork the deploy directory.
+
+This page is written from the dev box as the worked example. Substitute your own two hostnames and it describes any environment; `claude/kolabo-production-setup-runbook.md` covers what production additionally needs.
+
+| | dev box, as an example |
 |---|---|
-| Web | `https://kolabo.mocktar.com` |
-| API | `https://api.kolabo.mocktar.com` |
+| Web | `https://kolabo.mocktar.com` (`WEB_HOSTNAME=kolabo.mocktar.com`) |
+| API | `https://api.kolabo.mocktar.com` (`API_HOSTNAME=api.kolabo.mocktar.com`) |
 | Payments | **FedaPay sandbox only.** No real money can move. |
 
-**This is a development environment on a public hostname.** Those two facts pull in opposite directions: it is reachable by anyone, and it is configured for convenience. Everything under "Before you start" exists because of that tension — in particular the two committed default secrets, which protect nothing until you replace them.
+Five URLs in `deploy/.env` have to agree with those two hostnames, and each of them has been wrong at least once with no error message anywhere. Do not check them by eye:
+
+```bash
+bash checks/preflight-env.sh
+```
+
+It refuses on anything empty, on a hostname carrying a scheme or a port, and on `CORS_ORIGINS`, `API_PUBLIC_BASE_URL`, `WEB_PUBLIC_BASE_URL`, `PAYMENT_RETURN_URL` or `VITE_API_URL` disagreeing with the pair. Run it before every `up`, not only the first one.
+
+**The dev box is a development environment on a public hostname.** Those two facts pull in opposite directions: it is reachable by anyone, and it is configured for convenience. Everything under "Before you start" exists because of that tension, in particular the two committed default secrets, which protect nothing until you replace them. A production box is the same stack with `ENV=production`, which turns off the OTP codes in the logs, the mock payment fallback and the OpenAPI docs, and makes `config.py` refuse to boot on either committed default secret.
 
 ---
 
@@ -80,8 +92,10 @@ ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw enable
 ```bash
 git clone https://github.com/mocktar2021/kolabo.git
 cd kolabo/deploy
-cp .env.example .env
-$EDITOR .env          # fill in every CHANGE THIS, and the FedaPay sandbox keys
+bash bootstrap-env.sh   # generates the three secrets into a new .env, mode 600
+$EDITOR .env            # ENV, the two hostnames, the five URLs, FedaPay keys
+
+bash checks/preflight-env.sh   # refuses rather than letting you start wrong
 
 docker compose -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.prod.yml logs -f
@@ -243,7 +257,9 @@ docker compose -f docker-compose.prod.yml exec -T db \
 | The checkout page declines every payment | The test number is not one of the two that succeed. `0166000001` or `0164000001`; everything else fails by design. See §7. |
 | Webhook stopped being delivered at all | The webhook's "disable on errors" toggle is on and FedaPay switched it off. Turn the toggle off (§6.2) and re-enable the endpoint. |
 | Checkout link no longer works | The token is single-use and expires after 24 hours. Start a new checkout rather than reusing the URL. |
-| CORS errors in the browser | `CORS_ORIGINS` must be exactly `https://kolabo.mocktar.com`, scheme included, no trailing slash. |
+| CORS errors in the browser | `CORS_ORIGINS` must include exactly `https://$WEB_HOSTNAME`, scheme included, no trailing slash. `bash checks/preflight-env.sh` checks this. |
+| `caddy` exits immediately on start | `WEB_HOSTNAME` or `API_HOSTNAME` is unset in `deploy/.env`, so Caddy is parsing a site block with no address. Deliberate: the alternative to failing here is a box answering on the wrong name and getting a certificate to match. |
+| Social connect finishes but the browser never returns to the page | `WEB_PUBLIC_BASE_URL` is unset or wrong, so `oauth_service.redirect_allowed` refuses the web app's own `redirect_to`, logs one line at WARNING and completes the connection anyway. `docker compose -f docker-compose.prod.yml logs backend \| grep -i redirect`. |
 | Escrow funded but stuck `pending` | Webhook not reaching you *and* the payer never returned. Check the webhook URL and the dashboard's delivery log. |
 | Creator never paid after release | Check the `payouts` table and the `sweeps` logs. `awaiting_method` means no wallet on file — expected, not an error. |
 
@@ -251,8 +267,11 @@ docker compose -f docker-compose.prod.yml exec -T db \
 
 ## 11. Known limitations of this environment
 
-- **`init_db()` still runs `create_all` on boot** alongside Alembic. Belt-and-braces, but it can mask a missing migration by creating a table Alembic never learned about — the schema-drift risk the testing plan already flags. Fine for a dev box; resolve before production.
+- ~~**`init_db()` still runs `create_all` on boot**~~ **Resolved.** Alembic is now the only thing that builds schema outside the test suite. Checked before removing it: all 37 tables in the model registry are created by a migration under `alembic/versions`, and the difference in both directions is empty. Two migration docstrings claim `notifications` is owned by no migration and exists only through `create_all`; both are wrong, the baseline `5f3a9c80d26f` creates it at line 117, and their inspector guards are harmless either way. A missing migration is now a missing table, loudly, instead of a table conjured from model metadata after `alembic upgrade head` has already reported success.
+- **The `postgres:16` and `caddy:2-alpine` tags are moving.** The next `up` after upstream publishes a new build quietly restarts on a different binary. The right pin is a digest and a digest can only be read from a box that has pulled the image: `docker image inspect postgres:16 --format '{{index .RepoDigests 0}}'`, then paste that `postgres@sha256:...` into the compose file. Until then, treat `docker compose pull` as a deliberate act rather than part of a routine deploy.
+- **The build happens on the server.** `npm ci && vite build` on a small VPS is the likeliest way a deploy fails, and it fails by being OOM-killed rather than by saying so. There is no image artifact anywhere, so there is also no rollback: the previous version exists only as a git commit that has to be rebuilt. Moving the build into CI and having the server pull a tagged image is the fix, and it is its own change.
 - **Single box, no redundancy.** Losing it loses the environment. Postgres data survives in a named volume unless you `docker compose down -v`.
 - **No log aggregation, metrics or alerting.** Diagnosis is `docker compose logs`.
 - **Payments are UEMOA-only** (Benin, Togo, Côte d'Ivoire). Ghana and Cameroon refuse by design — see `docs/PAYMENTS_FEDAPAY.md`.
-- **`ENV=development`**, which is what keeps `mock_payments` available as a fallback. Setting `ENV=production` disables it, so funding refuses outright when no gateway is configured.
+- **`ENV` is now a required choice and `.env.example` ships it empty.** Three behaviours read it, all of them wrong in the unsafe direction on a box left saying `development`: `auth/otp.py` prints every OTP code to the container logs, `gateway_router.py` advertises `mock_payments` so checkout can settle without money moving, and `main.py` serves `/docs`, `/redoc` and `/openapi.json`. `config.py` separately refuses to boot with `ENV=production` while `JWT_SECRET` or `DOCUMENT_ENCRYPTION_KEY` is a committed default, which is the one check `checks/preflight-env.sh` deliberately does not duplicate.
+- **No database backup exists.** §9 has the `pg_dump` one-liner and nothing runs it. This is the outstanding blocker for putting real users on any environment, dev box included.

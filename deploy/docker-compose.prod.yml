@@ -1,10 +1,22 @@
-# Kolabo dev environment — one VPS, four services behind Caddy.
+# Kolabo deployed environment: one VPS, five services behind Caddy.
 #
-# Run from this directory:  docker compose -f docker-compose.prod.yml up -d --build
+# THE SAME FILE SERVES EVERY ENVIRONMENT, and the file name is a leftover. It
+# is "prod" in the sense of "not the laptop", and it describes the dev box today
+# and production tomorrow. What differs between them is deploy/.env and nothing
+# in git, which is what deploy/Caddyfile no longer being able to name a hostname
+# is there to guarantee.
+#
+# Run from this directory:
+#   bash checks/preflight-env.sh
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# The preflight first, every time. It costs a second and it refuses on the
+# misconfigurations that otherwise present as a working box pointed at the wrong
+# environment.
 #
 # HOW THIS DIFFERS FROM THE ROOT docker-compose.yml, which stays as it is for
 # local development:
-#   * no source bind mounts and no --reload — the image is the artifact
+#   * no source bind mounts and no --reload, because the image is the artifact
 #   * no host port on Postgres, so the database is not on the public internet
 #     (the root compose publishes 5432, which is correct on a laptop and would
 #     be an open database on a VPS)
@@ -17,10 +29,42 @@
 
 name: kolabo
 
+# EVERY SERVICE GETS THE SAME LOG CEILING. Docker's default json-file driver has
+# no limit at all, so container logs grow until the disk is full, and the first
+# symptom of a full disk on this box is Postgres refusing writes. 30 MB per
+# service is enough history to diagnose a bad deploy and small enough that five
+# services cannot fill a small VPS.
+#
+# THIS IS ALSO WHY LOG LEVELS MATTER MORE THAN THEY LOOK. app/core/logging.py
+# holds the HTTP client loggers at WARNING; raising them puts one record per
+# outbound request in here, which both fills the ring faster and, before #195,
+# wrote credentials into it.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
+    # NOT PINNED TIGHTER THAN THE MAJOR VERSION, and that is a known gap rather
+    # than a preference. `postgres:16` is a moving tag: the next `up` after
+    # upstream publishes a new 16.x quietly restarts the database on a different
+    # binary, which is exactly the class of change a production box should make
+    # deliberately.
+    #
+    # The right pin is a digest, and a digest can only be read from a machine
+    # that has already pulled the image, so it cannot be written here from a
+    # chat window without guessing at a tag that may not exist. On the server:
+    #
+    #   docker image inspect postgres:16 --format '{{index .RepoDigests 0}}'
+    #
+    # then replace this line with that exact postgres@sha256:... value. Do the
+    # same for caddy:2-alpine below. Until then, a `docker compose pull` is a
+    # thing to do on purpose and not as part of a routine deploy.
     image: postgres:16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -42,7 +86,7 @@ services:
     # models. Alembic is idempotent: a no-op when already at head.
     #
     # ONE WORKER, ON PURPOSE. The sweeps run in their own container, and a
-    # second uvicorn worker would not double throughput on a dev box — it would
+    # second uvicorn worker would not double throughput on a dev box, it would
     # double the memory and make logs harder to read. Scale this when there is
     # traffic to justify it.
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
@@ -50,6 +94,35 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    logging: *default-logging
+    # WHAT THIS IS FOR, since nothing currently waits on it: a deploy that came
+    # up and a deploy that is running are different states, and `docker compose
+    # ps` could not tell them apart. The backend runs migrations before uvicorn
+    # binds, so a container can be "Up" for a minute while answering nothing,
+    # and the config validator in core/config.py can refuse to start at all on a
+    # bad deploy/.env. Both of those now show as unhealthy instead of as Up.
+    #
+    # It is what a promote-and-verify deploy needs to read, and it is the
+    # cheapest half of that to land now.
+    #
+    # DELIBERATELY NOT A GATE ON CADDY. Making the edge wait for the API to be
+    # healthy turns any bad API deploy into a total outage, TLS and web app
+    # included, instead of a 502 on one hostname. Caddy keeps its plain
+    # depends_on for that reason.
+    #
+    # urllib rather than curl because the image is python:3.12-slim and has no
+    # curl, and adding one to get a healthcheck is a package in the image for
+    # the life of the deployment.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      # Long enough to cover `alembic upgrade head` on a cold database. A
+      # migration that takes longer than this is a migration to run by hand.
+      start_period: 90s
     depends_on:
       db:
         condition: service_healthy
@@ -58,7 +131,7 @@ services:
   #
   # WITHOUT THIS CONTAINER THE MONEY PATH IS INCOMPLETE, which is easy to miss
   # because nothing errors: escrows never auto-release, un-delivered contracts
-  # never refund, disputes never reach the admin queue, and — most visibly — a
+  # never refund, disputes never reach the admin queue, and, most visibly, a
   # payout that failed on a network blip is never retried, so a creator who is
   # owed money stays owed it forever. Those four jobs had only admin-triggered
   # HTTP endpoints before; this runs them without anyone remembering to.
@@ -74,6 +147,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    logging: *default-logging
     depends_on:
       db:
         condition: service_healthy
@@ -82,7 +156,7 @@ services:
     build:
       context: ../web
       args:
-        # Baked into the bundle at build time — see web/Dockerfile. Changing
+        # Baked into the bundle at build time, see web/Dockerfile. Changing
         # this requires a rebuild, not a restart.
         VITE_API_URL: ${VITE_API_URL}
         # Same rule, and the one place it is easiest to get wrong. This has to
@@ -99,23 +173,30 @@ services:
         # POST /auth/google answer 503.
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - backend
 
   caddy:
+    # Same moving-tag caveat as the postgres image above, and the same fix.
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
     env_file:
       - .env
     volumes:
+      # READ ONLY AND TRACKED IN GIT, which is why the hostnames inside it come
+      # from env_file above rather than being written out. Editing this file on
+      # the server to point at a second environment works exactly until the next
+      # `git pull` reverts it and takes TLS down with it.
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Certificates and ACME account keys. NAMED VOLUMES, so a
       # `docker compose down` does not throw away the certificates and send you
-      # back to Let's Encrypt for new ones — their rate limit is five per week
-      # per hostname, and it is very easy to burn through while debugging.
+      # back to Let's Encrypt for new ones. Their rate limit is five per week
+      # per hostname and it is very easy to burn through while debugging.
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

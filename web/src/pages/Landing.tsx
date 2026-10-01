@@ -194,9 +194,8 @@ export default function Landing() {
     navigate(`/discover?${qs.toString()}`);
   }
 
-  /* PLACEHOLDER metrics — replace with real numbers before public launch.
-     This is the one band allowed to carry made-up numbers, and only with the
-     visible "exemples" note right under it. */
+  /* Trust band cells: four statements about how a collaboration is
+     protected. No figures here, and none waiting to be filled in later. */
   const trustStats = [
     { v: t("landing.tb1v"), l: t("landing.tb1l") },
     { v: t("landing.tb2v"), l: t("landing.tb2l") },
@@ -214,12 +213,14 @@ export default function Landing() {
   /* The market running the other way, for brands: post a brief and let
      creators come to you, instead of contacting them one at a time.
 
-     NOT ONE NUMBER IN THIS COPY, and unlike the trust band above there is no
-     "exemples" note to excuse one. We do not know how many creators are on
-     the platform, how fast a brief fills, or what a typical application looks
-     like — and a marketing figure nobody can stand behind is how a brand
-     stops believing the rest of the page. The only digits rendered here are
-     the step ordinals .step-grid draws, which are structure and not a claim.
+     NOT ONE NUMBER IN THIS COPY, and no "exemples" note anywhere on the page
+     to excuse one either: the trust band above used to carry four invented
+     counters behind exactly that excuse, and it no longer does. We do not
+     know how many creators are on the platform, how fast a brief fills, or
+     what a typical application looks like, and a marketing figure nobody can
+     stand behind is how a brand stops believing the rest of the page. The
+     only digits rendered here are the step ordinals .step-grid draws, which
+     are structure and not a claim.
 
      The copy also has to be honest about the soft filter, because a brand
      that thinks it set a hard one declines off-target applications unread:
@@ -373,7 +374,7 @@ export default function Landing() {
         </section>
       )}
 
-      {/* PLACEHOLDER metrics — replace with real numbers before public launch */}
+      {/* Trust band: the non-numeric trust statements built above. */}
       <section className="container section tb-band">
         {/* The heading is a heading. It used to be a small grey label above
             four large stat cards, which made it read as a caption belonging to
@@ -473,7 +474,7 @@ export default function Landing() {
       <section className="time-band">
         <div className="container">
           <p className="time-kicker">{t("landing.timeKicker")}</p>
-          <h2><s>{t("landing.timeOld")}</s> <span className="time-arrow">→</span> {t("landing.timeNew")}</h2>
+          <h2>{t("landing.timeHeadline")}</h2>
           <p className="time-line">{t("landing.timeLine")}</p>
           <Link className="btn btn-teal btn-lg" to="/register">{t("landing.timeCta")}</Link>
         </div>
@@ -536,26 +537,6 @@ export default function Landing() {
             ))}
           </div>
         </div>
-      </section>
-
-      <section className="container section">
-        <h2>{t("landing.testimonials")}</h2>
-        <p className="section-sub">{t("landing.testimonialsSub")}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
-          {[1, 2, 3].map((n) => (
-            <div className="quote-card" key={n}>
-              <p>{t(`landing.quote${n}`)}</p>
-              <div className="quote-who">
-                <span className="quote-avatar" aria-hidden="true" />
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{t(`landing.quote${n}Who`)}</div>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{t(`landing.quote${n}Role`)}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="hint" style={{ marginTop: 14 }}>{t("landing.placeholderNote")}</p>
       </section>
 
       {/* id="faq" is where the footer's "Questions fréquentes" / "FAQ" link

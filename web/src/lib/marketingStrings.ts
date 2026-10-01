@@ -1,6 +1,8 @@
 /* Marketing site copy (landing, nav, footer), kept in its own bundle so the
-   core app strings stay readable. Social proof numbers and quotes are clearly
-   marked placeholders until pilot data exists. Feature claims describe only
+   core app strings stay readable. Nothing here states a figure the platform
+   cannot evidence: no user or deliverable counts, no invented testimonials,
+   no before-and-after timings. The page is public, so a placeholder number
+   left in it is a false claim, not a to-do. Feature claims describe only
    shipped features: discovery, campaigns, proposals and negotiation,
    contracts, escrow payments, per-campaign messaging, reviews, FR/EN. */
 import i18n from "../i18n";
@@ -41,14 +43,15 @@ const fr = {
     featured: "Des créateurs prêts à collaborer",
     featuredSub: "Profils vérifiés, tarifs affichés.",
     seeAll: "Voir tous les créateurs",
-    /* PLACEHOLDER metrics — replace with real numbers before public launch.
-       The note key right below keeps the visible "exemples" convention. */
-    trustedBy: "Ils nous font confiance",
-    trustedByNote: "Chiffres d'exemple, à remplacer par les données du pilote.",
-    tb1v: "500+", tb1l: "Créateurs inscrits",
-    tb2v: "120+", tb2l: "Marques actives",
-    tb3v: "1 000+", tb3l: "Contenus livrés",
-    tb4v: "300+", tb4l: "Avis 5 étoiles",
+    /* Trust band. Four statements about how a collaboration is protected,
+       not four counters: this page is public and the pilot has no numbers
+       worth quoting. Keep this band free of figures. */
+    trustedBy: "Ce qui sécurise chaque collaboration",
+    trustedByNote: "Pilote au Bénin et au Togo.",
+    tb1v: "Séquestre", tb1l: "Les fonds sont bloqués jusqu'à la validation",
+    tb2v: "Profils vérifiés", tb2l: "Identité et comptes contrôlés avant publication",
+    tb3v: "Mobile Money", tb3l: "Paiement dans votre devise locale",
+    tb4v: "Recherche gratuite", tb4l: "Aucun compte requis pour parcourir",
     howItWorks: "Comment ça marche", howItWorksSub: "De la recherche au paiement, en quatre étapes.",
     step1t: "Trouvez un créateur", step1d: "Recherchez par niche, pays et audience. La recherche est gratuite.",
     step2t: "Convenez des termes", step2d: "Choisissez une offre ou négociez une campagne sur mesure.",
@@ -83,9 +86,11 @@ const fr = {
     toolsBody: "Recherche. Brief. Négociation. Contrat. Paiement. Suivi. Aujourd'hui : WhatsApp, Excel, virements manuels et contrats papier. Kolabo réunit tout au même endroit.",
     toolsT1: "WhatsApp", toolsT2: "Excel", toolsT3: "Virements", toolsT4: "Contrats papier", toolsT5: "E-mails", toolsT6: "Notes",
     toolsHub: "Kolabo",
-    /* Time band. */
-    timeKicker: "Le temps de gestion d'une campagne",
-    timeOld: "40 heures", timeNew: "1 heure",
+    /* Time band. One plain headline. The struck-through "40 heures" against
+       "1 heure" that used to sit here was an invented measurement, so there
+       is nothing to restore once the pilot reports. */
+    timeKicker: "La gestion d'une campagne",
+    timeHeadline: "Moins d'allers-retours, plus de collaborations.",
     timeLine: "Relances, suivi des paiements et reporting tournent tout seuls. Il ne vous reste que les décisions.",
     timeCta: "Commencer gratuitement",
     whySub: "Ce qui compte vraiment sur nos marchés.",
@@ -96,14 +101,6 @@ const fr = {
     team2t: "Agences", team2d: "Gérez plusieurs campagnes et créateurs depuis un seul compte. Contrats et paiements sont générés pour vous.", team2b: "Créer un compte agence",
     team3t: "Entrepreneurs", team3d: "Trouvez un créateur adapté à votre budget, sans intermédiaire. Commandez une offre à prix fixe en quelques minutes.", team3b: "Trouver un créateur",
     team4t: "ONG & institutions", team4d: "Faites porter vos messages par des voix locales de confiance. Chaque collaboration est contractualisée et traçable.", team4b: "Lancer une campagne",
-    testimonials: "Ce qu'ils en disent", testimonialsSub: "Exemples de témoignages.",
-    quote1: "Nous avons trouvé trois créateurs pertinents en une après-midi, et le paiement en séquestre a rassuré tout le monde.",
-    quote1Who: "Nom à venir", quote1Role: "Marque, Cotonou",
-    quote2: "Enfin une plateforme en français qui paie par Mobile Money. Je n'ai plus à courir après mes paiements.",
-    quote2Who: "Nom à venir", quote2Role: "Créatrice, Lomé",
-    quote3: "Le contrat généré automatiquement nous fait gagner un temps fou sur chaque collaboration.",
-    quote3Who: "Nom à venir", quote3Role: "Agence, Abidjan",
-    placeholderNote: "Témoignages provisoires, à remplacer par ceux du pilote.",
     faq: "Questions fréquentes",
     faq1q: "La recherche est-elle gratuite?", faq1a: "Oui. Parcourir et rechercher des créateurs ne demande aucun compte. Un compte est nécessaire pour enregistrer un créateur ou lancer une collaboration.",
     faq2q: "Comment fonctionne le paiement?", faq2a: "Les fonds sont bloqués en séquestre dès la signature du contrat, puis libérés au créateur une fois la livraison validée. Une commission plateforme est prélevée à la libération.",
@@ -154,14 +151,15 @@ const en = {
     featured: "Creators ready to collaborate",
     featuredSub: "Verified profiles, visible pricing.",
     seeAll: "See all creators",
-    /* PLACEHOLDER metrics — replace with real numbers before public launch.
-       The note key right below keeps the visible "examples" convention. */
-    trustedBy: "Trusted by",
-    trustedByNote: "Example figures, to be replaced with pilot data.",
-    tb1v: "500+", tb1l: "Creators signed up",
-    tb2v: "120+", tb2l: "Active brands",
-    tb3v: "1,000+", tb3l: "Deliverables completed",
-    tb4v: "300+", tb4l: "Five-star reviews",
+    /* Trust band. Four statements about how a collaboration is protected,
+       not four counters: this page is public and the pilot has no numbers
+       worth quoting. Keep this band free of figures. */
+    trustedBy: "What keeps every collaboration safe",
+    trustedByNote: "Pilot in Benin and Togo.",
+    tb1v: "Escrow", tb1l: "Funds are held until the work is validated",
+    tb2v: "Verified profiles", tb2l: "Identity and accounts checked before publication",
+    tb3v: "Mobile Money", tb3l: "Paid in your local currency",
+    tb4v: "Free search", tb4l: "No account needed to browse",
     howItWorks: "How it works", howItWorksSub: "From search to payment, in four steps.",
     step1t: "Find a creator", step1d: "Search by niche, country, and audience. Searching is free.",
     step2t: "Agree the terms", step2d: "Buy a package or negotiate a custom campaign.",
@@ -196,9 +194,11 @@ const en = {
     toolsBody: "Search. Brief. Negotiation. Contract. Payment. Tracking. Today that means WhatsApp, Excel, manual transfers, and paper contracts. Kolabo brings it all together in one place.",
     toolsT1: "WhatsApp", toolsT2: "Excel", toolsT3: "Bank transfers", toolsT4: "Paper contracts", toolsT5: "Emails", toolsT6: "Notes",
     toolsHub: "Kolabo",
-    /* Time band. */
-    timeKicker: "Time spent managing a campaign",
-    timeOld: "40 hours", timeNew: "1 hour",
+    /* Time band. One plain headline. The struck-through "40 hours" against
+       "1 hour" that used to sit here was an invented measurement, so there is
+       nothing to restore once the pilot reports. */
+    timeKicker: "Managing a campaign",
+    timeHeadline: "Fewer messages back and forth, more collaborations.",
     timeLine: "Status chasing, payment tracking, and reporting run on their own. All that's left for you is the decisions.",
     timeCta: "Start for free",
     whySub: "What actually matters in our markets.",
@@ -209,14 +209,6 @@ const en = {
     team2t: "Agencies", team2d: "Manage several campaigns and creators from one account. Contracts and payments are generated for you.", team2b: "Create an agency account",
     team3t: "Entrepreneurs", team3d: "Find a creator that fits your budget, with no middleman. Order a fixed-price package in minutes.", team3b: "Find a creator",
     team4t: "NGOs & institutions", team4d: "Have trusted local voices carry your message. Every collaboration is contracted and traceable.", team4b: "Start a campaign",
-    testimonials: "What people say", testimonialsSub: "Example testimonials.",
-    quote1: "We found three relevant creators in an afternoon, and escrow made everyone comfortable.",
-    quote1Who: "Name to come", quote1Role: "Brand, Cotonou",
-    quote2: "Finally a platform in French that pays by Mobile Money. No more chasing payments.",
-    quote2Who: "Name to come", quote2Role: "Creator, Lome",
-    quote3: "The auto generated contract saves us real time on every collaboration.",
-    quote3Who: "Name to come", quote3Role: "Agency, Abidjan",
-    placeholderNote: "Placeholder testimonials, to be replaced with real pilot quotes.",
     faq: "Frequently asked questions",
     faq1q: "Is searching free?", faq1a: "Yes. Browsing and searching creators needs no account. An account is needed to save a creator or start a collaboration.",
     faq2q: "How does payment work?", faq2a: "Funds are held in escrow once the contract is signed, then released to the creator after you approve delivery. A platform commission is taken at release.",

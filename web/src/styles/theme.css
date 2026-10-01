@@ -433,11 +433,6 @@ button.nav-link { background: none; border: none; cursor: pointer; font-family: 
   display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; margin-bottom: 10px;
 }
 
-.quote-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
-.quote-card p { font-size: 15px; margin: 0 0 14px; }
-.quote-who { display: flex; align-items: center; gap: 10px; }
-.quote-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--gradient-brand); flex-shrink: 0; }
-
 .faq-item { border-bottom: 1px solid var(--line); padding: 16px 0; }
 .faq-item h4 { margin: 0 0 6px; font-size: 15.5px; }
 .faq-item p { margin: 0; color: var(--muted); font-size: 14.5px; }
@@ -548,23 +543,25 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
   .pp-rail { position: static; }
 }
 
-/* ---- Landing: trusted-by stat grid ----
-   The band states four numbers and then admits they are examples, so it has
-   to carry itself: whispering placeholder figures in small grey type reads
-   as an apology. Cards, room to breathe, and numbers big enough to be the
-   point of the section. */
+/* ---- Landing: trust band ----
+   Four cards, each naming one protection the platform actually provides.
+   It used to state four invented counters, which is why the cells are sized
+   to carry a headline rather than a caption. */
 .tb-band { padding: 64px 0; }
 .tb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; max-width: 860px; margin: 0 auto; text-align: center; }
 .tb-cell {
   background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm); padding: 36px 26px;
 }
-/* clamp() rather than a font-size breakpoint: the number grows with the
+/* clamp() rather than a font-size breakpoint: the value grows with the
    viewport instead of jumping once, so it is never larger than the card
-   holding it. Floor 2.5rem on a narrow phone, ceiling 4rem on a wide desk. */
+   holding it. Sized for words now and not for "500+": at the old 2.5rem to
+   4rem a phrase like "Recherche gratuite" ran straight out of its cell, and
+   the grid stays two columns down to 320px. Floor 1.25rem, ceiling 2rem, and
+   line-height has room for the wrap a phrase takes on a narrow phone. */
 .tb-value {
   font-family: var(--font-display); font-weight: 700; color: var(--indigo);
-  font-size: clamp(2.5rem, 1.4rem + 3.2vw, 4rem); line-height: 1.05; letter-spacing: -0.02em;
+  font-size: clamp(1.25rem, 0.8rem + 1.4vw, 2rem); line-height: 1.2; letter-spacing: -0.01em;
 }
 .tb-label { color: var(--muted); font-size: 15.5px; margin-top: 8px; }
 
@@ -686,7 +683,6 @@ a.pp-chip:hover { border-color: var(--indigo-600); text-decoration: none; }
 .time-kicker { color: #8b93a7; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 10px; }
 .time-band h2 { color: #fff; font-size: 44px; margin-bottom: 12px; }
 .time-band s { color: #6b7285; text-decoration-color: var(--terracotta); text-decoration-thickness: 3px; }
-.time-arrow { color: var(--teal); }
 .time-line { color: #b9bfcc; font-size: 16px; max-width: 40em; margin: 0 auto 26px; }
 
 /* ---- Landing: teams grid ("Pensé pour toutes les tailles") ---- */

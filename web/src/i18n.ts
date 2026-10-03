@@ -151,7 +151,7 @@ const resources = {
         title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
         category: "Catégorie", country: "Pays", platform: "Plateforme", minFollowers: "Abonnés min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun créateur trouvé.",
-        creator: "Créateur", verified: "Vérifié", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
+        creator: "Créateur", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
       public: {
         notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.",
@@ -436,7 +436,7 @@ const resources = {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
         category: "Category", country: "Country", platform: "Platform", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
-        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
+        creator: "Creator", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
       },
       public: {
         notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.",

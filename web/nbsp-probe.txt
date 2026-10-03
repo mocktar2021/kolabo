@@ -1,0 +1,5 @@
+A single backslash u:  
+B double backslash u: \\u00A0
+C triple backslash u: \\ 
+D backslash then separate: \ u00A0
+END

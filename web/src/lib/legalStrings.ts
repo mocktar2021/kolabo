@@ -89,6 +89,15 @@
    AT mocktar.com/legal/entities, so that page has to carry the relationship
    between the two entities before either is relied on.
 
+   KOLABO'S GENDER IS NOT CONSISTENT ACROSS THE TWO DOCUMENTS, and that is a
+   live question for whoever reviews the French rather than a settled
+   decision. legal.privacy.intro says "Kolabo est exploité" and
+   legal.terms.availability says "Kolabo est fourni", both masculine, while
+   legal.terms.group says "Kolabo est exploitée", feminine, reading it as the
+   place de marché. Each is defensible on its own and all three were supplied
+   that way. Settle it in one pass, in both documents, rather than one string
+   at a time.
+
    Every factual claim below was checked against the repo at main @ c447e4ad
    and re-checked for the email identity flip: the EMAIL ADDRESS as the login
    identity with the phone number nullable and optional
@@ -291,13 +300,19 @@ const fr = {
        document, offPlatform no longer counts verification among the
        protections, changes no longer promises in-app notice in advance, and
        ten em dashes became colons and full stops. The header lists all five
-       changes and what was NOT re-verified. */
+       changes and what was NOT re-verified.
+
+       group READS "sont publiés", MASCULINE PLURAL, and that is deliberate:
+       the subject is compound and mixes "les informations d'immatriculation
+       complètes" with "le lien juridique entre elles". It is not a typo for
+       the "publiées" in legal.privacy.who above, where the subject really is
+       feminine plural. Do not "correct" either one into the other. */
     terms: {
       title: "Conditions générales d’utilisation",
 
       intro: "Les présentes conditions constituent un accord entre vous et Mocktar Technologies, société immatriculée au Bénin sous le numéro RCCM RB/COT/26 A 119654, IFU 1200900488800, dont le siège est C 1357 Houeyiho, 07BP91, Cotonou, Bénin, au sujet de votre utilisation de Kolabo.",
 
-      group: "Kolabo est exploitée au sein du groupe Mocktar Technologies, qui comprend également Mocktar Technologies LLC, immatriculée en Caroline du Nord, aux États-Unis. Les informations d’immatriculation complètes des deux entités, et le lien juridique entre elles, sont publiées à l’adresse suivante\u00A0:",
+      group: "Kolabo est exploitée au sein du groupe Mocktar Technologies, qui comprend également Mocktar Technologies LLC, immatriculée en Caroline du Nord, aux États-Unis. Les informations d’immatriculation complètes des deux entités, et le lien juridique entre elles, sont publiés à l’adresse suivante\u00A0:",
       groupLink: "mocktar.com/legal/entities",
 
       whatTitle: "Ce qu’est Kolabo",

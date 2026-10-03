@@ -82,7 +82,7 @@
 
    THE CONTRACTING ENTITY IS NAMED, AND SO IS THE OTHER ONE. legal.terms.intro
    identifies Mocktar Technologies in Benin by its register numbers and its
-   seat, and legal.terms.group discloses that Mocktar Technologies LLC in
+   address, and legal.terms.group discloses that Mocktar Technologies LLC in
    North Carolina belongs to the same group, with the entity register as a
    link. Somebody contracting with one company of a two-company group should
    not have to discover the second one from a footer. BOTH DOCUMENTS NOW POINT
@@ -139,7 +139,22 @@
       that we will tell users about material changes.
 
    4. intro named "Mocktar Technologies" with no register, no number and no
-      seat, which is not how a contracting party is identified.
+      address, which is not how a contracting party is identified.
+
+      IT ALSO CALLED THE BENIN ENTITY A "société", AND THAT WAS WRONG. The
+      founder's own entities page gives the legal form as an
+      ÉTABLISSEMENT, so the French now reads "établissement immatriculé"
+      — masculine, hence immatriculé rather than immatriculée — and says
+      "dont l’adresse est" rather than "dont le siège est", because a
+      siège social is a company's registered office and this is not a
+      company. THE ENGLISH DELIBERATELY DOES NOT TRANSLATE THE TERM: it
+      states the registration and the address and stops, because
+      "establishment", "sole proprietorship" and "firm" each import a
+      different legal meaning that nobody has advised is the right one.
+      Whether an établissement is the right contracting party for this
+      platform at all is a separate question with counsel, and this wording
+      is only here so that the registered form is not misstated in the
+      meantime. Expect her to change both languages.
 
    5. Ten em dashes came out of creators, disputes, ownership, liability and
       ending across the two languages. That is house style, enforced by
@@ -295,6 +310,11 @@ const fr = {
        carries a scheme or a slash, exactly as whoLink does in the privacy
        policy above.
 
+       intro CALLS THE BENIN ENTITY AN "établissement", NOT A "société", and
+       that is deliberate: it is the legal form the founder's own entities
+       page publishes. The participle is masculine to match. See point 4 in
+       the header for why the English does not translate the term.
+
        FOUR SENTENCES WERE NARROWED AGAINST #164 because the code does not do
        what they claimed: account no longer asks for a personal identity
        document, offPlatform no longer counts verification among the
@@ -310,7 +330,7 @@ const fr = {
     terms: {
       title: "Conditions générales d’utilisation",
 
-      intro: "Les présentes conditions constituent un accord entre vous et Mocktar Technologies, société immatriculée au Bénin sous le numéro RCCM RB/COT/26 A 119654, IFU 1200900488800, dont le siège est C 1357 Houeyiho, 07BP91, Cotonou, Bénin, au sujet de votre utilisation de Kolabo.",
+      intro: "Les présentes conditions constituent un accord entre vous et Mocktar Technologies, établissement immatriculé au Bénin sous le numéro RCCM RB/COT/26 A 119654, IFU 1200900488800, dont l’adresse est C 1357 Houeyiho, 07BP91, Cotonou, Bénin, au sujet de votre utilisation de Kolabo.",
 
       group: "Kolabo est exploitée au sein du groupe Mocktar Technologies, qui comprend également Mocktar Technologies LLC, immatriculée en Caroline du Nord, aux États-Unis. Les informations d’immatriculation complètes des deux entités, et le lien juridique entre elles, sont publiés à l’adresse suivante\u00A0:",
       groupLink: "mocktar.com/legal/entities",
@@ -451,11 +471,16 @@ const en = {
        the long note is above the French block and the header carries the
        governing-law decision and what about it is unverified. No
        non-breaking space belongs in any string below: that is French
-       typography, and English does not take it. */
+       typography, and English does not take it.
+
+       intro STATES THE BENIN REGISTRATION WITHOUT NAMING A LEGAL FORM. The
+       French says "établissement", which is what the entities page
+       publishes, and there is no English term for it that does not import a
+       different legal meaning. See point 4 in the header. */
     terms: {
       title: "Terms of Service",
 
-      intro: "These terms are an agreement between you and Mocktar Technologies, a company registered in Benin under RCCM RB/COT/26 A 119654, IFU 1200900488800, with its seat at C 1357 Houeyiho, 07BP91, Cotonou, Benin, about your use of Kolabo.",
+      intro: "These terms are an agreement between you and Mocktar Technologies, registered in Benin under RCCM RB/COT/26 A 119654, IFU 1200900488800, at C 1357 Houeyiho, 07BP91, Cotonou, Benin, about your use of Kolabo.",
 
       group: "Kolabo is operated within the Mocktar Technologies group, which also includes Mocktar Technologies LLC, registered in North Carolina, United States. Full registration details for both entities, and the legal relationship between them, are published at:",
       groupLink: "mocktar.com/legal/entities",

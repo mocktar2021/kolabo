@@ -47,7 +47,6 @@ function CreatorRow({ r, fav, onFav, onOpen }: {
             <Text style={styles.name} numberOfLines={1}>
               {r.display_name || t("discover.creator")}
             </Text>
-            {r.is_verified ? <Text style={styles.verified}>{t("discover.verified")}</Text> : null}
           </View>
           {r.headline ? (
             <Text style={styles.headline} numberOfLines={1}>{r.headline}</Text>
@@ -279,16 +278,6 @@ const styles = StyleSheet.create({
   avatarLetter: { fontSize: font.h2, fontFamily: family.display, color: colors.muted },
   nameRow: { flexDirection: "row", alignItems: "center", gap: space(2) },
   name: { fontSize: font.body, fontFamily: family.bodyBold, color: colors.ink, flexShrink: 1 },
-  verified: {
-    fontSize: font.tiny,
-    fontFamily: family.bodySemi,
-    color: colors.teal600,
-    backgroundColor: "#e7f6f0",
-    borderRadius: radius.pill,
-    paddingHorizontal: space(2),
-    paddingVertical: 2,
-    overflow: "hidden",
-  },
   headline: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 2 },
   meta: { fontFamily: family.body, fontSize: font.tiny, color: colors.muted, marginTop: 3 },
   price: { fontSize: font.small, fontFamily: family.bodySemi, color: colors.ink, marginTop: space(1.5) },

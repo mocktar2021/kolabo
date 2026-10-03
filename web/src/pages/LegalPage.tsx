@@ -2,24 +2,23 @@ import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 
-/* THE PRIVACY POLICY. One component, one route, one content set —
-   /legal/privacy in App.tsx.
+/* THE PRIVACY POLICY AND THE TERMS OF SERVICE. One component, two routes,
+   two content sets — /legal/privacy and /legal/terms in App.tsx.
 
-   IT IS STILL PARAMETERISED ON `doc` RATHER THAN HARD-WIRED TO THE ONE
-   DOCUMENT, because the Terms of Service is the next one and it is already
-   drafted: it is held back only because which entity contracts with users,
-   and under which law, is an open founder decision, and that answer changes
-   nothing in the privacy policy. When it arrives the Terms are a second
-   LegalDocument and a second route, not a second component.
+   PARAMETERISING ON `doc` IS WHY THE SECOND DOCUMENT COST NOTHING. When the
+   privacy policy shipped alone this component already took a LegalDocument
+   rather than hard-wiring the one it had, on the stated bet that the Terms
+   were coming. They are a second exported constant and a second route below,
+   and not one line of the rendering changed.
 
    NOT MarketingPage, WHICH IS THE OBVIOUS THING TO REACH FOR. That component
    takes one titleKey and one bodyKey and renders a heading and a paragraph,
-   which is the right shape for /for-brands and the wrong shape for a document
-   with eleven sections: a legal text read as one paragraph is a legal text
-   nobody reads, and an app-store reviewer looking for the deletion sentence
-   needs a heading to find it under.
+   which is the right shape for /for-brands and the wrong shape for documents
+   of eleven and sixteen sections: a legal text read as one paragraph is a
+   legal text nobody reads, and an app-store reviewer looking for the
+   deletion sentence needs a heading to find it under.
 
-   NO AUTH WRAPPER, AND THAT IS THE WHOLE POINT OF THE PAGE. The route is not
+   NO AUTH WRAPPER, AND THAT IS THE WHOLE POINT OF THE PAGE. Neither route is
    wrapped in BrandOnly, CreatorOnly or anything else, and Layout renders its
    MarketingNav for a signed-out visitor exactly as it does on /for-brands. A
    privacy policy that requires an account is not a published privacy policy —
@@ -30,21 +29,27 @@ import { Layout } from "../components/Layout";
    THE OUTLINE LIVES HERE AND THE WORDS LIVE IN lib/legalStrings.ts. That
    split is not decoration. main.tsx imports "./App" on its first line, so
    anything App.tsx reaches evaluates before the *Strings imports below it —
-   and legalStrings adds footer.privacy into the footer.* group
-   marketingStrings.ts owns, which only merges correctly if it is registered
-   after it. App.tsx imports this file for the document; this file imports
-   nothing from legalStrings, so that ordering holds. */
+   and legalStrings adds footer.privacy and footer.terms into the footer.*
+   group marketingStrings.ts owns, which only merges correctly if it is
+   registered after it. App.tsx imports this file for the two documents; this
+   file imports nothing from legalStrings, so that ordering holds. */
 
-/* THE SAME DATE IN BOTH LANGUAGES — English privacy and French privacy —
-   because it is one constant interpolated into one key rendered by one
-   component. Two hand-written dates is two chances to publish a policy that
-   says it took effect on a different day in French than in English, which is
-   the kind of discrepancy a regulator reads as carelessness about the rest of
-   it.
+/* THE SAME DATE ON ALL FOUR DOCUMENTS — English privacy, English terms,
+   French privacy, French terms — because it is one constant interpolated
+   into one key rendered by one component. Four hand-written dates is four
+   chances to publish a document that says it took effect on a different day
+   in French than in English, which is the kind of discrepancy a regulator
+   reads as carelessness about the rest of it.
+
+   IT MOVES WHEN EITHER DOCUMENT IS AMENDED, AND BOTH JUST WERE. The Terms
+   are published for the first time and the privacy policy's verification
+   paragraphs were narrowed in the same commit, so the one shared date
+   advances for both rather than the privacy policy keeping an earlier one it
+   no longer matches.
 
    ISO, not a localised date, deliberately: 03/04/2026 is March in one of the
    two languages this product ships in and April in the other. */
-export const LEGAL_EFFECTIVE_DATE = "2026-09-05";
+export const LEGAL_EFFECTIVE_DATE = "2026-10-03";
 
 /* A block of a legal document. `key` is relative to the document's `ns`, so
    the privacy policy's "Security" heading is { kind: "heading", key:
@@ -52,10 +57,10 @@ export const LEGAL_EFFECTIVE_DATE = "2026-09-05";
    also how it is spelled in lib/legalStrings.ts, so a key is still greppable
    from either end.
 
-   `list` rather than a run of paragraphs because the list in this document is
-   genuinely an enumeration — who else sees your data — and a reader scanning
-   for "does my payment provider get my number" finds a bullet faster than a
-   sentence. */
+   `list` rather than a run of paragraphs because both lists in these
+   documents are genuinely enumerations — who else sees your data, and the
+   seven rules of the escrow — and a reader scanning for "does Kolabo take a
+   commission on a refund" finds a bullet faster than a sentence. */
 export type LegalBlock =
   | { kind: "heading"; key: string }
   | { kind: "para"; key: string }
@@ -154,21 +159,98 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
   ]
 };
 
-/* THERE IS NO TERMS_DOCUMENT IN THIS FILE, AND THAT IS THE POINT OF THE
-   SPLIT. The Terms of Service is drafted — outline and copy both — and it is
-   blocked on one open founder decision: which entity contracts with the user
-   (Mocktar Technologies in Benin, or Mocktar Technologies LLC in North
-   Carolina) and under whose law. The clause is omitted rather than filled
-   with a placeholder because the two failures are not symmetrical: a Terms
-   page without it is incomplete, while a Terms page naming the wrong forum is
-   a representation made to every user who accepted it.
+/* THE TERMS OF SERVICE, AND THE SECTION THAT USED TO BE MISSING FROM IT.
 
-   Nothing in the privacy policy turns on that answer, and the things waiting
-   on a published privacy policy — Meta App Review's "Privacy policy URL" and
-   "User data deletion" fields among them — are not waiting on the Terms. So
-   the policy ships and the Terms follow: they stay on the branch of the pull
-   request that drafted both, and that branch is rebased onto this one to
-   carry the Terms alone. */
+   THE GOVERNING-LAW SECTION IS NOW IN THIS OUTLINE. Where the previous
+   version of this comment said there was no TERMS_DOCUMENT because the
+   clause was an open founder decision, the decision has been made: Benin law
+   and the courts of Cotonou, as governingTitle and governing, between
+   `changes` and `contactTitle` — which is both where a reader looks for it
+   and where the drafted document left the gap.
+
+   THAT DOES NOT MAKE THIS PAGE APPROVED. The clause rests on counsel's
+   reading of two things that nothing in this repo settles: that party
+   autonomy gives a chosen law and forum effect across the five launch
+   markets, and that creators contract here as sellers rather than as
+   consumers, so the protective consumer-forum rules do not pull a dispute
+   back to a creator's own country. lib/legalStrings.ts carries that note in
+   full. The Terms go back to counsel before they are relied on.
+
+   THE SECOND ENTITY IS DISCLOSED RATHER THAN LEFT TO A FOOTER. `intro`
+   identifies Mocktar Technologies in Benin by register number and seat, and
+   the `group` paragraph plus the `groupLink` block name Mocktar Technologies
+   LLC in North Carolina and point at the entity register. The same register
+   is linked again from the contact section, exactly as the privacy policy
+   links it twice and for the same reason: a reader who opened the document at
+   "Contact" should not have to scroll back to the top.
+
+   BOTH DOCUMENTS NOW POINT AT mocktar.com/legal/entities, so that page has to
+   carry the relationship between the two companies. It is the one claim on
+   this page whose truth lives outside this repo. */
+export const TERMS_DOCUMENT: LegalDocument = {
+  ns: "legal.terms",
+  blocks: [
+    { kind: "para", key: "intro" },
+    /* THE GROUP DISCLOSURE SITS WITH THE PARTY IT QUALIFIES, immediately
+       after the sentence that names the contracting company, rather than down
+       in the contact section. A reader learning which of two companies they
+       are dealing with should learn it where they are told who they are
+       dealing with. */
+    { kind: "para", key: "group" },
+    { kind: "link", key: "groupLink", href: "https://mocktar.com/legal/entities" },
+    { kind: "heading", key: "whatTitle" },
+    { kind: "para", key: "what" },
+    { kind: "heading", key: "whoTitle" },
+    { kind: "para", key: "who" },
+    { kind: "heading", key: "accountTitle" },
+    { kind: "para", key: "account" },
+    { kind: "heading", key: "creatorsTitle" },
+    { kind: "para", key: "creators" },
+    { kind: "heading", key: "businessesTitle" },
+    { kind: "para", key: "businesses" },
+    { kind: "heading", key: "moneyTitle" },
+    /* SEVEN RULES. Four of them were rewritten in #164 against the code —
+       moneyHold gained the non-delivery refund, and moneyCommission names the
+       amount RELEASED rather than the amount paid, because a disputed split
+       charges the fee on the released part only. Those four are carried here
+       as #164 left them and were NOT re-read against current main; the header
+       of lib/legalStrings.ts says so in as many words. */
+    {
+      kind: "list",
+      keys: [
+        "moneyFund",
+        "moneyHold",
+        "moneyRelease",
+        "moneyCommission",
+        "moneyRefund",
+        "moneyPayout",
+        "moneyCurrency"
+      ]
+    },
+    { kind: "heading", key: "offPlatformTitle" },
+    { kind: "para", key: "offPlatform" },
+    { kind: "heading", key: "disputesTitle" },
+    { kind: "para", key: "disputes" },
+    { kind: "heading", key: "ownershipTitle" },
+    { kind: "para", key: "ownership" },
+    { kind: "heading", key: "prohibitedTitle" },
+    { kind: "para", key: "prohibited" },
+    { kind: "heading", key: "availabilityTitle" },
+    { kind: "para", key: "availability" },
+    { kind: "heading", key: "liabilityTitle" },
+    { kind: "para", key: "liability" },
+    { kind: "heading", key: "endingTitle" },
+    { kind: "para", key: "ending" },
+    { kind: "heading", key: "changesTitle" },
+    { kind: "para", key: "changes" },
+    { kind: "heading", key: "governingTitle" },
+    { kind: "para", key: "governing" },
+    { kind: "heading", key: "contactTitle" },
+    { kind: "para", key: "contactAddress" },
+    { kind: "para", key: "contactRegistration" },
+    { kind: "link", key: "contactRegistrationLink", href: "https://mocktar.com/legal/entities" }
+  ]
+};
 
 /* Bold runs, written as **like this** in the copy so that the strings in
    lib/legalStrings.ts read the way the drafted document reads and a lawyer
@@ -200,10 +282,10 @@ function Emphasised({ text }: { text: string }) {
   );
 }
 
-/* 68ch rather than the 720px MarketingPage uses. This is the longest text in
-   the product and the measure is what makes it readable; a character-based
-   one holds that line length in both languages, where French runs perceptibly
-   longer than the English it was translated from. */
+/* 68ch rather than the 720px MarketingPage uses. These are the two longest
+   texts in the product and the measure is what makes them readable; a
+   character-based one holds that line length in both languages, where French
+   runs perceptibly longer than the English it was translated from. */
 const COLUMN: React.CSSProperties = { maxWidth: "68ch" };
 const HEADING: React.CSSProperties = { fontSize: 20, marginTop: 32 };
 const PARA: React.CSSProperties = { marginTop: 0, marginBottom: 14 };

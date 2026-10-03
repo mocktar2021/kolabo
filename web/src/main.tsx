@@ -54,12 +54,16 @@ import "./lib/paymentStrings";
    above it belongs to no single feature: any page that calls the API can
    reach a sentence in it. See lib/errorMessages.ts. */
 import "./lib/errorStrings";
-/* The privacy policy. Owns the legal.* group outright, but it ALSO adds
-   footer.privacy to the footer.* group marketingStrings.ts owns — the link
-   the site footer has been waiting for — so it carries the same ordering
-   constraint the three bundles above do, and for the same reason: it has to
-   come after the file that owns the group. It is last here because it is the
-   only bundle whose copy is a legal undertaking, and reviewing it is a
+/* The privacy policy and the terms of service. Owns the legal.* group
+   outright, but it ALSO adds footer.privacy and footer.terms to the footer.*
+   group marketingStrings.ts owns — the two links the site footer has been
+   waiting for — so it carries the same ordering constraint the three bundles
+   above do, and for the same reason: it has to come after the file that owns
+   the group.
+
+   NOT LAST IN THIS LIST, whatever an older version of this comment claimed:
+   googleStrings is imported below it. What is true is that this is the only
+   bundle whose copy is a legal undertaking, and that reviewing it is a
    different job from reviewing the app's copy. */
 import "./lib/legalStrings";
 /* Signing in with Google. Joins TWO groups it does not own: auth.* belongs to

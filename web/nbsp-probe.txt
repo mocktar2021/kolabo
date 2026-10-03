@@ -1,4 +1,0 @@
-E escaped-backslash then u00A0: \u00A0
-F escaped backslash alone: \
-G in context: suivante\u00A0: and done
-END

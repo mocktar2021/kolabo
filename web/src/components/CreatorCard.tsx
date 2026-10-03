@@ -25,11 +25,6 @@ export function CreatorCard({ r, action }: { r: SearchResult; action?: ReactNode
               <strong style={{ fontFamily: "var(--font-display)", fontSize: 15 }}>
                 {r.display_name || t("discover.creator")}
               </strong>
-              {r.is_verified && (
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--teal-600)", background: "#e7f7f5", padding: "2px 7px", borderRadius: 999 }}>
-                  {t("discover.verified")}
-                </span>
-              )}
             </div>
             {r.headline && <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{r.headline}</div>}
           </div>

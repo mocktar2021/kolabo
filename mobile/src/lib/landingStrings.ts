@@ -54,8 +54,8 @@ const fr = {
   s1HeadAccent: "grandir",
   s1HeadB: " votre marque.",
   s1Body:
-    "Recherchez par niche, pays et audience parmi des créateurs africains vérifiés. La recherche est gratuite.",
-  s1Verified: "Vérifié",
+    "Recherchez par niche, pays et audience parmi des créateurs africains. La recherche est gratuite.",
+  s1Verified: "Connecté",
   s1Meta: "283k abonnés · Cotonou, BJ",
   s1Chip1: "Mode",
   s1Chip2: "Beauté",
@@ -106,8 +106,8 @@ const en = {
   s1HeadAccent: "grow",
   s1HeadB: ".",
   s1Body:
-    "Search by niche, country and audience across verified African creators. Searching is free.",
-  s1Verified: "Verified",
+    "Search by niche, country and audience across African creators. Searching is free.",
+  s1Verified: "Connected",
   s1Meta: "283k followers · Cotonou, BJ",
   s1Chip1: "Fashion",
   s1Chip2: "Beauty",

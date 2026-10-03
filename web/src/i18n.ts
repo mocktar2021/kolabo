@@ -54,7 +54,7 @@ const resources = {
         lead: "Kolabo connecte les créateurs de contenu africains et les entreprises: collaborations sécurisées, paiements protégés, et résultats mesurables.",
         ctaCreator: "Je suis créateur",
         ctaBusiness: "Je suis une marque",
-        f1t: "Confiance vérifiée", f1d: "Profils et entreprises vérifiés, pour collaborer en toute sérénité.",
+        f1t: "Contrat pour chaque collaboration", f1d: "Chaque collaboration est contractualisée et traçable, des termes convenus jusqu'à la validation.",
         f2t: "Paiements sécurisés", f2d: "Les fonds sont bloqués en séquestre et libérés une fois le travail livré.",
         f3t: "Bilingue et local", f3d: "Français et anglais, pensée pour les paiements mobiles et les réseaux locaux.",
         searchCreators: "Rechercher", freeToSearch: "La recherche est gratuite, aucun compte requis.",
@@ -151,7 +151,7 @@ const resources = {
         title: "Découvrir des créateurs", sub: "Trouvez le bon créateur pour votre campagne.",
         category: "Catégorie", country: "Pays", platform: "Plateforme", minFollowers: "Abonnés min.", any: "Tous",
         searchBtn: "Rechercher", loading: "Chargement...", empty: "Aucun créateur trouvé.",
-        creator: "Créateur", verified: "Vérifié", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
+        creator: "Créateur", followers: "abonnés", favorite: "Enregistrer", viewProfile: "Voir le profil", onRequest: "Prix sur demande"
       },
       public: {
         notFound: "Profil introuvable.", portfolio: "Portfolio", packages: "Offres", noPackages: "Aucune offre pour le moment.",
@@ -339,7 +339,7 @@ const resources = {
         lead: "Kolabo connects African content creators with businesses: secure collaborations, protected payments, and results you can measure.",
         ctaCreator: "I am a creator",
         ctaBusiness: "I am a brand",
-        f1t: "Verified trust", f1d: "Verified profiles and businesses, so you collaborate with confidence.",
+        f1t: "A contract for every collaboration", f1d: "Every collaboration is put under contract and traceable, from agreed terms to validation.",
         f2t: "Secure payments", f2d: "Funds are held in escrow and released once the work is delivered.",
         f3t: "Bilingual and local", f3d: "English and French, built for mobile money and local networks.",
         searchCreators: "Search", freeToSearch: "Searching is free, no account needed.",
@@ -436,7 +436,7 @@ const resources = {
         title: "Discover creators", sub: "Find the right creator for your campaign.",
         category: "Category", country: "Country", platform: "Platform", minFollowers: "Min. followers", any: "Any",
         searchBtn: "Search", loading: "Loading...", empty: "No creators found.",
-        creator: "Creator", verified: "Verified", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
+        creator: "Creator", followers: "followers", favorite: "Save", viewProfile: "View profile", onRequest: "Price on request"
       },
       public: {
         notFound: "Profile not found.", portfolio: "Portfolio", packages: "Packages", noPackages: "No packages yet.",

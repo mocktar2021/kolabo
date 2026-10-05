@@ -17,6 +17,10 @@ import "./lib/filterStrings";
 import "./lib/listFilterStrings";
 import "./lib/undoStrings";
 import "./lib/navMenuStrings";
+/* The catch-all page. Owns the notFound.* group outright, so it carries no
+   ordering constraint, unlike the bundles further down that add keys into a
+   group another file owns. */
+import "./lib/notFoundStrings";
 /* After marketingStrings, which owns the landing.* group this one adds the
    brand-facing brief section to: addResourceBundle deep-merges, so the new
    keys join that group rather than replacing it. */

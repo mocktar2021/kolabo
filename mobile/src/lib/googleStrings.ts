@@ -66,6 +66,15 @@ const fr = {
        happen to say. Saying so is cheaper than moving the fields. */
     googleUsesAbove:
       "Le bouton Google utilise le rôle et le pays choisis ci-dessus. Aucun mot de passe ne vous sera demandé.",
+    /* THE SAME SITUATION AS googleWrongPassword, ON A BUILD WITH NO GOOGLE
+       BUTTON TO POINT AT. On iOS there is no Google button, so telling somebody
+       to use it would send them looking for a control that is not on the
+       screen. The next step is the reset link already at the bottom of this
+       card, which works for an account that has never had a password: the
+       confirm step asks for a code and a new password and never for the old
+       one. */
+    googleNoPasswordUseReset:
+      "Si vous avez créé ce compte avec Google, il n'a pas de mot de passe. Utilisez le lien plus bas pour en définir un.",
   },
 
   acct: {
@@ -101,6 +110,31 @@ const fr = {
        credentials than a settings screen needs. So this says "si". */
     passwordMaybeFirst:
       "Si ce compte a été créé avec Google, il n'a pas encore de mot de passe. En définir un ici ajoute une deuxième façon d'entrer ; le bouton Google continue de fonctionner.",
+    /* THE WAY OUT FOR AN ACCOUNT THAT HAS NO PASSWORD AND NO GOOGLE BUTTON.
+       On a build where Google is not offered, a linked account is shown the
+       password field like any other, because the server cannot tell us whether
+       this one has a usable password. If it does not, the field is a dead end,
+       and a dead end here means the account cannot change its address, cannot
+       change its number and cannot be deleted. These keys are the door beside
+       it. See components/SetPasswordByEmail.tsx.
+
+       THE SENTENCES SAY "SI", for the same reason passwordMaybeFirst does: the
+       client is not told whether a password exists, so neither of these claims
+       that one does not. */
+    setPwNoPassword: "Je n'ai pas de mot de passe",
+    setPwTitle: "Définir un mot de passe",
+    setPwIntro:
+      "Si ce compte a été créé avec Google, il n'a pas de mot de passe. Nous envoyons un code à {{email}} et vous en choisissez un ici.",
+    setPwSend: "M'envoyer un code",
+    /* NOT reset.sent, WHICH HEDGES ON PURPOSE. The signed out screen says "si
+       cette adresse est enregistrée" because answering otherwise would turn
+       that endpoint into a way to test whether somebody has an account here.
+       On this screen the person is already signed in and the address is their
+       own, so hedging would only read as doubt. */
+    setPwSent: "Un code est en route vers {{email}}.",
+    setPwDone:
+      "Mot de passe défini. Saisissez-le ci-dessous pour confirmer votre changement.",
+    setPwCancel: "Revenir au mot de passe",
   },
 };
 
@@ -118,6 +152,8 @@ const en = {
     googleAskCancel: "Cancel",
     googleUsesAbove:
       "The Google button uses the role and the country chosen above. You will not be asked for a password.",
+    googleNoPasswordUseReset:
+      "If you created this account with Google, it has no password. Use the link below to set one.",
   },
 
   acct: {
@@ -139,6 +175,14 @@ const en = {
       "Your phone number is where your Mobile Money payouts go. It is optional and it is not how you sign in. Changing it costs proof that it is you: your current password, or a confirmation with Google. A device left open must not be enough to redirect somebody's money.",
     passwordMaybeFirst:
       "If this account was created with Google, it has no password yet. Setting one here adds a second way in, and the Google button keeps working.",
+    setPwNoPassword: "I do not have a password",
+    setPwTitle: "Set a password",
+    setPwIntro:
+      "If this account was created with Google, it has no password. We send a code to {{email}} and you choose one here.",
+    setPwSend: "Email me a code",
+    setPwSent: "A code is on its way to {{email}}.",
+    setPwDone: "Password set. Enter it below to confirm your change.",
+    setPwCancel: "Back to the password",
   },
 };
 

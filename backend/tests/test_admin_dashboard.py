@@ -51,7 +51,7 @@ def test_empty_dashboard_is_all_zeros(client, admin_headers):
 def test_dashboard_counts_across_queues(client, admin_headers, admin_user_id):
     db = client.session_factory()
     # One pending verification document.
-    db.add(profiles.VerificationDocument(user_id="u1", doc_type="identity", filename="id.png", ciphertext=b"x", status=profiles.PENDING))
+    db.add(profiles.VerificationDocument(user_id="u1", doc_type="business_registration", filename="reg.png", ciphertext=b"x", status=profiles.PENDING))
     # One disputed and one held (past due) escrow.
     past = pay.utcnow().replace(year=2020)
     db.add(pay.Escrow(contract_id="c1", campaign_id="camp1", business_user_id="b", influencer_user_id="i",

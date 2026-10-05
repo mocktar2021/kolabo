@@ -21,6 +21,8 @@ import "./lib/navMenuStrings";
    ordering constraint, unlike the bundles further down that add keys into a
    group another file owns. */
 import "./lib/notFoundStrings";
+/* The non-production banner. Owns the env.* group outright, same as above. */
+import "./lib/envStrings";
 /* After marketingStrings, which owns the landing.* group this one adds the
    brand-facing brief section to: addResourceBundle deep-merges, so the new
    keys join that group rather than replacing it. */

@@ -35,6 +35,19 @@ ENV VITE_API_URL=$VITE_API_URL
 ARG VITE_GOOGLE_CLIENT_ID
 ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
+# Which deployment this bundle is for, and it is NOT a new setting: compose
+# feeds it from the ENV already in deploy/.env, which preflight-env.sh already
+# refuses to leave empty or set to anything but development or production. One
+# value per box rather than two that can disagree about what the box is.
+#
+# UNSET IS SAFE HERE, unlike the two above, and in the opposite direction.
+# Empty compiles to a value that is not "production", so the banner appears.
+# Getting this wrong makes a site say it is development when it is not, which
+# somebody notices immediately; the failure worth preventing is the silent one
+# in the other direction. See web/src/lib/env.ts.
+ARG VITE_KOLABO_ENV
+ENV VITE_KOLABO_ENV=$VITE_KOLABO_ENV
+
 COPY package.json package-lock.json* ./
 # `npm ci` when there is a lockfile, `npm install` when there is not. The repo
 # does not commit one today; this keeps the build reproducible the moment it
@@ -49,4 +62,22 @@ RUN npm run build
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# robots.txt is written here rather than committed under web/public/, because
+# the right answer differs per environment and vite copies public/ verbatim
+# into every build: one committed file would say the same thing on both boxes.
+#
+# ARG IS REDECLARED BECAUSE ARG SCOPE IS PER STAGE. The one above belongs to
+# the build stage and is not visible here, so leaving this line out would make
+# the `if` below always take the development branch, silently.
+#
+# It is served because it is a real file: nginx.conf tries $uri before falling
+# back to index.html, so this is answered directly rather than by the SPA.
+ARG VITE_KOLABO_ENV
+RUN if [ "$VITE_KOLABO_ENV" = "production" ]; then \
+      printf 'User-agent: *\nAllow: /\n' > /usr/share/nginx/html/robots.txt; \
+    else \
+      printf 'User-agent: *\nDisallow: /\n' > /usr/share/nginx/html/robots.txt; \
+    fi
+
 EXPOSE 80

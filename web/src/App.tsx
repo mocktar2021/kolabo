@@ -32,6 +32,7 @@ import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
 import LegalPage, { PRIVACY_DOCUMENT, TERMS_DOCUMENT } from "./pages/LegalPage";
+import NotFound from "./pages/NotFound";
 
 /* Campaigns are a brand-side artifact. The API answers 403 ("Only businesses
    and agencies can create campaigns.") to a creator, so hiding the create
@@ -220,6 +221,17 @@ export default function App() {
               does. */}
           <Route path="/legal/privacy" element={<LegalPage doc={PRIVACY_DOCUMENT} />} />
           <Route path="/legal/terms" element={<LegalPage doc={TERMS_DOCUMENT} />} />
+          {/* LAST, and it stays last so the file reads the way it behaves.
+              react-router v6 ranks a bare * below every other pattern wherever
+              it sits, so this is about the next reader rather than about
+              matching, and lib/siteRoutes.test.ts holds it there.
+
+              Until this existed an unmatched URL matched nothing and rendered
+              nothing: no header, no footer, a blank white page. That is how a
+              mistyped /legal/privacy looked to an app-store reviewer, which is
+              the case that made it worth fixing rather than noting. See
+              pages/NotFound.tsx for why it answers HTTP 200. */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </CartProvider>

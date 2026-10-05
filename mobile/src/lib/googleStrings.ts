@@ -7,8 +7,14 @@ import i18n from "../i18n";
    the same reason: src/strings.ts is 60 KB and a twenty key change lands in
    it invisibly. The consequence is the thing to remember: every screen that
    uses a key below must import this module FOR ITS SIDE EFFECT, or it renders
-   the raw key at the reader. Three screens do, and all three of them are in
-   this change: LoginScreen, RegisterScreen and AccountScreen.
+   the raw key at the reader. FOUR MODULES DO: LoginScreen, RegisterScreen,
+   AccountScreen and components/SetPasswordByEmail.tsx.
+
+   That sentence used to say three screens and "all three of them are in this
+   change", which was true of the change that created this file in September and
+   has been read since as a claim about whatever change a reader is looking at.
+   It is a count, not a claim about any one pull request, so it is written as
+   one now. The fourth entry arrived with the iOS release work: see KOL-116.
 
    TWO GROUPS, BOTH OF THEM SOMEBODY ELSE'S. `auth` and `acct` are both
    strings.ts's, so this bundle adds keys to each rather than owning a

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { EnvBanner } from "./EnvBanner";
 import { Logo } from "./Logo";
 import { NotificationsBell } from "./NotificationsBell";
 import { api, mediaSrc } from "../lib/api";
@@ -481,6 +482,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   return (
     <>
+      {/* Above the header, so that "which box am I on" is answered before
+          anything else on the page is read. Renders nothing on production. */}
+      <EnvBanner />
       <header className="nav">
         <div className="container nav-inner">
           <Link to="/" aria-label="Kolabo home"><Logo /></Link>

@@ -134,8 +134,15 @@ describe("the gate reaches every caller", () => {
      reads this comment. */
   it("googleConfigured() still answers from the web client id alone", () => {
     const text = readFileSync(join(SRC, "lib", "googleSignIn.ts"), "utf8");
-    expect(text).toContain('return GOOGLE_WEB_CLIENT_ID !== "";');
-    expect(text).toContain('from "./config"');
+    /* MATCHED LOOSELY ON PURPOSE, because this is the one assertion in the file
+       that reads a module the change it guards does not touch. An exact string
+       would also fail on a reformat: a different quote style, a line break, a
+       dropped semicolon. That failure would be red for a reason unrelated to
+       the iOS gate, pointing at a file nobody had edited, which is a worse
+       outcome than the coupling itself. So the shape is pinned and the spacing
+       is not. If this ever fails, read googleSignIn.ts before anything here. */
+    expect(text).toMatch(/return\s+GOOGLE_WEB_CLIENT_ID\s*!==\s*""/);
+    expect(text).toMatch(/GOOGLE_WEB_CLIENT_ID[\s\S]*?from\s+"\.\/config"/);
   });
 
   /* One decision in one place. A second Platform check for Google anywhere in

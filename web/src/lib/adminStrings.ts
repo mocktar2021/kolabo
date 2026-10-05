@@ -66,5 +66,14 @@ const en = {
     "Commission is charged on the released part only: the fee follows the work."
 };
 
-i18n.addResourceBundle("fr", "translation", { admin: fr }, true, true);
-i18n.addResourceBundle("en", "translation", { admin: en }, true, true);
+/* The one nav label this bundle owns. It joins the nav.* group i18n.ts owns,
+   which is the reason main.tsx imports this file after "./i18n":
+   addResourceBundle deep-merges, so the key joins that group rather than
+   replacing it. Kept short because it sits in a row that already wraps on a
+   laptop, and distinct from dispute.nav, which is the same person's own
+   disputes rather than everybody's. */
+const frNav = { adminDisputes: "File admin" };
+const enNav = { adminDisputes: "Admin queue" };
+
+i18n.addResourceBundle("fr", "translation", { admin: fr, nav: frNav }, true, true);
+i18n.addResourceBundle("en", "translation", { admin: en, nav: enNav }, true, true);

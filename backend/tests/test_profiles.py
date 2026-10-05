@@ -180,7 +180,7 @@ def test_verification_document_over_the_ceiling_is_refused(client):
     oversized = b"\x00" * (MAX_MEDIA_BYTES + 1)
     r = client.post(
         f"/profiles/{uid}/verification-documents",
-        data={"doc_type": "identity"},
+        data={"doc_type": "business_registration"},
         files={"file": ("huge.pdf", oversized, "application/pdf")},
     )
     assert r.status_code == 413
@@ -199,11 +199,55 @@ def test_verification_document_under_the_ceiling_still_uploads(client):
     uid = _make_user(client, phone="+22990000063", role="business")
     r = client.post(
         f"/profiles/{uid}/verification-documents",
-        data={"doc_type": "identity"},
-        files={"file": ("id.pdf", b"an-ordinary-document", "application/pdf")},
+        data={"doc_type": "business_registration"},
+        files={"file": ("reg.pdf", b"an-ordinary-document", "application/pdf")},
     )
     assert r.status_code == 201
     assert r.json()["status"] == "pending"
+    db = client.session_factory()
+    assert db.query(VerificationDocument).count() == 1
+    db.close()
+
+
+def test_an_identity_document_is_refused(client):
+    """KOL-122. Kolabo collects no personal identity document.
+
+    DOC_TYPES is the only enforcement there has ever been: the column is a plain
+    String with no CheckConstraint, the response schema is a plain str with no
+    Literal, and the Form field is a plain str, so FastAPI validates nothing.
+    That one set is the whole of the door, which makes this the test that
+    notices if anybody widens it again.
+    """
+    from app.modules.profiles.models import VerificationDocument
+
+    uid = _make_user(client, phone="+22990000064", role="business")
+    r = client.post(
+        f"/profiles/{uid}/verification-documents",
+        data={"doc_type": "identity"},
+        files={"file": ("passport.pdf", b"a-scan-of-somebodys-papers", "application/pdf")},
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "profile_doc_type_unknown"
+    # The half that actually matters. A refusal that still wrote the row would
+    # be the same problem with an error message on top of it.
+    db = client.session_factory()
+    assert db.query(VerificationDocument).count() == 0
+    db.close()
+
+
+def test_a_business_registration_is_still_accepted(client):
+    """The other side of the same door, so the refusal above cannot pass by
+    rejecting everything. Business verification is the half that stays."""
+    from app.modules.profiles.models import VerificationDocument
+
+    uid = _make_user(client, phone="+22990000065", role="business")
+    r = client.post(
+        f"/profiles/{uid}/verification-documents",
+        data={"doc_type": "business_registration"},
+        files={"file": ("reg.pdf", b"a-registration-document", "application/pdf")},
+    )
+    assert r.status_code == 201
+    assert r.json()["doc_type"] == "business_registration"
     db = client.session_factory()
     assert db.query(VerificationDocument).count() == 1
     db.close()
@@ -384,8 +428,8 @@ def test_document_rejection_requires_reason(client, admin_headers):
     uid = _make_user(client, phone="+22990000007", role="business")
     client.post(
         f"/profiles/{uid}/verification-documents",
-        data={"doc_type": "identity"},
-        files={"file": ("id.png", b"bytes", "image/png")},
+        data={"doc_type": "business_registration"},
+        files={"file": ("reg.png", b"bytes", "image/png")},
     )
     queue = client.get("/admin/verification-queue", headers=admin_headers).json()
     doc_id = queue["documents"][0]["id"]

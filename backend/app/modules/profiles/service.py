@@ -40,7 +40,15 @@ from app.modules.profiles import bio_ai, enrichment, models, schemas
 # counts as pricing — product decision: a free-text rate card cannot be
 # ordered, so it kept profiles "complete" with nothing a buyer could buy.
 INFLUENCER_REQUIRED = ("bio", "categories", "packages")
-DOC_TYPES = {"business_registration", "identity"}
+# NO PERSONAL IDENTITY DOCUMENT IS COLLECTED. Decided 3 October 2026: Kolabo
+# asks for none, so there is no APDP prior authorisation to obtain and no store
+# of other people's papers to defend. This set has always been the ONLY
+# enforcement of the vocabulary (the column is a plain String, the response
+# schema a plain str, the Form field a plain str), so narrowing it here is what
+# closes the door, and migration b1d7e3a05c92 beside it is what empties the
+# room. business_registration stays: a company's registration document is not a
+# person's identity document, and business verification still needs one.
+DOC_TYPES = {"business_registration"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
 # The ceiling on an uploaded file, and the number is about where the bytes

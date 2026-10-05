@@ -315,7 +315,7 @@ class VerificationDocument(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    doc_type: Mapped[str] = mapped_column(String, nullable=False)  # business_registration or identity
+    doc_type: Mapped[str] = mapped_column(String, nullable=False)  # business_registration, the only accepted value
     filename: Mapped[str] = mapped_column(String, nullable=False)
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     status: Mapped[str] = mapped_column(String, default=PENDING, nullable=False)

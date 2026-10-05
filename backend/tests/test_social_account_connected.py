@@ -635,8 +635,8 @@ def test_the_document_queue_is_untouched_by_any_of_this(auth_client, admin):
     uid = _user(auth_client, "+22990004037")
     uploaded = auth_client.post(
         f"/profiles/{uid}/verification-documents",
-        data={"doc_type": "identity"},
-        files={"file": ("id.png", b"bytes", "image/png")},
+        data={"doc_type": "business_registration"},
+        files={"file": ("reg.png", b"bytes", "image/png")},
         headers=_headers(uid),
     )
     assert uploaded.status_code == 201, uploaded.text

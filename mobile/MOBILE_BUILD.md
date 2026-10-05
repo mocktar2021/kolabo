@@ -112,11 +112,25 @@ Note that deep links differ under Expo Go — it uses `exp://` rather than the `
 
 The app ships the whole flow already: the button on the login and register
 screens, the two questions a brand new Google address is asked, and the Google
-confirmation the account screen accepts in place of a password. What it does
-**not** ship is any client id, and that is deliberate. With `extra.googleWebClientId`
-empty the button does not render at all and the app behaves exactly as it did
-before the feature existed, so an `eas build` is never blocked on Google
-configuration.
+confirmation the account screen accepts in place of a password.
+
+**Corrected on 5 October. This section used to say the app ships no client id
+"and that is deliberate". Both ids are committed**, in `app.json` under
+`extra.googleWebClientId` and `extra.googleIosClientId`, and have been since the
+clients were created. The sentence described the state before that and was
+simply left behind.
+
+**Two things are true now and neither is the old sentence.** With
+`extra.googleWebClientId` empty the button does not render at all and an
+`eas build` is never blocked on Google configuration, which is still the rule
+and still worth keeping. And **iOS ignores both ids on purpose**:
+`src/lib/config.ts` returns them empty when `Platform.OS === "ios"`, so Google
+is absent from the iOS build whatever `app.json` says. That is an App Store
+guideline 4.8 decision rather than a configuration one, it is explained at
+length in that file, and `tests/googleOffOnIos.test.ts` pins it in both
+directions. **Setting `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=""` in a build profile
+is not a way to turn Google off anywhere**: an empty string is falsy and falls
+through to the committed value. See KOL-116.
 
 Three things have to be true before the button appears and works on a handset.
 
@@ -183,13 +197,24 @@ slots for them:
 override these at bundle time if a build ever needs to point somewhere else,
 exactly as `EXPO_PUBLIC_API_URL` overrides `apiBaseUrl`.
 
-**The config plugin entry is missing on purpose and must be added with the iOS
-client, not before it.** The library's plugin requires `iosUrlScheme` and
-throws when it is absent or does not begin with `com.googleusercontent.apps`,
-which would fail `expo prebuild` and therefore `eas build`. The value is the
-iOS client id reversed, so it cannot be written down until that client exists.
-Android needs none of this: the plugin does nothing for Android in the non
-Firebase path, and the native module is autolinked by the dependency alone.
+**Corrected on 5 October: the config plugin entry is no longer missing.** It is
+in `app.json` under `plugins`, with an `iosUrlScheme`, added when the iOS client
+was created. What follows is why it could not be added earlier, kept because it
+is still the reason the entry must never be present without a client behind it.
+
+The library's plugin requires `iosUrlScheme` and throws when it is absent or
+does not begin with `com.googleusercontent.apps`, which would fail
+`expo prebuild` and therefore `eas build`. The value is the iOS client id
+reversed, so it cannot be written down until that client exists. Android needs
+none of this: the plugin does nothing for Android in the non Firebase path, and
+the native module is autolinked by the dependency alone.
+
+**The entry stays even though iOS no longer offers Google**, and that is a
+deliberate call rather than an oversight. Guideline 4.8 is about what an app
+offers a person, and the plugin only registers a URL scheme for a flow that
+cannot start, so a dormant SDK offers nothing. Removing it needs an
+`app.config.js` to vary `plugins` by platform, which is a build system change
+rather than a code one. Revisit only if a reviewer raises it.
 
 When the iOS client exists, add this to `expo.plugins` in `app.json`, beside
 the `expo-image-picker` entry already there:

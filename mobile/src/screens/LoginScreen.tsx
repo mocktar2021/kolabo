@@ -6,6 +6,7 @@ import { errorText } from "../lib/errorMessages";
 import { ROLES, useAuth } from "../lib/auth";
 import { COUNTRIES, countryName } from "../lib/countries";
 import {
+  googleConfigured,
   looksLikeWrongPassword,
   needsProfileAnswers,
   signInWithGoogle,
@@ -244,11 +245,26 @@ export default function LoginScreen({ navigation }: AuthScreenProps<"Login">) {
             secureTextEntry
             autoCapitalize="none"
             /* Beside the field that just failed, which is where somebody is
-               already looking, and only after it has failed. The button is
-               what it points at, so it is not shown when there is no button:
-               GoogleSignInButton draws nothing without a client id, and a hint
-               pointing at nothing is worse than no hint. */
-            hint={maybeGoogleOnly ? t("auth.googleWrongPassword") : undefined}
+               already looking, and only after it has failed.
+
+               TWO SENTENCES, BECAUSE THE NEXT STEP IS NOT THE SAME ON BOTH
+               BUILDS. The comment that used to sit here said this hint is not
+               shown when there is no button, and the code did not do that: it
+               was gated on maybeGoogleOnly alone, so on a build with no Google
+               client id it still told the one person who needs help to press a
+               control that is not on the screen. Now the build decides which
+               sentence. With a button, point at the button. Without one, point
+               at the reset link at the bottom of this card, which is the only
+               door left and does work for an account that has never had a
+               password: the confirm step asks for a code and a new password and
+               never for the old one. */
+            hint={
+              maybeGoogleOnly
+                ? googleConfigured()
+                  ? t("auth.googleWrongPassword")
+                  : t("auth.googleNoPasswordUseReset")
+                : undefined
+            }
           />
           <PrimaryButton
             title={busy ? t("common.working") : t("auth.submitLogin")}

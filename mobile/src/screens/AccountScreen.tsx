@@ -8,6 +8,10 @@ import { deleteProof, googleConfigured, patchProof, type Proof } from "../lib/go
 /* FOR ITS SIDE EFFECT. See the same import in LoginScreen. */
 import "../lib/googleStrings";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
+/* The way out for a linked account on a build with no Google button. See
+   ProofField below for when it is offered, and the component itself for why
+   the password reset endpoints are the right tool for a signed in person. */
+import { SetPasswordByEmail } from "../components/SetPasswordByEmail";
 /* The language card, lifted out of this file and into a component of its own
    so the signed out screens can draw the same control. It is the same card,
    in the same slot, built from the same two keys: see
@@ -74,24 +78,69 @@ const NOTIFY_KEYS = [
 
    `linked` RATHER THAN THE WHOLE ACCOUNT, because it is also false when
    /auth/me could not be loaded at all, and the right screen for an account
-   nobody could read is the one this screen has always drawn. */
+   nobody could read is the one this screen has always drawn.
+
+   A THIRD MODE, FOR THE BUILD THAT OFFERS NO GOOGLE AT ALL. `linked` is false
+   on iOS even for an account that really is linked, because Google is not on
+   offer there, so this field falls back to the password. For an account created
+   through Google that password does not exist, and the field would be a dead
+   end on every form that uses it: the address, the number, the password itself
+   and deleting the account. `canSetPassword` is that case, and it puts one
+   plain button beside the field that leads to a password rather than to
+   nothing. See components/SetPasswordByEmail.tsx.
+
+   IT IS AN ESCAPE BESIDE THE FIELD AND NOT A REPLACEMENT FOR IT, because
+   google_linked cannot tell an account created through Google, which has no
+   password, from one that registered with a password and signed in with Google
+   later, which has one and should simply type it. Leading with the email flow
+   would make the second of those reset a password it already knows. Same
+   reasoning, and the same shape, as the Google escape above it. */
 function ProofField({
   linked,
+  canSetPassword,
+  email,
   passwordLabel,
   value,
   onChange,
 }: {
   linked: boolean;
+  canSetPassword: boolean;
+  email: string | null;
   passwordLabel: string;
   value: Proof | null;
   onChange: (next: Proof | null) => void;
 }) {
   const { t } = useTranslation();
-  const [usePassword, setUsePassword] = useState(!linked);
+  const [mode, setMode] = useState<"password" | "google" | "setPassword">(
+    linked ? "google" : "password"
+  );
+  /* Held so the success banner lands above the field the person now has to
+     fill, rather than on a screen they have already left. It also retires the
+     escape button: once a password has been set in this session, offering to
+     set one again would be offering to reset what was just chosen. */
+  const [justSet, setJustSet] = useState(false);
 
-  if (usePassword) {
+  /* The email is the address the code goes to, so without one there is nothing
+     to send. An account created through Google always has one; this guard is
+     for the pre-flip rows that have a number and no address, which have a
+     password anyway. */
+  if (mode === "setPassword" && email) {
+    return (
+      <SetPasswordByEmail
+        email={email}
+        onCancel={() => setMode("password")}
+        onSuccess={() => {
+          setJustSet(true);
+          setMode("password");
+        }}
+      />
+    );
+  }
+
+  if (mode === "password") {
     return (
       <>
+        {justSet ? <Banner kind="success">{t("acct.setPwDone")}</Banner> : null}
         <Field
           label={passwordLabel}
           value={value?.kind === "password" ? value.secret : ""}
@@ -104,7 +153,18 @@ function ProofField({
               title={t("acct.proofUseGoogle")}
               onPress={() => {
                 onChange(null);
-                setUsePassword(false);
+                setMode("google");
+              }}
+            />
+          </View>
+        ) : null}
+        {canSetPassword && email && !justSet ? (
+          <View style={{ marginBottom: space(4) }}>
+            <GhostButton
+              title={t("acct.setPwNoPassword")}
+              onPress={() => {
+                onChange(null);
+                setMode("setPassword");
               }}
             />
           </View>
@@ -129,7 +189,7 @@ function ProofField({
         title={t("acct.proofUsePassword")}
         onPress={() => {
           onChange(null);
-          setUsePassword(true);
+          setMode("password");
         }}
       />
     </View>
@@ -192,6 +252,10 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
      Google client id, in which case Google is not on offer here any more than
      it is on the login screen, and the password is the only door left. */
   const canUseGoogle = !!me?.google_linked && googleConfigured();
+  /* THE OTHER HALF OF THE SAME FACT, and the case this build is for. A linked
+     account on a build that offers no Google has no Google proof to give, and
+     may have no password either. See ProofField. */
+  const canSetPassword = !!me?.google_linked && !googleConfigured();
 
   useEffect(() => {
     if (!token) return;
@@ -325,6 +389,8 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
         />
         <ProofField
           linked={canUseGoogle}
+          canSetPassword={canSetPassword}
+          email={me?.email ?? null}
           passwordLabel={t("acct.passwordCurrent")}
           value={emailProof}
           onChange={setEmailProof}
@@ -358,6 +424,8 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
         />
         <ProofField
           linked={canUseGoogle}
+          canSetPassword={canSetPassword}
+          email={me?.email ?? null}
           passwordLabel={t("acct.passwordCurrent")}
           value={phoneProof}
           onChange={setPhoneProof}
@@ -384,6 +452,8 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
         <View style={{ height: space(2) }} />
         <ProofField
           linked={canUseGoogle}
+          canSetPassword={canSetPassword}
+          email={me?.email ?? null}
           passwordLabel={t("acct.passwordCurrent")}
           value={pwProof}
           onChange={setPwProof}
@@ -422,14 +492,25 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
           Under the two credentials it is about, because it is a statement
           rather than a control and must not sit above the things somebody came
           to this screen to change. */}
-      <View style={{ height: space(4) }} />
-      <Card>
-        <SectionTitle>{t("acct.googleTitle")}</SectionTitle>
-        <Text style={styles.body}>
-          {me?.google_linked ? t("acct.googleLinkedYes") : t("acct.googleLinkedNo")}
-        </Text>
-        {me?.google_linked ? <Hint>{t("acct.googleNoDisconnect")}</Hint> : null}
-      </Card>
+      {/* GATED ON THE BUILD, NOT ONLY ON THE ACCOUNT. Both sentences talk
+          about the Google button: one says changes can be confirmed with it,
+          the other says to sign in with it once. On a build that draws no such
+          button both are instructions to press something that is not there, so
+          the whole card is absent rather than reworded. The account is still
+          linked and still says so on Android and on the web, where the button
+          exists. */}
+      {googleConfigured() ? (
+        <>
+          <View style={{ height: space(4) }} />
+          <Card>
+            <SectionTitle>{t("acct.googleTitle")}</SectionTitle>
+            <Text style={styles.body}>
+              {me?.google_linked ? t("acct.googleLinkedYes") : t("acct.googleLinkedNo")}
+            </Text>
+            {me?.google_linked ? <Hint>{t("acct.googleNoDisconnect")}</Hint> : null}
+          </Card>
+        </>
+      ) : null}
 
       {/* Web /account's Payment tab, verbatim: explained rather than collected.
           Nothing in this system stores a payment instrument — money moves by
@@ -476,6 +557,8 @@ export default function AccountScreen(_props: AppScreenProps<"Account">) {
           <>
             <ProofField
               linked={canUseGoogle}
+              canSetPassword={canSetPassword}
+              email={me?.email ?? null}
               passwordLabel={t("acct.passwordCurrent")}
               value={delProof}
               onChange={setDelProof}

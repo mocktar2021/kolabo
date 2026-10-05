@@ -159,6 +159,43 @@ if [[ -n "$meta_id" && -z "$meta_secret" ]] || [[ -z "$meta_id" && -n "$meta_sec
   fail "META_APP_ID and META_APP_SECRET must both be set or both be empty; one alone leaves the Facebook connect button answering oauth_platform_unsupported"
 fi
 
+# -------------------------------------------------------------------- mail
+# PRODUCTION HAS TO BE ABLE TO SEND, and this is the one required pair that
+# app/core/config.py deliberately does NOT enforce. That validator refuses a
+# secret still sitting at a value published in this repository, because such a
+# default is an open door; it says in as many words that an unset mail key is
+# "no door at all" and that a deployment which has not set one "should quietly
+# send no mail rather than refuse to boot". That reasoning is right for the
+# validator. It is wrong about production, for one reason:
+#
+# QUIETLY SENDING NO MAIL IS NOT WHAT HAPPENS. Both halves are needed, and
+# missing either one takes the same path. notifications/email.py
+# build_default_email_sender returns the real provider only when
+# RESEND_API_KEY and MAIL_FROM are both set and returns LoggingEmailSender
+# otherwise; auth/otp.py build_default_sender sees that and returns its own
+# LoggingSender, which writes the code to the log and answers
+# SendResult(ok=True). So a production box missing either value tells every
+# person registering that their code is on the way, writes the code into the
+# container log, sends nothing, and NOBODY CAN EVER VERIFY AN ACCOUNT.
+# Registration looks like it works, which is the expensive kind of silence
+# this whole script exists to catch.
+#
+# Development is untouched, and has to be: a laptop and the test suite have no
+# mail credentials and must keep printing the code, which is how anybody works
+# locally.
+if [[ "$APP_ENV" == "production" ]]; then
+  mail_ok=1
+  for key in RESEND_API_KEY MAIL_FROM; do
+    if [[ -z "$(get "$key")" ]]; then
+      fail "$key is empty with ENV=production: every verification code would be logged instead of sent, and no account could be verified"
+      mail_ok=0
+    fi
+  done
+  if (( mail_ok )); then
+    ok "mail is configured for production"
+  fi
+fi
+
 # ------------------------------------------------------------- informational
 if [[ "$APP_ENV" == "production" && "$(get FEDAPAY_SANDBOX)" == "true" ]]; then
   echo

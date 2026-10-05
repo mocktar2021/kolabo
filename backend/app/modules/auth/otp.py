@@ -102,11 +102,24 @@ class LoggingSender:
     name = "logging"
 
     def send(self, target: str, message: str) -> SendResult:
+        # THIS LINE CARRIES THE CODE AND IS NOT GUARDED ON ANYTHING, which is
+        # the point of a sender whose whole job is to stand in for a provider:
+        # printing the message is how a code is read on a laptop with no mail
+        # credentials. It is also why this class must never be the sender on a
+        # production box, and why the comment below is about the print and not
+        # about this. What keeps it off production is
+        # deploy/checks/preflight-env.sh, which refuses to deploy with
+        # ENV=production and no mail credentials, plus the ERROR that
+        # build_default_sender logs if one ever starts anyway. Note that
+        # deliver() below states the opposite rule for every OTHER sender,
+        # "the target is logged and the message is not", and means it.
         _log.info("send to %s: %s", target, message)
-        # In development, also print to stdout so the code is visible in the
-        # container logs without querying the database. Uvicorn's default
-        # logging does not surface app INFO logs, and this is never enabled in
-        # production (guarded on env).
+        # THE PRINT, specifically, and only in development. The log line above
+        # goes wherever the application log goes; this one puts the code on
+        # stdout so it is visible in `docker compose logs` without querying
+        # the database, because uvicorn's default logging does not surface app
+        # INFO records. Guarded on env, so it really is never enabled in
+        # production.
         if settings.env == "development":
             print(f"[DEV OTP] to {target}: {message}", flush=True)
         return SendResult(ok=True, provider=self.name)
@@ -304,6 +317,28 @@ def build_default_sender() -> Sender:
     """
     mail = email_module.build_default_email_sender()
     if isinstance(mail, email_module.LoggingEmailSender):
+        # A PRODUCTION DEPLOYMENT MUST NEVER REACH THIS BRANCH, and if one
+        # does it says so at ERROR rather than carrying on quietly. The
+        # failure it would otherwise produce is silent in the worst way:
+        # every registration answers "your code is on its way", the code goes
+        # to the log instead of a mailbox, and no account can be verified,
+        # which looks like a working signup until somebody tries to use one.
+        #
+        # LOGGED RATHER THAN RAISED, deliberately. app/core/config.py keeps
+        # RESEND_API_KEY out of its production validator on the stated grounds
+        # that a deployment without mail should not refuse to boot, and
+        # overturning that is a decision for whoever owns the deployment
+        # rather than a side effect of this function. So the refusal lives in
+        # deploy/checks/preflight-env.sh, which runs before anything starts,
+        # and this line is what catches a container started some other way.
+        if settings.env == "production":
+            _log.error(
+                "ENV=production with no mail credentials: verification codes will be "
+                "written to this log and reported to the user as sent, and no account "
+                "can be verified. Set RESEND_API_KEY and MAIL_FROM in deploy/.env and "
+                "restart. deploy/checks/preflight-env.sh refuses this, so something "
+                "started without running it."
+            )
         return LoggingSender()
     return EmailSender(mail)
 

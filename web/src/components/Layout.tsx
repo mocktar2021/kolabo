@@ -416,6 +416,22 @@ function AppNav({ open }: { open: boolean }) {
      are not places somebody goes while working, and as flat buttons they were
      four of the nine that made this row wrap. */
   const isBrand = isBusinessLike(getStoredRole());
+  /* The admin queue, for the handful of accounts that have one. is_admin is
+     NOT derivable from the stored role, and lib/me.tsx says why: admin is a
+     flag beside a role rather than a fourth role, so an admin is also an
+     ordinary marketplace user and getStoredRole answers for them like anybody
+     else. That is why this one question goes to the server while isBrand
+     above is answered from localStorage.
+
+     THE ENTRY APPEARS A MOMENT AFTER THE REST OF THE NAV on a cold load, and
+     that is the honest behaviour rather than a defect to paper over.
+     MeProvider starts at { me: null, loading: false }, which is byte for byte
+     what signed out looks like, so there is no value to wait on that would
+     tell "not asked yet" from "not an admin"; App.tsx AdminOnly reaches for
+     `me` itself for exactly the same reason. MeProvider also sits outside the
+     router, so this costs one appearance per page load and none per
+     navigation. */
+  const { me } = useMe();
   return (
     <div id="primary-nav" className={open ? "nav-links open" : "nav-links"}>
       <LanguageSwitch />
@@ -426,6 +442,12 @@ function AppNav({ open }: { open: boolean }) {
       <Link className="btn btn-ghost" to="/contracts">{t("nav.contracts")}</Link>
       <MessagesIndicator />
       <DisputesIndicator />
+      {/* Next to the user-facing disputes entry because it is the same queue
+          seen from the other side, and because an admin is a marketplace user
+          too: they have their own disputes as well as everybody else's. */}
+      {me?.is_admin && (
+        <Link className="btn btn-ghost" to="/admin/disputes">{t("nav.adminDisputes")}</Link>
+      )}
       {isBrand && <CartIndicator />}
       {/* An icon rather than a word, and next to the avatar rather than out
           with the destinations: the bell is not a place you go, it is what

@@ -95,8 +95,8 @@ class TestNoTokenIsRefused:
         uid = _user(auth_client, "+22990001003")
         r = auth_client.post(
             f"/profiles/{uid}/verification-documents",
-            data={"doc_type": "identity"},
-            files={"file": ("id.jpg", b"\xff\xd8\xff", "image/jpeg")},
+            data={"doc_type": "business_registration"},
+            files={"file": ("reg.jpg", b"\xff\xd8\xff", "image/jpeg")},
         )
         assert r.status_code == 401
 
@@ -178,13 +178,20 @@ class TestTheTokenDecidesWhoIsWrittenTo:
         assert still[0]["price_amount"] == 30000
 
     def test_a_document_lands_on_the_uploaders_account(self, auth_client):
-        """Filing an ID against somebody else was the worst of the old holes."""
+        """Filing a document against somebody else was the worst of the old holes.
+
+        It was an identity document when this was found and closed in #151.
+        Identity documents are no longer accepted at all (KOL-122), so this files
+        a business registration instead. The property under test is unchanged and
+        has nothing to do with the type: whichever document type exists, it must
+        land on the account of whoever uploaded it.
+        """
         alice = _user(auth_client, "+22990001014")
         bob = _user(auth_client, "+22990001015")
         r = auth_client.post(
             f"/profiles/{alice}/verification-documents",
-            data={"doc_type": "identity"},
-            files={"file": ("id.jpg", b"\xff\xd8\xff", "image/jpeg")},
+            data={"doc_type": "business_registration"},
+            files={"file": ("reg.jpg", b"\xff\xd8\xff", "image/jpeg")},
             headers=_headers(bob),
         )
         assert r.status_code == 201

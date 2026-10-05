@@ -179,6 +179,23 @@ services:
         # and it matches the backend, whose GOOGLE_CLIENT_IDS being empty makes
         # POST /auth/google answer 503.
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        # Fed from the ENV this file already requires, rather than from a
+        # second variable of its own. A box that declared itself development
+        # for the backend and production for the web app would be telling two
+        # different stories about the same deployment, and the whole point of
+        # the banner is that it agrees with reality.
+        #
+        # No `:-` default on purpose. An unset ENV reaches the bundle as a
+        # value that is not "production", so the banner appears, which is the
+        # right way to fail. checks/preflight-env.sh refuses an empty ENV
+        # anyway, well before this is reached.
+        #
+        # ONE SUBTLETY IF THE BANNER APPEARS ON PRODUCTION. Compose resolves
+        # ${...} from the shell environment BEFORE this file's .env, and ENV
+        # is a name some shells set for their own rc file. If a production
+        # build shows the banner and deploy/.env says production, check
+        # `echo $ENV` in the deploying shell before suspecting anything here.
+        VITE_KOLABO_ENV: ${ENV}
     restart: unless-stopped
     logging: *default-logging
     depends_on:

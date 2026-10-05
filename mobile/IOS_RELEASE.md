@@ -178,12 +178,21 @@ FedaPay answer carries over to it.
 
 Checked, present, no action needed:
 
-- **In-app account deletion** (guideline 5.1.1(v)) — `AccountScreen.tsx` has a password-confirmed
-  delete flow with an explicit warning. Apps that let you create an account and not delete one get
-  rejected.
-- **Sign in with Apple** (guideline 4.8) — only triggered if the app offers third-party social
-  login. Mobile login is email + password only, so this does not apply. **It will apply the day
-  Google or Facebook login is added to the app**, and it is not a small feature.
+- **In-app account deletion** (guideline 5.1.1(v)). `AccountScreen.tsx` has a delete flow with an
+  explicit warning. **Corrected on 5 October: it is not simply "password-confirmed" any more.** The
+  backend accepts either of two proofs, a password or a Google token, and on iOS, where Google is
+  not offered, an account created through Google holds neither. That is why the screen also offers
+  to set a password by emailed code. Read `components/SetPasswordByEmail.tsx` before changing
+  anything in that area: the 4.8 fix below is what created the need for it, and removing it breaks
+  this bullet.
+- **Sign in with Apple** (guideline 4.8). **Corrected on 5 October: the old claim that mobile login
+  is email and password only was out of date.** Google sign in shipped to mobile on 17 September, so
+  4.8 did apply. It no longer applies to the iOS build because **iOS ships with no Google client
+  id**: `src/lib/config.ts` returns both ids empty when `Platform.OS === "ios"`, so the button is
+  absent and the first 4.8 exemption, an app using only its own sign in, is the one that fits.
+  Android and the web keep Google. **The day Google, Facebook or any other third party login
+  appears on iOS, 4.8 applies again and Sign in with Apple is the answer.** `tests/googleOffOnIos.test.ts`
+  is what keeps the gate honest. See KOL-116.
 - **Privacy manifest** — Expo SDK 54 generates `PrivacyInfo.xcprivacy` for its own modules; the app
   uses no third-party SDKs outside the Expo ecosystem.
 

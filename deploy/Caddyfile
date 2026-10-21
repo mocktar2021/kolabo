@@ -33,6 +33,34 @@
 {
 	# Let's Encrypt sends expiry warnings here. Set ACME_EMAIL in deploy/.env.
 	email {$ACME_EMAIL}
+
+	# WHICH CERTIFICATE AUTHORITY TO ASK, and a required choice rather than an
+	# inherited one for the same reason the hostnames above are.
+	#
+	# LET'S ENCRYPT ALLOWS FIVE CERTIFICATES PER HOSTNAME PER WEEK AND COUNTS
+	# FAILED CHALLENGES. So the expensive mistake is not a broken deploy, it is
+	# a broken deploy repeated: a first boot whose DNS has not propagated yet,
+	# or whose hostname carries a typo, can spend the week's allowance in an
+	# afternoon and leave the real name unable to get a certificate until the
+	# window rolls. There is no appeal and no override.
+	#
+	# SO THE FIRST BOOT OF A NEW BOX GOES AT THE STAGING ENDPOINT. Its limits
+	# are far looser and it issues certificates signed by a CA no browser
+	# trusts. That warning in the browser is the result you want on a dry run:
+	# it means the stack came up, the challenge was answered and TLS
+	# negotiated, and the only thing wrong is the signer. Then ACME_CA is moved
+	# to the production endpoint and `bash up.sh` runs again.
+	#
+	# AFTER SWITCHING, CHECK WHAT IS ACTUALLY SERVED from somewhere other than
+	# the box, with no -k and no --insecure, before putting the hostname in
+	# front of anyone. A dry run that was never switched back looks completely
+	# healthy from the server's own logs.
+	#
+	# Both URLs are written out in deploy/.env.example. An empty value is a
+	# caddy that cannot parse this block, and checks/preflight-env.sh refuses
+	# before that happens and names which endpoint is selected on every run, so
+	# a box cannot sit on staging unnoticed.
+	acme_ca {$ACME_CA}
 }
 
 {$WEB_HOSTNAME} {

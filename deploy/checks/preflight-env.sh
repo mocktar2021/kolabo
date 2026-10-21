@@ -65,7 +65,7 @@ echo
 for key in \
   POSTGRES_USER POSTGRES_DB POSTGRES_PASSWORD \
   ENV JWT_SECRET DOCUMENT_ENCRYPTION_KEY \
-  WEB_HOSTNAME API_HOSTNAME ACME_EMAIL \
+  WEB_HOSTNAME API_HOSTNAME ACME_EMAIL ACME_CA \
   CORS_ORIGINS API_PUBLIC_BASE_URL WEB_PUBLIC_BASE_URL \
   PAYMENT_RETURN_URL VITE_API_URL
 do
@@ -101,6 +101,39 @@ for pair in "WEB_HOSTNAME:$WEB_HOST" "API_HOSTNAME:$API_HOST"; do
   else ok "$key=$val"
   fi
 done
+
+# ----------------------------------------------------------------- acme ca
+# WHICH LET'S ENCRYPT ENDPOINT, checked here because the cost of getting this
+# one wrong is measured in days rather than minutes. Five certificates per
+# hostname per week, failed challenges counted, no appeal and no override: a
+# first boot that goes straight at the production endpoint and fails on DNS
+# that has not propagated, or on a typo in a hostname, can leave the real name
+# unable to get a certificate until the window rolls. A new box does its first
+# boot on staging and is switched afterwards.
+#
+# THE SELECTED ENDPOINT IS NAMED ON EVERY RUN, not only when it is wrong. A box
+# left on staging serves certificates signed by a CA no browser trusts while
+# looking entirely healthy in its own logs, so it is not a state anybody
+# discovers from the server side.
+acme_ca="$(get ACME_CA)"
+le_production="https://acme-v02.api.letsencrypt.org/directory"
+le_staging="https://acme-staging-v02.api.letsencrypt.org/directory"
+case "$acme_ca" in
+  "")
+    ;;  # already reported as empty above
+  "$le_production")
+    ok "ACME_CA is the Let's Encrypt production endpoint"
+    ;;
+  "$le_staging")
+    warn "ACME_CA is the Let's Encrypt STAGING endpoint: certificates will be signed by a CA no browser trusts and every visitor sees a security warning. Right for the first boot of a new box, wrong for anything anyone is meant to use."
+    ;;
+  https://*)
+    warn "ACME_CA is neither Let's Encrypt endpoint: $acme_ca"
+    ;;
+  *)
+    fail "ACME_CA must be an https ACME directory URL: $acme_ca"
+    ;;
+esac
 
 # ------------------------------------------------------- the five agreements
 expect() {
@@ -202,6 +235,15 @@ if [[ "$APP_ENV" == "production" && "$(get FEDAPAY_SANDBOX)" == "true" ]]; then
   echo "  note  ENV=production with FEDAPAY_SANDBOX=true. That is the correct"
   echo "        state for an environment that is still dark. Flipping it is a"
   echo "        separate, deliberate act at go-live."
+fi
+
+if [[ "$APP_ENV" == "production" && "$acme_ca" == "$le_staging" ]]; then
+  echo
+  echo "  note  ENV=production with the STAGING certificate authority. That is"
+  echo "        the right combination for the dry run of a new box and the"
+  echo "        wrong one for a box anybody is using. Switch ACME_CA to the"
+  echo "        production endpoint, run up.sh again, and check the served"
+  echo "        certificate from somewhere other than this box."
 fi
 
 # --------------------------------------------------------------------- done

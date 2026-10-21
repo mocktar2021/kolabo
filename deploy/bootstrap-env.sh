@@ -81,6 +81,18 @@ new server, which booted clean and pointed at the wrong environment.
                            point here. Either one unset is a caddy container
                            that refuses to start.
 
+  ACME_CA                  which Let's Encrypt endpoint Caddy asks. Shipped as
+                           the real one, so nothing inherits the other by
+                           accident. ON A NEW BOX, POINT IT AT STAGING FOR THE
+                           FIRST BOOT: five certificates per hostname per week,
+                           failed challenges counted, so DNS that has not
+                           propagated or a typo in a hostname can spend the
+                           allowance before the name is even right. Staging
+                           issues certificates signed by a CA no browser
+                           trusts, and that warning is the success signal on a
+                           dry run. Then switch to the real endpoint, run up.sh
+                           again, and check what is served from off this box.
+
 THE FIVE URLS THAT MUST AGREE WITH THOSE TWO HOSTNAMES. Every one of them has
 been wrong at least once, each time with no error message anywhere:
 

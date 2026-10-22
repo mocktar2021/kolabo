@@ -96,8 +96,18 @@ export function PartyDetailsSection({
     void load();
   }, [load]);
 
+  /* COPY AND ASSIGN rather than `{ ...prev, [field]: value }`. `field` is the
+     PartyField union, not one literal, and how TypeScript types a computed
+     property whose key is a union of literals has moved between versions: the
+     unhappy outcome is an inferred string index signature that will not assign
+     back to Record<PartyField, string>, which on this app means a red CI run
+     rather than a bug. An indexed write has nothing to infer. */
   function set(field: PartyField, value: string) {
-    setValues((prev) => ({ ...prev, [field]: value }));
+    setValues((prev) => {
+      const next = { ...prev };
+      next[field] = value;
+      return next;
+    });
     /* A success banner that outlives the next keystroke is a lie about the
        current state of the form. */
     setSaved(false);

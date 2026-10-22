@@ -9,6 +9,7 @@ import Register from "./pages/Register";
 import VerifyOtp from "./pages/VerifyOtp";
 import Dashboard from "./pages/Dashboard";
 import ProfileSetup from "./pages/ProfileSetup";
+import PartyDetailsPage from "./pages/PartyDetails";
 import AccountPage from "./pages/Account";
 import EarningsPage from "./pages/Earnings";
 import PayoutMethodPage from "./pages/PayoutMethod";
@@ -138,6 +139,26 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/profile" element={<ProfileSetup />} />
+          {/* WHO YOU ARE ON A CONTRACT, which is not the same question as how
+              the market sees you and so is not a section of the form above.
+              Nothing captured here is shown to the market: it is the legal
+              name, address and registration details that get printed on every
+              contract this account signs, read once at generation and then
+              frozen onto the contract.
+
+              NEITHER WRAPPER, for the plainest version of the reason /account
+              has neither. A contract names two parties and both of them have
+              to be identified on it, so there is no creator-only or brand-only
+              form of this question: generation refuses with
+              contract_business_party_missing or contract_creator_party_missing
+              according to which side is short, and either side can be the one
+              that is.
+
+              UNDER /profile/ rather than at a top-level path of its own. The
+              block is stored on the profile, the card that leads here is on the
+              profile, and the screen's own back link goes there. Same
+              reasoning that put the payout form under /settings/. */}
+          <Route path="/profile/party" element={<PartyDetailsPage />} />
           {/* Neither wrapper, and deliberately. Every account signs in with
               an email address, has a password, is notified about things and
               may want to leave; the two sides of the market differ in what

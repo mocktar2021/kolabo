@@ -45,7 +45,19 @@
 
 * { box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+/* THE PAGE IS AS TALL AS ITS CONTENT, which height: 100% did not allow and
+   which the sticky header depends on. #root is .nav's parent, because Layout
+   renders a fragment and nothing sits between them, and a sticky element
+   cannot be offset past its parent's box. With #root pinned to exactly the
+   viewport height the header held for one screen of scrolling and then slid
+   away with #root's bottom edge, a little under 700 px down on the landing
+   page. Nothing was wrong with .nav's own declarations.
+
+   min-height keeps the one thing height: 100% was there for, a short page
+   that still fills the window, and lets a long page grow so the header stays
+   where it was put. */
+html { height: 100%; }
+body, #root { min-height: 100%; }
 
 body {
   margin: 0;

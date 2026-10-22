@@ -88,6 +88,109 @@ class BusinessProfileOut(BaseModel):
     description: str | None
 
 
+class PartyDetailsIn(BaseModel):
+    """What a user states about itself for a contract to print.
+
+    ONE MODEL FOR BOTH SIDES OF THE MARKET. A buyer's block and a creator's
+    block have the same shape, so one model validates both, one renderer
+    prints both, and an agency creator who IS a registered company needs no
+    second form. See app.modules.profiles.models.PARTY_TYPES.
+
+    display_label IS NOT ON THIS MODEL, and its absence is load-bearing. The
+    label a contract prints is DERIVED server side from legal_name at capture
+    (see party_details.derive_display_label) so that a renderer and a contract
+    card have one field to read without branching on party_type. A client that
+    sends one anyway has it dropped rather than refused: pydantic ignores keys
+    it does not know, which is the behaviour we want here, because a 422 would
+    fail the save of an otherwise correct form over a field the client was
+    never meant to fill in the first place.
+
+    WHAT IS REQUIRED HERE AND WHAT IS NOT. The four fields every party type
+    shares are required by this model, because they are always part of the
+    shape. Everything a single type adds is optional here and decided by
+    party_details.py, which refuses a block missing a field its own type needs
+    with `party_details_invalid`. That is the same line this module already
+    draws for a package's duration pair: the schema owns the shape of a field,
+    the service owns a rule about the relationship between fields. It also
+    keeps the refusal translatable, because a 422 body is not something either
+    client's error catalogue covers.
+
+    NOTHING STATED HERE IS CHECKED BY ANYBODY. These are self declared
+    contract details, exactly as they would be on paper. The form's copy has
+    to say so plainly, and no surface may render a tick, a badge or the word
+    verified next to any of it.
+    """
+
+    # One of models.PARTY_TYPES, and it decides which of the fields below
+    # matter. NO pattern here on purpose, for the same reason `platform` and
+    # `method` carry none: the closed set lives in models.py and the refusal
+    # belongs next to the rule, in the service, under a code the two error
+    # catalogues can translate.
+    party_type: str = Field(min_length=1, max_length=40)
+    # ISO 3166-1 alpha-2, the country this party contracts from. Two
+    # characters is the shape; that they are letters, and uppercase, is
+    # normalised by the service. NOT restricted to the pilot markets: a buyer
+    # contracting from outside them is an ordinary case, not an error.
+    country: str = Field(min_length=2, max_length=2)
+    # One free text field, deliberately not split into street, city and
+    # postcode. Addresses in the launch markets do not reliably decompose that
+    # way, nothing joins on the parts, and a form that demands a postcode from
+    # a creator in Cotonou is a form that does not get completed.
+    address: str = Field(min_length=1, max_length=500)
+    # The entity's registered name, or the natural person's own name for a
+    # sole trader. Required for all three types, because display_label is
+    # derived from it and a contract with no name on it is the defect this
+    # whole change exists to fix.
+    legal_name: str = Field(min_length=1, max_length=200)
+    # SARL, SA, Ltd, GmbH. A registered_company states one; the other two
+    # types have nothing to put here.
+    legal_form: str | None = Field(default=None, max_length=120)
+    # RCCM, companies house number, association register number. Required of a
+    # registered_company and of an association, meaningless for a sole trader.
+    registration_number: str | None = Field(default=None, max_length=120)
+    # IFU in Benin, TIN elsewhere. Required of a registered_company, OPTIONAL
+    # for a sole trader (many genuinely have none) and not asked of an
+    # association.
+    tax_identifier: str | None = Field(default=None, max_length=120)
+    # The human who signs for an entity, and the capacity they sign in
+    # ("Gerant", "Directrice generale", "President"). Both required of a
+    # registered_company and of an association. A sole trader signs for
+    # themselves, so asking would be asking them to name themselves twice.
+    representative_name: str | None = Field(default=None, max_length=200)
+    representative_capacity: str | None = Field(default=None, max_length=120)
+
+
+class PartyDetailsOut(BaseModel):
+    """A stored party block, as the profile holds it now.
+
+    EVERY TYPE-SPECIFIC FIELD IS NULLABLE HERE, because only the keys
+    belonging to the stated party_type are stored: an association block
+    carries no legal_form at all rather than an empty one. A client renders
+    from party_type and ignores the nulls.
+
+    display_label IS PRESENT HERE AND ABSENT FROM THE REQUEST MODEL. It is
+    what a contract and a contract card print as the party name, derived from
+    legal_name at capture so that nothing downstream has to branch on
+    party_type to find a name.
+
+    THERE IS NO `verified` FIELD AND THERE MUST NEVER BE ONE. Nothing in this
+    block has been checked by anybody, so there is nothing for a client to
+    badge. A flag here, even one that was always false, would be an invitation
+    to render a tick the day somebody adds a review queue that does not exist.
+    """
+
+    party_type: str
+    display_label: str
+    country: str
+    address: str
+    legal_name: str
+    legal_form: str | None = None
+    registration_number: str | None = None
+    tax_identifier: str | None = None
+    representative_name: str | None = None
+    representative_capacity: str | None = None
+
+
 class SocialAccountConnect(BaseModel):
     platform: str
     handle: str = Field(min_length=1)
@@ -241,6 +344,14 @@ class OnboardingStatusOut(BaseModel):
     # Progress toward MIN_LIVE_PACKAGES, so the wizard can say "1 of 3".
     active_package_count: int
     is_live: bool
+    # PARTY DETAILS ARE DELIBERATELY NOT ON THIS MODEL, and will look like an
+    # omission to anybody reading the spec beside it. Spec section 4
+    # recommends adding has_party_details here so that a creator who has not
+    # stated who they are is not discoverable, the same way one without a
+    # birth date is not. That is spec section 11 question 1, the founder has
+    # not answered it, and it is a product decision rather than a tidy-up: it
+    # changes who appears in search. Until she answers, party details gate
+    # CONTRACT GENERATION ONLY (contracts/service.py) and nothing else.
 
 
 class VerificationDocumentOut(BaseModel):
@@ -339,3 +450,9 @@ class PublicProfileOut(BaseModel):
     # the page a brand reads before it spends can say which numbers on it have
     # been checked and which are the creator's own word.
     social_accounts: list[SocialAccountOut]
+    # PARTY DETAILS ARE NOT ON THIS MODEL AND MUST NOT BE ADDED TO IT. A party
+    # block is a legal name, an address, a registration number and a
+    # representative: contract content, visible to a counterparty on a
+    # contract they are party to and to admins, and to nobody else. This
+    # endpoint is unauthenticated (see the router's module docstring), so a
+    # field here would publish a creator's home address to the open internet.

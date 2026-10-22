@@ -28,6 +28,13 @@
    rate is a founder decision and it belongs in the pricing page and the Terms
    at the same time, not here alone.
 
+   NO SUPPORT ADDRESS EITHER, and for a different reason. It used to be here,
+   as faq.contactLink, in both language blocks. An address is a fact rather
+   than a sentence: there is nothing in it to translate, a translator can
+   mis-type it, and holding it in two places is how one of them goes stale.
+   The sentence inviting somebody to write in is still copy and is still here;
+   the address itself lives in lib/support.ts and pages/Guide.tsx renders it.
+
    THE NUMBERS THAT ARE STATED are the ones the interface already states, so
    there is one source for each: 8 characters for a password, a 6 digit code,
    48 hours for a creator to accept an order, 4 days for a brand to review a
@@ -191,8 +198,7 @@ const fr = {
     delete2: "Ce qui est effacé et ce qui doit être conservé est décrit dans la politique de confidentialité, parce qu'un contrat signé et un paiement sont aussi des pièces comptables.",
 
     contactTitle: "Nous écrire",
-    contact1: "Une question à laquelle cette page ne répond pas, un compte bloqué, un paiement qui n'arrive pas : écrivez-nous et nous vous répondrons.",
-    contactLink: "hello@kolaboafrica.com"
+    contact1: "Une question à laquelle cette page ne répond pas, un compte bloqué, un paiement qui n'arrive pas : écrivez-nous et nous vous répondrons."
   }
 };
 
@@ -347,8 +353,7 @@ const en = {
     delete2: "What is erased and what has to be kept is described in the privacy policy, because a signed contract and a payment are also accounting records.",
 
     contactTitle: "Writing to us",
-    contact1: "A question this page does not answer, an account you cannot get into, a payment that has not arrived: write to us and we will answer.",
-    contactLink: "hello@kolaboafrica.com"
+    contact1: "A question this page does not answer, an account you cannot get into, a payment that has not arrived: write to us and we will answer."
   }
 };
 

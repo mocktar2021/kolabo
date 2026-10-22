@@ -67,6 +67,12 @@ const fr = {
   sub: "Ces informations sont celles qui figureront sur chaque contrat que vous signez sur Kolabo, et que l'autre partie lira.",
   notVerified: `Kolabo ne vérifie pas ces informations${NBSP}: vous les déclarez vous-même, comme vous le feriez en haut d'un contrat papier. Rien ici n'est contrôlé et rien ici ne donne de badge.`,
   missing: "Vous n'avez pas encore renseigné ces informations. Un contrat ne peut pas être généré tant qu'elles manquent, d'un côté comme de l'autre.",
+  /* The next step for a buyer whose save was refused with profile_not_found.
+     Said BESIDE the refusal rather than instead of it: errorText renders the
+     shared sentence for that code, which is the general "Profil introuvable."
+     and tells this particular reader nothing they can act on. The endpoint
+     will not invent a company name, so the company profile comes first. */
+  needsBusinessProfile: "Enregistrez d'abord le nom de votre entreprise sur votre profil, puis revenez indiquer qui signe vos contrats.",
 
   /* The first question, which decides the rest of the form. */
   typeQuestion: "Sous quelle forme contractez-vous ?",
@@ -99,6 +105,12 @@ const fr = {
   addressHint: "L'adresse complète, telle qu'elle doit figurer sur le contrat.",
   country: "Pays",
   countryChoose: "Choisissez un pays",
+  /* The escape hatch out of the seven markets in lib/countries.ts. The server
+     checks this field for two letters and deliberately does not check it
+     against the countries Kolabo sells in: this is the country a party
+     contracts FROM, and a buyer may contract from anywhere. */
+  countryOther: "Autre pays…",
+  countryOtherHint: "Code pays à deux lettres, par exemple FR.",
   representativeName: "Nom du représentant",
   representativeNameHint: "La personne qui signe pour la structure.",
   representativeCapacity: "Qualité du représentant",
@@ -134,6 +146,7 @@ const en = {
   sub: "These details are what will appear on every contract you sign on Kolabo, and what the other party will read.",
   notVerified: "Kolabo does not check these details: you state them yourself, the way you would at the top of a paper contract. Nothing here is verified and nothing here earns a badge.",
   missing: "You have not filled these in yet. A contract cannot be generated while either side's details are missing.",
+  needsBusinessProfile: "Save your company name on your profile first, then come back and say who signs your contracts.",
 
   typeQuestion: "In what form do you contract?",
   equalForms: "The three forms are equal on Kolabo: each one signs contracts and gets paid the same way.",
@@ -160,6 +173,8 @@ const en = {
   addressHint: "The full address, as it should appear on the contract.",
   country: "Country",
   countryChoose: "Choose a country",
+  countryOther: "Another country…",
+  countryOtherHint: "Two letter country code, for example FR.",
   representativeName: "Representative name",
   representativeNameHint: "The person who signs for the entity.",
   representativeCapacity: "Representative capacity",

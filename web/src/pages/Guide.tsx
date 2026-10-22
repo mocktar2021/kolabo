@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "../lib/support";
 
 /* THE USER GUIDE. One page, two roles and a question list, with the words in
    lib/guideStrings.ts: the same split LegalPage.tsx makes, for the same
@@ -45,11 +46,12 @@ type GuideBlock =
      before money can move, the escrow that has to be funded before work
      starts, the difference between requesting changes and opening a dispute. */
   | { kind: "note"; key: string }
-  /* The address, as a mailto. The href lives here and not in the copy, for the
-     reason LegalPage.tsx gives about its links: an address inside a translated
-     string is an address a translator can mangle, and it would have to be
-     written identically in both bundles anyway. */
-  | { kind: "mail"; key: string };
+  /* The support address, and it carries NO COPY KEY. It used to read the
+     address out of the strings bundle, which put the same address in both
+     language blocks and made it something a translator could mis-type. It
+     comes from lib/support.ts now, which is the only place it is written, for
+     the reasons set out at the top of that file. */
+  | { kind: "mail" };
 
 type GuideTopic = {
   /* Appended to the page URL, so it is part of this file's public surface.
@@ -300,7 +302,7 @@ const SECTIONS: readonly GuideSection[] = [
         titleKey: "contactTitle",
         blocks: [
           { kind: "para", key: "contact1" },
-          { kind: "mail", key: "contactLink" }
+          { kind: "mail" }
         ]
       }
     ]
@@ -417,10 +419,9 @@ export default function Guide() {
                     );
                   }
                   if (block.kind === "mail") {
-                    const address = t(`${section.ns}.${block.key}`);
                     return (
-                      <p key={block.key} style={PARA}>
-                        <a href={`mailto:${address}`}>{address}</a>
+                      <p key="mail" style={PARA}>
+                        <a href={SUPPORT_MAILTO}>{SUPPORT_EMAIL}</a>
                       </p>
                     );
                   }

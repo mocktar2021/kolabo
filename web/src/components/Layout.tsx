@@ -10,6 +10,7 @@ import { setStoredLanguage, type AppLanguage } from "../lib/language";
 import { useCart } from "../lib/cart";
 import { awaitingMyAnswer } from "../lib/disputes";
 import { useMe } from "../lib/me";
+import { SUPPORT_MAILTO } from "../lib/support";
 import type { Dispute, MessageThread } from "../lib/types";
 
 /* The one control that must never end up behind anything: a visitor who
@@ -562,7 +563,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
    Support points where support actually happens today: the address the
    Support column above already publishes. Not a help centre that has not been
-   built.
+   built. The address itself comes from lib/support.ts, which is the only
+   place it is written.
 
    THE LAYOUT IS ONE WRAPPING FLEX LINE with no media query, which is what
    keeps it safe below 400 px. The brand and the links are two groups sharing
@@ -612,7 +614,7 @@ function ParentCompanyStrip() {
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 22 }}>
         <Link to="/legal/privacy" style={PARENT_LINK}>{t("footer.privacy")}</Link>
         <Link to="/legal/terms" style={PARENT_LINK}>{t("footer.terms")}</Link>
-        <a href="mailto:hello@kolaboafrica.com" style={PARENT_LINK}>{t("footer.support")}</a>
+        <a href={SUPPORT_MAILTO} style={PARENT_LINK}>{t("footer.support")}</a>
         {/* The one link in this footer that leaves the product, hence the
             noopener/noreferrer pair on the new tab. The company name is a
             proper noun and is not translated in either bundle. */}
@@ -666,7 +668,7 @@ function SiteFooter() {
               scrolls itself into view, because react-router does not do it for
               a hash on a client-side navigation. */}
           <Link to="/#faq">{t("footer.faq")}</Link>
-          <a href="mailto:hello@kolaboafrica.com">{t("footer.contact")}</a>
+          <a href={SUPPORT_MAILTO}>{t("footer.contact")}</a>
         </div>
       </div>
       <div className="container" style={{ borderTop: "1px solid var(--line)", paddingTop: 18, marginTop: 24, fontSize: 13, color: "var(--muted)" }}>

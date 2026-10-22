@@ -34,6 +34,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
+# The party details both sides have to have stated before a contract can be
+# generated. Shared with the three other suites that reach contract
+# generation; tests/party_fixtures.py carries the argument.
+from tests.party_fixtures import seed_both_parties
+
 
 @pytest.fixture()
 def client():
@@ -75,6 +80,13 @@ def _parties(client):
         biz = User(phone="+22990010001", email="22990010001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
         creator = User(phone="+22990010002", email="22990010002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, creator]); db.commit(); db.refresh(biz); db.refresh(creator)
+        # Both sides state who they are, because one test here accepts the
+        # order and accepting writes a contract: generation refuses unless
+        # both party blocks exist (contract_business_party_missing /
+        # contract_creator_party_missing). Seeded for every test rather than
+        # only for the accepting one, so that "a brand and a creator" keeps
+        # meaning the same thing all through the file.
+        seed_both_parties(db, biz.id, creator.id)
         return biz.id, creator.id
     finally:
         db.close()

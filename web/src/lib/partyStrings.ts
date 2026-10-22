@@ -30,14 +30,15 @@
    one from the field name.
 
    FRENCH TYPOGRAPHY, AND IT FOLLOWS legalStrings.ts RATHER THAN THE APP. The
-   no-break space before a colon is written as the escape  , which is what
-   that file does and says to keep doing: a literal U+00A0 is drawn exactly
-   like an ordinary space by an editor, a diff and a review, nothing in the
-   toolchain notices when one is lost, and a space is not a type error. The
+   no-break space before a colon is written as the escape \\u00A0, which is
+   what that file does and says to keep doing: a literal U+00A0 is drawn
+   exactly like an ordinary space by an editor, a diff and a review, nothing in
+   the toolchain notices when one is lost, and a space is not a type error. The
    escape is the same character at runtime and cannot be normalised away
    without an edit. This bundle takes the trouble because this is the copy that
    describes what gets printed on a contract; the app's other bundles use an
-   ordinary space and are left alone.
+   ordinary space and are left alone. There are four below, all French: an
+   English string never takes one.
 
    No em dash or en dash in either language. House style, enforced by
    lib/punctuation.test.ts, and the reason several sentences below turn on a
@@ -49,17 +50,17 @@ const fr = {
      default and three of the five launch markets are francophone. */
   title: "Qui vous êtes sur un contrat",
   sub: "Ces informations sont celles qui figureront sur chaque contrat que vous signez sur Kolabo, et que l'autre partie lira.",
-  notVerified: "Kolabo ne vérifie pas ces informations : vous les déclarez vous-même, comme vous le feriez en haut d'un contrat papier. Rien ici n'est contrôlé et rien ici ne donne de badge.",
+  notVerified: "Kolabo ne vérifie pas ces informations\\u00A0: vous les déclarez vous-même, comme vous le feriez en haut d'un contrat papier. Rien ici n'est contrôlé et rien ici ne donne de badge.",
   missing: "Vous n'avez pas encore renseigné ces informations. Un contrat ne peut pas être généré tant qu'elles manquent, d'un côté comme de l'autre.",
 
   /* The first question, which decides the rest of the form. */
   typeQuestion: "Sous quelle forme contractez-vous ?",
-  equalForms: "Les trois formes se valent sur Kolabo : chacune signe des contrats et reçoit des paiements de la même manière.",
+  equalForms: "Les trois formes se valent sur Kolabo\\u00A0: chacune signe des contrats et reçoit des paiements de la même manière.",
   /* Said beside the question rather than after a refusal. The server refuses a
      change with party_type_immutable once a contract exists, and the sentence
      for that code is in lib/errorMessages.ts; this is the same rule said in
      advance, which is where somebody can still act on it. */
-  typeLocked: "Une fois qu'un contrat a été généré, cette forme ne change plus : un contrat signé doit continuer de se lire comme ce qu'il était. Écrivez au support si votre situation a changé.",
+  typeLocked: "Une fois qu'un contrat a été généré, cette forme ne change plus\\u00A0: un contrat signé doit continuer de se lire comme ce qu'il était. Écrivez au support si votre situation a changé.",
 
   type_registered_company: "Entreprise immatriculée",
   typeDesc_registered_company: "Une société ou un établissement inscrit à un registre du commerce.",

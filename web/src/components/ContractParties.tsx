@@ -108,12 +108,23 @@ export function ContractParties({
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{t("party.contractTitle")}</h3>
       <p className="muted" style={{ fontSize: 13.5, marginTop: -4 }}>{t("party.contractSub")}</p>
-      {business === null && influencer === null ? (
-        /* BOTH NULL MEANS AN OLD CONTRACT rather than two parties who failed to
-           fill something in. Every contract generated from now on carries both
-           snapshots, because generation refuses without them, so the only way
-           to see this is to open one written before the blocks existed. It says
-           so, and points at the document below, where the user ids still are. */
+      {!business && !influencer ? (
+        /* NEITHER BLOCK MEANS AN OLD CONTRACT rather than two parties who
+           failed to fill something in. Every contract generated from now on
+           carries both snapshots, because generation refuses without them, so
+           one way to see this is to open a contract written before the blocks
+           existed, which has nothing to backfill from beyond a pair of user
+           ids. It says so, and points at the document below, where those ids
+           still are.
+
+           FALSY RATHER THAN `=== null`, AND THAT IS THE OTHER WAY TO GET HERE.
+           ContractDetailOut in backend/app/modules/contracts/schemas.py is
+           still ContractOut plus `body`: the columns exist, the detail response
+           does not carry them yet, so both fields arrive UNDEFINED. A strict
+           null test would fall through to two blocks each saying the party had
+           not filled their details in, which is the one sentence on this card
+           that would be untrue. Null and absent produce the same card, which
+           is what a reader needs either way. */
         <p className="muted" style={{ fontSize: 13.5, marginBottom: 0 }}>{t("party.legacy")}</p>
       ) : (
         <div style={{ display: "grid", gap: 16 }}>

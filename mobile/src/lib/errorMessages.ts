@@ -231,6 +231,40 @@ export const error_fr: Record<string, string> = {
   contract_campaign_not_open: "Cette campagne n'est plus ouverte : aucun nouveau contrat ne peut en être créé.",
   contract_none_for_proposal: "Aucun contrat pour cette proposition.",
 
+  /* Les détails de partie : qui signe un contrat, tel que chaque côté le
+     déclare lui-même.
+
+     AUCUNE de ces phrases ne doit parler de vérification, de validation ou de
+     contrôle, parce que Kolabo ne vérifie rien de ce bloc : il enregistre ce
+     qu'une partie dit d'elle-même, exactement comme sur un contrat papier.
+     Une phrase qui laisserait entendre le contraire promettrait une garantie
+     que la plateforme n'offre pas, et c'est la contrainte qui tient les quatre
+     ensemble même si elles ne viennent pas du même endroit du backend.
+
+     Deux refus distincts à la génération plutôt qu'un seul, parce que le
+     client doit pouvoir s'adresser à la bonne personne. Celui qui lit la
+     phrase n'est pas toujours celui qui peut y remédier : une entreprise qui
+     conclut avec un créateur dont le bloc est vide ne peut rien remplir à sa
+     place. D'où « si c'est votre compte » plutôt qu'un impératif sec.
+
+     Les deux dernières viennent du formulaire lui-même. party_type_immutable
+     n'est pas une faute de saisie : le type d'entité est figé dès qu'un
+     contrat a été généré, parce que le changer ferait relire un contrat déjà
+     signé comme s'il l'avait été par une autre sorte d'entité. La suite est
+     donc le support, et non une correction dans le formulaire.
+
+     Aucune valeur interpolée, ici comme en anglais. Le formulaire connaît ses
+     propres champs et les signale lui-même, donc la phrase n'a qu'à renvoyer
+     le lecteur vers eux. */
+  contract_business_party_missing:
+    "L'entreprise n'a pas encore indiqué qui signe de son côté. Ces informations figurent sur le contrat, qui ne peut donc pas être généré sans elles. Si c'est votre compte, complétez-les depuis votre profil.",
+  contract_creator_party_missing:
+    "Le créateur n'a pas encore indiqué qui signe de son côté. Ces informations figurent sur le contrat, qui ne peut donc pas être généré sans elles. Si c'est votre compte, complétez-les depuis votre profil.",
+  party_details_invalid:
+    "Ces informations sont incomplètes. Reprenez les champs demandés pour le type choisi, puis renvoyez le formulaire. Rien n'a été enregistré.",
+  party_type_immutable:
+    "Le type d'entité ne peut plus être modifié : un contrat a déjà été généré avec celui-ci. Écrivez au support si votre situation a changé.",
+
   proposal_not_found: "Proposition introuvable.",
   proposal_not_yours: "Cette proposition n'est pas la vôtre.",
   proposal_not_live: "Cette proposition n'est plus l'offre en cours : il n'y a plus rien à retirer.",
@@ -528,6 +562,39 @@ export const error_en: Record<string, string> = {
   contract_own_offer: "You cannot accept your own offer. The other party has to accept it.",
   contract_campaign_not_open: "This campaign is no longer open, so no new contract can be created from it.",
   contract_none_for_proposal: "No contract for this proposal.",
+
+  /* Party details: who signs a contract, as each side states it about itself.
+
+     NONE of these sentences may talk about verification, validation or
+     checking, because Kolabo checks none of this block: it records what a
+     party says about itself, exactly as a paper contract would. A sentence
+     that implied otherwise would promise a guarantee the platform does not
+     offer, and that constraint is what holds the four together even though
+     they are not raised from the same place in the backend.
+
+     Two separate refusals at generation rather than one, because the client
+     has to be able to address the right person. Whoever reads the sentence is
+     not always whoever can act on it: a business closing with a creator whose
+     block is empty cannot fill it in for them. Hence "if that is your
+     account" rather than a bare instruction.
+
+     The last two come from the form itself. party_type_immutable is not a
+     typing mistake: the entity type is frozen the moment a contract has been
+     generated against it, because changing it would make an already signed
+     contract read as though a different kind of entity had signed it. The
+     next step is therefore support, not a correction in the form.
+
+     No interpolated values, here or in French. The form knows its own fields
+     and marks them itself, so the sentence only has to send the reader back
+     to them. */
+  contract_business_party_missing:
+    "The business has not stated who signs on its side yet. Those details appear on the contract, so it cannot be generated without them. If that is your account, fill them in from your profile.",
+  contract_creator_party_missing:
+    "The creator has not stated who signs on their side yet. Those details appear on the contract, so it cannot be generated without them. If that is your account, fill them in from your profile.",
+  party_details_invalid:
+    "These details are incomplete. Go back over the fields asked for the type you chose, then send the form again. Nothing was saved.",
+  party_type_immutable:
+    "The entity type can no longer be changed: a contract has already been generated against it. Write to support if your situation has changed.",
 
   proposal_not_found: "Proposal not found.",
   proposal_not_yours: "That proposal is not yours.",

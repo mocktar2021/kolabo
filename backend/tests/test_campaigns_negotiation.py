@@ -20,6 +20,11 @@ from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.contracts.router import router as contracts_router
 
+# The party details both sides have to have stated before a contract can be
+# generated. Shared with the three other suites that reach contract
+# generation; tests/party_fixtures.py carries the argument.
+from tests.party_fixtures import seed_party_details
+
 # Every negotiation here runs on a live brief, and a brief past its deadline
 # takes no proposals and no replies (campaigns.service). Relative rather than
 # a literal, so the file does not start failing on a date instead of on a
@@ -63,6 +68,14 @@ def _user(client, phone, role, verified=True):
     try:
         u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role=role, is_verified=verified)
         db.add(u); db.commit(); db.refresh(u)
+        # The block this user's side of the market states. Three tests below
+        # accept a proposal, and contract generation refuses unless both sides
+        # have stated who they are contracting as
+        # (contract_business_party_missing / contract_creator_party_missing).
+        # Done here rather than in those three, because every user this file
+        # creates is a party to a negotiation and _negotiation builds the pair
+        # out of two calls to this helper.
+        seed_party_details(db, u.id, role)
         return u.id, {"Authorization": f"Bearer {create_access_token(u.id)}"}
     finally:
         db.close()

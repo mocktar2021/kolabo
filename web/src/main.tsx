@@ -60,6 +60,11 @@ import "./lib/paymentStrings";
    above it belongs to no single feature: any page that calls the API can
    reach a sentence in it. See lib/errorMessages.ts. */
 import "./lib/errorStrings";
+/* The user guide. Owns the guide.* group outright, so it has no ordering
+   constraint and its position here is a choice rather than a requirement: it
+   sits above legalStrings so that googleStrings stays the last bundle in this
+   list and the sentence in that file's comment saying so stays true. */
+import "./lib/guideStrings";
 /* The privacy policy and the terms of service. Owns the legal.* group
    outright, but it ALSO adds footer.privacy and footer.terms to the footer.*
    group marketingStrings.ts owns — the two links the site footer has been

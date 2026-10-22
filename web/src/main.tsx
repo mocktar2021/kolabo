@@ -60,6 +60,11 @@ import "./lib/paymentStrings";
    above it belongs to no single feature: any page that calls the API can
    reach a sentence in it. See lib/errorMessages.ts. */
 import "./lib/errorStrings";
+/* The three positioning pages: /for-brands, /for-creators and /pricing. Owns
+   forBrands.*, forCreators.* and pricingPage.* outright, so no ordering
+   constraint. It sits beside the guide below because that is the company it
+   keeps: these are the four pages a signed-out visitor reads. */
+import "./lib/sitePageStrings";
 /* The user guide. Owns the guide.* group outright, so it has no ordering
    constraint and its position here is a choice rather than a requirement: it
    sits above legalStrings so that googleStrings stays the last bundle in this

@@ -30,6 +30,7 @@ import {
   missingFields,
   toPayload,
   valuesFrom,
+  type PartyDetails,
   type PartyField,
   type PartyType,
   type PartyValues,
@@ -41,6 +42,12 @@ function filled(type: PartyType): PartyValues {
   const values = { ...EMPTY_VALUES };
   for (const field of FIELDS[type]) values[field] = `${field} value`;
   return values;
+}
+
+/* What a correct payload's keys are, for a given type: the discriminator plus
+   that type's own fields, and nothing whatsoever besides. */
+function expectedKeys(type: PartyType): string[] {
+  return ["party_type", ...FIELDS[type]].sort();
 }
 
 describe("the three types and their tables line up", () => {
@@ -68,7 +75,7 @@ describe("the three types and their tables line up", () => {
   });
 
   it("asks every type for a legal name, an address and a country", () => {
-    /* The four fields the contract body needs on every party block, whatever
+    /* The three fields the contract body needs on every party block, whatever
        kind of entity it is: a name to print, where it is, and the country it
        contracts from. display_label is derived from the first of them. */
     for (const type of PARTY_TYPES) {
@@ -157,6 +164,14 @@ describe("toPayload sends the type's own fields and nothing else", () => {
     for (const field of FIELDS.registered_company) expect(body[field]).toBe(`${field} value`);
   });
 
+  it("sends exactly the expected keys for every type", () => {
+    /* One assertion per type covering every stray key at once, display_label
+       among them: if anything can leak into a payload, it leaks here. */
+    for (const type of PARTY_TYPES) {
+      expect(Object.keys(toPayload(type, filled(type))).sort()).toEqual(expectedKeys(type));
+    }
+  });
+
   it("drops a field belonging to a type the reader switched away from", () => {
     /* The form state keeps the company answers on purpose, so switching type
        to read what it asks does not throw away typing. This is what stops
@@ -166,7 +181,7 @@ describe("toPayload sends the type's own fields and nothing else", () => {
     values.address = "Quartier Haie Vive, Cotonou";
     values.country = "BJ";
     const body = toPayload("sole_trader", values);
-    expect(Object.keys(body).sort()).toEqual(["party_type", ...FIELDS.sole_trader].sort());
+    expect(Object.keys(body).sort()).toEqual(expectedKeys("sole_trader"));
     expect(body.legal_form).toBeUndefined();
     expect(body.registration_number).toBeUndefined();
     expect(body.representative_name).toBeUndefined();
@@ -176,7 +191,8 @@ describe("toPayload sends the type's own fields and nothing else", () => {
   it("never sends display_label, even when the GET supplied one", () => {
     /* The behavioural half of the rule. A server-derived label comes back on
        every read, so the risk is not somebody typing one: it is a round trip
-       carrying it back out again. */
+       carrying it back out again. The key check is the assertion that counts,
+       since it fails for ANY stray key rather than only the one named. */
     const values = valuesFrom({
       party_type: "sole_trader",
       display_label: "Ama K.",
@@ -186,7 +202,7 @@ describe("toPayload sends the type's own fields and nothing else", () => {
     });
     const body = toPayload("sole_trader", values);
     expect(body).not.toHaveProperty("display_label");
-    expect(Object.values(body)).not.toContain("Ama K. the label");
+    expect(Object.keys(body).sort()).toEqual(expectedKeys("sole_trader"));
   });
 
   it("trims, and turns a blank optional field into null", () => {
@@ -235,21 +251,17 @@ describe("valuesFrom reads a GET into form state", () => {
 
   it("ignores a field the API sends that no type asks for", () => {
     /* A backend that grows a field before the form does should not crash the
-       screen. valuesFrom reads the fields it knows about and leaves the rest
-       where they are. */
-    const values = valuesFrom({
-      party_type: "sole_trader",
-      legal_name: "Ama K.",
-      ...({ something_new: "x" } as Record<string, string>),
-    } as Parameters<typeof valuesFrom>[0]);
+       screen, and must not smuggle the new field into the next PUT either.
+       valuesFrom reads the fields it knows about and drops the rest. */
+    const fromApi = { party_type: "sole_trader", legal_name: "Ama K.", something_new: "x" };
+    const values = valuesFrom(fromApi as PartyDetails);
     expect(Object.keys(values).sort()).toEqual(Object.keys(EMPTY_VALUES).sort());
     expect((values as Record<string, string>).something_new).toBeUndefined();
   });
 
   it("keeps the field union and the empty record in step", () => {
     /* If a PartyField is added to the union without a slot in EMPTY_VALUES,
-       this is where it is noticed. The cast is the assertion: it only compiles
-       while the two agree. */
+       this is where it is noticed. */
     const fields: PartyField[] = Object.keys(EMPTY_VALUES) as PartyField[];
     expect(fields.length).toBe(Object.keys(EMPTY_VALUES).length);
     for (const field of fields) expect(EMPTY_VALUES[field]).toBe("");

@@ -6,6 +6,7 @@ import { errorText } from "../lib/errorMessages";
 import { Layout } from "../components/Layout";
 import { EvidencePicker } from "../components/EvidencePicker";
 import { DeliverablesPanel } from "../components/DeliverablesPanel";
+import { ContractParties } from "../components/ContractParties";
 import { useAuth } from "../lib/auth";
 import {
   DISPUTE_REASONS,
@@ -308,6 +309,27 @@ export default function ContractPage() {
                 </div>
               )}
             </div>
+
+            {/* WHO THIS CONTRACT IS BETWEEN, between the terms and the
+                document, which is the order the page is read in: what was
+                agreed, who agreed it, then the text that says both.
+
+                ABOVE THE DOCUMENT IS ALSO A REQUIREMENT RATHER THAN A
+                PREFERENCE. On a contract generated before the party blocks
+                existed, the card says the parties' identifiers are still in
+                the document below, and the document has to actually be below.
+
+                NOT GATED ON fully_signed, unlike the money card and the
+                deliverables panel further down. Who the other side is, is
+                precisely what somebody wants to know BEFORE they put their
+                name in the signature box, and that box is on this page while
+                the contract still binds nobody.
+
+                No visibility check here: both snapshots arrive on
+                GET /contracts/{id}, which refuses anybody who is not a party
+                with contract_not_a_party, so a reader holding them is a party
+                or an admin. See components/ContractParties.tsx. */}
+            <ContractParties business={contract.business_party} influencer={contract.influencer_party} />
 
             <div className="card" style={{ marginTop: 16 }}>
               <h3 style={{ marginTop: 0 }}>{t("contract.document")}</h3>

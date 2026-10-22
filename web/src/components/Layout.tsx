@@ -296,7 +296,18 @@ function AccountMenu() {
        in. They were the same page until the account settings existed, and
        the delete-account block sitting at the bottom of a profile form was
        the clearest sign they should not be. */
-    { to: "/account", label: t("nav.account") }
+    { to: "/account", label: t("nav.account") },
+    /* THE GUIDE, and this is the only entry point a signed-in user has to it
+       without scrolling to the bottom of the page. It sits last because it is
+       the one entry that is not about this account: the three above answer
+       "what about me", and this one answers "how does this work".
+
+       Under the avatar rather than out in the nav for the reason the other
+       three are there. A guide is not a destination somebody navigates to
+       while working; it is where they go when they have stopped because
+       something did not behave the way they expected. Its label is the
+       guide's own title, so there is no new string to translate. */
+    { to: "/guide", label: t("guide.title") }
   ];
 
   // mediaSrc turns the server path ("/profiles/media/{id}") into an absolute
@@ -637,13 +648,23 @@ function SiteFooter() {
         </div>
         <div>
           <h4>{t("footer.support")}</h4>
-          {/* The FAQ answers live in the section at the bottom of the
-              landing page; there is no FAQ page, and inventing one would mean
-              writing content nobody has approved. This pointed at /pricing,
-              which answers one of those four questions and none of the other
-              three. The anchor is id="faq" in pages/Landing.tsx, and that
-              section scrolls itself into view — react-router does not do it
-              for a hash on a client-side navigation. */}
+          {/* THE GUIDE LEADS THE COLUMN, and it is the first thing in this
+              footer that can actually answer a question rather than pointing
+              at somebody who will. It is the only route here a signed-out
+              visitor can reach without an account, which is half of who reads
+              it. Its label is the guide's own title, so no new string. */}
+          <Link to="/guide">{t("guide.title")}</Link>
+          {/* THE FAQ ANCHOR STAYS, ABOVE AN EARLIER VERSION OF THIS COMMENT
+              THAT SAID IT HAD NOWHERE BETTER TO GO. It now does, and the
+              anchor is kept anyway: the four answers in the landing page's
+              accordion are the questions somebody asks BEFORE signing up, and
+              the guide's question list is the ones they ask after. Two
+              audiences, and sending the first one into a long document to find
+              four short answers would serve neither.
+
+              The anchor is id="faq" in pages/Landing.tsx, and that section
+              scrolls itself into view, because react-router does not do it for
+              a hash on a client-side navigation. */}
           <Link to="/#faq">{t("footer.faq")}</Link>
           <a href="mailto:hello@kolaboafrica.com">{t("footer.contact")}</a>
         </div>

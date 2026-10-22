@@ -107,6 +107,32 @@ export const error_fr = {
   contract_cancel_signed: "Ce contrat est signé par les deux parties. Elles s'y sont engagées, et ce n'est pas quelque chose qu'une seule peut annuler.",
   contract_cancel_funded: "Ce contrat a de l'argent bloqué en séquestre. Y mettre fin, c'est décider qui doit quoi : cela passe par le litige et le remboursement, pas par une annulation.",
 
+  /* Les informations de partie, c'est-à-dire qui signe, tel que chacun le
+     déclare de lui-même.
+
+     DEUX CODES POUR UN SEUL GARDE-FOU, ET C'EST TOUT LEUR INTÉRÊT. Un contrat
+     ne peut pas être généré tant que les informations manquent d'un côté ou de
+     l'autre, et la personne qui lit le refus n'est pas toujours celle qui peut
+     le lever : c'est l'acheteur qui essaie de conclure, et le bloc qui manque
+     peut être celui du créateur. Nommer le côté qui manque est la seule façon
+     de dire à qui appartient la suite ; un code unique aurait donné deux
+     phrases disant « quelqu'un n'a pas rempli quelque chose ».
+
+     LES DEUX DERNIERS VIENNENT DU MODULE profiles et non de contracts : ils
+     sont renvoyés par PUT /profiles/me/party-details. Ils sont rangés ici
+     quand même, parce qu'ils relèvent de la même règle et parce que la
+     prochaine personne à lire ce fichier les cherchera ensemble.
+
+     party_type_immutable n'est pas une panne et ne doit pas se lire comme
+     telle. La forme de partie est figée dès qu'un contrat a été généré, parce
+     qu'un contrat signé doit continuer de se lire comme ce qu'il était, et non
+     comme s'il avait été signé par une autre sorte d'entité. La phrase porte
+     donc la suite, qui est le support. */
+  contract_business_party_missing: "Les informations contractuelles de l'entreprise ne sont pas renseignées. Le contrat ne peut pas être généré avant qu'elles figurent dans son profil.",
+  contract_creator_party_missing: "Les informations contractuelles du créateur ne sont pas renseignées. Le contrat ne peut pas être généré avant qu'elles figurent dans son profil.",
+  party_details_invalid: "Ces informations sont incomplètes pour la forme de partie choisie. Vérifiez les champs demandés, puis réessayez.",
+  party_type_immutable: "Un contrat a déjà été généré sous cette forme : elle ne peut plus être changée. Écrivez au support si votre situation a changé.",
+
   /* Auth. These are the first refusals a person ever sees — signing up,
      logging in, entering a code — so they are also the ones most likely to be
      read by somebody who has not yet decided whether this product works. */
@@ -435,6 +461,33 @@ export const error_en = {
   contract_already_cancelled: "This contract is already cancelled.",
   contract_cancel_signed: "This contract is fully signed. Both parties agreed to it, and it is not something either side can cancel alone.",
   contract_cancel_funded: "This contract has money in escrow. Ending it is a question about who is owed what, which is the dispute and refund path, not a cancellation.",
+
+  /* Party details: who is signing, as each side states it about itself.
+
+     TWO CODES FOR ONE GATE, AND THAT IS THE POINT OF THEM. A contract cannot
+     be generated while either side's details are missing, and whoever reads
+     the refusal is not always the person who can clear it: the buyer is the
+     one trying to close, and the block that is short may be the creator's.
+     Naming the side that is missing is the only way for the sentence to say
+     where the next step belongs. One code would have produced two sentences
+     both saying "somebody has not filled something in".
+
+     THE LAST TWO ARE RAISED BY profiles RATHER THAN BY contracts, on PUT
+     /profiles/me/party-details. They are filed here anyway, because they are
+     the same rule and because whoever reads this file next will look for all
+     four together. The header already says a code names the rule and not the
+     module.
+
+     party_type_immutable IS NOT A FAULT AND MUST NOT READ LIKE ONE. The form
+     of party is frozen once a contract has been generated, because a signed
+     contract has to keep reading as what it was rather than as though it had
+     been signed by a different kind of entity. So the sentence carries the
+     next step, which is support, and pages/PartyDetails.tsx says the same
+     rule beside the control before anybody can trip over it. */
+  contract_business_party_missing: "The business's contract details are missing. The contract cannot be generated until they are filled in on their profile.",
+  contract_creator_party_missing: "The creator's contract details are missing. The contract cannot be generated until they are filled in on their profile.",
+  party_details_invalid: "These details are incomplete for the form of party chosen. Check the fields it asks for and try again.",
+  party_type_immutable: "A contract has already been generated under this form, so it can no longer be changed. Write to support if your situation has changed.",
 
   auth_user_not_found: "User not found.",
   auth_referral_code_failed: "A referral code could not be generated. Please try again.",

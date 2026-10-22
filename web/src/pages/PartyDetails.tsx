@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { useAuth } from "../lib/auth";
+import { ApiError } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { COUNTRIES } from "../lib/countries";
 import {
@@ -39,6 +40,12 @@ import type { PartyDetails, PartyType } from "../lib/types";
    contract_business_party_missing or contract_creator_party_missing according
    to which side is short, and either side can be the one that is.
 
+   ONE PAIR OF ENDPOINTS SERVES BOTH SIDES. The server reads the caller's role
+   and writes the block to influencer_profiles or business_profiles itself
+   (profiles/party_details.CREATOR_ROLE), so this screen never asks which, and
+   an agency creator who is a registered company fills in the same form a buyer
+   does.
+
    NOTHING ON THIS SCREEN IS VERIFIED AND NOTHING ON IT MAY LOOK VERIFIED.
    party.notVerified says so in an alert above the form rather than in a hint
    under a field, because somebody should read it before they type. There is no
@@ -63,9 +70,17 @@ export default function PartyDetailsPage() {
      three branches, and retyping an address because somebody corrected their
      own form of business is the kind of thing that makes a form abandoned. */
   const [values, setValues] = useState<Record<string, string>>({});
+  /* Whether the country field has been switched to free text. Same shape as
+     cityOther in ProfileSetup.tsx, and it only ever goes one way: somebody who
+     asked for the box keeps it for this visit. */
+  const [countryOther, setCountryOther] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Set only when the save was refused with profile_not_found, which for this
+     endpoint means a buyer with no business profile saved yet. It adds the next
+     step to the refusal rather than replacing its sentence. */
+  const [needsProfile, setNeedsProfile] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -98,22 +113,27 @@ export default function PartyDetailsPage() {
 
   const complete = type !== null && partyIsComplete(type, values);
   const chosenCountry = values.country ?? "";
-  /* A STORED CODE THE DROPLIST DOES NOT KNOW GETS ITS OWN OPTION rather than
-     being discarded. lib/countries.ts holds the seven target markets, and a
-     block written against a country outside them, or one the list has not
-     caught up with, would otherwise be silently emptied by the first render of
-     this select and then saved blank. The raw code is an ugly label; losing a
-     value somebody typed is worse. */
-  const countryOptions =
-    chosenCountry === "" || COUNTRIES.some((c) => c.code === chosenCountry)
-      ? COUNTRIES
-      : [...COUNTRIES, { code: chosenCountry, name: chosenCountry }];
+  /* THE COUNTRY IS NOT LIMITED TO THE MARKETS KOLABO SELLS IN, and that is the
+     server's rule rather than a kindness. profiles/party_details.py checks this
+     field for two letters and deliberately does not check it against
+     COUNTRY_CONFIG, because this is the country a party contracts FROM: a
+     French agency buying a Beninese creator's work is an ordinary transaction.
+
+     So the droplist is lib/countries.ts, which holds the seven target markets
+     and should stay that size, and this is the way out of it. Free text when
+     somebody asked for it, and ALSO when a stored code is not in the list,
+     which is what keeps a select from silently emptying a saved value it has
+     no row for. The city picker in ProfileSetup.tsx is the same pattern for
+     the same reason. */
+  const countryIsFree =
+    countryOther || (chosenCountry !== "" && !COUNTRIES.some((c) => c.code === chosenCountry));
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!type || !partyIsComplete(type, values)) return;
     setBusy(true);
     setError(null);
+    setNeedsProfile(false);
     setDone(false);
     try {
       /* partyBody sends the chosen branch's fields and nothing else, so a
@@ -130,6 +150,9 @@ export default function PartyDetailsPage() {
       setDone(true);
     } catch (err) {
       setError(errorText(err, t));
+      /* The one refusal whose shared sentence cannot say what to do about it.
+         See party.needsBusinessProfile in lib/partyStrings.ts. */
+      setNeedsProfile(err instanceof ApiError && err.code === "profile_not_found");
     } finally {
       setBusy(false);
     }
@@ -148,7 +171,22 @@ export default function PartyDetailsPage() {
         {/* Before the form, not after it. */}
         <div className="alert alert-info">{t("party.notVerified")}</div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className="alert alert-error">
+            {error}
+            {/* Inside the same banner, because it is the next step for THIS
+                refusal and not a standing instruction. errorText above is
+                still what renders the refusal itself. */}
+            {needsProfile && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13.5 }}>{t("party.needsBusinessProfile")}</div>
+                <Link className="btn btn-ghost" style={{ marginTop: 8, padding: "6px 12px", fontSize: 13 }} to="/profile">
+                  {t("party.backToProfile")}
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
         {done && <div className="alert alert-success">{t("party.saved")}</div>}
 
         {loading ? (
@@ -195,8 +233,13 @@ export default function PartyDetailsPage() {
 
                 {type !== null && (
                   <>
-                    {/* The lock, said while it can still be acted on. See the
-                        header for why it is not enforced in this client. */}
+                    {/* The lock, said while it can still be acted on. The
+                        server refuses a CHANGE of type once a contract exists,
+                        with party_type_immutable; this client cannot know
+                        whether one does, so the rule is stated rather than
+                        enforced here. Disabling the control on the mere
+                        existence of a saved block would wrongly lock somebody
+                        who filled this in and never signed anything. */}
                     <p className="muted" style={{ fontSize: 13 }}>{t("party.typeLocked")}</p>
 
                     {/* THE FIELDS COME FROM PARTY_FIELDS, not from a branch
@@ -211,25 +254,56 @@ export default function PartyDetailsPage() {
                           {t(`party.${field.labelKey}`)}
                         </label>
                         {field.name === "country" ? (
-                          <select
-                            id="party-country"
-                            className="select"
-                            value={chosenCountry}
-                            disabled={busy}
-                            onChange={(e) => setValue("country", e.target.value)}
-                          >
-                            {/* The empty option stays selectable so the field
-                                starts unanswered rather than defaulting to
-                                whichever market happens to be first. */}
-                            <option value="">{t("party.countryChoose")}</option>
-                            {countryOptions.map((c) => (
-                              <option key={c.code} value={c.code}>{c.name}</option>
-                            ))}
-                          </select>
+                          countryIsFree ? (
+                            <>
+                              {/* Letters only and uppercased as it is typed,
+                                  which is what the server stores: nobody should
+                                  save a value that comes back looking
+                                  different from what they entered. */}
+                              <input
+                                id="party-country"
+                                className="input"
+                                value={chosenCountry}
+                                maxLength={2}
+                                disabled={busy}
+                                placeholder="FR"
+                                onChange={(e) =>
+                                  setValue("country", e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase())
+                                }
+                              />
+                              <div className="hint">{t("party.countryOtherHint")}</div>
+                            </>
+                          ) : (
+                            <select
+                              id="party-country"
+                              className="select"
+                              value={chosenCountry}
+                              disabled={busy}
+                              onChange={(e) => {
+                                if (e.target.value === "__other__") {
+                                  setCountryOther(true);
+                                  setValue("country", "");
+                                } else {
+                                  setValue("country", e.target.value);
+                                }
+                              }}
+                            >
+                              {/* The empty option stays selectable so the field
+                                  starts unanswered rather than defaulting to
+                                  whichever market happens to be first. */}
+                              <option value="">{t("party.countryChoose")}</option>
+                              {COUNTRIES.map((c) => (
+                                <option key={c.code} value={c.code}>{c.name}</option>
+                              ))}
+                              <option value="__other__">{t("party.countryOther")}</option>
+                            </select>
+                          )
                         ) : field.name === "address" ? (
                           /* A textarea, because an address has lines in it and
                              one free-text field is what the server stores: it
-                             is printed on the contract as written. */
+                             is printed on the contract as written, and the
+                             server trims it rather than collapsing it for
+                             exactly that reason. */
                           <textarea
                             id="party-address"
                             className="input"
@@ -257,9 +331,9 @@ export default function PartyDetailsPage() {
                       {busy ? t("auth.working") : t("party.save")}
                     </button>
                     {/* Shown beside the disabled button rather than discovered
-                        as a 422: the server refuses an incomplete block with
-                        party_details_invalid, and arriving at that after eight
-                        fields is worse than being told now. */}
+                        as a refusal: the server answers an incomplete block
+                        with party_details_invalid, and arriving at that after
+                        eight fields is worse than being told now. */}
                     {!complete && <div className="hint">{t("party.incomplete")}</div>}
                   </>
                 )}

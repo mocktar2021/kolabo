@@ -30,7 +30,7 @@ import DisputeDetailPage from "./pages/DisputeDetail";
 import AdminDisputesPage from "./pages/AdminDisputes";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
-import MarketingPage from "./pages/MarketingPage";
+import MarketingPage, { BRANDS_PAGE, CREATORS_PAGE, PRICING_PAGE } from "./pages/MarketingPage";
 import Guide from "./pages/Guide";
 import LegalPage, { PRIVACY_DOCUMENT, TERMS_DOCUMENT } from "./pages/LegalPage";
 import NotFound from "./pages/NotFound";
@@ -203,9 +203,19 @@ export default function App() {
               only stops the page being reachable by somebody it will refuse. */}
           <Route path="/admin/disputes" element={<AdminOnly><AdminDisputesPage /></AdminOnly>} />
           <Route path="/u/:userId" element={<PublicProfilePage />} />
-          <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
-          <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />
-          <Route path="/pricing" element={<MarketingPage titleKey="marketingPage.pricingTitle" bodyKey="marketingPage.pricingBody" />} />
+          {/* THE THREE POSITIONING PAGES, AND THEY NOW CARRY CONTENT. Each
+              took a titleKey and a bodyKey until this change, which was the
+              right shape for the heading and single paragraph they held and
+              the wrong shape for a page with sections, a step list and a
+              computed worked example. They take a declared outline now,
+              exactly as the two legal routes below take a LegalDocument, and
+              the three constants are exported from the component beside it.
+
+              Unwrapped, like /guide and the legal pages: these are the pages
+              somebody reads while deciding whether to make an account. */}
+          <Route path="/for-brands" element={<MarketingPage page={BRANDS_PAGE} />} />
+          <Route path="/for-creators" element={<MarketingPage page={CREATORS_PAGE} />} />
+          <Route path="/pricing" element={<MarketingPage page={PRICING_PAGE} />} />
           {/* THE USER GUIDE, AND IT IS UNWRAPPED FOR THE REASON THE TWO LEGAL
               ROUTES BELOW ARE. Half of that document is read by somebody who
               has not finished creating an account, which is the audience its

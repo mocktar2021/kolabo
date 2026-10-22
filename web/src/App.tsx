@@ -31,6 +31,7 @@ import AdminDisputesPage from "./pages/AdminDisputes";
 import PublicProfilePage from "./pages/PublicProfile";
 import Onboarding from "./pages/Onboarding";
 import MarketingPage from "./pages/MarketingPage";
+import Guide from "./pages/Guide";
 import LegalPage, { PRIVACY_DOCUMENT, TERMS_DOCUMENT } from "./pages/LegalPage";
 import NotFound from "./pages/NotFound";
 
@@ -205,6 +206,18 @@ export default function App() {
           <Route path="/for-brands" element={<MarketingPage titleKey="marketingPage.brandsTitle" bodyKey="marketingPage.brandsBody" />} />
           <Route path="/for-creators" element={<MarketingPage titleKey="marketingPage.creatorsTitle" bodyKey="marketingPage.creatorsBody" />} />
           <Route path="/pricing" element={<MarketingPage titleKey="marketingPage.pricingTitle" bodyKey="marketingPage.pricingBody" />} />
+          {/* THE USER GUIDE, AND IT IS UNWRAPPED FOR THE REASON THE TWO LEGAL
+              ROUTES BELOW ARE. Half of that document is read by somebody who
+              has not finished creating an account, which is the audience its
+              first two sections are written for, and an app-store reviewer
+              opens it cold with no session at all. A guide behind a login is
+              a guide that cannot help anybody who is stuck at the login.
+
+              NOT under /legal/, because this is not a legal document and that
+              prefix was claimed for entity details, cookies and acceptable
+              use. It sits at the top level beside /pricing and the two
+              marketing pages, which is the company it actually keeps. */}
+          <Route path="/guide" element={<Guide />} />
           {/* THE TWO LEGAL DOCUMENTS, AND THEY ARE UNWRAPPED ON PURPOSE —
               unlike /admin/disputes above, whose lack of a guard is a gap
               waiting on an input. Nothing about a privacy policy or a set of

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { PartyDetailsCard } from "../components/PartyDetailsCard";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
@@ -1250,6 +1251,23 @@ export default function ProfileSetup() {
             </button>
           </form>
         </div>
+
+        {/* WHO THIS ACCOUNT IS ON A CONTRACT, which is a different question
+            from the one the form above answers and so gets a different screen.
+            Everything above is how the market sees you. A legal name, an
+            address and a registration number are not storefront copy: they are
+            what gets printed on every contract this account signs, they are
+            read once at generation and then frozen onto the contract, and they
+            are shown to nobody but the other party to it.
+
+            BOTH ROLES, outside the kind branch on purpose. A contract names two
+            parties and both have to be identified on it, so a creator needs
+            this block exactly as much as a brand does.
+
+            The card fetches for itself so it can say whether the details are
+            already on file, which is the one thing worth putting on the profile
+            rather than in a menu. See components/PartyDetailsCard.tsx. */}
+        <PartyDetailsCard />
 
         {/* Two fixed product questions with free-text answers, saved with the
             main Save button above (the textareas share state with the PUT).

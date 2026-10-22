@@ -262,7 +262,7 @@ const fr = {
       whyNoSale: "**Nous ne vendons pas vos données à caractère personnel et nous ne les utilisons pas à des fins publicitaires.**",
 
       sharedTitle: "Qui d’autre y a accès",
-      sharedGateway: "**Notre prestataire de paiement, FedaPay**, reçoit ce qu’un paiement ou un versement exige\u00A0: le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
+      sharedGateway: "**Notre prestataire de paiement, FeexPay**, reçoit ce qu’un paiement ou un versement exige\u00A0: le montant, la devise, et les coordonnées du payeur ou du bénéficiaire. L’argent ne peut pas circuler sans cela.",
       sharedSocial: "**Les plateformes sociales** (YouTube, Meta, et les autres à mesure que nous les ajoutons) reçoivent une requête portant sur les données publiques du compte que vous avez connecté.",
       sharedAi: "**Anthropic**, si vous utilisez la fonction facultative «\u00A0rédiger ma bio\u00A0»\u00A0: les éléments de profil que vous avez déjà publiés sont envoyés pour produire une suggestion. Vous choisissez de l’enregistrer ou non. N’utilisez pas cette fonction pour quoi que ce soit que vous ne voulez pas voir sortir de nos systèmes.",
       sharedHosting: "**Nos hébergeurs et fournisseurs d’infrastructure**, qui stockent et servent les données sur nos instructions.",
@@ -270,7 +270,7 @@ const fr = {
       sharedAuthorities: "**Les autorités**, lorsque la loi l’exige.",
 
       whereTitle: "Où elles sont conservées",
-      where: "Sur des serveurs que nous exploitons et sur l’infrastructure de nos prestataires, qui peuvent se trouver hors de votre pays. Les données de paiement et de versement sont traitées par FedaPay dans les marchés qu’il dessert.",
+      where: "Sur des serveurs que nous exploitons et sur l’infrastructure de nos prestataires, qui peuvent se trouver hors de votre pays. Les données de paiement et de versement sont traitées par FeexPay dans les marchés qu’il dessert.",
 
       retentionTitle: "Combien de temps nous les conservons",
       retention: "Tant que votre compte est ouvert, puis aussi longtemps que nous le devons\u00A0: les enregistrements des transactions terminées, les documents fiscaux et les dossiers de litige doivent survivre au compte auquel ils se rattachent. Nous ne publions pas encore de calendrier de durées de conservation\u00A0; lorsque nous en fixerons un, il figurera ici.",
@@ -435,7 +435,7 @@ const en = {
       whyNoSale: "**We do not sell your personal data, and we do not use it for advertising.**",
 
       sharedTitle: "Who else sees it",
-      sharedGateway: "**Our payment provider, FedaPay**, receives what a payment or payout requires: amount, currency, and the payer's or recipient's details. Money cannot move without this.",
+      sharedGateway: "**Our payment provider, FeexPay**, receives what a payment or payout requires: amount, currency, and the payer's or recipient's details. Money cannot move without this.",
       sharedSocial: "**Social platforms** (YouTube, Meta and others as we add them) receive a request for the public data on a handle you connected.",
       sharedAi: "**Anthropic**, if you use the optional \"draft my bio\" feature: the profile facts you already published are sent to draft a suggestion. You choose whether to save it. Do not use the feature for anything you do not want to leave our systems.",
       sharedHosting: "**Our hosting and infrastructure providers**, which store and serve the data on our instructions.",
@@ -443,7 +443,7 @@ const en = {
       sharedAuthorities: "**Authorities**, where the law requires it.",
 
       whereTitle: "Where it is held",
-      where: "On servers we operate and on our providers' infrastructure, which may be outside your country. Payment and payout data is processed by FedaPay in the markets it serves.",
+      where: "On servers we operate and on our providers' infrastructure, which may be outside your country. Payment and payout data is processed by FeexPay in the markets it serves.",
 
       retentionTitle: "How long we keep it",
       retention: "While your account is open, and afterwards for as long as we must: records of completed transactions, tax records and dispute records have to outlive the account they belong to. We do not yet publish a schedule of retention periods; when we set one it will appear here.",

@@ -69,9 +69,9 @@ export const error_fr = {
   escrow_release_business_only: "Seule l'entreprise peut confirmer la livraison.",
   escrow_release_needs_submission: "Il n'y a encore rien à confirmer : le créateur n'a pas envoyé de livrable pour ce séquestre. Une fois qu'il l'aura envoyé, confirmer la livraison valide cet envoi et libère le paiement.",
 
-  /* Les refus que peut produire le passage par la passerelle FedaPay. Ceux
+  /* Les refus que peut produire le passage par la passerelle FeexPay. Ceux
      qui portent sur le pays et la devise sont le « refus franc » assumé pour
-     les marchés que FedaPay ne dessert pas (Ghana, Cameroun) : la phrase doit
+     les marchés que FeexPay ne dessert pas (Ghana, Cameroun) : la phrase doit
      donc promettre une suite, et non se lire comme une panne qu'il suffirait
      de réessayer. */
   escrow_business_not_found: "Nous n'avons pas retrouvé votre compte. Reconnectez-vous puis réessayez.",
@@ -403,8 +403,8 @@ export const error_en = {
   escrow_release_business_only: "Only the business can confirm delivery.",
   escrow_release_needs_submission: "There is nothing to confirm yet: the creator has not submitted any work against this escrow. Once they submit it, confirming delivery approves that submission and releases the payment.",
 
-  /* The refusals the FedaPay gateway path can produce. The country and
-     currency ones are the deliberate "fail loudly" answer for markets FedaPay
+  /* The refusals the FeexPay gateway path can produce. The country and
+     currency ones are the deliberate "fail loudly" answer for markets FeexPay
      does not serve (Ghana, Cameroon), so the sentence has to promise a
      follow-up rather than read like a fault worth retrying. */
   escrow_business_not_found: "We couldn't find your account. Please sign in again and retry.",

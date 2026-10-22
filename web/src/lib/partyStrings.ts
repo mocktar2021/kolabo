@@ -29,38 +29,53 @@
    which is why lib/party.ts names a labelKey per branch instead of deriving
    one from the field name.
 
-   FRENCH TYPOGRAPHY, AND IT FOLLOWS legalStrings.ts RATHER THAN THE APP. The
-   no-break space before a colon is written as the escape \\u00A0, which is
-   what that file does and says to keep doing: a literal U+00A0 is drawn
-   exactly like an ordinary space by an editor, a diff and a review, nothing in
-   the toolchain notices when one is lost, and a space is not a type error. The
-   escape is the same character at runtime and cannot be normalised away
-   without an edit. This bundle takes the trouble because this is the copy that
-   describes what gets printed on a contract; the app's other bundles use an
-   ordinary space and are left alone. There are four below, all French: an
-   English string never takes one.
-
    No em dash or en dash in either language. House style, enforced by
    lib/punctuation.test.ts, and the reason several sentences below turn on a
    colon or a full stop where a dash would have been quicker. */
 import i18n from "../i18n";
+
+/* THE NO-BREAK SPACE FRENCH TYPOGRAPHY PUTS BEFORE A COLON, as a named
+   constant rather than as a character.
+
+   This bundle sets it at all because this is the copy that describes what gets
+   printed on a contract, which is the same argument lib/legalStrings.ts makes
+   for the privacy policy and the terms. Every other *Strings module here uses
+   an ordinary space and is left alone; do not normalise those into this.
+
+   WHY A CONSTANT AND NOT THE INLINE UNICODE ESCAPE THAT FILE USES. Its
+   objection is to the LITERAL character, and the objection is sound: a literal
+   U+00A0 is drawn exactly like the ordinary space beside it by an editor, a
+   diff and a code review, a space is not a type error, so tsc, vitest and the
+   build all stay green over French punctuation that has quietly stopped being
+   French. legalStrings.ts lost its own more than once that way and the only
+   thing that ever noticed was a byte count. A constant answers that better
+   than an escape does: at the use site the interpolation reads as what it is
+   instead of as six characters a reader has to decode, and it cannot be
+   normalised away by anything short of deleting it. Same character at runtime.
+
+   Built with String.fromCharCode for the reason lib/punctuation.test.ts builds
+   its em dash and en dash that way: a file that talks about an invisible
+   character should not contain one.
+
+   Three sentences below take one, all French. An English string never does. */
+const NBSP = String.fromCharCode(0x00a0);
 
 const fr = {
   /* The form. French first, like every other bundle here: it is the pilot
      default and three of the five launch markets are francophone. */
   title: "Qui vous êtes sur un contrat",
   sub: "Ces informations sont celles qui figureront sur chaque contrat que vous signez sur Kolabo, et que l'autre partie lira.",
-  notVerified: "Kolabo ne vérifie pas ces informations\\u00A0: vous les déclarez vous-même, comme vous le feriez en haut d'un contrat papier. Rien ici n'est contrôlé et rien ici ne donne de badge.",
+  notVerified: `Kolabo ne vérifie pas ces informations${NBSP}: vous les déclarez vous-même, comme vous le feriez en haut d'un contrat papier. Rien ici n'est contrôlé et rien ici ne donne de badge.`,
   missing: "Vous n'avez pas encore renseigné ces informations. Un contrat ne peut pas être généré tant qu'elles manquent, d'un côté comme de l'autre.",
 
   /* The first question, which decides the rest of the form. */
   typeQuestion: "Sous quelle forme contractez-vous ?",
-  equalForms: "Les trois formes se valent sur Kolabo\\u00A0: chacune signe des contrats et reçoit des paiements de la même manière.",
+  equalForms: `Les trois formes se valent sur Kolabo${NBSP}: chacune signe des contrats et reçoit des paiements de la même manière.`,
   /* Said beside the question rather than after a refusal. The server refuses a
      change with party_type_immutable once a contract exists, and the sentence
      for that code is in lib/errorMessages.ts; this is the same rule said in
      advance, which is where somebody can still act on it. */
-  typeLocked: "Une fois qu'un contrat a été généré, cette forme ne change plus\\u00A0: un contrat signé doit continuer de se lire comme ce qu'il était. Écrivez au support si votre situation a changé.",
+  typeLocked: `Une fois qu'un contrat a été généré, cette forme ne change plus${NBSP}: un contrat signé doit continuer de se lire comme ce qu'il était. Écrivez au support si votre situation a changé.`,
 
   type_registered_company: "Entreprise immatriculée",
   typeDesc_registered_company: "Une société ou un établissement inscrit à un registre du commerce.",

@@ -28,3 +28,4 @@ docker compose up --build
 ```
 
 Brings up Postgres + the backend API on `localhost:8000`. See `backend/README.md`, `web/README.md`, `mobile/README.md` for per-app setup.
+

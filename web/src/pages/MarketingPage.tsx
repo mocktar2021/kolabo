@@ -155,6 +155,17 @@ export default function MarketingPage({ page }: { page: SitePage }) {
               <h2 key={block.key} style={HEADING}>{t(`${page.ns}.${block.key}`, vars)}</h2>
             );
           }
+          /* THE BRANCH THIS RENDERER WAS MISSING. Without it the map fell from
+             steps straight into the example below, which read block.amount off
+             a union member that has no amount: a type error, and had it
+             compiled, every paragraph on all three pages would have rendered
+             as the worked table. The discriminated union is what turned a
+             silent content bug into a build failure. */
+          if (block.kind === "para") {
+            return (
+              <p key={block.key} style={PARA}>{t(`${page.ns}.${block.key}`, vars)}</p>
+            );
+          }
           if (block.kind === "list") {
             return (
               <ul key={block.keys[0]} style={{ paddingLeft: 22, marginTop: 0 }}>

@@ -12,15 +12,21 @@ import type { LicenceTerms } from "./licenceTerms";
    one. */
 export type Deliverable = { platform: string; type: string; quantity: number };
 
-/* THE CONTENT LICENCE ARRIVES AS AN INTERSECTION rather than as five more
-   lines spelled out here, so those pinned names are declared exactly once in
-   the mobile client. They are shared with the backend and the web app, and a
-   second copy of them in this file is a second place for a rename to miss.
-   lib/licenceTerms is where they live and what reads them.
+/* THE CONTENT LICENCE ARRIVES AS AN INTERSECTION rather than as a nested
+   object spelled out again here, so the pinned shape is declared exactly once
+   in the mobile client. It is shared with the backend and the web app, and a
+   second copy of it in this file is a second place for a rename to miss.
+   lib/licenceTerms is where it lives and what reads it.
 
-   They hang off a CAMPAIGN rather than off a proposal because a direct order
-   IS a campaign on this API (is_direct), so a brief and an order carry the
-   same clause and InvitationWithCampaign.campaign below gets it for free. */
+   ONE KEY, `licence_terms`, HOLDING THE FIVE FIELDS, because that is what
+   CampaignOut serves and what CampaignCreate and CampaignPatch take. This
+   intersection used to spread the five names flat onto the campaign, which
+   read as undefined against the real API.
+
+   A brief's licence hangs off the CAMPAIGN, because that is where a brand
+   states the rest of its terms, and InvitationWithCampaign.campaign below gets
+   it for free. A direct order's hangs off the PROPOSAL instead: see the note
+   on Proposal below, which is why that type now carries the key as well. */
 export type Campaign = LicenceTerms & {
   id: string;
   business_user_id: string;
@@ -41,8 +47,23 @@ export type Campaign = LicenceTerms & {
 
 /* One version of a negotiation chain, mirrored from ProposalOut. author_role
    says which side wrote it; expires_at is non-null only on a direct order,
-   which is what lib/orders.ts uses to tell the two kinds of row apart. */
-export type Proposal = {
+   which is what lib/orders.ts uses to tell the two kinds of row apart.
+
+   AND IT CARRIES A LICENCE BLOCK, because ProposalOut does and because on a
+   DIRECT ORDER that is the only place it lives. The brand's offer row IS the
+   order (service._place_order writes version 1 authored by the business), so
+   campaigns.service puts the stated licence there and leaves the wrapper
+   campaign's column null. A creator meets that row as `proposal` on their
+   invitation card and accepts it by its id, so a client that read only the
+   nested campaign showed every order as having stated nothing.
+
+   NULL ON EVERYTHING BORN OF A BRIEF, where the licence is on the campaign
+   instead, which is why reading it takes the precedence rule rather than a
+   plain field read: licenceTermsFor in lib/licenceTerms, mirroring
+   contracts.service._licence_snapshot. And the creator never WRITES it here:
+   ProposalIn has no licence field and submit_proposal carries the brand's
+   block forward onto a counter. */
+export type Proposal = LicenceTerms & {
   id: string;
   campaign_id: string;
   influencer_user_id: string;

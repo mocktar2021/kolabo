@@ -19,6 +19,11 @@ The `{user_id}` segment stays in the route for URL compatibility, so no web or
 mobile call site changes in this PR. It is now decoration. Removing it is a
 follow-up that touches both clients and belongs in its own change.
 
+THE PARTY DETAILS ROUTES ARE MOUNTED UNDER `/me` INSTEAD, and they are the
+first ones here to say in the path what this whole file already does. They are
+new, so there is no call site to keep compatible and no reason to carry
+decoration into a URL from the day it is written.
+
 WHAT IS DELIBERATELY LEFT PUBLIC, and it is not an oversight:
 
   * `GET /influencer/{user_id}/public` — the creator's storefront. Discovery is
@@ -36,7 +41,9 @@ WHAT IS DELIBERATELY LEFT PUBLIC, and it is not an oversight:
 
 `onboarding-status` is NOT in that list. "What is still missing before you can
 go live" is a private answer about somebody's account, not part of the
-storefront.
+storefront. Neither are the party details routes, and for a stronger reason:
+that block is a legal name, a home or office address, a registration number
+and a named representative.
 """
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
@@ -45,7 +52,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.errors import AppError
 from app.modules.auth.deps import get_current_user_id
-from app.modules.profiles import oauth_service, schemas, service
+from app.modules.profiles import oauth_service, party_details, schemas, service
 
 router = APIRouter()
 
@@ -124,6 +131,80 @@ def get_business_profile(
     the settings page had nothing to prefill and came up blank on every visit.
     """
     return service.get_business_profile(db, owner_id)
+
+
+# --------------------------------------------------------------------------
+# Who this account is on a contract.
+#
+# ONE PAIR OF ENDPOINTS FOR BOTH SIDES OF THE MARKET, which is the only thing
+# about these two routes that is not obvious. A buyer's party block and a
+# creator's have the same shape, so the caller's role decides which profile
+# table the block lands on (profiles/party_details.CREATOR_ROLE) and neither
+# client has to know which column it wrote. A creator who turns out to be an
+# agency with a registered company fills in the same form a buyer does.
+#
+# BOTH AUTHENTICATED, AND NEITHER WILL EVER BE PUBLIC. Every other private
+# thing in this router is private because it is somebody's business and nobody
+# else's; this one is private because the block holds a legal name, an
+# address, a registration number and a named representative. It is visible to
+# the counterparty on a contract they are party to, and to admins, and that is
+# the whole list. See the comment at the foot of PublicProfileOut.
+#
+# ROUTE ORDER: `/me/party-details` is two segments with a literal in both, so
+# no `/{user_id}/...` pattern above or below can match it (those all need a
+# literal second segment, none of which is `party-details`) and it cannot
+# shadow any of them either. Position here is for the reader's benefit, beside
+# the two profile reads it belongs with.
+#
+# NOTHING IN THE BLOCK IS CHECKED BY ANYBODY, and the form that posts to it has
+# to say so in plain language on the same screen: these are the details that
+# will appear on your contracts, and Kolabo does not verify them. There is no
+# `verified` field on the response model for a client to badge, and there must
+# never be one.
+# --------------------------------------------------------------------------
+
+
+@router.get("/me/party-details", response_model=schemas.PartyDetailsOut | None)
+def get_my_party_details(
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """The details this account states about itself on a contract, or null.
+
+    NULL IS A SUCCESSFUL ANSWER AND NOT AN ERROR. A caller that has stated
+    nothing yet, and one whose profile row does not exist at all, both get
+    null with a 200, because the only thing reading this is a form choosing
+    between empty and prefilled and a 404 would buy it a second branch for no
+    extra information.
+    """
+    return party_details.get_party_details(db, owner_id)
+
+
+@router.put("/me/party-details", response_model=schemas.PartyDetailsOut)
+def put_my_party_details(
+    payload: schemas.PartyDetailsIn,
+    db: Session = Depends(get_db),
+    owner_id: str = Depends(profile_owner),
+):
+    """State who signs this account's contracts, and read the stored block back.
+
+    THE WHOLE BLOCK, EVERY TIME. This is a replacement rather than a patch,
+    unlike the profile upsert above, because the fields a block must carry
+    depend on its own `party_type`: merging a sole trader's three fields over a
+    company's eight leaves a block that is valid as neither. See
+    party_details.set_party_details.
+
+    `display_label` is derived from `legal_name` server side. A client may send
+    one; it is ignored rather than refused.
+
+    REFUSALS. `party_details_invalid` when the block does not carry what the
+    chosen party_type has to state, with the missing field names in `values`.
+    `party_type_immutable` when a contract has already been generated for this
+    account and the type is being changed, which is support's job rather than a
+    form's. `profile_not_found` when a buyer has no business profile saved yet,
+    because company_name is required and this endpoint will not invent one.
+    """
+    return party_details.set_party_details(db, owner_id, payload)
 
 
 @router.get("/media/{media_id}")
@@ -264,6 +345,11 @@ def onboarding_status(
 
     Private, unlike the three lists above: this is a checklist about somebody's
     account, not part of what a visitor is shown.
+
+    PARTY DETAILS ARE NOT ONE OF THE ITEMS, deliberately. Spec section 4
+    recommends adding them, section 11 question 1 records that the founder has
+    not decided, and changing what `is_live` means changes who is discoverable.
+    Party details gate contract generation and nothing else until she answers.
     """
     return service.onboarding_status(db, owner_id)
 

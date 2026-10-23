@@ -31,6 +31,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
+# The party details both sides have to have stated before a contract can be
+# generated. Shared with the three other suites that reach contract
+# generation; tests/party_fixtures.py carries the argument.
+from tests.party_fixtures import seed_party_details
+
 
 @pytest.fixture()
 def client():
@@ -70,6 +75,15 @@ def _user(client, phone, role):
     try:
         u = User(phone=phone, email=f"{phone.lstrip('+')}@kolabo.test", password_hash="x", country_code="BJ", role=role, is_verified=True)
         db.add(u); db.commit(); db.refresh(u)
+        # Everybody gets the block their side of the market states, because
+        # the last test here accepts one of the cart's orders and contract
+        # generation refuses unless both sides have stated who they are
+        # contracting as (contract_business_party_missing /
+        # contract_creator_party_missing). Done in the user helper rather than
+        # in that one test: a cart fans out to several creators, and which of
+        # them ends up answering is exactly the sort of thing a test here
+        # rearranges.
+        seed_party_details(db, u.id, role)
         return u.id
     finally:
         db.close()

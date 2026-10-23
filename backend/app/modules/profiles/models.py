@@ -97,6 +97,44 @@ SELF_REPORTED = "self_reported"
 PLATFORM_API = "platform_api"
 FOLLOWER_SOURCES = {SELF_REPORTED, PLATFORM_API}
 
+# WHAT KIND OF THING SIGNS A CONTRACT. The discriminator inside
+# party_details, and the only field in a party block that decides which other
+# fields mean anything.
+#
+#   REGISTERED_COMPANY  an entity with a registration number: a SARL, a
+#                       limited company, a GmbH. States its legal form, its
+#                       registration number, a tax identifier, and the human
+#                       who signs for it together with the capacity they sign
+#                       in.
+#   SOLE_TRADER         a natural person contracting under their own name.
+#                       States their name, and a tax identifier only if they
+#                       have one. This is what nearly every creator is, and
+#                       what a great many of the buyers in the launch markets
+#                       are too.
+#   ASSOCIATION         a registered non profit or NGO. Registered, like a
+#                       company, and represented by a named person, like a
+#                       company, but has no legal form worth printing and
+#                       often no tax identifier at all.
+#
+# SOLE_TRADER IS FIRST AMONG EQUALS AND MUST NEVER READ AS A LESSER OPTION.
+# Per the founder, businesses on this platform are explicitly NOT limited to
+# registered ones, so the unregistered branch is not a fallback for people who
+# failed the real form: it is the ordinary case. A form that buries it, or
+# copy that calls it "individual" where the other says "company", is a
+# product defect and not a cosmetic one.
+#
+# A PLAIN SET WITH PYTHON CONSTANTS, not a SQLAlchemy Enum and not a native
+# database enum, for the reason SocialAccount.status gives at length below:
+# the value lives inside a JSON blob the database has no opinion about, the
+# closed set lives in this module, and a fourth type the day an agency needs
+# one costs no migration at all.
+#
+# NOTHING HERE IS VERIFIED. See party_details on both profiles.
+REGISTERED_COMPANY = "registered_company"
+SOLE_TRADER = "sole_trader"
+ASSOCIATION = "association"
+PARTY_TYPES = (REGISTERED_COMPANY, SOLE_TRADER, ASSOCIATION)
+
 
 class InfluencerProfile(Base):
     __tablename__ = "influencer_profiles"
@@ -143,6 +181,24 @@ class InfluencerProfile(Base):
     # name. The per-platform numbers, which CAN be sourced, live on
     # SocialAccount below.
     follower_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # WHO THIS CREATOR IS ON A CONTRACT, as they state it themselves. The
+    # shape is documented on BusinessProfile.party_details, which carries the
+    # whole argument once rather than twice; both columns are deliberately
+    # identical.
+    #
+    # WHY A CREATOR NEEDS ONE AT ALL, since display_name already exists.
+    # display_name is a storefront name. It is nullable, it is self asserted,
+    # and profiles.service._apply_enrichment writes it from whatever a social
+    # platform's API returned when the creator connected an account, so a
+    # great many of them are handles rather than names. "Signed by @afrovibes"
+    # is not a party to an agreement. A contract needs the name the person
+    # would write on paper, and the two are different fields on purpose: a
+    # creator who rebrands their storefront has not changed who they are.
+    #
+    # Nearly always SOLE_TRADER in practice, and the same shape is used on
+    # both sides anyway so that an agency account can state a company and one
+    # renderer still serves both.
+    party_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -155,6 +211,65 @@ class BusinessProfile(Base):
     company_name: Mapped[str] = mapped_column(String, nullable=False)
     industry: Mapped[str | None] = mapped_column(String, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # WHO THIS BUYER IS ON A CONTRACT, as they state it themselves. This
+    # column, and the matching one on InfluencerProfile, are the whole of what
+    # a generated contract has to work with when it names its parties.
+    #
+    # WHY company_name WAS NOT ENOUGH. It is one line of free text,
+    # overwritten whole on every save with no history, and it is the ONLY
+    # thing this table has ever held about the entity. There is no legal form,
+    # no registration number, no tax identifier, no address, no representative
+    # and no capacity, so a contract could not state any of them, and the
+    # signature column on the other side had no legal name in this database to
+    # be a signature OF. See claude/kolabo-contract-parties-spec.md.
+    #
+    # THE SHAPE, which the schema asserts and party_details.py enforces:
+    #
+    #   party_type      one of PARTY_TYPES above, and it decides the rest
+    #   display_label   what to print as the party name. DERIVED server side
+    #                   from legal_name at capture, never accepted from a
+    #                   client, and stored so that a renderer and a contract
+    #                   card have one field to read without branching on the
+    #                   type.
+    #   country         ISO 3166-1 alpha-2, the country this party contracts
+    #                   from. Not restricted to the pilot markets: a buyer
+    #                   contracting from France is an ordinary case.
+    #   address         free text, a single field, deliberately NOT structured
+    #                   into street, city and postcode. Addresses in the
+    #                   launch markets do not reliably decompose that way, and
+    #                   nothing joins on the parts.
+    #   legal_name      the entity, or the natural person for a sole trader
+    #
+    # then, by party_type: REGISTERED_COMPANY adds legal_form,
+    # registration_number, tax_identifier, representative_name and
+    # representative_capacity; SOLE_TRADER adds an optional tax_identifier;
+    # ASSOCIATION adds registration_number, representative_name and
+    # representative_capacity. Only the keys belonging to the stated type are
+    # written, so an association block carries no empty legal_form.
+    #
+    # A DEFAULT, NOT THE RECORD. This column holds the user's CURRENT details
+    # and stays editable at any time. What a contract says is the snapshot
+    # taken at generation and frozen there (contracts.business_party), so
+    # editing this changes the next contract and nothing about one that
+    # already exists. party_type is the one field that stops being editable,
+    # once any contract has been generated against this profile: changing it
+    # retroactively would make past contracts read as though they had been
+    # signed by a different kind of entity.
+    #
+    # NOTHING IN HERE IS VERIFIED AND NO SURFACE MAY IMPLY OTHERWISE. These
+    # are self declared, exactly as they would be on a paper contract: the
+    # platform records what each party states about itself and checks none of
+    # it. Kolabo collects no personal identity document (decided 3 October
+    # 2026; migration b1d7e3a05c92 emptied the store of the ones it held), and
+    # business_registration documents, which DO exist, are counted rather than
+    # read and are not connected to these fields in any way. A tick beside a
+    # registration number nobody has looked up is the most expensive lie this
+    # product could tell a brand.
+    #
+    # Nullable because nobody has stated anything yet, and no backfill was
+    # possible: company_name alone cannot be promoted into a party block
+    # without inventing a party_type and a country for somebody.
+    party_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 

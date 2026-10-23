@@ -17,6 +17,15 @@ product rules, written down once here:
     bid into a bid for different work — which nobody agreed to and which the
     contract would then be written from.
 
+  * Once a CONTRACT EXISTS, the title locks too, and for a different reason
+    than the terms above. It is still description and no creator priced
+    against it. What changes is that contract generation COPIES it into the
+    document: contracts/service.py writes "Contract for campaign: {title}"
+    into the body, the body is hashed at generation and is never amended, and
+    the contract card then joins the live title back on beside it. Rename the
+    brief afterwards and the card and the signed text say two different things
+    about one agreement, with only one of them changeable.
+
   * A campaign with anything attached to it is never deleted. Proposals,
     contracts and the audit trail behind them are the record of what two
     parties said to each other; the buyer losing interest is not a reason to
@@ -47,6 +56,52 @@ from app.modules.notifications.service import notify
 # the buyer's alone once somebody has priced against them. Everything else on
 # a campaign is description: rewrite it and the bid still means what it meant.
 LOCKED_FIELDS = ("budget_amount", "budget_currency", "deliverables", "deadline")
+
+# And the field that stops being the buyer's alone once a CONTRACT exists.
+#
+# A SEPARATE TUPLE BECAUSE IT IS A SEPARATE TRIGGER, not because the refusal
+# differs. `title` is not a term and nobody priced against it, which is why it
+# has to stay editable while a proposal is the only thing attached: a brand
+# fixing a typo in the headline of a live brief is the ordinary case and
+# breaking it would push people back to deleting and re-posting, which loses
+# the proposals.
+#
+# What changes once a contract exists is that the title has been copied
+# somewhere that can never be corrected. contracts/service.py::_build_body
+# writes "Contract for campaign: {title}" into the body, contracts.body_sha256
+# is a hash of that body taken at generation and never recomputed, and
+# contracts/service.py::list_my_contracts joins the LIVE title onto every
+# card. So a rename leaves the card and the document disagreeing about the
+# same agreement, the document is the half that cannot move, and nothing
+# anywhere records that the two were ever the same string.
+#
+# ANY contract counts, including a cancelled one. _contract below filters on
+# the campaign alone, deliberately: a cancelled contract keeps its row and its
+# body, that body still quotes the title it was generated with, and a creator
+# who signed before the brand walked away is entitled to have it keep saying
+# what it said.
+#
+# Locking rather than making the card stop joining the title. Both fix the
+# disagreement; this one is smaller, needs nothing from either client, and
+# matches what the rest of this flow already does with anything a contract has
+# copied.
+CONTRACT_LOCKED_FIELDS = ("title",)
+
+# Why a field is locked, said once per group. The field name is prefixed by
+# _refuse_locked, so one sentence serves every field in its tuple.
+#
+# Neither sentence suggests cancelling for the contract case, because
+# cancel_campaign refuses outright once a contract exists (campaign_has_contract
+# below): telling somebody to take an exit that is closed is worse than telling
+# them nothing.
+PRICED_AGAINST_REASON = (
+    "a creator has already priced against it. Cancel this campaign and publish "
+    "the new terms as a new brief."
+)
+IN_CONTRACT_REASON = (
+    "a contract has been generated from this campaign and carries this title in "
+    "its signed text. Agree new terms and generate a new contract."
+)
 
 # Said the same way by every entry point here, because it is one rule.
 DIRECT_ORDER_DETAIL = (
@@ -79,6 +134,39 @@ def _reject_direct(campaign: models.Campaign) -> None:
         )
 
 
+def _refuse_locked(
+    campaign: models.Campaign, data: dict, fields: tuple[str, ...], reason: str
+) -> None:
+    """Refuse any of `fields` that this patch is genuinely trying to change.
+
+    ONE CODE FOR BOTH GROUPS, `campaign_field_locked`, with the field name
+    travelling as a value. From the reader's side it is one rule — this field
+    is not yours to change any more — and both clients render their own
+    translated sentence from the code plus the field, so a second code would
+    be two more sentences to keep in step in two languages for a difference
+    nobody can see. `reason` is only the tail of the English fallback, which
+    is what an API consumer and a log line get.
+
+    Extracted from the loop that used to sit inline in update_campaign, so
+    that the second group did not arrive as a second copy of it.
+    """
+    for field in fields:
+        if field not in data:
+            continue
+        if data[field] == getattr(campaign, field):
+            # Sending a field back unchanged is not a change. Clients post
+            # whole forms, and failing a PATCH that asked for nothing would
+            # make everything else on the form uneditable in every UI that
+            # does.
+            continue
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="campaign_field_locked",
+            values={"field": field},
+            detail=f"{field} cannot be changed: {reason}",
+        )
+
+
 def _proposal_count(db: Session, campaign_id: str) -> int:
     return (
         db.query(models.Proposal)
@@ -101,6 +189,10 @@ def _contract(db: Session, campaign_id: str) -> contracts.Contract | None:
     Pending counts. A contract that exists has already been generated from
     agreed terms and is sitting in front of two people to sign; the campaign
     behind it is no longer the buyer's to withdraw.
+
+    So does cancelled, and that matters now that this result also locks the
+    title: a cancelled contract keeps its row and its body, and that body
+    still quotes the title it was written with.
     """
     return (
         db.query(contracts.Contract)
@@ -164,24 +256,24 @@ def update_campaign(
         # brief exactly as the creators reading it last saw it.
         service._checked_description(data["description"])
 
+    # THE CONTRACT LOCK FIRST, because it is the stronger statement and the
+    # more useful sentence. A campaign carrying a contract almost always
+    # carries a proposal as well, so a patch touching both groups could be
+    # refused by either, and "this title is in a signed document" tells the
+    # buyer something they cannot work out for themselves, while "a creator
+    # priced against the budget" is about a different field entirely.
+    #
+    # The query runs only when the patch actually touches one of these fields,
+    # so a budget or description edit still costs exactly the queries it did
+    # before this lock existed. _contract is not free: it is a lookup on
+    # contracts.campaign_id, which is indexed, but on a PATCH that could not
+    # possibly be refused by it there is no reason to ask at all.
+    if any(field in data for field in CONTRACT_LOCKED_FIELDS):
+        if _contract(db, campaign_id) is not None:
+            _refuse_locked(campaign, data, CONTRACT_LOCKED_FIELDS, IN_CONTRACT_REASON)
+
     if campaign.status == models.PUBLISHED and _proposal_count(db, campaign_id) > 0:
-        for field in LOCKED_FIELDS:
-            if field not in data:
-                continue
-            if data[field] == getattr(campaign, field):
-                # Sending a field back unchanged is not a change. Clients post
-                # whole forms, and failing a PATCH that asked for nothing
-                # would make the title uneditable in every UI that does.
-                continue
-            raise AppError(
-                status.HTTP_400_BAD_REQUEST,
-                code="campaign_field_locked",
-                values={"field": field},
-                detail=(
-                    f"{field} cannot be changed: a creator has already priced against it. "
-                    "Cancel this campaign and publish the new terms as a new brief."
-                ),
-            )
+        _refuse_locked(campaign, data, LOCKED_FIELDS, PRICED_AGAINST_REASON)
     # A published campaign with NO proposals may still change everything, and
     # that is not an oversight. Nobody has relied on those terms yet: the
     # brief is live but no creator has spent an evening pricing it, so fixing

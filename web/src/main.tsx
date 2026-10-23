@@ -52,6 +52,12 @@ import "./lib/rejectionStrings";
    i18n.ts — it sits with the other feature bundles for the reason they all
    exist, which is to keep the 40 KB i18n.ts about core app copy. */
 import "./lib/deliverableStrings";
+/* The party-details form, the card that leads to it from the profile, and the
+   party block on the contract page. Owns the party.* group outright, so no
+   ordering constraint either: it joins no group i18n.ts or anybody else owns.
+   It sits here for the company it keeps rather than for any requirement, next
+   to the other bundle whose copy is read on the contract page. */
+import "./lib/partyStrings";
 /* The hosted checkout screen and the payout-method form. Owns the pay.* group
    outright, so no ordering constraint either. */
 import "./lib/paymentStrings";

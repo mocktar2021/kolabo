@@ -226,6 +226,87 @@ export type InvitationWithCampaign = Invitation & {
   proposal_history: Proposal[];
 };
 
+/* WHO A CONTRACT IS BETWEEN, as each party states it about itself.
+
+   THIS IS NOT IDENTITY VERIFICATION AND MUST NEVER BE PRESENTED AS ANY. The
+   founder settled on 3 October that no personal identity documents are
+   collected, and party capture changed nothing about that. A party block is
+   SELF-DECLARED CONTRACT CONTENT, exactly what somebody writes at the top of a
+   paper contract: Kolabo records what each side states about itself and checks
+   none of it. No field below may be rendered as checked, and no badge may hang
+   off the presence of a block. lib/partyStrings.ts carries the sentence that
+   says so to the reader, in both languages, and it is on every screen that
+   shows one of these.
+
+   Until this existed, a generated contract identified its parties by user id
+   and nothing else, which meant the signature it carried validated against
+   nothing: there was no legal name anywhere in the database to compare the
+   typed name to.
+
+   THE SHAPE VARIES BY party_type, which is why this is one JSON block rather
+   than a dozen mostly-null columns with a discriminator beside them. A
+   registered company and somebody trading under their own name state
+   different things, the block is read whole for one contract at a time, and
+   nothing ever joins or aggregates on it. */
+export type PartyType = "registered_company" | "sole_trader" | "association";
+
+/* What the form sends to PUT /profiles/me/party-details.
+
+   display_label IS ABSENT ON PURPOSE AND MUST STAY ABSENT. The server derives
+   it from legal_name at capture, for every party_type, so that the renderer
+   and the contract card have one field to read without branching on the type.
+   A client that sent one would be naming the other party on a contract, which
+   is the server's job: the point of deriving it is that there is exactly one
+   rule for that name rather than one per app.
+
+   Only the fields the chosen branch asks for are sent. PARTY_FIELDS in
+   lib/party.ts is the single list of which those are, and partyBody there is
+   what builds this. */
+export type PartyDetailsInput = {
+  party_type: PartyType;
+  /* In all three branches, and the only field display_label is derived from.
+     It is the entity's registered name, the person's own name, or the
+     association's name, according to party_type. */
+  legal_name: string;
+  /* ONE FREE-TEXT FIELD RATHER THAN A STRUCTURED ADDRESS. A postal address in
+     the pilot markets does not decompose reliably into street, city and
+     postcode, and a contract prints it as written anyway. */
+  address: string;
+  /* ISO 2, the country the party contracts from. Not read from the account's
+     own country_code: a creator living in Cotonou may genuinely contract from
+     a Togolese registration, and this is the one that goes on the contract. */
+  country: string;
+  legal_form?: string;
+  registration_number?: string;
+  tax_identifier?: string;
+  representative_name?: string;
+  representative_capacity?: string;
+};
+
+/* A stored party block: what GET /profiles/me/party-details answers, and what
+   each of the two snapshots on a contract holds.
+
+   EVERY FIELD PAST party_type AND display_label IS NULLABLE HERE while three
+   of them are required on the way in, and the asymmetry is the variable shape
+   doing its job. A block saved as a sole_trader holds no registration number
+   and never will; an older block may predate a field entirely. Readers render
+   what is there and skip what is not, rather than printing an empty row under
+   a heading nobody filled in. */
+export type PartyDetails = {
+  party_type: PartyType;
+  /* What to print as the party's name. DERIVED BY THE SERVER, never entered,
+     never sent. */
+  display_label: string;
+  legal_name: string | null;
+  address: string | null;
+  country: string | null;
+  legal_form?: string | null;
+  registration_number?: string | null;
+  tax_identifier?: string | null;
+  representative_name?: string | null;
+  representative_capacity?: string | null;
+};
+
 export type Contract = {
   id: string;
   campaign_id: string;
@@ -242,7 +323,31 @@ export type Contract = {
   fully_signed: boolean;
 };
 
-export type ContractDetail = Contract & { body: string };
+/* THE TWO PARTY SNAPSHOTS ARE NULLABLE AND STAY NULLABLE.
+
+   They are taken once, at generation, and are never rewritten: not on a
+   profile edit, not on resignature, not on cancellation. Editing a profile
+   afterwards affects only contracts generated later, which is the same rule
+   the money already follows. PaymentIntent copies the amounts off the contract
+   rather than reading them through a join at settlement, because otherwise a
+   join would silently settle the new number against the old payment, and a
+   party block read live would make every historical contract say whatever its
+   parties happen to be called today.
+
+   Null because contracts generated before the blocks existed have nothing to
+   backfill from beyond a pair of user ids. New contracts always carry both, so
+   a null here means an old row rather than a gap worth reporting, and
+   components/ContractParties.tsx says exactly that.
+
+   NOT ON Contract ITSELF, only on the detail: the contract list renders cards,
+   and a list endpoint carrying two party blocks per row would be sending
+   addresses and registration numbers in order to draw a name the card already
+   has. */
+export type ContractDetail = Contract & {
+  body: string;
+  business_party: PartyDetails | null;
+  influencer_party: PartyDetails | null;
+};
 
 /* One conversation on the inbox screen (GET /messaging/threads).
 
@@ -660,7 +765,14 @@ export type PublicReview = {
 
 /* Mirror of get_public_profile in backend/app/modules/profiles/service.py:
    the whole marketplace page in one aggregate. faq carries only the answered
-   keys; packages are active only; reviews are revealed only, newest first. */
+   keys; packages are active only; reviews are revealed only, newest first.
+
+   NO PARTY BLOCK HERE, AND THAT IS A RULE RATHER THAN AN OMISSION. A party
+   block is visible to the counterparty on a contract they are party to, and to
+   admins, and to nobody else. A postal address and a registration number are
+   not storefront copy, and this page is read by strangers who are not party to
+   anything, including people who are not signed in at all. Nothing may add one
+   here or to SearchResult below. */
 export type PublicProfile = {
   user_id: string;
   display_name: string | null;

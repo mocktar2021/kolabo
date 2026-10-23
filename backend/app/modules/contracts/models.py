@@ -3,6 +3,13 @@
 A contract is generated from an accepted proposal, capturing a snapshot of the
 agreed terms so later edits to the campaign or proposal do not change it. Once
 both parties sign, the contract is immutable and payment can be unlocked.
+
+THE SNAPSHOT NOW COVERS THE PARTIES THEMSELVES, not only the terms. Until
+business_party and influencer_party arrived, the one thing a contract did NOT
+freeze was who had signed it: the body carried two user ids, and every name
+shown around the document was resolved live from a profile that its owner can
+rename at any time. See the columns below and
+claude/kolabo-contract-parties-spec.md.
 """
 import uuid
 from datetime import datetime, timezone
@@ -47,8 +54,100 @@ class Contract(Base):
     proposal_id: Mapped[str] = mapped_column(ForeignKey("proposals.id"), unique=True, nullable=False)
     business_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     influencer_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # WHO SIGNED THIS, AS THEY STATED IT, FROZEN AT GENERATION.
+    #
+    # One block per side, copied out of the signer's profile the moment the
+    # contract is written, and never rewritten afterwards: not when a profile
+    # is edited, not at signature, not at cancellation. Editing a profile
+    # changes what the NEXT contract says and nothing whatever about one that
+    # already exists.
+    #
+    # A COPY AND NOT A JOIN, which is the same decision PaymentIntent makes
+    # about money and for the same reason its docstring gives: amounts are
+    # copied off the contract "rather than read through a join at settlement"
+    # because otherwise "a join would silently settle the new number against
+    # the old payment". Identity has the identical failure. A join would
+    # restate a contract signed in October in the name of a company that
+    # reincorporated in March, and the signature beside it would then appear
+    # to have been given by an entity that did not exist on the day.
+    #
+    # This is also why the two uuid columns above STAY and are not replaced by
+    # these blocks. The uuid is the only stable identifier either side has, it
+    # is what every other table joins on, and it is what an admin searches by;
+    # the block is what the document says. Neither substitutes for the other.
+    #
+    # THE SHAPE, documented here rather than only at the schema that validates
+    # it, because this column is the frozen copy and will be read by a renderer
+    # long after whatever validated it has changed:
+    #
+    #   party_type      registered_company | sole_trader | association
+    #   display_label   what to print as the party name, DERIVED server side
+    #                   from legal_name at capture and never accepted from a
+    #                   client. It exists so a renderer and a contract card
+    #                   have one field to read without branching on the type.
+    #   country         ISO 3166-1 alpha-2, the country the party contracts
+    #                   from. Not restricted to the pilot markets: a buyer may
+    #                   perfectly well be contracting from outside them.
+    #   address         free text, one field, deliberately unstructured
+    #   legal_name      the entity or the natural person
+    #
+    # then, by party_type: a registered_company adds legal_form,
+    # registration_number, tax_identifier, representative_name and
+    # representative_capacity; a sole_trader adds an optional tax_identifier;
+    # an association adds registration_number, representative_name and
+    # representative_capacity. Only the keys that belong to the stated type are
+    # written, so an association block carries no empty legal_form for a
+    # renderer to wonder about. profiles/party_details.py is where that is
+    # enforced.
+    #
+    # NOTHING IN EITHER BLOCK HAS BEEN VERIFIED, AND NO READER MAY IMPLY IT
+    # HAS. These are self declared contract content, exactly as they would be
+    # on paper: the platform records what each party states about itself and
+    # checks none of it. Kolabo collects no personal identity document (decided
+    # 3 October 2026, and migration b1d7e3a05c92 is what emptied the store of
+    # the ones it held), so there is nothing behind these fields that could
+    # support a badge. A tick beside a registration number nobody has looked up
+    # would be the single most expensive lie this product could tell a brand.
+    #
+    # Nullable because every contract generated before this existed has
+    # nothing to backfill from beyond the two uuids already in its body, and
+    # inventing a party block for a signed document is not something a
+    # migration gets to do. Null means "generated before parties were
+    # captured", never "the party stated nothing". New contracts always carry
+    # both: contracts/service.py refuses to generate without them.
+    business_party: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    influencer_party: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     language: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    # THE EVIDENCE THAT THE TEXT HAS NOT MOVED. sha256 of `body` as it stood at
+    # generation, computed once and never recomputed.
+    #
+    # What signing records today is a free text string and a server timestamp.
+    # Neither of them says anything about the DOCUMENT, so nothing in this
+    # schema could answer the one question a dispute actually turns on: is this
+    # the text they agreed to. A hash answers it in one comparison, from the
+    # row itself, with no backup and no second system involved.
+    #
+    # NEVER REHASHED, which is the rule that makes it worth storing. A body
+    # that is rehashed on read is a hash of whatever the body is now, which is
+    # no evidence at all. In particular an annex attached later (spec section
+    # 7) does NOT touch this value: it is a separate record with its own hash
+    # and its own timestamps, and keeping the two trails independent is the
+    # whole point.
+    body_sha256: Mapped[str | None] = mapped_column(String, nullable=True)
+    # WHICH PUBLISHED TERMS WERE IN FORCE when this contract was generated.
+    #
+    # There is no terms acceptance record anywhere in this backend: nothing
+    # stores that a user agreed to anything, on any date. The effective date on
+    # the published legal pages is the only version marker that exists, so it
+    # is what gets copied here. It is a string rather than a Date because it is
+    # a VERSION, not an event: it is compared for equality against a published
+    # document, never sorted or arithmetic'd, and the day the versioning scheme
+    # stops being a date this column keeps working.
+    #
+    # Null on every row generated before this column existed, and a reader must
+    # say nothing rather than assume the current version applied to it.
+    legal_version: Mapped[str | None] = mapped_column(String, nullable=True)
     rate_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     rate_currency: Mapped[str] = mapped_column(String, nullable=False)
     timeline_days: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
+import { PartyDetailsSection } from "../components/profile/PartyDetailsSection";
 import { Banner, Card, Field, GhostButton, PrimaryButton, Screen, Subtitle } from "../components/ui";
 import { space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -94,6 +95,25 @@ export default function BusinessProfileScreen({ navigation }: AppScreenProps<"Bu
           loading={busy}
           disabled={!companyName.trim()}
         />
+      </Card>
+
+      {/* A SEPARATE CARD, BELOW. company_name and the party block answer
+          different questions and are saved to different endpoints.
+          company_name is the trading name a buyer sees in search and on a
+          contract card, and it is overwritten whole on every save. The party
+          block is the legal entity that signs: it is snapshotted onto a
+          contract at generation and frozen there, so editing it afterwards
+          changes nothing about a contract that already exists. Merging the two
+          into one form would invite somebody to fill a trading name and assume
+          the entity was stated too.
+
+          defaultType is registered_company because that is the commonest
+          answer on this side. It is not a restriction: all three types are
+          tappable here, which is what lets an unregistered trader or an NGO
+          buy on Kolabo. */}
+      <View style={{ height: space(4) }} />
+      <Card>
+        <PartyDetailsSection token={token} defaultType="registered_company" />
       </Card>
     </Screen>
   );

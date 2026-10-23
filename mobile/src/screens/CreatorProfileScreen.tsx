@@ -25,6 +25,7 @@ import {
   Subtitle,
   type Choice,
 } from "../components/ui";
+import { PartyDetailsSection } from "../components/profile/PartyDetailsSection";
 import { SocialsSection } from "../components/profile/SocialsSection";
 import { PackagesSection } from "../components/profile/PackagesSection";
 import { PortfolioSection } from "../components/profile/PortfolioSection";
@@ -336,6 +337,28 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
         />
 
         <PrimaryButton title={busy ? t("common.working") : t("profile.save")} onPress={save} loading={busy} />
+      </Card>
+
+      {/* HERE, and not appended below packages. The three sections under this
+          one are catalogue work a creator comes back to often; this is a
+          one-time statement of who they are, and the moment it is needed is
+          the moment a business tells them a contract cannot be generated. Four
+          sections further down it would be a long scroll away from somebody
+          who has just been told to go and find it.
+
+          defaultType is sole_trader: a creator contracts in their own name,
+          and opening them on a registered company form would be asking for
+          papers most of them do not have. All three types stay tappable, so a
+          creator who has incorporated, or an agency account, can say so.
+
+          onSaved reloads the go-live checklist. It counts nothing about party
+          details today, because onboarding_status has no has_party_details
+          field; the spec recommends it gain one and that is the founder's
+          call. If it does, the checklist refreshes on save rather than needing
+          this screen reopened. */}
+      <View style={{ height: space(4) }} />
+      <Card>
+        <PartyDetailsSection token={token} defaultType="sole_trader" onSaved={loadStatus} />
       </Card>
 
       <View style={{ height: space(4) }} />

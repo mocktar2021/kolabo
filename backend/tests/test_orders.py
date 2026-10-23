@@ -27,6 +27,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
+# The party details both sides have to have stated before a contract can be
+# generated from anything at all. Shared with the three other suites that
+# reach contract generation; tests/party_fixtures.py carries the argument.
+from tests.party_fixtures import seed_both_parties
+
 
 @pytest.fixture()
 def client():
@@ -74,6 +79,20 @@ def _setup(client, price=25000, currency="XOF", active=True, quantity=2):
         biz = User(phone="+22990000001", email="22990000001@kolabo.test", password_hash="x", country_code="BJ", role="business", is_verified=True)
         creator = User(phone="+22990000002", email="22990000002@kolabo.test", password_hash="x", country_code="BJ", role="influencer", is_verified=True)
         db.add_all([biz, creator]); db.commit(); db.refresh(biz); db.refresh(creator)
+        # BOTH SIDES STATE WHO THEY ARE, because accepting an order writes a
+        # contract and generation refuses without that
+        # (contract_business_party_missing / contract_creator_party_missing).
+        # It belongs in the fixture rather than in the four tests that accept:
+        # this is the pair every one of them accepts as, and a helper that
+        # only sometimes produces a complete market participant is a helper
+        # whose failures have to be read twice.
+        #
+        # The second creator (_second_package) and the bystander (_outsider)
+        # are deliberately left without one, because neither ever reaches
+        # generation. The fresh order in the expiry sweep is never accepted,
+        # and every refusal involving the bystander is raised by
+        # orders._load_order, which runs before the party gate.
+        seed_both_parties(db, biz.id, creator.id)
         pkg = Package(
             user_id=creator.id,
             platform="instagram",

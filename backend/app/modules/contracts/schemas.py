@@ -1,5 +1,6 @@
 """Schemas for the contracts module."""
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -43,4 +44,34 @@ class ContractListItem(ContractOut):
 
 
 class ContractDetailOut(ContractOut):
+    """The contract, its text, and WHO THE TWO PARTIES SAID THEY WERE.
+
+    THE PARTY BLOCKS ARE SNAPSHOTS, not a join. They are copied onto the
+    contract at generation and never rewritten, so editing a profile
+    afterwards does not change a contract that already exists. That is the
+    same rule PaymentIntent applies to amounts, and for the same reason: a
+    join would silently show one thing on a document that was signed saying
+    another.
+
+    TYPED AS A PLAIN DICT, DELIBERATELY. The block's shape varies by
+    party_type: a registered company states a legal form, a registration
+    number and a representative, a sole trader states none of the three. That
+    variability is why the column is JSON rather than a dozen mostly null
+    columns, and a response model enumerating every field would have to be
+    kept in step with the capture schema in a second place. Both clients
+    already carry the typed shape, and the snapshot is frozen, so nothing
+    downstream can reshape it.
+
+    NULLABLE, and the clients must treat null as "generated before these
+    details were collected" rather than as "this party stated nothing". Every
+    contract made before this work has nothing to backfill from beyond a
+    UUID, which is the whole reason the party capture exists.
+
+    NOT HERE: body_sha256 and legal_version. They are written at generation
+    and nothing on either client displays them yet. They belong in whatever
+    screen eventually shows a party that the text they signed has not
+    changed, and adding them to a payload before anything reads them is how a
+    field acquires a consumer nobody designed for."""
     body: str
+    business_party: dict[str, Any] | None = None
+    influencer_party: dict[str, Any] | None = None

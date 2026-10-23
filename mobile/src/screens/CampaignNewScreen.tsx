@@ -7,7 +7,10 @@ import { useAuth } from "../lib/auth";
 import { formatDate, toIsoDay } from "../lib/dates";
 import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import { EMPTY_TARGETING, targetingBody, type Campaign, type Deliverable, type Targeting } from "../lib/campaignTypes";
+import { EMPTY_DRAFT, draftIsComplete, draftPayload, optionOf, type LicenceDraft } from "../lib/licenceTerms";
 import { DeliverableRows, emptyDeliverable } from "../components/campaigns/DeliverableRows";
+import { LicenceFields } from "../components/campaigns/LicenceFields";
+import { LicenceTermsNotice } from "../components/campaigns/LicenceTermsNotice";
 import { TargetingFields } from "../components/campaigns/TargetingFields";
 import {
   Banner,
@@ -48,6 +51,7 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
   const [deadline, setDeadline] = useState("");
   const [deliverables, setDeliverables] = useState<Deliverable[]>([emptyDeliverable()]);
   const [targeting, setTargeting] = useState<Targeting>(EMPTY_TARGETING);
+  const [licence, setLicence] = useState<LicenceDraft>(EMPTY_DRAFT);
   const [publishNow, setPublishNow] = useState(false);
 
   const [created, setCreated] = useState<Campaign | null>(null);
@@ -55,7 +59,14 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
   const [busy, setBusy] = useState(false);
 
   const badDeadline = deadline.trim() !== "" && toIsoDay(deadline) === null;
-  const canSubmit = title.trim() !== "" && deliverables.length > 0 && !badDeadline;
+  /* The licence gates Create exactly as the title and the deliverables do,
+     because it is part of what makes a campaign one a contract can be
+     generated from. Without it the brand would get all the way to a
+     creator's acceptance before the backend answered
+     contract_licence_terms_missing, and by then a creator would have priced
+     a brief with no licence terms on it. */
+  const canSubmit =
+    title.trim() !== "" && deliverables.length > 0 && !badDeadline && draftIsComplete(licence);
 
   async function submit() {
     if (!canSubmit) return;
@@ -76,6 +87,11 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
           deadline: deadline.trim() ? toIsoDay(deadline) : null,
           publish: publishNow,
           ...targetingBody(targeting),
+          /* draftPayload is null only while no option has been chosen, which
+             canSubmit already rules out. The ?? {} keeps that case sending
+             none of the five keys rather than five nulls, because five nulls
+             is option 1 stated on the brand's behalf. */
+          ...(draftPayload(licence) ?? {}),
         },
       });
       setCreated(campaign);
@@ -108,6 +124,7 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
     setDeadline("");
     setDeliverables([emptyDeliverable()]);
     setTargeting(EMPTY_TARGETING);
+    setLicence(EMPTY_DRAFT);
     setPublishNow(false);
     setCreated(null);
     setError(null);
@@ -140,6 +157,13 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
             ))}
           </View>
           {created.is_open ? <Hint>{t("target.openHint")}</Hint> : null}
+          {/* What the creator will read, built from the row the server sent
+              back rather than from the form, so this confirms what was
+              actually stored. Guarded on optionOf: if the API is not
+              returning these columns yet, the block would say "not stated"
+              about a licence the brand has just stated, and saying nothing
+              beats saying something untrue. */}
+          {optionOf(created) ? <LicenceTermsNotice terms={created} /> : null}
           <View style={{ height: space(3) }} />
           {created.status !== "published" ? (
             <PrimaryButton
@@ -203,6 +227,12 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
 
           <SectionTitle>{t("target.legend")}</SectionTitle>
           <TargetingFields value={targeting} onChange={setTargeting} />
+
+          {/* No SectionTitle above it: LicenceFields draws its own heading,
+              so adding one here would print the same words twice, as the
+              targeting section above already does. */}
+          <View style={{ height: space(5) }} />
+          <LicenceFields value={licence} onChange={setLicence} />
 
           <View style={styles.publishRow}>
             <Text style={styles.publishLabel}>{t("campaign.publishNow")}</Text>

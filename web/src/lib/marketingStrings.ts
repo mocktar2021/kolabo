@@ -4,7 +4,14 @@
    no before-and-after timings. The page is public, so a placeholder number
    left in it is a false claim, not a to-do. Feature claims describe only
    shipped features: discovery, campaigns, proposals and negotiation,
-   contracts, escrow payments, per-campaign messaging, reviews, FR/EN. */
+   contracts, escrow payments, per-campaign messaging, reviews, FR/EN.
+
+   THE SAME RULE APPLIES TO THE COUNTRY LIST, and it is the one that went
+   stale first. faq3a named a two country pilot for weeks after the product
+   opened four markets, because nothing connects a sentence on this page to
+   the list in lib/countries.ts. Phrase it so it survives: a country is open
+   when money can move there, which is the real rule, rather than naming a
+   pilot that ends. */
 import i18n from "../i18n";
 
 const fr = {
@@ -45,9 +52,12 @@ const fr = {
     seeAll: "Voir tous les créateurs",
     /* Trust band. Four statements about how a collaboration is protected,
        not four counters: this page is public and the pilot has no numbers
-       worth quoting. Keep this band free of figures. */
+       worth quoting. Keep this band free of figures.
+
+       trustedByNote is gone. It read "Pilote au Bénin et au Togo." under
+       this grid, Landing.tsx stopped rendering it, and the countries
+       question is answered properly in the guide. */
     trustedBy: "Ce qui sécurise chaque collaboration",
-    trustedByNote: "Pilote au Bénin et au Togo.",
     tb1v: "Séquestre", tb1l: "Les fonds sont bloqués jusqu'à la validation",
     tb2v: "Comptes connectés", tb2l: "Le créateur s'authentifie auprès de sa plateforme",
     tb3v: "Mobile Money", tb3l: "Paiement dans votre devise locale",
@@ -104,7 +114,7 @@ const fr = {
     faq: "Questions fréquentes",
     faq1q: "La recherche est-elle gratuite?", faq1a: "Oui. Parcourir et rechercher des créateurs ne demande aucun compte. Un compte est nécessaire pour enregistrer un créateur ou lancer une collaboration.",
     faq2q: "Comment fonctionne le paiement?", faq2a: "Les fonds sont bloqués en séquestre dès la signature du contrat, puis libérés au créateur une fois la livraison validée. Une commission plateforme est prélevée à la libération.",
-    faq3q: "Quels pays sont couverts?", faq3a: "Le pilote démarre au Bénin et au Togo. Côte d'Ivoire, Ghana, Sénégal, Cameroun et Nigeria suivront.",
+    faq3q: "Quels pays sont couverts?", faq3a: "Kolabo est ouvert au Bénin, au Togo, en Côte d'Ivoire et au Sénégal. D'autres pays s'ajouteront à mesure que les paiements y deviennent possibles.",
     faq4q: "Comment suis-je payé?", faq4a: "Par Mobile Money, dans votre devise locale. Le fournisseur est en cours de sélection pour le lancement.",
     /* Closing band. */
     closeA: "Votre prochaine collaboration est à",
@@ -153,9 +163,12 @@ const en = {
     seeAll: "See all creators",
     /* Trust band. Four statements about how a collaboration is protected,
        not four counters: this page is public and the pilot has no numbers
-       worth quoting. Keep this band free of figures. */
+       worth quoting. Keep this band free of figures.
+
+       trustedByNote is gone. It read "Pilot in Benin and Togo." under this
+       grid, Landing.tsx stopped rendering it, and the countries question is
+       answered properly in the guide. */
     trustedBy: "What keeps every collaboration safe",
-    trustedByNote: "Pilot in Benin and Togo.",
     tb1v: "Escrow", tb1l: "Funds are held until the work is validated",
     tb2v: "Connected accounts", tb2l: "The creator signs in with their own platform",
     tb3v: "Mobile Money", tb3l: "Paid in your local currency",
@@ -212,7 +225,7 @@ const en = {
     faq: "Frequently asked questions",
     faq1q: "Is searching free?", faq1a: "Yes. Browsing and searching creators needs no account. An account is needed to save a creator or start a collaboration.",
     faq2q: "How does payment work?", faq2a: "Funds are held in escrow once the contract is signed, then released to the creator after you approve delivery. A platform commission is taken at release.",
-    faq3q: "Which countries are covered?", faq3a: "The pilot starts in Benin and Togo. Cote d'Ivoire, Ghana, Senegal, Cameroon, and Nigeria follow.",
+    faq3q: "Which countries are covered?", faq3a: "Kolabo is open in Benin, Togo, Cote d'Ivoire and Senegal. Other countries are added as payments become possible there.",
     faq4q: "How do I get paid?", faq4a: "By Mobile Money, in your local currency. The provider is being selected for launch.",
     /* Closing band. */
     closeA: "Your next collaboration is",

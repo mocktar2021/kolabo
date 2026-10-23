@@ -133,6 +133,26 @@ export const error_fr = {
   party_details_invalid: "Ces informations sont incomplètes pour la forme de partie choisie. Vérifiez les champs demandés, puis réessayez.",
   party_type_immutable: "Un contrat a déjà été généré sous cette forme : elle ne peut plus être changée. Écrivez au support si votre situation a changé.",
 
+  /* Les droits sur les contenus, c'est-à-dire ce que l'entreprise peut faire
+     de ce que le créateur réalise.
+
+     DEUX CODES POUR DEUX MOMENTS, ET LES DEUX PHRASES NE PARLENT PAS AU MÊME
+     LECTEUR. licence_terms_invalid refuse la déclaration elle-même, au moment
+     où l'entreprise la fait : elle a retenu une option sans écrire ce que
+     cette option demande, et la personne qui lit le refus est devant le
+     formulaire. contract_licence_terms_missing refuse la génération du contrat
+     parce que rien n'a jamais été déclaré, et il peut être lu par le CRÉATEUR
+     qui vient d'accepter une commande. La phrase dit donc à qui appartient la
+     suite, plutôt que de demander à son lecteur de corriger quelque chose qui
+     n'a jamais été à lui. Même raisonnement que les deux codes de partie
+     ci-dessus.
+
+     L'article 10 du modèle de contrat laisse « Option retenue » à remplir pour
+     chaque contrat. Ces deux refus sont les deux façons pour cette case de
+     rester vide. */
+  licence_terms_invalid: "Ces conditions de licence sont incomplètes pour l'option retenue. Indiquez ce que cette option demande, puis réessayez.",
+  contract_licence_terms_missing: "Les droits sur les contenus n'ont pas été indiqués. Le contrat ne peut pas être généré avant que l'entreprise précise ce qu'elle pourra faire des contenus.",
+
   /* Auth. These are the first refusals a person ever sees — signing up,
      logging in, entering a code — so they are also the ones most likely to be
      read by somebody who has not yet decided whether this product works. */
@@ -488,6 +508,25 @@ export const error_en = {
   contract_creator_party_missing: "The creator's contract details are missing. The contract cannot be generated until they are filled in on their profile.",
   party_details_invalid: "These details are incomplete for the form of party chosen. Check the fields it asks for and try again.",
   party_type_immutable: "A contract has already been generated under this form, so it can no longer be changed. Write to support if your situation has changed.",
+
+  /* Rights in the content: what the business may do with what the creator
+     makes.
+
+     TWO CODES FOR TWO MOMENTS, AND THE TWO SENTENCES ADDRESS DIFFERENT
+     READERS. licence_terms_invalid refuses the statement itself, as the
+     business makes it: an option was chosen without the detail that option
+     asks for, and whoever reads the refusal is sitting in front of the form.
+     contract_licence_terms_missing refuses contract generation because nothing
+     was ever stated, and it can be read by the CREATOR who has just accepted
+     an order. So the sentence says where the next step belongs rather than
+     asking its reader to fix something that was never theirs, which is the
+     same reasoning as the two party codes above.
+
+     Article 10 of the model contract leaves "Option retenue" to be filled in
+     per contract. These two refusals are the two ways that blank stays
+     blank. */
+  licence_terms_invalid: "These licence terms are incomplete for the option chosen. State what that option asks for and try again.",
+  contract_licence_terms_missing: "The rights in the content were not stated. The contract cannot be generated until the business says what it will be able to do with the content.",
 
   auth_user_not_found: "User not found.",
   auth_referral_code_failed: "A referral code could not be generated. Please try again.",

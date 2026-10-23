@@ -209,12 +209,29 @@ export function valuesFrom(terms: LicenceTerms | null | undefined): LicenceValue
 
    The ARGUMENT ORDER is the precedence, so a call site reads as the rule. Both
    sides are optional because both legitimately go missing: a brief carries no
-   proposal until somebody prices it, and an older payload carries no block. */
+   proposal until somebody prices it, and an older payload carries no block.
+
+   THE TEST IS "STATES AN OPTION" AND NOT "STATES ONE THIS BUILD KNOWS", which
+   is the difference between degrading and lying. The backend asks only whether
+   the row HAS a block (`proposal.licence_terms or campaign.licence_terms`) and
+   validated_block never stores one without an option in it, so on real data
+   the two rules agree. If an option this client has never heard of ever does
+   arrive on an order, optionOf is right to answer null and the notice is right
+   to say the terms cannot be read here, but falling back to the BRIEF at that
+   point would print one party's clause in place of another's. Showing less
+   beats showing somebody else's licence. It is also exactly what web's
+   licenceRowFor does, via statedLicence, so the two clients cannot disagree
+   about which row a screen is reading. */
+function statesAnOption(terms: LicenceTerms): boolean {
+  const raw = terms.licence_terms?.licence_option;
+  return typeof raw === "string" && raw.trim() !== "";
+}
+
 export function licenceTermsFor(
   offer: LicenceTerms | null | undefined,
   brief: LicenceTerms | null | undefined
 ): LicenceTerms | null {
-  if (offer && optionOf(offer) !== null) return offer;
+  if (offer && statesAnOption(offer)) return offer;
   return brief ?? null;
 }
 

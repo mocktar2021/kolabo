@@ -44,28 +44,39 @@ class ContractListItem(ContractOut):
 
 
 class ContractDetailOut(ContractOut):
-    """The contract, its text, and WHO THE TWO PARTIES SAID THEY WERE.
+    """The contract, its text, WHO THE TWO PARTIES SAID THEY WERE, and the
+    licence it was generated under.
 
-    THE PARTY BLOCKS ARE SNAPSHOTS, not a join. They are copied onto the
-    contract at generation and never rewritten, so editing a profile
-    afterwards does not change a contract that already exists. That is the
-    same rule PaymentIntent applies to amounts, and for the same reason: a
-    join would silently show one thing on a document that was signed saying
-    another.
+    THE BLOCKS ARE SNAPSHOTS, not a join. They are copied onto the contract at
+    generation and never rewritten, so editing a profile or a brief afterwards
+    does not change a contract that already exists. That is the same rule
+    PaymentIntent applies to amounts, and for the same reason: a join would
+    silently show one thing on a document that was signed saying another.
 
-    TYPED AS A PLAIN DICT, DELIBERATELY. The block's shape varies by
+    TYPED AS PLAIN DICTS, DELIBERATELY. A party block's shape varies by
     party_type: a registered company states a legal form, a registration
-    number and a representative, a sole trader states none of the three. That
-    variability is why the column is JSON rather than a dozen mostly null
-    columns, and a response model enumerating every field would have to be
-    kept in step with the capture schema in a second place. Both clients
-    already carry the typed shape, and the snapshot is frozen, so nothing
-    downstream can reshape it.
+    number and a representative, a sole trader states none of the three. A
+    licence block's varies by option: option 1 states nothing beyond the
+    choice, option 2 states a duration, territories and media. That
+    variability is why the columns are JSON rather than a dozen mostly null
+    ones, and a response model enumerating every field would have to be kept
+    in step with the capture schema in a second place. Both clients already
+    carry the typed shapes, and the snapshots are frozen, so nothing
+    downstream can reshape them.
+
+    THE LICENCE IS HERE BECAUSE THE BODY DOES NOT PRINT IT. The party blocks
+    are rendered into the text as well as carried here; Article 10 is
+    deliberately not rendered yet, because the approved model is French only
+    and whether an English contract carries a courtesy translation is an open
+    question for counsel. Until she answers, this field is the only way either
+    client can show a party the licence they are signing under, which is also
+    why it must not wait: the column is filled from the first contract that
+    carries it, and the body can never be amended afterwards.
 
     NULLABLE, and the clients must treat null as "generated before these
-    details were collected" rather than as "this party stated nothing". Every
-    contract made before this work has nothing to backfill from beyond a
-    UUID, which is the whole reason the party capture exists.
+    details were collected" rather than as "this party stated nothing" or as
+    option 1. Every contract made before this work has nothing to backfill
+    from beyond a UUID, which is the whole reason the capture exists.
 
     NOT HERE: body_sha256 and legal_version. They are written at generation
     and nothing on either client displays them yet. They belong in whatever
@@ -75,3 +86,4 @@ class ContractDetailOut(ContractOut):
     body: str
     business_party: dict[str, Any] | None = None
     influencer_party: dict[str, Any] | None = None
+    licence_terms: dict[str, Any] | None = None

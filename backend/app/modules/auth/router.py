@@ -25,13 +25,25 @@ router = APIRouter()
 # and an English sentence, and a code assembled anywhere is a code that can
 # ship untranslated.
 #
-# THE CODES ARE MOSTLY BORROWED, because a new code costs two sentences in two
-# catalogues and is only worth minting where no existing one fits.
-# Registration and reset already have per account ceilings saying exactly the
-# right thing, and a caller cannot tell whether it was their address or their
-# connection that ran out, nor do they need to. Login and code entry get the
-# one new code: being told "too many verification codes requested" after
-# typing a password would simply be false.
+# EVERY CODE HERE IS BORROWED, AND ONE OF THEM IS A COMPROMISE WORTH NAMING.
+#
+# Registration and reset already have per account ceilings whose sentences say
+# exactly the right thing, and a caller does not need to know whether it was
+# their address or their connection that ran out. Code entry borrows
+# auth_otp_capacity, which tells the reader to wait a few minutes without
+# blaming them, and that is what is true.
+#
+# LOGIN BORROWS `generic`, WHICH IS VAGUE, and that is a deliberate interim.
+# The honest sentence is "too many attempts from this connection, wait a few
+# minutes", and giving it one means a new code, which means adding a line to
+# web/src/lib/errorMessages.ts and mobile/src/lib/errorMessages.ts. Those are
+# 60 KB each of hand tuned copy in two languages, and the tooling this
+# repository is edited with rewrites a file whole, so the precise sentence
+# costs a 1,600 line rewrite of bilingual copy against a two line gain. That
+# is a change that deserves its own small diff and its own review, not a ride
+# along inside a security fix. KOL-139 carries it. Until then the status is
+# still 429, which every client can act on, and "try again in a moment" is
+# at least not false.
 #
 # See app/core/ratelimit.py for the numbers and the reasoning behind them.
 def _register_limit(request: Request) -> None:
@@ -47,8 +59,8 @@ def _verify_limit(request: Request) -> None:
     if ratelimit.exceeded("verify-otp", ratelimit.VERIFY_OTP, request):
         raise AppError(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            code="auth_rate_limited",
-            detail="Too many attempts from this connection, wait a few minutes",
+            code="auth_otp_capacity",
+            detail="Verification codes are temporarily unavailable, try again in a few minutes",
         )
 
 
@@ -56,7 +68,8 @@ def _login_limit(request: Request) -> None:
     if ratelimit.exceeded("login", ratelimit.LOGIN, request):
         raise AppError(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            code="auth_rate_limited",
+            # Vague on purpose and only for now. See the note above and KOL-139.
+            code="generic",
             detail="Too many attempts from this connection, wait a few minutes",
         )
 

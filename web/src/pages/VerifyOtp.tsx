@@ -45,13 +45,12 @@ export default function VerifyOtp() {
           </div>
           <div className="card">
             {error && <div className="alert alert-error">{error}</div>}
-            {/* Renamed from auth.otpDevHint, which read "In development the
-                code is written to the server logs": true for whoever was
-                running the stack on a laptop, and shown in production to
-                every person who signed up. Nobody signing up here has server
-                logs. The code is emailed, and the spam line is in the
-                sentence because a two month old sending domain is exactly the
-                one Gmail files first. */}
+            {/* auth.otpHint, from lib/otpStrings.ts, and NOT the
+                auth.otpDevHint this line used to render: that one read "In
+                development the code is written to the server logs", which was
+                true for whoever was running the stack on a laptop and was
+                shown in production to every person who signed up. Nobody
+                signing up here has server logs. The code is emailed. */}
             <div className="alert alert-info">{t("auth.otpHint")}</div>
             <form onSubmit={onSubmit}>
               <div className="field">

@@ -27,6 +27,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
+from app.core.errors import AppError, app_error_handler
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import cart as cart_module
@@ -62,6 +63,17 @@ def client():
             db.close()
 
     app = FastAPI()
+    # THE REAL HANDLER, because the licence refusals below assert on `code`.
+    # Without it FastAPI renders its own {"detail": ...} and those assertions
+    # die on a missing key rather than on a wrong answer, which is exactly how
+    # they first failed. Registering the production pair rather than a
+    # lookalike is what makes these tests evidence about the wiring in
+    # main.py; the fixture in tests/test_error_codes.py argues it at length.
+    #
+    # It adds `code` and `values` BESIDE `detail` rather than replacing it, so
+    # every older assertion in this file, all of which read the sentence or
+    # the status, reads exactly what it always did.
+    app.add_exception_handler(AppError, app_error_handler)
     app.include_router(campaigns_router, prefix="/campaigns")
     # A cart's orders are answered through the ordinary paths, which is most
     # of the point.

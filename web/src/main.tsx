@@ -106,8 +106,7 @@ import "./lib/legalStrings";
 
    NO LONGER LAST, for the same reason legalStrings stopped being last: two
    bundles are imported below it. Its copy is still among the little in this
-   list that a signed-out stranger reads before anything else on the site, and
-   otpStrings below is the rest of it. */
+   list that a signed-out stranger reads before anything else on the site. */
 import "./lib/googleStrings";
 /* The format of the birth date field, and what it says when what was typed is
    not a day. Adds profile.birthDateFormat and profile.birthDateBad to the
@@ -116,13 +115,6 @@ import "./lib/googleStrings";
    itself is components/DayInput.tsx, and lib/days.ts says why a birth date on
    this product is no longer asked for with a native date control. */
 import "./lib/dayStrings";
-/* Where the verification code actually went. Adds auth.otpHint to the auth.*
-   group i18n.ts owns, same constraint again, and it replaces in practice the
-   auth.otpDevHint that file still carries: a note about server logs that
-   production showed to everybody who signed up. The old key is left behind
-   rather than cut out of 600 lines of bilingual copy for one line, and
-   otpStrings.test.ts fails if any screen renders it again. */
-import "./lib/otpStrings";
 /* The invitation to put Kolabo on a home screen. Owns the install.* group
    outright, so no ordering constraint; it sits last because the button it
    speaks for is rendered last, beside App rather than inside it. */

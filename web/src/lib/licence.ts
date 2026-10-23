@@ -21,13 +21,13 @@
    one read-only panel, and lib/types.ts is already 35 KB of shared API shapes.
 
    THE SHAPES STAY HERE AND NOT IN types.ts, DELIBERATELY. The five fields ride
-   on a campaign, on an open brief, on an invitation's nested campaign and on a
-   contract, which is four types in that file. LicenceCarrier below is a
-   STRUCTURAL type whose every field is optional, so any of those payloads is
-   assignable to it without that file naming the fields at all, and a build
-   whose API has not started sending them yet still compiles and still renders
-   honestly. The same arrangement CartCheckoutOrder has for the same reason.
-   Folding them into Campaign later costs one edit and changes nothing here.
+   on a campaign, on an open brief, on the campaign nested on an invitation and
+   on a contract, which is four types in that file. LicenceCarrier below is a
+   STRUCTURAL type, so any of those payloads is accepted without that file
+   naming the fields at all, and a build whose API has not started sending them
+   yet still compiles and still renders honestly. The same arrangement
+   CartCheckoutOrder has for the same reason. Folding them into Campaign later
+   costs one edit and changes nothing here.
 
    EVERY VALUE BELOW IS FREE TEXT STATED BY THE PARTIES AND PRINTED VERBATIM.
    There is no droplist of durations and no droplist of territories, and adding
@@ -68,9 +68,9 @@ export type LicenceFieldSpec = {
      derived from `name` would have needed a lookup table beside it to say the
      same thing, and the table would then be the real list. */
   labelKey: string;
-  /* The line under the field. Every one of these four earns one, because every
-     one of them is a blank box asking for a contract clause: "territoires"
-     means nothing until somebody has seen that "monde entier" is an answer. */
+  /* The line under the field, present on all four because all four are a blank
+     box asking for a contract clause: "territoires" means nothing until
+     somebody has seen that "monde entier" is an answer. */
   hintKey: string;
   required: boolean;
 };
@@ -97,9 +97,9 @@ const MEDIA: LicenceFieldSpec = {
 };
 
 /* THE ONLY OPTIONAL FIELD IN THE FILE, and it is optional because article 10
-   says "une contrepartie distincte PEUT etre convenue" rather than must. An
-   assignment of rights settled inside the agreed price is a real bargain, and a
-   required box here would make brands invent a number to get past it. */
+   says a separate consideration PEUT be agreed rather than must. An assignment
+   of rights settled inside the agreed price is a real bargain, and a required
+   box here would make brands invent a number to get past it. */
 const CONSIDERATION: LicenceFieldSpec = {
   name: "licence_consideration",
   labelKey: "consideration",
@@ -119,9 +119,9 @@ const NOTHING_FURTHER: readonly LicenceFieldSpec[] = [];
 /* Option 2, the one the annex to the model contract calls the most frequent
    case in practice, because a brand that pays for content usually wants to
    advertise with it. Three required fields, and all three are required by the
-   clause itself: it licenses reproduction "pour une duree de [ ], sur les
-   territoires de [ ], et sur les supports suivants : [ ]", so a blank in any of
-   the three leaves a licence with no limit written into it. */
+   clause itself: it licenses reproduction for a stated period, on stated
+   territories and on stated media, so a blank in any of the three leaves a
+   licence with no limit written into it. */
 const REDISTRIBUTION: readonly LicenceFieldSpec[] = [DURATION, TERRITORIES, MEDIA];
 
 /* Option 3, an assignment of the economic rights. Period and territories are
@@ -238,18 +238,35 @@ export function licenceBody(draft: LicenceDraft): LicenceTermsBody | null {
 /* Anything that may carry a stated licence: a campaign, an open brief, the
    campaign nested on an invitation, a contract.
 
-   EVERY FIELD IS OPTIONAL, AND THAT IS THE POINT OF THE TYPE. It lets a screen
-   hand over whatever payload it already holds without lib/types.ts naming these
-   fields on four separate types, and it means a backend that has not started
-   sending them yet produces a panel that says so rather than a compile error or
-   a crash. An absent field and a null field are the same thing to every reader
-   below, which is also what they are to somebody reading the screen. */
+   THE FIVE FIELDS ARE OPTIONAL, AND THAT IS THE POINT OF THE TYPE. It lets a
+   screen hand over whatever payload it already holds without lib/types.ts
+   naming these fields on four separate types, and it means a backend that has
+   not started sending them yet produces a panel that says so rather than a
+   compile error or a crash. An absent field and a null field are the same thing
+   to every reader below, which is also what they are to somebody reading the
+   screen.
+
+   THE INDEX SIGNATURE IS LOAD-BEARING AND IS NOT A SHRUG. Without it this is
+   what TypeScript calls a WEAK TYPE, every property optional, and it refuses an
+   argument that has no property in common with it: `statedLicence(campaign)`
+   fails with TS2559 on exactly the builds this type exists to support, which
+   are the ones whose Campaign does not declare a licence field yet. That is the
+   weak-type check doing its job on most types and defeating this one, because
+   here "none of these fields are present" is the normal state rather than a
+   mistaken argument. The index signature says out loud what the callers are:
+   whole API payloads that carry a great deal besides a licence.
+
+   It costs nothing in safety where it matters. The five names below are
+   DECLARED, so they keep their own types and a misspelling in this file reads
+   as `unknown` and fails to compile at stated() rather than silently returning
+   null. */
 export type LicenceCarrier = {
   licence_option?: string | null;
   licence_duration?: string | null;
   licence_territories?: string | null;
   licence_media?: string | null;
   licence_consideration?: string | null;
+  [key: string]: unknown;
 };
 
 /* A licence as a screen prints it.
@@ -267,7 +284,7 @@ export type StatedLicence = {
   values: Record<LicenceField, string | null>;
 };
 
-function known(option: string): LicenceOption | null {
+function knownOption(option: string): LicenceOption | null {
   return LICENCE_OPTIONS.find((candidate) => candidate === option) ?? null;
 }
 
@@ -276,7 +293,11 @@ function known(option: string): LicenceOption | null {
    The server trims a stated value rather than collapsing it, exactly as it does
    a party's address, because this text is printed as written and its line
    breaks are the brand's. This only has to decide whether there is anything
-   there at all: a value of spaces is not a territory. */
+   there at all: a value of spaces is not a territory.
+
+   TYPED NARROWLY ON PURPOSE, which is what keeps the index signature above
+   honest: a field name misspelled in statedLicence resolves through the index
+   signature to `unknown`, and `unknown` does not fit here. */
 function stated(raw: string | null | undefined): string | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim();
@@ -297,7 +318,7 @@ export function statedLicence(row: LicenceCarrier | null | undefined): StatedLic
   if (option === null) return null;
   return {
     option,
-    known: known(option),
+    known: knownOption(option),
     values: {
       licence_duration: stated(row?.licence_duration),
       licence_territories: stated(row?.licence_territories),

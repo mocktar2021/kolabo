@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AuthProvider } from "./lib/auth";
 import { MeProvider } from "./lib/me";
+import { InstallPrompt } from "./components/InstallPrompt";
 import "./i18n";
 import "./lib/onboardingStrings";
 import "./lib/marketingStrings";
@@ -122,6 +123,10 @@ import "./lib/dayStrings";
    rather than cut out of 600 lines of bilingual copy for one line, and
    otpStrings.test.ts fails if any screen renders it again. */
 import "./lib/otpStrings";
+/* The invitation to put Kolabo on a home screen. Owns the install.* group
+   outright, so no ordering constraint; it sits last because the button it
+   speaks for is rendered last, beside App rather than inside it. */
+import "./lib/installStrings";
 import "./styles/theme.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -133,6 +138,13 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
           page. */}
       <MeProvider>
         <App />
+        {/* Beside App rather than inside a page or inside Layout, for the
+            same reason MeProvider sits outside the router: it is fixed to the
+            viewport, it is the same on every route, and mounting it per page
+            would make it flicker on every navigation. It renders nothing at
+            all unless the browser has offered an install, or this is an
+            iPhone, and nothing ever once the app is installed. */}
+        <InstallPrompt />
       </MeProvider>
     </AuthProvider>
   </React.StrictMode>

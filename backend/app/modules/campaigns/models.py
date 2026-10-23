@@ -92,6 +92,57 @@ class Campaign(Base):
     budget_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     budget_currency: Mapped[str | None] = mapped_column(String, nullable=True)
     deliverables: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # HOW THE BRAND MAY USE THE CONTENT, stated by the brand before any
+    # contract exists.
+    #
+    # Article 10 of the model counsel approved
+    # (claude/kolabo-contrat-collaboration-modele-fr.md) makes the Parties
+    # retain one of three options and leaves "Option retenue : [ 1 / 2 / 3 ]"
+    # to be filled in per contract. Until this column there was nothing in
+    # this database that could fill it in, so every generated contract carried
+    # an unanswered choice at the heart of it.
+    #
+    # IT IS A TERM, NOT A DESCRIPTION, and that is the distinction this whole
+    # file turns on. A creator prices option 2 differently from option 1:
+    # being redistributable on the brand's channels in paid advertising for a
+    # year is not the same job as posting once on your own feed. So it sits in
+    # campaigns.editing.LOCKED_FIELDS with budget, currency, deliverables and
+    # deadline, it is carried on every creator-facing payload before
+    # acceptance (the open board, the invitation, the direct order), and a
+    # brand that wants different terms after somebody has bid publishes a new
+    # brief rather than rewriting this one underneath them.
+    #
+    # THE SHAPE, documented here as well as at the schema that validates it,
+    # because this is the column a reader will find first:
+    #
+    #   licence_option         "1" | "2" | "3"
+    #   licence_duration       free text, option 2 and 3 only
+    #   licence_territories    free text, option 2 and 3 only
+    #   licence_media          free text, option 2 only
+    #   licence_consideration  free text, option 3 only, optional
+    #
+    # Only the keys belonging to the stated option are written, so an option 1
+    # block carries no empty duration for a renderer to wonder about.
+    # campaigns/licence.py is where that is enforced and where each option's
+    # required set is argued from the model's own table.
+    #
+    # EVERY VALUE IS FREE TEXT THE PARTIES STATED AND IS PRINTED VERBATIM. A
+    # duration typed in French stays French; nothing normalises, translates or
+    # maps these onto a vocabulary. They are not checked against anything
+    # either, exactly as a party block is not: the platform records what the
+    # brand states about the licence it wants, and whether that wording
+    # achieves it in a given market is counsel's question (annex, question 6).
+    #
+    # JSON for the two reasons `deliverables` above established and
+    # c8e2a5f71b30 restated: nothing joins on a licence block, it is read
+    # whole for one campaign at a time, and its shape varies by option.
+    #
+    # Nullable, and null means NOBODY HAS STATED A LICENCE HERE rather than
+    # "option 1". Every brief written before this column existed has nothing
+    # to backfill from, and contracts/service.py refuses to generate from a
+    # brief with no licence (contract_licence_terms_missing) rather than
+    # guessing the option that happens to grant the brand least.
+    licence_terms: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String, default=DRAFT, nullable=False)
     # A direct order: one brand buying one creator's package, wearing a
@@ -168,6 +219,30 @@ class Proposal(Base):
     # Defaults to the creator because every proposal that existed before this
     # column came from one.
     author_role: Mapped[str] = mapped_column(String, default=AUTHOR_INFLUENCER, nullable=False)
+    # THE LICENCE A DIRECT ORDER WAS PLACED UNDER. Same shape as
+    # campaigns.licence_terms above, which carries the full argument and the
+    # field list.
+    #
+    # It is here because on a direct order the brand's offer IS this row:
+    # service._place_order writes version 1 with author_role business, and the
+    # campaign it hangs off is a wrapper the creator never reads terms from. A
+    # brief states its licence on the brief; an order states it on the offer.
+    #
+    # THE CREATOR NEVER WRITES IT. There is no licence field on ProposalIn and
+    # no creator-facing form for one. What happens when a creator counters is
+    # that the block is CARRIED FORWARD, exactly as expires_at below is
+    # carried forward, and for a closely related reason: a counter is the same
+    # order on the same clock under the same licence, and only the price or
+    # the timeline moved. Left to default it would go to NULL, and the
+    # countered order would then be uncontractable — generation would find no
+    # licence and refuse, which is to say the creator could kill their own
+    # deal by negotiating it.
+    #
+    # NULL on every proposal born of a brief, deliberately, and that is the
+    # common case: there the licence lives on the campaign and generation
+    # reads it from there. Null here therefore means "this row states no
+    # licence of its own", never "no licence applies".
+    licence_terms: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # When this offer stops being answerable. NULL for everything born of a
     # brief, and that is deliberate: a brief's proposals do not expire,
     # because there is no promise attached to leaving one open — the business

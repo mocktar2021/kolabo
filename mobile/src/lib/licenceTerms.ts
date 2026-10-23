@@ -15,6 +15,18 @@
    a field the other two silently stop reading, and the symptom is a contract
    printed without the clause rather than a failing build.
 
+   AND SO IS THE NESTING. The five names live inside ONE `licence_terms`
+   object, on the way in and on the way out, because that is what the API
+   takes and serves: campaigns/schemas.py declares LicenceTermsIn as a nested
+   object on CampaignCreate, CampaignPatch, OrderIn and CartItemIn, hands it
+   back as one dict on CampaignOut, ProposalOut and ContractDetailOut, and
+   stores it as a single JSON column. campaigns/editing.py then compares what
+   a PATCH sends against what that column holds, whole, to decide whether this
+   locked term changed: one comparison rather than five. This module wrote and
+   read the five keys FLAT at the top level of the carrier, which the real API
+   would have refused on the brand's form and read as undefined on every
+   creator-facing screen, so a licence that was stated printed as "not stated".
+
    WHY A MODULE AND NOT JUST A FORM, the same reason lib/partyDetails.ts
    gives: the first question decides which further questions are asked, and
    three things need that table at once.
@@ -53,19 +65,39 @@ export type LicenceField =
   | "licence_media"
   | "licence_consideration";
 
-/* The shape as it travels on a campaign or an order. Every field is optional
-   and nullable because all five are, for two separate reasons that happen to
-   agree: option 1 asks for none of the four, and a row written before this
-   feature existed carries none of the five. A screen reading an older row
-   must render "not stated" rather than crash, which is why nothing here is
-   required. */
-export type LicenceTerms = {
+/* The block as it ARRIVES. Every field is optional and nullable because all
+   five are, for two separate reasons that happen to agree: option 1 asks for
+   none of the four, and a row written before this feature existed carries
+   none of the five. A screen reading an older row must render "not stated"
+   rather than crash, which is why nothing here is required. */
+export type StoredLicenceBlock = {
   licence_option?: string | null;
   licence_duration?: string | null;
   licence_territories?: string | null;
   licence_media?: string | null;
   licence_consideration?: string | null;
 };
+
+/* ANYTHING THAT CARRIES ONE: a campaign, an open brief, the campaign nested on
+   an invitation, a proposal, a contract.
+
+   ONE OPTIONAL NESTED KEY AND NOT FIVE FLAT ONES, which is the shape of the
+   API. It is intersected onto Campaign (lib/campaignTypes), OpenBrief
+   (lib/boardTypes) and Proposal rather than spelled out again on each, so the
+   pinned name is declared exactly once in this client.
+
+   Optional because a payload from a backend that is not sending the key yet
+   has to compile and has to render honestly, and nullable because the column
+   really is null on every row written before the capture existed.
+
+   NO INDEX SIGNATURE HERE, deliberately, where the web client's LicenceCarrier
+   needs one. That type is structural and accepts payloads whose own types
+   never name the key, so without a catch-all it is a WEAK TYPE and TypeScript
+   refuses every one of them (TS2559). Here the carriers INTERSECT this type,
+   so they declare the key and the weak-type check is satisfied. Adding a
+   catch-all would hand Campaign and OpenBrief an index signature as well, and
+   `campaign.titel` would quietly become `unknown` instead of an error. */
+export type LicenceTerms = { licence_terms?: StoredLicenceBlock | null };
 
 /* Per option: the fields the contract asks for, in the order they are drawn.
 
@@ -112,7 +144,12 @@ export function redistributes(option: LicenceOption | null): boolean {
    lib/partyDetails.ts makes. A brand that fills in a duration and a list of
    territories under option 2, taps option 3 to read what it asks, and taps
    back should find its typing where it left it. toPayload() is what keeps the
-   values an option does not ask for out of the request. */
+   values an option does not ask for out of the request.
+
+   FLAT HERE AND NESTED ON THE WIRE, on purpose: this is what four TextInputs
+   are bound to, and a nested draft would make every onChangeText reach through
+   a key that means nothing to a form. toPayload is the one place the two
+   shapes meet. */
 export type LicenceValues = Record<LicenceField, string>;
 
 export const EMPTY_VALUES: LicenceValues = {
@@ -124,6 +161,11 @@ export const EMPTY_VALUES: LicenceValues = {
 
 /* The stated option, or null when nothing usable is stated.
 
+   READ OFF `terms.licence_terms` AND NEVER OFF THE CARRIER'S OWN KEYS. The
+   block is nested on every payload that carries it; reading the carrier
+   directly is what this module used to do, and against the real API it
+   answered null for every licence ever stated.
+
    AN UNRECOGNISED VALUE DEGRADES TO null rather than being passed through.
    The three options are the only ones article 10 offers, so a fourth value
    is a row this client cannot describe, and the honest answer on screen is
@@ -131,7 +173,7 @@ export const EMPTY_VALUES: LicenceValues = {
    app can read. Guessing which option a stranger meant would put a sentence
    about paid advertising in front of a creator on no evidence. */
 export function optionOf(terms: LicenceTerms | null | undefined): LicenceOption | null {
-  const raw = terms?.licence_option;
+  const raw = terms?.licence_terms?.licence_option;
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return (LICENCE_OPTIONS as string[]).includes(trimmed) ? (trimmed as LicenceOption) : null;
@@ -139,14 +181,41 @@ export function optionOf(terms: LicenceTerms | null | undefined): LicenceOption 
 
 /* A payload into form state. Null and absent both become "", because a
    controlled TextInput cannot hold null and an uncontrolled one loses what is
-   typed into it on the next render. */
+   typed into it on the next render. Reads the nested block, like optionOf: a
+   carrier with no block is every field empty. */
 export function valuesFrom(terms: LicenceTerms | null | undefined): LicenceValues {
-  if (!terms) return { ...EMPTY_VALUES };
+  const block = terms?.licence_terms;
+  if (!block) return { ...EMPTY_VALUES };
   const out = { ...EMPTY_VALUES };
   for (const field of Object.keys(EMPTY_VALUES) as LicenceField[]) {
-    out[field] = terms[field] ?? "";
+    out[field] = block[field] ?? "";
   }
   return out;
+}
+
+/* WHICH OF TWO CARRIERS A SCREEN SHOULD READ THE LICENCE FROM: the offer's
+   block when it states one, the brief's otherwise.
+
+   THIS IS THE BACKEND'S PRECEDENCE AND NOT A PREFERENCE. A brief's licence is
+   written on the campaign, beside the budget and the deliverables. A DIRECT
+   ORDER'S is written on the brand's own proposal row, because there the
+   proposal IS the offer (campaigns.service._place_order writes version 1
+   authored by the business) and the campaign behind it is a wrapper nobody
+   reads terms from. So a row that states one wins, and a brief's proposals
+   state nothing. contracts.service._licence_snapshot resolves it in exactly
+   that order when the contract is written, which means a client resolving it
+   any other way would show a creator one licence and then have a different one
+   signed into the contract they accepted.
+
+   The ARGUMENT ORDER is the precedence, so a call site reads as the rule. Both
+   sides are optional because both legitimately go missing: a brief carries no
+   proposal until somebody prices it, and an older payload carries no block. */
+export function licenceTermsFor(
+  offer: LicenceTerms | null | undefined,
+  brief: LicenceTerms | null | undefined
+): LicenceTerms | null {
+  if (offer && optionOf(offer) !== null) return offer;
+  return brief ?? null;
 }
 
 /* What is still blank, in render order, so the form can both withhold its
@@ -161,29 +230,64 @@ export function isComplete(option: LicenceOption, values: LicenceValues): boolea
   return missingFields(option, values).length === 0;
 }
 
+/* The block as it is SENT: all five keys, the option narrowed to the three the
+   document prints. */
+export type LicenceTermsBlock = {
+  licence_option: LicenceOption;
+  licence_duration: string | null;
+  licence_territories: string | null;
+  licence_media: string | null;
+  licence_consideration: string | null;
+};
+
+/* And the block under the one key every request carries it on. A type of its
+   own rather than an inline object, because this is the thing callers spread
+   into a body: `{ ...draftPayload(draft) }` has to produce `licence_terms`,
+   and naming the wrapper is what makes a caller that spreads the BLOCK instead
+   fail to compile rather than post five keys the API ignores. */
+export type LicenceTermsBody = { licence_terms: LicenceTermsBlock };
+
+/* One stated value, or null when this option does not ask for it or the brand
+   left it blank. Empty becomes null rather than "", so a cleared field is
+   cleared rather than stored as a blank string that then prints as a blank
+   line in the middle of the clause. */
+function statedValue(
+  option: LicenceOption,
+  values: LicenceValues,
+  field: LicenceField
+): string | null {
+  if (!FIELDS[option].includes(field)) return null;
+  const value = values[field].trim();
+  return value === "" ? null : value;
+}
+
 /* The body, and the only thing that builds one.
 
-   EVERY ONE OF THE FOUR FIELDS TRAVELS ON EVERY REQUEST, carrying null when
-   the selected option does not ask for it. That is the one place this differs
-   from lib/partyDetails.toPayload, which omits a field its type does not ask
-   for, and the difference is deliberate. A party block is replaced whole by a
-   PUT. These five columns hang off a campaign that is also edited in pieces,
-   so an omitted field is a field left at whatever it was: a brand that
-   narrowed its claim from option 2 to option 1 would keep a stale twelve
+   ONE NESTED `licence_terms` KEY, because that is what the API takes on a
+   brief (CampaignCreate), on a correction to one (CampaignPatch), on a direct
+   order (OrderIn) and on every line of a basket (CartItemIn). See the note at
+   the top of this file for why the backend wants it whole.
+
+   EVERY ONE OF THE FOUR FIELDS TRAVELS INSIDE IT ON EVERY REQUEST, carrying
+   null when the selected option does not ask for it. That is the one place
+   this differs from lib/partyDetails.toPayload, which omits a field its type
+   does not ask for, and the difference is deliberate. A party block is
+   replaced whole by a PUT. This block hangs off a campaign that is also edited
+   in pieces, so an omitted field is a field left at whatever it was: a brand
+   that narrowed its claim from option 2 to option 1 would keep a stale twelve
    months and a stale territory list, and those would print on the contract
    underneath a sentence saying it has no redistribution right. Sending null
-   says what was meant.
-
-   Empty becomes null rather than "", so a cleared field is cleared rather
-   than stored as a blank string that then prints as a blank line. */
-export function toPayload(option: LicenceOption, values: LicenceValues): Record<string, string | null> {
-  const asked = FIELDS[option];
-  const body: Record<string, string | null> = { licence_option: option };
-  for (const field of Object.keys(EMPTY_VALUES) as LicenceField[]) {
-    const value = asked.includes(field) ? values[field].trim() : "";
-    body[field] = value === "" ? null : value;
-  }
-  return body;
+   says what was meant. */
+export function toPayload(option: LicenceOption, values: LicenceValues): LicenceTermsBody {
+  return {
+    licence_terms: {
+      licence_option: option,
+      licence_duration: statedValue(option, values, "licence_duration"),
+      licence_territories: statedValue(option, values, "licence_territories"),
+      licence_media: statedValue(option, values, "licence_media"),
+      licence_consideration: statedValue(option, values, "licence_consideration"),
+    },
+  };
 }
 
 /* The brand's form state before anything is chosen.
@@ -204,12 +308,12 @@ export function draftIsComplete(draft: LicenceDraft): boolean {
   return isComplete(draft.option, draft.values);
 }
 
-/* The draft as request fields, or null while no option has been chosen. A
+/* The draft as a request body, or null while no option has been chosen. A
    caller that gets null has nothing to send and nothing to merge: the body it
-   is building should carry none of the five keys rather than five nulls,
-   because five nulls is a brand stating that it claims nothing, which is
-   option 1, which is not what an unanswered form means. */
-export function draftPayload(draft: LicenceDraft): Record<string, string | null> | null {
+   is building should carry no `licence_terms` key at all rather than a block
+   of five nulls, because five nulls is a brand stating that it claims nothing,
+   which is option 1, which is not what an unanswered form means. */
+export function draftPayload(draft: LicenceDraft): LicenceTermsBody | null {
   if (draft.option === "") return null;
   return toPayload(draft.option, draft.values);
 }

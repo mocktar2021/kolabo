@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { LicenceTerms } from "../components/LicenceTerms";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
@@ -142,7 +143,13 @@ function ProposalForm({ campaignId, onDone }: { campaignId: string; onDone: () =
 
    Prefilled with the terms on the table rather than blank: the creator is
    almost always changing one of the two numbers, and the endpoint needs both
-   regardless. */
+   regardless.
+
+   NOTHING HERE COUNTERS THE LICENCE, and that is the backend's shape rather
+   than an omission. A proposal version is a rate, a currency and a timeline;
+   the licence rides on the campaign, which is the brand's to state. A creator
+   who finds option 2 priced as option 1 counters with a higher number, which
+   is exactly the conversation the panel above this form exists to start. */
 function CounterForm({ campaignId, live, isOrder, onSent }: {
   campaignId: string;
   live: Proposal;
@@ -323,7 +330,15 @@ function Negotiation({ campaignId, live, history, isOrder, readOnly = false, onD
       /* Accepting is what creates the contract — the endpoint returns it, and
          signing is the next thing both sides have to do, so that is where the
          creator goes. Money still has not moved: escrow is funded by the buyer
-         after both signatures. */
+         after both signatures.
+
+         THE LICENCE IS ON SCREEN ABOVE THIS BUTTON, which is the point of
+         putting it on the card at all. Accepting an order generates the
+         contract, and article 10 of that contract carries whatever the brand
+         stated: a creator who has not read it has agreed to it anyway. The
+         generation also refuses with contract_licence_terms_missing when
+         nothing was stated, and errorText has that sentence in both
+         languages. */
       const contract = await api<Contract>(`/campaigns/orders/${live.id}/accept`, { method: "POST", token });
       navigate(`/contracts/${contract.id}`);
     } catch (e) {
@@ -604,6 +619,28 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
           </ul>
         )}
       </div>
+
+      {/* WHAT THE BRAND MAY DO WITH THE CONTENT, under the deliverables and
+          ABOVE the negotiation panel, which is where both of this card's
+          decisions are made.
+
+          THIS IS THE PLACEMENT THE FEATURE TURNS ON, and it covers BOTH kinds
+          of row with one panel because both are answered here. On a brief the
+          creator is about to type a rate into ProposalForm; on a direct order
+          the Accepter button is a few centimetres below, and pressing it
+          GENERATES THE CONTRACT whose article 10 carries whatever the brand
+          stated. Either way the licence is part of what is being priced or
+          signed, so it cannot sit below the control that does it.
+
+          It stays on a closed or cancelled card too, where every form is gone:
+          the card is then the record of what was offered, and what the brand
+          would have been allowed to do with the content is part of that record.
+
+          `c` is the nested campaign, where the licence lives. Not the
+          proposal: a proposal version is a rate, a currency and a timeline,
+          and the licence is the brand's statement about the job rather than a
+          term either side counters. */}
+      <LicenceTerms row={c} voice="creator" />
 
       {live ? (
         /* A live version means the negotiation has started, whoever opened it.

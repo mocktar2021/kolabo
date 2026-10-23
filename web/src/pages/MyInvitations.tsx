@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
+import { licenceRowFor } from "../lib/licence";
 import { directOrderOf, orderTimeLeft, parseApiDate } from "../lib/orders";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import { ListFilter, type FilterOption } from "../components/ListFilter";
@@ -636,11 +637,24 @@ function InvitationCard({ inv, onDone }: { inv: InvitationWithCampaign; onDone: 
           the card is then the record of what was offered, and what the brand
           would have been allowed to do with the content is part of that record.
 
-          `c` is the nested campaign, where the licence lives. Not the
-          proposal: a proposal version is a rate, a currency and a timeline,
-          and the licence is the brand's statement about the job rather than a
-          term either side counters. */}
-      <LicenceTerms row={c} voice="creator" />
+          AND THE ROW IT READS IS THE OFFER'S FIRST, THE BRIEF'S SECOND, which
+          is the backend's own precedence and not a choice this card makes. A
+          brief's licence is written on the campaign; a DIRECT ORDER'S is
+          written on the brand's proposal row, because there the proposal IS
+          the offer and the campaign behind it is a wrapper nobody reads terms
+          from. Reading `c` alone, which is what this card used to do, showed
+          every direct order as "not stated" while the licence sat on the very
+          proposal the Accepter button is addressed to.
+
+          It is still not a term either side COUNTERS: a proposal version is a
+          rate, a currency and a timeline, submit_proposal carries the brand's
+          block forward onto a counter rather than taking a new one, and
+          ProposalIn has no licence field at all. The block lives on a
+          proposal because that is where the BRAND wrote it, not because the
+          creator can answer it. licenceRowFor in lib/licence.ts is the one
+          copy of the rule, and contracts.service._licence_snapshot applies
+          the same order when the contract is finally written. */}
+      <LicenceTerms row={licenceRowFor(live, c)} voice="creator" />
 
       {live ? (
         /* A live version means the negotiation has started, whoever opened it.

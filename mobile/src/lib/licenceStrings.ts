@@ -108,6 +108,10 @@ const fr = {
     optional: "facultatif",
     incompleteForm: "Complétez les champs demandés pour la réponse choisie.",
     verbatim: "Écrivez-le comme vous voulez le lire sur le contrat. Kolabo ne traduit pas et ne reformule pas ce que vous écrivez ici.",
+    /* Toujours sous etiquette : le bloc du createur est redige a la deuxieme
+       personne, donc la marque qui relit sa propre campagne doit savoir
+       qu'elle lit le texte adresse a l'autre partie. */
+    asCreatorSees: "Ce que le créateur lira avant d'accepter :",
   },
 };
 
@@ -154,6 +158,7 @@ const en = {
     optional: "optional",
     incompleteForm: "Fill in the fields asked for the answer you chose.",
     verbatim: "Write it the way you want to read it on the contract. Kolabo does not translate it and does not reword it.",
+    asCreatorSees: "What the creator reads before accepting:",
   },
 };
 

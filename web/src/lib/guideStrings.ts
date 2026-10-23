@@ -20,6 +20,12 @@
    screen, and it is the Mobile Money destination. No step here asks anybody
    to verify one, because no screen does.
 
+   THE COUNTRIES ANSWER IS TIED TO PAYMENTS, not to a pilot. It named a two
+   country pilot for weeks after four markets were open, because nothing
+   connects a sentence here to the list in lib/countries.ts. A country opens
+   when money can move there, so the sentence says that and stops going stale
+   every time the gateway adds a market.
+
    NO COMMISSION PERCENTAGE. Not one user-facing string in this product states
    a figure, in either language, and this file does not become the first place
    it appears. The guide describes the mechanism, which the Terms and the
@@ -74,13 +80,13 @@ const fr = {
     profileNote: "Une marque filtre par catégorie, par pays, par plateforme et par nombre d'abonnés. Un profil sans catégorie et sans réseau ne ressort d'aucun de ces filtres.",
 
     socialTitle: "Vos réseaux sociaux",
-    social1: "Vous déclarez un réseau en saisissant votre nom d'utilisateur. Huit réseaux sont acceptés : Instagram, TikTok, YouTube, Facebook, X, Snapchat, LinkedIn et WhatsApp.",
-    social2: "Facebook est le seul réseau que vous pouvez connecter aujourd'hui, et connecter n'est pas la même chose que déclarer : la connexion lit votre nombre d'abonnés directement depuis le réseau, ce qu'une saisie à la main ne fait pas. Les autres connexions arriveront.",
+    social1: "Vous déclarez un réseau en saisissant votre nom d'utilisateur. Huit réseaux sont acceptés : Instagram, TikTok, YouTube, Facebook, X, Snapchat, LinkedIn et WhatsApp.",
+    social2: "Facebook est le seul réseau que vous pouvez connecter aujourd'hui, et connecter n'est pas la même chose que déclarer : la connexion lit votre nombre d'abonnés directement depuis le réseau, ce qu'une saisie à la main ne fait pas. Les autres connexions arriveront.",
     socialNote: "WhatsApp ne porte pas d'audience publique, donc aucun nombre d'abonnés ne lui est attaché.",
 
     packagesTitle: "Vos offres",
     packages1: "Une offre est ce qu'une marque commande. Elle porte un titre, un prix et un délai de livraison.",
-    packages2: "Une offre peut être active ou inactive. Une offre inactive reste sur votre profil sans pouvoir être commandée. Quand vous n'êtes pas disponible, désactivez plutôt que de supprimer : vous garderez le texte et le prix pour la prochaine fois.",
+    packages2: "Une offre peut être active ou inactive. Une offre inactive reste sur votre profil sans pouvoir être commandée. Quand vous n'êtes pas disponible, désactivez plutôt que de supprimer : vous garderez le texte et le prix pour la prochaine fois.",
 
     workTitle: "Trouver du travail",
     workIntro: "Trois chemins, et ils ne s'excluent pas.",
@@ -100,11 +106,11 @@ const fr = {
     deliver3: "Cliquez sur Envoyer pour validation.",
     deliverWindow: "La marque est prévenue et dispose de 4 jours pour répondre. Sans réponse de sa part dans ce délai, l'argent vous est libéré automatiquement. Chaque nouvelle remise fait repartir les 4 jours.",
     deliverWithdraw: "Tant que la marque n'a pas répondu, vous pouvez retirer votre livrable et en remettre un autre.",
-    deliverChanges: "La marque peut aussi demander des modifications. Cela ne débloque pas l'argent et n'ouvre pas de litige : le séquestre reste en place et vous remettez une nouvelle version.",
+    deliverChanges: "La marque peut aussi demander des modifications. Cela ne débloque pas l'argent et n'ouvre pas de litige : le séquestre reste en place et vous remettez une nouvelle version.",
 
     paidTitle: "Être payé",
     paid1: "Renseignez votre moyen de versement avant la fin du travail. Sans lui, votre argent peut être libéré, visible et à vous, sans pouvoir partir.",
-    paid2: "Le formulaire demande votre pays, votre réseau Mobile Money et le numéro qui recevra l'argent. Les réseaux proposés dépendent du pays : MTN Mobile Money, Moov Money, Celtiis Cash, T-Money, Wave et Orange Money.",
+    paid2: "Le formulaire demande votre pays, votre réseau Mobile Money et le numéro qui recevra l'argent. Les réseaux proposés dépendent du pays : MTN Mobile Money, Moov Money, Celtiis Cash, T-Money, Wave et Orange Money.",
     paidNote: "Si un paiement vous attend et que ce formulaire est vide, Kolabo vous envoie une notification qui mène directement à lui.",
     paid3: "Vos montants sont nets. La commission Kolabo est déduite au moment où l'argent vous est libéré, jamais avant. Le relevé de vos gains montre, pour chaque ligne, le brut, la commission et le net, pour que rien ne soit seulement soustrait.",
 
@@ -126,7 +132,7 @@ const fr = {
 
     findTitle: "Trouver des créateurs",
     find1: "La recherche est gratuite et ne demande aucun compte. Le compte ne sert qu'à commander.",
-    find2: "Sur Découvrir, quatre filtres réduisent la liste : la catégorie, le pays, la plateforme et le nombre minimum d'abonnés. Puis Rechercher.",
+    find2: "Sur Découvrir, quatre filtres réduisent la liste : la catégorie, le pays, la plateforme et le nombre minimum d'abonnés. Puis Rechercher.",
     find3: "Une fois connecté, vous pouvez enregistrer un créateur pour le retrouver plus tard.",
 
     orderTitle: "Commander une offre",
@@ -179,14 +185,14 @@ const fr = {
 
     menuTitle: "Où sont mon compte et la langue",
     menu1: "En haut à droite. Le bouton qui porte votre photo ouvre votre profil, votre argent, les réglages de votre compte et la déconnexion.",
-    menu2: "Le choix FR et EN est dans la barre du haut. Votre choix est enregistré : il tient après un rafraîchissement, dans un autre onglet et le lendemain.",
+    menu2: "Le choix FR et EN est dans la barre du haut. Votre choix est enregistré : il tient après un rafraîchissement, dans un autre onglet et le lendemain.",
 
     commissionTitle: "La commission Kolabo",
-    commission1: "Kolabo prélève une commission sur le montant libéré au créateur. Elle ne s'ajoute pas au prix : la marque paie le prix convenu, et la commission sort de la part du créateur au moment du versement.",
+    commission1: "Kolabo prélève une commission sur le montant libéré au créateur. Elle ne s'ajoute pas au prix : la marque paie le prix convenu, et la commission sort de la part du créateur au moment du versement.",
     commission2: "Le relevé des gains du créateur montre le brut, la commission et le net pour chaque ligne. Les conditions d'utilisation décrivent la règle complète, remboursements compris.",
 
     countriesTitle: "Pays et moyens de paiement",
-    countries1: "Le pilote démarre au Bénin et au Togo. Côte d'Ivoire, Ghana, Sénégal, Cameroun et Nigeria suivront.",
+    countries1: "Kolabo est ouvert au Bénin, au Togo, en Côte d'Ivoire et au Sénégal. D'autres pays s'ajouteront à mesure que les paiements y deviennent possibles.",
     countries2: "Les paiements et les versements passent par Mobile Money, et les réseaux disponibles dépendent du pays.",
 
     timelineTitle: "Quand suis-je payé",
@@ -198,7 +204,7 @@ const fr = {
     delete2: "Ce qui est effacé et ce qui doit être conservé est décrit dans la politique de confidentialité, parce qu'un contrat signé et un paiement sont aussi des pièces comptables.",
 
     contactTitle: "Nous écrire",
-    contact1: "Une question à laquelle cette page ne répond pas, un compte bloqué, un paiement qui n'arrive pas : écrivez-nous et nous vous répondrons."
+    contact1: "Une question à laquelle cette page ne répond pas, un compte bloqué, un paiement qui n'arrive pas : écrivez-nous et nous vous répondrons."
   }
 };
 
@@ -341,7 +347,7 @@ const en = {
     commission2: "The creator's earnings statement shows gross, commission and net on every line. The terms of service describe the full rule, refunds included.",
 
     countriesTitle: "Countries and payment methods",
-    countries1: "The pilot starts in Benin and Togo. Cote d'Ivoire, Ghana, Senegal, Cameroon and Nigeria follow.",
+    countries1: "Kolabo is open in Benin, Togo, Cote d'Ivoire and Senegal. Other countries are added as payments become possible there.",
     countries2: "Payments and payouts run on Mobile Money, and the available networks depend on the country.",
 
     timelineTitle: "When do I get paid",

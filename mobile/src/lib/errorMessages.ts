@@ -265,6 +265,40 @@ export const error_fr: Record<string, string> = {
   party_type_immutable:
     "Le type d'entité ne peut plus être modifié : un contrat a déjà été généré avec celui-ci. Écrivez au support si votre situation a changé.",
 
+  /* La licence de contenu : ce que la marque pourra faire du contenu, tel
+     qu'elle le déclare avant qu'un contrat existe.
+
+     Même construction que le bloc au-dessus, et pour la même raison. Comme
+     les détails de partie, l'option retenue est du contenu de contrat : la
+     plateforme écrit ce que la marque déclare, elle ne le déduit pas et ne le
+     vérifie pas. Aucune de ces deux phrases ne doit donc parler de contrôle
+     ni de validation.
+
+     Deux refus plutôt qu'un, parce qu'ils arrivent à deux moments et chez
+     deux lecteurs. licence_terms_invalid répond à un formulaire encore
+     ouvert, que son lecteur peut corriger sur place.
+     contract_licence_terms_missing arrive à la génération du contrat, et
+     celui qui le lit n'est pas toujours celui qui peut y remédier : un
+     créateur ne peut rien déclarer à la place de la marque. D'où « si c'est
+     votre compte », exactement comme dans contract_business_party_missing.
+
+     licence_terms_invalid ne nomme aucun champ. L'option 2 demande une durée,
+     des territoires et des supports, l'option 3 une durée et des territoires,
+     l'option 1 rien de plus : énumérer cela dans la phrase reviendrait à
+     écrire la règle une seconde fois, à côté du formulaire qui marque déjà
+     ses propres champs. La phrase dit aussi que rien n'a été enregistré,
+     parce que c'est la première question de celui qui vient de perdre sa
+     saisie.
+
+     Aucune valeur interpolée. Durée, territoires et supports sont du texte
+     libre écrit par les parties et recopié tel quel dans le contrat ; un
+     refus n'a pas à les citer pour dire ce qui manque, et le faire inviterait
+     à les retoucher. */
+  licence_terms_invalid:
+    "Ces conditions de licence sont incomplètes. L'option retenue en demande d'autres : reprenez les champs demandés pour cette option, puis renvoyez le formulaire. Rien n'a été enregistré.",
+  contract_licence_terms_missing:
+    "L'entreprise n'a pas encore indiqué comment elle pourra utiliser le contenu. Cette précision figure sur le contrat, qui ne peut donc pas être généré sans elle. Si c'est votre compte, indiquez-la sur la campagne ou sur la commande concernée.",
+
   proposal_not_found: "Proposition introuvable.",
   proposal_not_yours: "Cette proposition n'est pas la vôtre.",
   proposal_not_live: "Cette proposition n'est plus l'offre en cours : il n'y a plus rien à retirer.",
@@ -595,6 +629,39 @@ export const error_en: Record<string, string> = {
     "These details are incomplete. Go back over the fields asked for the type you chose, then send the form again. Nothing was saved.",
   party_type_immutable:
     "The entity type can no longer be changed: a contract has already been generated against it. Write to support if your situation has changed.",
+
+  /* The content licence: what the brand may do with the content, as the brand
+     states it before a contract exists.
+
+     Same construction as the block above, and for the same reason. Like party
+     details, the option chosen is contract content: the platform writes down
+     what the brand states, it does not infer it and it does not check it.
+     Neither of these two sentences may therefore talk about checking or
+     validation.
+
+     Two refusals rather than one, because they arrive at two moments and at
+     two readers. licence_terms_invalid answers a form that is still open, and
+     whoever reads it can put it right on the spot.
+     contract_licence_terms_missing arrives at contract generation, and
+     whoever reads that is not always whoever can act on it: a creator cannot
+     state anything on the brand's behalf. Hence "if that is your account",
+     exactly as in contract_business_party_missing.
+
+     licence_terms_invalid names no field. Option 2 asks for a duration,
+     territories and media, option 3 for a duration and territories, option 1
+     for nothing further: spelling that out in the sentence would write the
+     rule a second time, next to a form that already marks its own fields. The
+     sentence also says nothing was saved, because that is the first question
+     of whoever has just lost what they typed.
+
+     No interpolated values. Duration, territories and media are free text
+     written by the parties and copied into the contract as it stands; a
+     refusal does not have to quote them to say what is missing, and quoting
+     them would invite an edit. */
+  licence_terms_invalid:
+    "These licence terms are incomplete. The option chosen asks for more than this: go back over the fields asked for that option, then send the form again. Nothing was saved.",
+  contract_licence_terms_missing:
+    "The business has not stated how it may use the content yet. That appears on the contract, so it cannot be generated without it. If that is your account, state it on the campaign or on the order concerned.",
 
   proposal_not_found: "Proposal not found.",
   proposal_not_yours: "That proposal is not yours.",

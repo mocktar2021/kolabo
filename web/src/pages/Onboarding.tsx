@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { DayInput } from "../components/DayInput";
 import { Layout } from "../components/Layout";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -355,7 +356,7 @@ export default function Onboarding() {
               </div>
               <div className="field">
                 <label className="label" htmlFor="o-bd">{t("profile.birthDate")}</label>
-                <input id="o-bd" type="date" className="input" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                <DayInput id="o-bd" value={birthDate} onChange={setBirthDate} />
                 <div className="hint">{t("profile.birthDateHint")}</div>
               </div>
               <div className="field">

@@ -31,6 +31,14 @@ order, because there the brand's offer IS the proposal row. contracts
 .licence_terms for the snapshot taken at generation, which is never rewritten.
 The migration d3a6b9e24c71 carries that argument at length.
 
+NOTHING READS A BLOCK BACK THROUGH THIS MODULE, and that is deliberate. The
+only function here is the one that decides whether a STATED licence is
+complete; the three places that read a stored one (the two campaigns
+serialisers and contracts._licence_snapshot) take the column as it is. A
+reader helper would be a second opinion about what an empty block means, and
+there is only one: validated_block never returns one, so the columns hold a
+complete block or null.
+
 A MODULE OF ITS OWN rather than four more functions in service.py, the same
 split this package already makes for negotiated and that profiles makes for
 party_details: one bounded rule about one column, with a per-option field list
@@ -255,17 +263,3 @@ def validated_block(payload) -> dict | None:
     # consideration sitting on an option 2 licence would read, to a creator or
     # to counsel, as money agreed outside the escrow.
     return block
-
-
-def stored_block(row) -> dict | None:
-    """The block on a campaign, a proposal or a contract, or None.
-
-    `or None` rather than returning the column raw, for the reason
-    party_details._stored_block gives: an empty dict is a value this column
-    should never hold, and if one ever gets in there, reading it as "nothing
-    stated" is right while reading it as a licence with no option is a contract
-    generated against a licence that says nothing.
-    """
-    if row is None:
-        return None
-    return row.licence_terms or None

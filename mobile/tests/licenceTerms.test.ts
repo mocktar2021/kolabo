@@ -7,6 +7,16 @@
    before accepting. The module's whole value is that those four cannot
    disagree, and a table nothing checks is a table that drifts.
 
+   AND THE SHAPE IT TRAVELS IN IS NOW ASSERTED TOO, because that is what was
+   wrong with it. The five names ride inside ONE `licence_terms` object, in and
+   out, which is what the API takes and serves; this module wrote and read them
+   flat at the top level of the carrier, so the brand's form was ignored and
+   every creator-facing sentence reported "not stated" for a licence that was
+   stated. No test caught it, because every test wrote the same flat shape the
+   module did. The group below asserts the nesting from both directions and
+   pins the flat shape as the WRONG answer, so a reader cannot accidentally
+   agree with itself again.
+
    THE FOURTH READER IS WHY THIS FILE GOES FURTHER THAN partyDetails.test.ts.
    A wrong field list on a form costs a round trip. A wrong sentence costs a
    creator accepting a licence they did not price, which is the thing this
@@ -37,6 +47,7 @@ import {
   isComplete,
   isOptional,
   licenceSentences,
+  licenceTermsFor,
   missingFields,
   optionOf,
   redistributes,
@@ -46,6 +57,7 @@ import {
   type LicenceOption,
   type LicenceTerms,
   type LicenceValues,
+  type StoredLicenceBlock,
 } from "../src/lib/licenceTerms";
 
 const STRINGS = fileURLToPath(new URL("../src/lib/licenceStrings.ts", import.meta.url));
@@ -54,6 +66,16 @@ const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 
 function placeholders(template: string): string[] {
   return [...template.matchAll(PLACEHOLDER)].map((m) => m[1]).sort();
+}
+
+/* A row as the API sends it: the block NESTED under licence_terms.
+
+   Every reader below goes through this rather than writing the object out, so
+   the nesting is stated in one place and a test cannot quietly assert the flat
+   shape the module used to read. `carrier(null)` is the ordinary legacy row:
+   the key is there and the column is empty. */
+function carrier(block: StoredLicenceBlock | null): LicenceTerms {
+  return { licence_terms: block };
 }
 
 /* A filled set of values for one option, so a test about one field does not
@@ -160,10 +182,74 @@ describe("the three options and their tables line up", () => {
   });
 });
 
+describe("the block travels nested under licence_terms, in and out", () => {
+  /* THE BUG THIS GROUP EXISTS FOR. campaigns/schemas.py declares
+     LicenceTermsIn as a nested object on CampaignCreate, CampaignPatch,
+     OrderIn and CartItemIn, serves it back as one dict on CampaignOut,
+     ProposalOut and ContractDetailOut, and stores it as a single JSON column
+     that campaigns/editing.py compares whole. This module used to write and
+     read the five names flat at the top level of the body and of the carrier,
+     which the real API ignores in one direction and never produces in the
+     other. */
+
+  it("puts everything it sends under one licence_terms key", () => {
+    for (const option of LICENCE_OPTIONS) {
+      expect(Object.keys(toPayload(option, filled(option)))).toEqual(["licence_terms"]);
+    }
+  });
+
+  it("sends none of the five names at the top level of the body", () => {
+    /* The flat shape pinned as the WRONG answer, in the direction the brand's
+       form travels. A body carrying licence_option beside `title` is a body
+       pydantic drops on the floor. */
+    const body = toPayload("2", filled("2")) as unknown as Record<string, unknown>;
+    for (const name of ["licence_option", ...Object.keys(EMPTY_VALUES)]) {
+      expect(body[name]).toBeUndefined();
+    }
+  });
+
+  it("reads the option out of the nested block", () => {
+    expect(optionOf(carrier({ licence_option: "2" }))).toBe("2");
+  });
+
+  it("ignores the five names when they sit flat on the carrier", () => {
+    /* The same pin, in the reading direction. A payload shaped the old way is
+       a payload from nowhere, and answering "option 2" to it would mean this
+       module still agreed with its own mistake. */
+    const flat = { licence_option: "2", licence_duration: "12 mois" } as unknown as LicenceTerms;
+    expect(optionOf(flat)).toBeNull();
+    expect(valuesFrom(flat)).toEqual(EMPTY_VALUES);
+    expect(licenceSentences(flat, stub)).toEqual([]);
+  });
+
+  it("treats a carrier with no block as nothing stated", () => {
+    /* The ordinary legacy row: the campaign exists, the column is null, and
+       there is nothing to backfill from. */
+    expect(optionOf(carrier(null))).toBeNull();
+    expect(valuesFrom(carrier(null))).toEqual(EMPTY_VALUES);
+    expect(licenceSentences(carrier(null), stub)).toEqual([]);
+  });
+
+  it("survives a round trip from a stored block back into a body", () => {
+    const stored: StoredLicenceBlock = {
+      licence_option: "2",
+      licence_duration: "12 mois a compter de la publication",
+      licence_territories: "Benin et Togo",
+      licence_media: "reseaux sociaux de la marque et affichage en magasin",
+      licence_consideration: null,
+    };
+    const block = toPayload("2", valuesFrom(carrier(stored))).licence_terms;
+    expect(block.licence_option).toBe("2");
+    expect(block.licence_duration).toBe(stored.licence_duration);
+    expect(block.licence_territories).toBe(stored.licence_territories);
+    expect(block.licence_media).toBe(stored.licence_media);
+  });
+});
+
 describe("optionOf reads what a payload states and guesses nothing", () => {
   it("reads each of the three", () => {
     for (const option of LICENCE_OPTIONS) {
-      expect(optionOf({ licence_option: option })).toBe(option);
+      expect(optionOf(carrier({ licence_option: option }))).toBe(option);
     }
   });
 
@@ -171,8 +257,9 @@ describe("optionOf reads what a payload states and guesses nothing", () => {
     expect(optionOf(null)).toBeNull();
     expect(optionOf(undefined)).toBeNull();
     expect(optionOf({})).toBeNull();
-    expect(optionOf({ licence_option: null })).toBeNull();
-    expect(optionOf({ licence_option: "" })).toBeNull();
+    expect(optionOf(carrier({}))).toBeNull();
+    expect(optionOf(carrier({ licence_option: null }))).toBeNull();
+    expect(optionOf(carrier({ licence_option: "" }))).toBeNull();
   });
 
   it("degrades an unrecognised option to nothing stated", () => {
@@ -180,33 +267,78 @@ describe("optionOf reads what a payload states and guesses nothing", () => {
        answer on screen is the one it gives an empty field. Guessing which
        option a stranger meant would put a sentence about paid advertising in
        front of a creator on no evidence. */
-    expect(optionOf({ licence_option: "4" })).toBeNull();
-    expect(optionOf({ licence_option: "exclusive" })).toBeNull();
-    expect(optionOf({ licence_option: 2 } as unknown as LicenceTerms)).toBeNull();
+    expect(optionOf(carrier({ licence_option: "4" }))).toBeNull();
+    expect(optionOf(carrier({ licence_option: "exclusive" }))).toBeNull();
+    expect(optionOf(carrier({ licence_option: 2 } as unknown as StoredLicenceBlock))).toBeNull();
   });
 
   it("tolerates surrounding whitespace on an option it recognises", () => {
-    expect(optionOf({ licence_option: " 2 " })).toBe("2");
+    expect(optionOf(carrier({ licence_option: " 2 " }))).toBe("2");
+  });
+});
+
+describe("licenceTermsFor follows the backend's precedence", () => {
+  /* THE RULE IS contracts.service._licence_snapshot's: the OFFER's block
+     first, the brief's second. A brief states its licence on the campaign; a
+     direct order states it on the brand's own proposal row, because there the
+     proposal IS the offer. A client that resolved it the other way would show
+     a creator one licence and have a different one written into the contract
+     they accepted. */
+  const order = carrier({ licence_option: "2", licence_duration: "12 mois" });
+  const brief = carrier({ licence_option: "1" });
+
+  it("takes the offer's block when the offer states one", () => {
+    expect(licenceTermsFor(order, brief)).toBe(order);
+    expect(optionOf(licenceTermsFor(order, brief))).toBe("2");
+  });
+
+  it("falls back to the brief when the offer states nothing", () => {
+    /* Every proposal born of a brief is in this case: the licence is on the
+       campaign and the chain states nothing. */
+    expect(licenceTermsFor(carrier(null), brief)).toBe(brief);
+    expect(licenceTermsFor(carrier({}), brief)).toBe(brief);
+    expect(licenceTermsFor({}, brief)).toBe(brief);
+  });
+
+  it("falls back to the brief when there is no offer at all", () => {
+    /* A brief nobody has priced yet carries no proposal. */
+    expect(licenceTermsFor(null, brief)).toBe(brief);
+    expect(licenceTermsFor(undefined, brief)).toBe(brief);
+  });
+
+  it("keeps the offer's block even when its option is one this build cannot read", () => {
+    /* The difference between degrading and lying. optionOf answers null and
+       the notice says the terms cannot be read here, which is honest; falling
+       back to the BRIEF would print one party's clause in place of another's.
+       The backend only asks whether the row has a block at all. */
+    const strange = carrier({ licence_option: "4", licence_duration: "12 mois" });
+    expect(licenceTermsFor(strange, brief)).toBe(strange);
+    expect(licenceSentences(licenceTermsFor(strange, brief), stub)).toEqual([]);
+  });
+
+  it("answers null when neither side has anything", () => {
+    expect(licenceTermsFor(null, null)).toBeNull();
+    expect(licenceTermsFor(undefined, undefined)).toBeNull();
   });
 });
 
 describe("toPayload sends all four fields every time", () => {
   /* THE ONE PLACE THIS MODULE DEPARTS FROM lib/partyDetails, which omits a
      field its type does not ask for. A party block is replaced whole by a
-     PUT; these columns hang off a campaign edited in pieces, so an omitted
+     PUT; this block hangs off a campaign edited in pieces, so an omitted
      field is a field left at whatever it was. */
   const expectedKeys = ["licence_option", ...Object.keys(EMPTY_VALUES)].sort();
 
-  it("sends exactly the same keys for every option", () => {
+  it("sends exactly the same keys inside the block for every option", () => {
     for (const option of LICENCE_OPTIONS) {
-      expect(Object.keys(toPayload(option, filled(option))).sort()).toEqual(expectedKeys);
+      expect(Object.keys(toPayload(option, filled(option)).licence_terms).sort()).toEqual(expectedKeys);
     }
   });
 
   it("carries the option and every field that option asks for", () => {
-    const body = toPayload("2", filled("2"));
-    expect(body.licence_option).toBe("2");
-    for (const field of FIELDS["2"]) expect(body[field]).toBe(`${field} value`);
+    const block = toPayload("2", filled("2")).licence_terms;
+    expect(block.licence_option).toBe("2");
+    for (const field of FIELDS["2"]) expect(block[field]).toBe(`${field} value`);
   });
 
   it("nulls a field the chosen option does not ask for", () => {
@@ -214,27 +346,27 @@ describe("toPayload sends all four fields every time", () => {
        a stale twelve months and a stale territory list, because those would
        print on the contract underneath a sentence saying it has no
        redistribution right. */
-    const body = toPayload("1", filled("2"));
-    expect(body.licence_option).toBe("1");
-    expect(body.licence_duration).toBeNull();
-    expect(body.licence_territories).toBeNull();
-    expect(body.licence_media).toBeNull();
-    expect(body.licence_consideration).toBeNull();
+    const block = toPayload("1", filled("2")).licence_terms;
+    expect(block.licence_option).toBe("1");
+    expect(block.licence_duration).toBeNull();
+    expect(block.licence_territories).toBeNull();
+    expect(block.licence_media).toBeNull();
+    expect(block.licence_consideration).toBeNull();
   });
 
   it("nulls option 2's media when option 3 is chosen", () => {
-    const body = toPayload("3", filled("2"));
-    expect(body.licence_media).toBeNull();
-    expect(body.licence_duration).toBe("licence_duration value");
+    const block = toPayload("3", filled("2")).licence_terms;
+    expect(block.licence_media).toBeNull();
+    expect(block.licence_duration).toBe("licence_duration value");
   });
 
   it("trims, and turns a blank field into null", () => {
     const values = filled("2");
     values.licence_duration = "  12 mois  ";
     values.licence_media = "   ";
-    const body = toPayload("2", values);
-    expect(body.licence_duration).toBe("12 mois");
-    expect(body.licence_media).toBeNull();
+    const block = toPayload("2", values).licence_terms;
+    expect(block.licence_duration).toBe("12 mois");
+    expect(block.licence_media).toBeNull();
   });
 });
 
@@ -252,20 +384,23 @@ describe("the brand's draft starts unanswered", () => {
     expect(draftPayload(EMPTY_DRAFT)).toBeNull();
   });
 
-  it("sends five nulls for nobody: an unanswered form is not option 1", () => {
-    /* Five nulls is a brand stating that it claims nothing, which IS option
-       1. A caller handed null has to omit the keys instead. */
+  it("sends no licence_terms key for nobody: an unanswered form is not option 1", () => {
+    /* A block of five nulls is a brand stating that it claims nothing, which
+       IS option 1. A caller handed null has to omit the key instead, which is
+       what the `?? {}` at every call site does. */
     expect(draftPayload({ option: "", values: filled("2") })).toBeNull();
   });
 
   it("is complete as soon as option 1 is chosen", () => {
     expect(draftIsComplete({ option: "1", values: { ...EMPTY_VALUES } })).toBe(true);
     expect(draftPayload({ option: "1", values: { ...EMPTY_VALUES } })).toEqual({
-      licence_option: "1",
-      licence_duration: null,
-      licence_territories: null,
-      licence_media: null,
-      licence_consideration: null,
+      licence_terms: {
+        licence_option: "1",
+        licence_duration: null,
+        licence_territories: null,
+        licence_media: null,
+        licence_consideration: null,
+      },
     });
   });
 
@@ -283,10 +418,14 @@ describe("valuesFrom reads a payload into form state", () => {
     expect(valuesFrom(null)).toEqual(EMPTY_VALUES);
     expect(valuesFrom(undefined)).toEqual(EMPTY_VALUES);
     expect(valuesFrom({})).toEqual(EMPTY_VALUES);
+    expect(valuesFrom(carrier(null))).toEqual(EMPTY_VALUES);
+    expect(valuesFrom(carrier({}))).toEqual(EMPTY_VALUES);
   });
 
   it("turns a null field into an empty string rather than passing it through", () => {
-    const values = valuesFrom({ licence_option: "2", licence_duration: "12 mois", licence_media: null });
+    const values = valuesFrom(
+      carrier({ licence_option: "2", licence_duration: "12 mois", licence_media: null })
+    );
     expect(values.licence_duration).toBe("12 mois");
     expect(values.licence_media).toBe("");
   });
@@ -294,7 +433,7 @@ describe("valuesFrom reads a payload into form state", () => {
   it("never lets the option itself into the values record", () => {
     /* licence_option is the discriminator, not a field, so it has no slot
        here and there is no path by which the form can edit it as text. */
-    const values = valuesFrom({ licence_option: "2" });
+    const values = valuesFrom(carrier({ licence_option: "2" }));
     expect(Object.keys(values).sort()).toEqual(Object.keys(EMPTY_VALUES).sort());
     expect((values as Record<string, string>).licence_option).toBeUndefined();
   });
@@ -303,20 +442,6 @@ describe("valuesFrom reads a payload into form state", () => {
     const fields: LicenceField[] = Object.keys(EMPTY_VALUES) as LicenceField[];
     for (const field of fields) expect(EMPTY_VALUES[field]).toBe("");
     expect(fields.length).toBe(4);
-  });
-
-  it("survives a round trip through toPayload", () => {
-    const stored: LicenceTerms = {
-      licence_option: "2",
-      licence_duration: "12 mois a compter de la publication",
-      licence_territories: "Benin et Togo",
-      licence_media: "reseaux sociaux de la marque et affichage en magasin",
-      licence_consideration: null,
-    };
-    const body = toPayload("2", valuesFrom(stored));
-    expect(body.licence_duration).toBe(stored.licence_duration);
-    expect(body.licence_territories).toBe(stored.licence_territories);
-    expect(body.licence_media).toBe(stored.licence_media);
   });
 });
 
@@ -327,14 +452,15 @@ describe("the sentence a creator reads before accepting", () => {
        its own sentence. */
     expect(licenceSentences(null, stub)).toEqual([]);
     expect(licenceSentences({}, stub)).toEqual([]);
-    expect(licenceSentences({ licence_option: "4" }, stub)).toEqual([]);
+    expect(licenceSentences(carrier({}), stub)).toEqual([]);
+    expect(licenceSentences(carrier({ licence_option: "4" }), stub)).toEqual([]);
   });
 
   it("states option 1 rather than printing nothing", () => {
     /* "No redistribution right" and "nobody mentioned the licence" look
        identical if the first prints nothing, and they end in different
        places. */
-    expect(licenceSentences({ licence_option: "1" }, stub)).toEqual(["licence.o1"]);
+    expect(licenceSentences(carrier({ licence_option: "1" }), stub)).toEqual(["licence.o1"]);
   });
 
   it("ignores values left over under option 1", () => {
@@ -342,7 +468,7 @@ describe("the sentence a creator reads before accepting", () => {
        duration if the request that narrowed it omitted the field. The
        sentence follows the option, not the leftovers. */
     const lines = licenceSentences(
-      { licence_option: "1", licence_duration: "12 mois", licence_territories: "Benin" },
+      carrier({ licence_option: "1", licence_duration: "12 mois", licence_territories: "Benin" }),
       stub
     );
     expect(lines).toEqual(["licence.o1"]);
@@ -352,12 +478,12 @@ describe("the sentence a creator reads before accepting", () => {
     /* The happy path, and the whole point of the feature: one sentence, in
        the second person, with the stated values inside it. */
     const lines = licenceSentences(
-      {
+      carrier({
         licence_option: "2",
         licence_duration: "12 mois",
         licence_territories: "Benin et Togo",
         licence_media: "publicite payante Meta",
-      },
+      }),
       stub
     );
     expect(lines).toHaveLength(1);
@@ -372,7 +498,12 @@ describe("the sentence a creator reads before accepting", () => {
        An apostrophe survives because i18n.ts sets escapeValue false. */
     const territories = "le Benin, le Togo et la Cote d'Ivoire";
     const lines = licenceSentences(
-      { licence_option: "2", licence_duration: "6 mois", licence_territories: territories, licence_media: "Reels" },
+      carrier({
+        licence_option: "2",
+        licence_duration: "6 mois",
+        licence_territories: territories,
+        licence_media: "Reels",
+      }),
       stub
     );
     expect(lines[0]).toContain(`territories=${territories}`);
@@ -380,12 +511,12 @@ describe("the sentence a creator reads before accepting", () => {
 
   it("gives option 3 its headline and its consideration on a line of its own", () => {
     const lines = licenceSentences(
-      {
+      carrier({
         licence_option: "3",
         licence_duration: "sans limite de duree",
         licence_territories: "monde entier",
         licence_consideration: "150000 XOF",
-      },
+      }),
       stub
     );
     expect(lines).toHaveLength(2);
@@ -395,7 +526,7 @@ describe("the sentence a creator reads before accepting", () => {
 
   it("leaves option 3's consideration out when none was agreed", () => {
     const lines = licenceSentences(
-      { licence_option: "3", licence_duration: "2 ans", licence_territories: "Ghana" },
+      carrier({ licence_option: "3", licence_duration: "2 ans", licence_territories: "Ghana" }),
       stub
     );
     expect(lines).toHaveLength(1);
@@ -409,7 +540,7 @@ describe("the sentence a creator reads before accepting", () => {
        would read like a bug, and an invented filler would read as a term
        somebody agreed. */
     const lines = licenceSentences(
-      { licence_option: "2", licence_territories: "Benin", licence_media: "" },
+      carrier({ licence_option: "2", licence_territories: "Benin", licence_media: "" }),
       stub
     );
     expect(lines[0]).toBe("licence.o2_head");
@@ -420,13 +551,13 @@ describe("the sentence a creator reads before accepting", () => {
   it("never leaves a hole where a value should be", () => {
     /* The assertion that would have caught the naive version: a template
        interpolated with nothing keeps its braces. */
-    for (const terms of [
+    for (const block of [
       { licence_option: "2" },
       { licence_option: "2", licence_duration: "12 mois" },
       { licence_option: "3" },
       { licence_option: "3", licence_consideration: "100000 XOF" },
-    ] as LicenceTerms[]) {
-      for (const line of licenceSentences(terms, stub)) {
+    ] as StoredLicenceBlock[]) {
+      for (const line of licenceSentences(carrier(block), stub)) {
         expect(line).not.toContain("{{");
         expect(line).not.toContain("=undefined");
         expect(line).not.toContain("=null");
@@ -438,8 +569,10 @@ describe("the sentence a creator reads before accepting", () => {
     /* A card that renders an empty block says less than one that says
        nothing, because an empty block reads as a control that failed. */
     for (const option of LICENCE_OPTIONS) {
-      expect(licenceSentences({ licence_option: option }, stub).length).toBeGreaterThan(0);
-      expect(licenceSentences({ licence_option: option, ...filled(option) }, stub).length).toBeGreaterThan(0);
+      expect(licenceSentences(carrier({ licence_option: option }), stub).length).toBeGreaterThan(0);
+      expect(
+        licenceSentences(carrier({ licence_option: option, ...filled(option) }), stub).length
+      ).toBeGreaterThan(0);
     }
   });
 });

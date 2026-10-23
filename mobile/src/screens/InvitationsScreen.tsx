@@ -10,6 +10,7 @@ import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import type { InvitationWithCampaign } from "../lib/campaignTypes";
 import { ListFilter, type FilterOption } from "../components/lists";
 import { Negotiation } from "../components/invitations/Negotiation";
+import { LicenceTermsNotice } from "../components/campaigns/LicenceTermsNotice";
 import { Banner, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -193,6 +194,12 @@ function InvitationCard({ inv, onDone, onContract }: {
           ))}
         </View>
       )}
+
+      {/* Between what is being asked for and the offer on the table, because
+          that is the order the decision gets made in. A direct order is the
+          sharpest case: the price is already named, Accept is a few lines
+          below, and accepting generates the contract. */}
+      <LicenceTermsNotice terms={c} />
 
       {live ? (
         <Negotiation

@@ -163,7 +163,17 @@ export default function CampaignNewScreen({ navigation }: AppScreenProps<"Campai
               returning these columns yet, the block would say "not stated"
               about a licence the brand has just stated, and saying nothing
               beats saying something untrue. */}
-          {optionOf(created) ? <LicenceTermsNotice terms={created} /> : null}
+          {optionOf(created) ? (
+            <>
+              {/* Labelled, because the block below is written FOR THE
+                  CREATOR and in the second person. A brand rereading its own
+                  campaign would otherwise find itself addressed as the other
+                  party. Naming whose text it is costs one line and makes the
+                  confirmation read correctly. */}
+              <Hint>{t("licence.asCreatorSees")}</Hint>
+              <LicenceTermsNotice terms={created} />
+            </>
+          ) : null}
           <View style={{ height: space(3) }} />
           {created.status !== "published" ? (
             <PrimaryButton

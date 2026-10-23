@@ -34,10 +34,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
-# The party details both sides have to have stated before a contract can be
-# generated. Shared with the three other suites that reach contract
-# generation; tests/party_fixtures.py carries the argument.
-from tests.party_fixtures import seed_both_parties
+# The party details both sides have to have stated, and the licence the brand
+# has to have stated, before a contract can be generated. Shared with the three
+# other suites that reach contract generation; tests/party_fixtures.py carries
+# the argument.
+from tests.party_fixtures import LICENCE_TERMS, licence_terms, seed_both_parties
 
 
 @pytest.fixture()
@@ -86,6 +87,10 @@ def _parties(client):
         # contract_creator_party_missing). Seeded for every test rather than
         # only for the accepting one, so that "a brand and a creator" keeps
         # meaning the same thing all through the file.
+        #
+        # The other thing generation refuses without is a licence, and that is
+        # not seeded here: it belongs to the ORDER rather than to either party,
+        # so it is stated in _offer below.
         seed_both_parties(db, biz.id, creator.id)
         return biz.id, creator.id
     finally:
@@ -114,6 +119,16 @@ def _offer(client, buyer, creator, **overrides):
         "rate_amount": 60000,
         "currency": "XOF",
         "timeline_days": 10,
+        # How the brand may use what it is buying, which is a statement the
+        # brand makes on either form of order. It is here rather than in the
+        # one test that accepts because that is where a real buyer states it:
+        # contract generation refuses without a licence
+        # (contract_licence_terms_missing), and an order placed with none is an
+        # order nobody can turn into a contract.
+        #
+        # Overridable like every other key, so a test about the licence can
+        # pass its own or none at all.
+        "licence_terms": licence_terms(),
     }
     body.update(overrides)
     return client.post("/campaigns/orders", json=body, headers=_headers(buyer))
@@ -150,6 +165,11 @@ def test_a_custom_offer_builds_exactly_what_a_package_order_builds(client):
     assert campaign.budget_currency == "XOF"
     assert campaign.deadline is None
     assert campaign.deliverables == [{"platform": "instagram", "type": "reel", "quantity": 2}]
+    # AND NOT THE LICENCE. On an order the brand's offer is the proposal, and
+    # the campaign is a wrapper the creator never reads terms from, so the
+    # block goes on the row below. contracts._licence_snapshot reads the
+    # proposal first for exactly that reason.
+    assert campaign.licence_terms is None
 
     invitations = _rows(client, campaigns.CampaignInvitation, campaign_id=campaign.id)
     assert len(invitations) == 1
@@ -166,6 +186,9 @@ def test_a_custom_offer_builds_exactly_what_a_package_order_builds(client):
     assert proposal.timeline_days == 10
     assert proposal.status == campaigns.SUBMITTED
     assert proposal.note == "Same shoot as last time"
+    # Stored exactly as it was sent: these values are quoted into a contract
+    # verbatim, so nothing normalises, reorders or translates them.
+    assert proposal.licence_terms == LICENCE_TERMS
 
     # Same 48 hour window as a package order, from the same constant.
     expected = campaigns.utcnow() + timedelta(hours=campaigns_service.ORDER_ACCEPT_WINDOW_HOURS)
@@ -186,6 +209,10 @@ def test_a_negotiated_order_is_accepted_through_the_same_path(client):
     assert contract["timeline_days"] == 10
     assert contract["status"] == contracts.PENDING
     assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.PROPOSAL_ACCEPTED
+    # The licence the order was placed under is frozen onto the contract, off
+    # the offer row rather than off the campaign. test_contracts.py owns the
+    # snapshot rules; this is the regression case for the path.
+    assert _rows(client, contracts.Contract, id=contract["id"])[0].licence_terms == LICENCE_TERMS
 
 
 # --------------------------------------------------------------------------
@@ -277,12 +304,18 @@ def test_a_brand_cannot_offer_to_itself_and_a_creator_cannot_buy(client):
 
 def test_a_package_and_custom_terms_together_are_rejected(client):
     """Two orders in one envelope. Guessing which was meant is how somebody
-    gets charged for the wrong thing."""
+    gets charged for the wrong thing.
+
+    The licence rides along with both forms and is deliberately not part of
+    either shape, so it is absent from the list of custom terms this refusal
+    names (check_order_form reads CUSTOM_OFFER_FIELDS).
+    """
     biz, creator = _parties(client)
     pkg = _package(client, creator)
     r = _offer(client, biz, creator, package_id=pkg)
     assert r.status_code == 400
     assert "not both" in r.json()["detail"]
+    assert "licence" not in r.json()["detail"]
     assert _rows(client, campaigns.Campaign) == []
 
 
@@ -334,6 +367,12 @@ def test_the_creator_counters_a_negotiated_order_and_the_clock_is_preserved(clie
     assert counter["author_role"] == campaigns.AUTHOR_INFLUENCER
     assert counter["expires_at"] is not None
     assert abs((datetime.fromisoformat(counter["expires_at"]) - original_expiry).total_seconds()) < 1
+    # The licence is carried forward with the clock, and for a closely related
+    # reason: a counter is the same order under the same licence at a different
+    # price. There is no licence field on a proposal payload, so the creator
+    # neither states one nor clears one — and a counter that lost it would be
+    # an order the creator could no longer turn into a contract.
+    assert counter["licence_terms"] == LICENCE_TERMS
     # The buyer's offer is no longer the live one.
     assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.SUPERSEDED
 
@@ -374,6 +413,10 @@ def test_the_business_can_counter_back_on_a_negotiated_order(client):
     # chain is a complete offer.
     assert reply["timeline_days"] == 14
     assert reply["expires_at"] is not None
+    # And so is the licence, even though this version is the brand's own:
+    # ProposalReplyIn has no licence field, because a reply counters the money
+    # and the date rather than what is being bought.
+    assert reply["licence_terms"] == LICENCE_TERMS
 
 
 def test_a_brief_proposal_still_has_no_expiry(client):
@@ -400,6 +443,9 @@ def test_a_brief_proposal_still_has_no_expiry(client):
         headers=_headers(creator),
     )
     assert first.json()["expires_at"] is None
+    # Nor the licence: this brief states none, so there is nothing on the
+    # campaign for the chain to carry, and a bid on a brief has never held one.
+    assert first.json()["licence_terms"] is None
     # Including a re-submission, which is the path that now copies an expiry.
     second = client.post(
         f"/campaigns/{brief['id']}/proposals",

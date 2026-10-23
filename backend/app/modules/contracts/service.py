@@ -399,6 +399,11 @@ def _build_body(
     banner_fr = "MODELE PROVISOIRE. NON REVISE JURIDIQUEMENT. Ne pas utiliser en production avant revision par un conseil juridique qualifie par pays."
     deliverables = ", ".join(f"{d.get('quantity')} x {d.get('type')} on {d.get('platform')}" for d in (campaign.deliverables or []))
     banner = banner_fr if language == "fr" else banner_en
+    # STAYS UNTIL COUNSEL HAS READ A GENERATED DOCUMENT. Naming the parties is
+    # what makes the document worth reviewing; it is not the review. Removing
+    # the banner is a one-line change the day she signs off and is tracked
+    # separately from this work.
+    #
     # THE CONTENT LICENCE IS DELIBERATELY NOT PRINTED HERE, and this is the
     # place somebody will come looking for it.
     #

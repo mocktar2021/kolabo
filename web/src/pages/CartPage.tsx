@@ -158,11 +158,24 @@ export default function CartPage() {
       const res = await api<CartCheckoutResult>("/campaigns/orders/checkout", {
         method: "POST",
         token,
-        /* The licence rides at the TOP LEVEL, beside `items`, because it is
-           one statement about the whole checkout rather than a property of a
-           line. Every order the fan-out creates carries it. See the note on
-           the `licence` state above for why it is not per item. */
-        body: { items: posted.map(checkoutItem), ...terms }
+        /* THE LICENCE IS STAMPED ONTO EVERY LINE, not posted beside `items`.
+           The endpoint takes it per item (CartItemIn inherits OrderIn, so a
+           basket line is literally an order body), and a top-level
+           licence_terms is a key CartCheckoutIn does not declare: pydantic
+           ignores it, every line resolves with no licence at all, and the
+           first anybody hears of it is contract_licence_terms_missing on the
+           creator's screen days later when they try to accept.
+
+           ONE STATEMENT IN THE UI, IDENTICAL ON EVERY LINE, which is the
+           shape the server requires rather than a simplification of it:
+           cart._one_licence refuses with licence_terms_invalid when two lines
+           for the SAME creator state different blocks, because those lines
+           become one order with one contract behind it and a contract states
+           one licence. Sending the same object on every line cannot disagree
+           with itself. Asking per line is the thing we must NOT do: it would
+           let a buyer state two answers to one campaign's article 10, and
+           there is no coherent contract at the other end of that. */
+        body: { items: posted.map((line) => ({ ...checkoutItem(line), ...terms })) }
       });
       setOrders(res.orders);
       setOrderedLines(posted);
@@ -194,10 +207,17 @@ export default function CartPage() {
          integer — `Number(null)` is 0, which would confidently highlight the
          first row of a basket the server never said anything about.
 
-         A REFUSAL OVER THE LICENCE CARRIES NO INDEX, which falls out of this
-         correctly rather than by accident: licence_terms_invalid is about the
-         statement under the total and not about any row, so nothing is
-         highlighted and the sentence stands on its own at the top.
+         A LICENCE REFUSAL MAY NOW CARRY AN INDEX, and it is worth knowing
+         which kind does. licence_terms_invalid reaches here from two places:
+         cart._one_licence, which has no row to blame and sends no index, and
+         the per-line validation inside _resolve_item, which re-raises
+         whatever the resolver said and stamps the position onto it. Since the
+         same block goes onto every line, that second kind can only be an
+         incomplete statement, and it would highlight line 0 for something
+         that is about the card above the total rather than about that row.
+         The button is gated on licenceIsComplete, so it should be
+         unreachable; if it is ever reached, one highlighted row beside the
+         right sentence is a smaller wrong than no sentence at all.
 
          The refusal keeps the resolver's own code, so the sentence beside the
          row is the specific one ("you cannot order your own package"), in the

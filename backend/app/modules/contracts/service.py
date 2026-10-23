@@ -23,6 +23,13 @@ Nothing in that block is verified. Party details are self-declared contract
 content, exactly as they would be on a paper contract: Kolabo records what each
 side states about itself and does not check it. No copy here may imply
 otherwise.
+
+AND IT CARRIES THE CONTENT LICENCE, snapshotted the same way and for the same
+reasons. Article 10 of that model makes the Parties retain one of three options
+for how the Entreprise may use the Travaux and leaves "Option retenue : [ 1 / 2
+/ 3 ]" to be filled in per contract; _licence_snapshot is what fills it, from
+what the brand stated on the brief or on the order. It is NOT rendered into the
+body yet and _build_body says why where a reader will look for it.
 """
 import hashlib
 from copy import deepcopy
@@ -105,6 +112,27 @@ CREATOR_PARTY_MISSING_DETAIL = (
     "This contract cannot be generated yet: the creator has not stated who they "
     "are contracting as. They have to add their party details on their profile "
     "before a contract can be written from this proposal."
+)
+
+# And the refusal when nobody has said how the brand may use the content.
+#
+# ONE SENTENCE FOR BOTH PATHS, unlike the party gate above, because here the
+# missing statement belongs to the same party on both of them: the brand states
+# the licence, on the brief or on the order, and nobody else can. What differs
+# is who READS the refusal — the buyer when it accepts a bid on its brief, the
+# creator when it accepts an order — so the sentence names the brand as the
+# party who has to act rather than addressing whoever happens to be looking at
+# it. A creator reading this needs to know it is not theirs to fix.
+#
+# That asymmetry is a product gap and not a design: it would be better for an
+# order to require a licence at the point it is placed, so the refusal landed
+# on the brand while it was still composing. That is a change to what both
+# clients must send rather than a line here. campaigns/licence.py
+# ::validated_block carries the argument.
+LICENCE_TERMS_MISSING_DETAIL = (
+    "This collaboration cannot be turned into a contract yet: nobody has said "
+    "how the brand may use the content. The brand states that on the brief or "
+    "on the order, and a contract cannot be written until it has."
 )
 
 
@@ -371,10 +399,38 @@ def _build_body(
     banner_fr = "MODELE PROVISOIRE. NON REVISE JURIDIQUEMENT. Ne pas utiliser en production avant revision par un conseil juridique qualifie par pays."
     deliverables = ", ".join(f"{d.get('quantity')} x {d.get('type')} on {d.get('platform')}" for d in (campaign.deliverables or []))
     banner = banner_fr if language == "fr" else banner_en
-    # STAYS UNTIL COUNSEL HAS READ A GENERATED DOCUMENT. Naming the parties is
-    # what makes the document worth reviewing; it is not the review. Removing
-    # the banner is a one-line change the day she signs off and is tracked
-    # separately from this work.
+    # THE CONTENT LICENCE IS DELIBERATELY NOT PRINTED HERE, and this is the
+    # place somebody will come looking for it.
+    #
+    # The data is there. contracts.licence_terms carries the option the brand
+    # stated and the duration, territories, media or consideration that go with
+    # it, frozen at generation by _licence_snapshot below, and
+    # ContractDetailOut hands it to both clients. What is missing is the CLAUSE,
+    # and the reason it is missing is not that nobody got round to it.
+    #
+    # Article 10 of the model counsel approved is French, and so is every other
+    # word of that model. This body is generated in two languages, so rendering
+    # Article 10 here would mean either printing French into an English
+    # contract or writing an English version of a clause counsel has not seen —
+    # and this clause is the one the annex to the model (question 6) already
+    # puts to her, including whether one wording can cover all five launch
+    # markets and whether the image-rights authorisation has to be annexed
+    # every time. Inventing the English in the meantime is the one mistake
+    # worth avoiding: a body is hashed at generation and never amended, so
+    # whatever is printed into the first contracts is what those contracts say
+    # for good.
+    #
+    # The capture cannot wait for her answer and the rendering must. That is
+    # why the column is filled from the first contract that carries it: a
+    # clause can be added to the next contract the day she answers, and a
+    # licence that was never recorded cannot be recovered for one already
+    # signed.
+    #
+    # Article 5.4 of the model ("S'abstenir d'exploiter les Travaux au-dela de
+    # la licence consentie a l'article 10") is in the same position and is not
+    # printed either. Neither absence changes what the parties agreed: the
+    # licence is part of the brief or the order both of them read, and the
+    # snapshot is the record of it.
     lines = [
         banner,
         "",
@@ -469,6 +525,55 @@ def _party_snapshots(
             detail=CREATOR_PARTY_MISSING_DETAIL,
         )
     return deepcopy(business_party), deepcopy(influencer_party)
+
+
+def _licence_snapshot(campaign: campaigns.Campaign, proposal: campaigns.Proposal) -> dict:
+    """The content licence block, COPIED for this one contract.
+
+    THE PROPOSAL FIRST, THEN THE CAMPAIGN, and that order is the only rule in
+    here. A brief states its licence on the brief, beside the budget and the
+    deliverables, because that is where a brand states the rest of its terms
+    and where a creator reads them before pricing. A direct order states it on
+    the brand's own offer row, because there the proposal IS the offer
+    (campaigns.service._place_order writes version 1 authored by the business)
+    and the campaign behind it is a wrapper nobody reads terms from. So a row
+    that states one wins, and a brief's proposals state nothing.
+
+    Written here rather than branched on `is_direct` at the call site, because
+    this is the precedence every future reader of these columns has to apply —
+    an admin console, an export, the renderer that eventually prints Article 10
+    — and three copies of it would be three chances to read a brief's licence
+    onto an order that overrode it.
+
+    A COPY AND NOT A JOIN, for the reason _party_snapshots gives above and
+    PaymentIntent gave before it. Both sources stay mutable after this runs:
+    campaigns.editing lets a brand edit a brief that has no proposals on it,
+    and the order's offer row can be superseded by a later version in the
+    chain. A join to either would retroactively restate what a signed document
+    permits, which with a licence does not mean a stale number but a
+    redistribution right nobody agreed to.
+
+    deepcopy for _party_snapshots' reason as well: the dict belongs to the
+    campaign or proposal row and is tracked on it, so assigning it straight
+    across would leave two rows sharing one mutable object and let a later
+    edit of the brief rewrite the contract's snapshot in place.
+
+    IT REFUSES RATHER THAN DEFAULTING, and option 1 is exactly why that is
+    worth stating. Option 1 grants the brand least, so it looks like the safe
+    thing to assume and it is not: recorded against a brief whose brand meant
+    to redistribute, it is a statement nobody made, frozen into a document two
+    people sign, and the first anybody would hear of it is a brand running
+    content it believes it licensed. Null means nobody stated a licence, and
+    the only honest answer to that is to stop.
+    """
+    block = proposal.licence_terms or campaign.licence_terms
+    if not block:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="contract_licence_terms_missing",
+            detail=LICENCE_TERMS_MISSING_DETAIL,
+        )
+    return deepcopy(block)
 
 
 def _out(contract: models.Contract) -> dict:
@@ -638,6 +743,11 @@ def generate_from_proposal(
     # in this function is written to leave the negotiation exactly as it found
     # it, and this one is no different.
     business_party, influencer_party = _party_snapshots(db, business.id, influencer.id)
+    # The same place and the same reasoning for the licence. It is read off the
+    # live version of the chain, like the rate and the timeline below, because
+    # that is the offer being accepted; _licence_snapshot is where the
+    # proposal-then-campaign precedence is written down.
+    licence_terms = _licence_snapshot(campaign, latest)
 
     # Accepting the proposal is what triggers contract generation.
     latest.status = campaigns.PROPOSAL_ACCEPTED
@@ -664,6 +774,11 @@ def generate_from_proposal(
         # field by field without parsing prose back out of a contract.
         business_party=business_party,
         influencer_party=influencer_party,
+        # And the licence, which is stored ONLY here: _build_body says at
+        # length why Article 10 is not rendered into the text yet. That makes
+        # this column the whole record of what the parties agreed about using
+        # the content, which is why generation refuses without it.
+        licence_terms=licence_terms,
         body_sha256=_body_hash(body),
         legal_version=LEGAL_EFFECTIVE_DATE,
         rate_amount=latest.rate_amount,
@@ -698,6 +813,21 @@ def get_contract(db: Session, contract_id: str, user_id: str) -> dict:
         )
     out = _out(contract)
     out["body"] = contract.body
+    # THE THREE SNAPSHOTS, which ContractDetailOut declares and this function
+    # was not putting on the dict. The two party blocks were added to that
+    # schema on their own, so they have been validating to their default of
+    # None on every read since: the columns are filled, the payload said null,
+    # and the web contract page fell back to its "generated before these
+    # details were collected" line for contracts that do carry them. Adding
+    # the licence beside them without this would have shipped a third field
+    # that looks filled in the database and reads empty on both clients.
+    #
+    # Read off the row rather than through any join, because that is what they
+    # are: what this contract said when it was generated, whatever the profiles
+    # and the brief say now.
+    out["business_party"] = contract.business_party
+    out["influencer_party"] = contract.influencer_party
+    out["licence_terms"] = contract.licence_terms
     return out
 
 

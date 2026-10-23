@@ -10,12 +10,12 @@ product rules, written down once here:
 
   * Once PUBLISHED, title and description stay editable: they are
     description, not terms. Change them and the bid on the table still means
-    what it meant. Budget, currency, deliverables and deadline are the terms
-    creators price AGAINST, and they lock the moment a proposal exists. A
-    creator who bid 40k to make three posts against a 500k budget did not bid
-    to make six against 200k, and silently rewriting that turns a submitted
-    bid into a bid for different work — which nobody agreed to and which the
-    contract would then be written from.
+    what it meant. Budget, currency, deliverables, deadline and the content
+    licence are the terms creators price AGAINST, and they lock the moment a
+    proposal exists. A creator who bid 40k to make three posts against a 500k
+    budget did not bid to make six against 200k, and silently rewriting that
+    turns a submitted bid into a bid for different work — which nobody agreed
+    to and which the contract would then be written from.
 
   * Once a CONTRACT EXISTS, the title locks too, and for a different reason
     than the terms above. It is still description and no creator priced
@@ -48,14 +48,22 @@ from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.modules.campaigns import completion, models, schemas, service
+from app.modules.campaigns import completion, licence, models, schemas, service
 from app.modules.contracts import models as contracts
 from app.modules.notifications.service import notify
 
 # The terms a creator prices against, and therefore the fields that stop being
 # the buyer's alone once somebody has priced against them. Everything else on
 # a campaign is description: rewrite it and the bid still means what it meant.
-LOCKED_FIELDS = ("budget_amount", "budget_currency", "deliverables", "deadline")
+#
+# licence_terms IS ONE OF THEM, and it is the entry most likely to be read as
+# an odd fit, so: a creator who bid on a brief saying the brand would not
+# redistribute the content did not bid on one saying the brand may run it in
+# paid advertising for a year. The licence decides what the brand GETS, the
+# budget decides what it pays, and a bid is a price for the pair of them.
+# Clearing it is a change too, which falls out of the comparison below rather
+# than needing a rule of its own.
+LOCKED_FIELDS = ("budget_amount", "budget_currency", "deliverables", "deadline", "licence_terms")
 
 # And the field that stops being the buyer's alone once a CONTRACT exists.
 #
@@ -80,6 +88,10 @@ LOCKED_FIELDS = ("budget_amount", "budget_currency", "deliverables", "deadline")
 # body, that body still quotes the title it was generated with, and a creator
 # who signed before the brand walked away is entitled to have it keep saying
 # what it said.
+#
+# licence_terms is NOT repeated here, and does not need to be: it is locked by
+# the proposal trigger above, which fires strictly earlier — a contract cannot
+# exist without a proposal to generate it from.
 #
 # Locking rather than making the card stop joining the title. Both fix the
 # disagreement; this one is smaller, needs nothing from either client, and
@@ -158,6 +170,13 @@ def _refuse_locked(
             # whole forms, and failing a PATCH that asked for nothing would
             # make everything else on the form uneditable in every UI that
             # does.
+            #
+            # THIS IS WHY licence_terms IS CONVERTED TO ITS STORED SHAPE
+            # BEFORE THIS RUNS (see update_campaign). The comparison is
+            # against the column, and the column holds a validated block
+            # carrying only the keys its option needs; a raw payload dump
+            # would differ from it on every save and make the field
+            # permanently locked for any client that posts its whole form.
             continue
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
@@ -255,6 +274,30 @@ def update_campaign(
         # the setattr loop at the end, so a refused description leaves the
         # brief exactly as the creators reading it last saw it.
         service._checked_description(data["description"])
+
+    if "licence_terms" in data:
+        # THE STORED SHAPE, AND IT HAS TO BE COMPUTED BEFORE THE LOCK BELOW.
+        #
+        # model_dump turned the nested LicenceTermsIn into a dict carrying all
+        # five keys, nulls included, while the column holds a validated block
+        # with only the keys its option requires. Two different shapes of the
+        # same statement, and _refuse_locked compares them for equality to
+        # decide whether this patch is really changing anything — so a client
+        # posting its whole form back unchanged would be refused with
+        # campaign_field_locked for a field it never touched. Converting here
+        # makes the two comparable and is also the only place the brand's
+        # licence is validated on an edit.
+        #
+        # The validated block is taken from the PAYLOAD object rather than
+        # from `data`, because licence.validated_block reads attributes and a
+        # dict would need a second code path to cope with. An explicit null
+        # clears the licence and validates to None, which is what a form
+        # taking the clause back out sends.
+        #
+        # Refused before anything is written, like the description above, so a
+        # half-stated licence leaves the brief exactly as the creators reading
+        # it last saw it.
+        data["licence_terms"] = licence.validated_block(payload.licence_terms)
 
     # THE CONTRACT LOCK FIRST, because it is the stronger statement and the
     # more useful sentence. A campaign carrying a contract almost always

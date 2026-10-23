@@ -1397,10 +1397,10 @@ def test_editing_the_brief_after_generation_leaves_the_licence_snapshot_alone(cl
 
     The brief is edited directly here rather than through the API, because
     campaigns.editing refuses this edit outright once a proposal exists
-    (campaign_field_locked, licence_terms being one of the locked terms). The
-    lock and the snapshot are two independent defences and this is the one
-    that holds when the lock is bypassed: a backfill, a support fix, or any
-    future path that writes the column.
+    (campaign_field_locked, licence_terms being one of the locked terms, which
+    the test below pins). The lock and the snapshot are two independent
+    defences and this is the one that holds when the lock is bypassed: a
+    backfill, a support fix, or any future path that writes the column.
     """
     biz, inf, camp, prop = _setup(client, licence_terms=LICENCE_REDISTRIBUTION)
     cid = _generate(client, biz, prop)
@@ -1435,31 +1435,77 @@ def test_editing_the_brief_after_generation_leaves_the_licence_snapshot_alone(cl
         db.close()
 
 
-def test_the_snapshot_is_not_the_brief_s_own_dict_object(client):
-    """A copy, not a reference, which is deepcopy's whole job here.
+def test_the_licence_locks_once_a_creator_has_priced_against_it(client):
+    """A bid is a price for the licence as much as for the deliverables.
 
-    SQLAlchemy tracks the dict it handed back as part of the campaign row, so
-    assigning it straight onto the contract would leave two rows sharing one
-    mutable object: an edit to the brief in the same session would mutate the
-    contract's snapshot in place, and the mutation tracking could flush it to
-    the contract's column as well. The snapshot exists to be unaffected by
-    exactly that, so mutating the brief's block IN PLACE is the case to prove
-    it with — a wholesale reassignment, which the test above does, would pass
-    even if the two were the same object.
+    licence_terms sits in campaigns.editing.LOCKED_FIELDS with budget,
+    currency, deliverables and deadline, because a creator who bid on a brief
+    saying the brand would not redistribute the content did not bid on one
+    saying the brand may run it in paid advertising for a year. Clearing it is
+    a change too, and falls out of the same comparison.
+
+    THE OTHER HALF MATTERS JUST AS MUCH. Re-sending the SAME licence is not a
+    change, and that is what keeps the rest of the form editable for any
+    client that posts all of it — which both of these do. It is also the only
+    thing standing between a nested payload and a field that is permanently
+    locked, because the comparison is against the stored block: a raw model
+    dump carries all five keys with nulls, the column carries only the keys
+    its option needs, and update_campaign converts before it compares.
+
+    Driven at editing.update_campaign directly, for the reason the title-lock
+    test above gives: this fixture mounts the contracts router alone.
     """
+    from app.modules.campaigns import editing
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    # A proposal exists from the moment _setup returns, which is what arms the
+    # lock: this brief has been priced against.
     biz, inf, camp, prop = _setup(client, licence_terms=LICENCE_REDISTRIBUTION)
-    cid = _generate(client, biz, prop)
 
     db = client.session_factory()
     try:
-        campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first()
-        campaign.licence_terms["licence_duration"] = "vingt-quatre (24) mois"
-        campaign.licence_terms["licence_territories"] = "monde entier"
-        db.commit()
+        out = editing.update_campaign(
+            db,
+            camp,
+            biz,
+            campaigns_schemas.CampaignPatch(
+                licence_terms=campaigns_schemas.LicenceTermsIn(**LICENCE_REDISTRIBUTION),
+                description="Clearer brief",
+            ),
+        )
+        assert out["licence_terms"] == LICENCE_REDISTRIBUTION
+        assert out["description"] == "Clearer brief"
+
+        with pytest.raises(AppError) as refused:
+            editing.update_campaign(
+                db,
+                camp,
+                biz,
+                campaigns_schemas.CampaignPatch(
+                    licence_terms=campaigns_schemas.LicenceTermsIn(**LICENCE_CREATOR_ONLY)
+                ),
+            )
+        assert refused.value.code == "campaign_field_locked"
+        assert refused.value.values == {"field": "licence_terms"}
+
+        # Taking the clause back out is a change like any other.
+        with pytest.raises(AppError) as cleared:
+            editing.update_campaign(
+                db, camp, biz, campaigns_schemas.CampaignPatch(licence_terms=None)
+            )
+        assert cleared.value.values == {"field": "licence_terms"}
     finally:
         db.close()
 
-    assert _contract_row(client, cid).licence_terms == LICENCE_REDISTRIBUTION
+    # Nothing moved on the brief the creator priced.
+    db = client.session_factory()
+    try:
+        assert (
+            db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first().licence_terms
+            == LICENCE_REDISTRIBUTION
+        )
+    finally:
+        db.close()
 
 
 def test_the_offer_s_own_licence_wins_over_the_campaign_s(client):

@@ -20,10 +20,11 @@ from app.modules.auth.models import User
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.contracts.router import router as contracts_router
 
-# The party details both sides have to have stated before a contract can be
-# generated. Shared with the three other suites that reach contract
-# generation; tests/party_fixtures.py carries the argument.
-from tests.party_fixtures import seed_party_details
+# The party details both sides have to have stated, and the licence the brand
+# has to have stated, before a contract can be generated. Shared with the three
+# other suites that reach contract generation; tests/party_fixtures.py carries
+# the argument.
+from tests.party_fixtures import LICENCE_TERMS, licence_terms, seed_party_details
 
 # Every negotiation here runs on a live brief, and a brief past its deadline
 # takes no proposals and no replies (campaigns.service). Relative rather than
@@ -75,6 +76,9 @@ def _user(client, phone, role, verified=True):
         # Done here rather than in those three, because every user this file
         # creates is a party to a negotiation and _negotiation builds the pair
         # out of two calls to this helper.
+        #
+        # The licence generation also refuses without belongs to the BRIEF
+        # rather than to a party, so it is stated in _published_campaign below.
         seed_party_details(db, u.id, role)
         return u.id, {"Authorization": f"Bearer {create_access_token(u.id)}"}
     finally:
@@ -87,6 +91,12 @@ def _published_campaign(client, headers):
         "budget_amount": 50000,
         "budget_currency": "XOF",
         "deliverables": [{"platform": "instagram", "type": "post", "quantity": 2}],
+        # How the brand may use what it is commissioning, stated with the rest
+        # of the terms because that is what a creator prices against: option 2
+        # is a bigger job than option 1. A brief that states none cannot be
+        # turned into a contract at all (contract_licence_terms_missing), which
+        # is what the three accepting tests below would otherwise fail on.
+        "licence_terms": licence_terms(),
         "deadline": str(LIVE_DEADLINE),
         "publish": True,
         "is_open": True,
@@ -358,6 +368,41 @@ def test_reply_requires_auth(client):
     _, _, _, cid, first = _negotiation(client, "+22990001030", "+22990001031")
     r = client.post(f"/campaigns/{cid}/proposals/{first['id']}/reply", json={"note": "hello"})
     assert r.status_code == 401
+
+
+def test_the_creator_reads_the_licence_before_they_price_the_brief(client):
+    """Both surfaces a brief is read from, carrying the brand's Article 10 choice.
+
+    A creator prices option 2 differently from option 1: being redistributable
+    on the brand's channels in paid advertising for a year is not the same job
+    as posting once on your own feed. So the licence has to be on the card
+    while the creator still has a decision to make, and there are exactly two
+    cards — the open board, where a brief is found, and the invitation, where
+    one arrives. Both are built from service._to_out, so asserting over both is
+    what proves the serialiser carries it rather than that one endpoint happens
+    to.
+
+    Stored and returned EXACTLY as it was stated. These strings are quoted into
+    a contract verbatim, so the accented French makes the round trip untouched:
+    nothing normalises, folds or translates them on the way in or out.
+    """
+    _, biz = _user(client, "+22990001048", "business")
+    inf_id, inf = _user(client, "+22990001049", "influencer")
+    cid = _published_campaign(client, biz)
+    assert _invite(client, cid, biz, inf_id).status_code == 201
+
+    board = client.get("/campaigns/open", headers=inf).json()
+    assert [b["id"] for b in board] == [cid]
+    assert board[0]["licence_terms"] == LICENCE_TERMS
+
+    row = _mine(client, inf)
+    assert row["campaign"]["licence_terms"] == LICENCE_TERMS
+    # Nothing on the brief's own proposals, which is where an ORDER would carry
+    # it. A brief states its licence once, on the brief.
+    assert row["proposal"] is None
+
+    # And the brand reads back what it published.
+    assert client.get(f"/campaigns/{cid}", headers=biz).json()["licence_terms"] == LICENCE_TERMS
 
 
 def test_the_creator_reads_every_round_of_their_own_negotiation(client):

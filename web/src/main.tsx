@@ -58,6 +58,16 @@ import "./lib/deliverableStrings";
    It sits here for the company it keeps rather than for any requirement, next
    to the other bundle whose copy is read on the contract page. */
 import "./lib/partyStrings";
+/* What the brand may do with the content: the three options of article 10 of
+   the collaboration contract, stated by the brand before a contract exists.
+   Owns the licence.* group outright, so no ordering constraint either, and it
+   sits immediately after partyStrings for the same reason that one gives: both
+   describe what gets printed onto a contract, and both are read on the
+   contract page. Its copy is ALSO read on the open board and on the
+   invitations page, because a creator has to see the licence before accepting;
+   that is the one bundle in this list whose audience is both sides of a
+   deal. */
+import "./lib/licenceStrings";
 /* The hosted checkout screen and the payout-method form. Owns the pay.* group
    outright, so no ordering constraint either. */
 import "./lib/paymentStrings";

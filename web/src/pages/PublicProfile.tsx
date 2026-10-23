@@ -3,11 +3,13 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { ShareModal } from "../components/ShareModal";
+import { LicenceFields } from "../components/LicenceFields";
 import { api, mediaSrc } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { getStoredRole, isBusinessLike, useAuth } from "../lib/auth";
 import { CURRENCIES } from "../lib/campaignOptions";
 import { useCart } from "../lib/cart";
+import { EMPTY_LICENCE, licenceBody, licenceIsComplete, type LicenceDraft } from "../lib/licence";
 import { deliverablesFor, PLATFORM_LABELS } from "../lib/platforms";
 import { minPrice } from "../lib/pricing";
 /* follower_verified_at arrives naive UTC ("2026-09-19T09:12:00", no suffix)
@@ -59,6 +61,31 @@ export default function PublicProfilePage() {
   const [orderBusy, setOrderBusy] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderedCampaignId, setOrderedCampaignId] = useState<string | null>(null);
+
+  /* WHAT THE BRAND MAY DO WITH THE CONTENT, stated before the order exists.
+
+     Shared by both order panels, like note, busy and error above it and for
+     the same reason: only one of the two can be open, and a buyer who chose
+     an option and typed a territory list into one should not do it again in
+     the other.
+
+     THIS IS FRICTION ON THE SHORTEST JOURNEY ON THE SITE, AND IT IS THE PRICE
+     OF THE FEATURE. The comment below says the immediate-order path is kept
+     free of a cart visit on purpose, and that still holds. But article 10 of
+     the collaboration contract makes the parties choose how the brand may use
+     the content, and a contract cannot be generated with that clause blank:
+     accepting an order with no licence stated is refused with
+     contract_licence_terms_missing, which would land on the CREATOR, days
+     later, for something only the buyer can fix. One radio group here is
+     cheaper than that, and a creator who can read the licence before accepting
+     is the entire point.
+
+     NOT NEEDED BY THE TWO ADD-TO-CART BUTTONS. A basket line carries no
+     licence: the statement is made once per checkout, on pages/CartPage.tsx,
+     because the server fans a checkout out into one order per creator and one
+     answer has to cover all of them. So those buttons are deliberately NOT
+     gated on it. */
+  const [licence, setLicence] = useState<LicenceDraft>(EMPTY_LICENCE);
 
   /* The basket, and the one line of feedback that adding to it produces.
 
@@ -166,6 +193,11 @@ export default function PublicProfilePage() {
      any listing. */
   async function placeOrder() {
     if (!selectedPackage) return;
+    /* Null only for an unanswered option, and the button is disabled until
+       one is chosen. A guard rather than a branch anybody reaches: the same
+       two lines stand in pages/CampaignNew.tsx and pages/CartPage.tsx. */
+    const terms = licenceBody(licence);
+    if (!terms) return;
     setOrderBusy(true);
     setOrderError(null);
     try {
@@ -175,7 +207,9 @@ export default function PublicProfilePage() {
       const res = await api<DirectOrder>("/campaigns/orders", {
         method: "POST",
         token,
-        body: { package_id: selectedPackage.id, ...(trimmed ? { note: trimmed } : {}) }
+        /* All five licence fields, with explicit nulls for the ones this
+           option does not use. See licenceBody in lib/licence.ts. */
+        body: { package_id: selectedPackage.id, ...terms, ...(trimmed ? { note: trimmed } : {}) }
       });
       setOrderedCampaignId(res.campaign_id);
       setOrderOpen(false);
@@ -304,6 +338,8 @@ export default function PublicProfilePage() {
      than written twice. */
   async function placeNegotiatedOrder() {
     if (!profile) return;
+    const terms = licenceBody(licence);
+    if (!terms) return;
     setOrderBusy(true);
     setOrderError(null);
     try {
@@ -319,6 +355,7 @@ export default function PublicProfilePage() {
           rate_amount: Number(negRate),
           currency: negCurrency,
           timeline_days: Number(negDays),
+          ...terms,
           ...(trimmed ? { note: trimmed } : {})
         }
       });
@@ -757,13 +794,29 @@ export default function PublicProfilePage() {
                         <textarea id="order-note" className="input" rows={3} maxLength={NOTE_MAX_LENGTH}
                           style={{ resize: "vertical" }} value={orderNote} onChange={(e) => setOrderNote(e.target.value)} />
 
+                        {/* The licence, inside the confirm panel rather than
+                            above the Commander button, so it is read by
+                            somebody who has already decided to order and is
+                            now settling the terms of it. The creator sees the
+                            answer on their invitations page before they accept,
+                            which is where this ends up mattering. */}
+                        <div style={{ marginTop: 14 }}>
+                          <LicenceFields idPrefix="order" value={licence} onChange={setLicence} disabled={orderBusy} />
+                        </div>
+
                         {/* The one rule that decides whether this is safe to
                             click, said before the button and not after it. */}
                         <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("public.orderRule")}</p>
 
                         {orderError && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{orderError}</div>}
 
-                        <button className="btn btn-primary btn-block" style={{ marginTop: 12 }} disabled={orderBusy} onClick={placeOrder}>
+                        {/* Gated on the licence as well as on the request in
+                            flight. The sentence saying which half is missing
+                            lives under the control itself, in
+                            components/LicenceFields.tsx, so this panel holds no
+                            second copy of it. */}
+                        <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
+                          disabled={orderBusy || !licenceIsComplete(licence)} onClick={placeOrder}>
                           {t("public.orderSend")}
                         </button>
                         <button className="btn btn-ghost btn-block" style={{ marginTop: 8 }} disabled={orderBusy}
@@ -832,12 +885,20 @@ export default function PublicProfilePage() {
                         <textarea id="neg-note" className="input" rows={3} maxLength={NOTE_MAX_LENGTH}
                           style={{ resize: "vertical" }} value={orderNote} onChange={(e) => setOrderNote(e.target.value)} />
 
+                        {/* The same control as the package panel above, and the
+                            same shared state behind it: a buyer who opened one
+                            panel, chose an option and switched to the other
+                            keeps their answer. */}
+                        <div style={{ marginTop: 14 }}>
+                          <LicenceFields idPrefix="neg" value={licence} onChange={setLicence} disabled={orderBusy} />
+                        </div>
+
                         <p className="muted" style={{ fontSize: 13, margin: "10px 0 0" }}>{t("public.orderRule")}</p>
 
                         {orderError && <div className="alert alert-error" style={{ marginTop: 12, marginBottom: 0 }}>{orderError}</div>}
 
                         <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
-                          disabled={orderBusy || !negPlatform || !negDeliverable || !negRate || !negDays}
+                          disabled={orderBusy || !negPlatform || !negDeliverable || !negRate || !negDays || !licenceIsComplete(licence)}
                           onClick={placeNegotiatedOrder}>
                           {t("public.negotiateSend")}
                         </button>
@@ -846,6 +907,13 @@ export default function PublicProfilePage() {
                             profiles needs this as much as it needs it for a
                             listed package — and a bespoke offer is exactly
                             the line most likely to be one of four. */}
+                        {/* DELIBERATELY NOT GATED ON THE LICENCE, unlike the
+                            button above it. A basket line carries no licence:
+                            the statement is made once for the whole checkout,
+                            on the cart page, because one checkout becomes one
+                            order per creator and one answer has to cover all of
+                            them. Gating this would ask the buyer for the same
+                            clause twice and let the two answers disagree. */}
                         <button type="button" className="btn btn-ghost btn-block" style={{ marginTop: 8 }}
                           disabled={orderBusy || !negPlatform || !negDeliverable || !negRate || !negDays}
                           onClick={addNegotiatedToCart}>

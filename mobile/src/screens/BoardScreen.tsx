@@ -9,6 +9,7 @@ import { fromIsoDay, toIsoDay } from "../lib/dates";
 import { SELLABLE_PLATFORMS, deliverableLabel, PLATFORM_LABELS } from "../lib/platforms";
 import type { OpenBrief } from "../lib/boardTypes";
 import { ApplyForm } from "../components/board/ApplyForm";
+import { LicenceTermsNotice } from "../components/campaigns/LicenceTermsNotice";
 import { Banner, ChoiceGroup, Field, GhostButton, Hint, PrimaryButton, Screen, Subtitle, Title } from "../components/ui";
 import { colors, family, font, radius, space } from "../theme";
 import type { AppScreenProps } from "../navigation/types";
@@ -57,6 +58,11 @@ function BriefCard({ brief, onApplied }: { brief: OpenBrief; onApplied: (id: str
               .map((d) => `${d.quantity} × ${deliverableLabel(d.type)} (${PLATFORM_LABELS[d.platform] ?? d.platform})`)
               .join(", ")}
       </Text>
+
+      {/* Before the apply button, not after it. The licence is a term this
+          creator has to price, so it belongs in the reading order between
+          what is being asked for and what they ask to be paid for it. */}
+      <LicenceTermsNotice terms={brief} />
 
       {sent ? <Banner kind="success">{t("board.applySent")}</Banner> : null}
 

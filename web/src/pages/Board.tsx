@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
+import { LicenceTerms } from "../components/LicenceTerms";
 import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
@@ -257,6 +258,30 @@ function BriefCard({ brief, onApplied }: { brief: OpenBrief; onApplied: (id: str
           ))
         )}
       </div>
+
+      {/* WHAT THE BRAND MAY DO WITH THE CONTENT, between the deliverables and
+          the rate box, which is the order a brief is priced in: what has to be
+          made, what the brand may then do with it, and only then what it costs.
+
+          THIS IS NOT DECORATION ON THIS CARD. Option 2 lets the brand run the
+          content as a paid advertisement on its own channels for as long as it
+          stated; option 1 leaves the post on the creator's own accounts. Those
+          are different jobs at different prices, and until this panel existed a
+          creator on the open board priced the first as though it were the
+          second, because the brief said nothing about it at all.
+
+          ABOVE THE APPLY FORM AND NOT INSIDE IT, deliberately: it has to be
+          readable by somebody deciding whether to bother opening the form, and
+          the two reasons the form is never offered at all (already applied,
+          already invited) must not hide the licence from them. An invited
+          creator reads the same panel again on their invitations page, where
+          the offer they are answering actually lives.
+
+          `brief` goes in whole. Every field of LicenceCarrier is optional, so
+          an OpenBrief is assignable to it without lib/types.ts naming the five
+          fields, and a backend that is not sending them yet shows the "not
+          stated" sentence rather than breaking the board. */}
+      <LicenceTerms row={brief} voice="creator" />
 
       {sent && <div className="alert alert-success" style={{ marginTop: 12, marginBottom: 0 }}>{t("board.applySent")}</div>}
 

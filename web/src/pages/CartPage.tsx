@@ -3,10 +3,12 @@ import { Link, Navigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Layout } from "../components/Layout";
 import { CreatorChip } from "../components/CreatorChip";
+import { LicenceFields } from "../components/LicenceFields";
 import { ApiError, api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { checkoutItem, useCart, UNKNOWN_CREATOR, type CartCheckoutOrder, type CartCheckoutResult, type CartLine } from "../lib/cart";
+import { EMPTY_LICENCE, licenceBody, licenceIsComplete, type LicenceDraft } from "../lib/licence";
 import { PLATFORM_LABELS } from "../lib/platforms";
 import type { CreatorIdentity } from "../lib/types";
 
@@ -68,6 +70,29 @@ export default function CartPage() {
      for. */
   const [orderedLines, setOrderedLines] = useState<CartLine[]>([]);
 
+  /* WHAT THE BRAND MAY DO WITH THE CONTENT, STATED ONCE PER CHECKOUT.
+
+     This is the second of the two screens where a brand names its terms, and
+     the only one where those terms cover several orders at once. The licence
+     is NOT held per basket line, and that is a decision rather than a
+     shortcut: the server fans a checkout out into one direct order per
+     creator and each order becomes one campaign, so a licence per line would
+     let two packages bought from the SAME creator carry two different
+     answers to one campaign's article 10. There is no coherent contract at
+     the other end of that. One statement, carried onto every order the
+     checkout creates, is the shape that survives the fan-out.
+
+     Not held in lib/cart.tsx either, so it is not written to localStorage
+     with the basket. A licence that outlived the tab would be a clause
+     somebody stated last week being attached silently to today's order, on
+     the one field where staleness is a legal problem rather than a price
+     problem. The basket survives a refresh; this does not, deliberately.
+
+     It SURVIVES a successful checkout within the same visit, because a buyer
+     who held some groups back is about to order them on the same terms and
+     retyping a territory list is how that gets abandoned. */
+  const [licence, setLicence] = useState<LicenceDraft>(EMPTY_LICENCE);
+
   /* WHAT IS **NOT** SELECTED, rather than what is.
 
      Default-all-selected is the requirement, and storing the negative is what
@@ -121,6 +146,11 @@ export default function CartPage() {
        not against whatever the page is showing when the answer arrives. */
     const posted = selectedLines;
     if (posted.length === 0) return;
+    /* Null only for an unanswered option, and the button below is disabled
+       until one is chosen. A guard rather than a branch anybody reaches: see
+       the same two lines in pages/CampaignNew.tsx. */
+    const terms = licenceBody(licence);
+    if (!terms) return;
     setBusy(true);
     setError(null);
     setRejectedId(null);
@@ -128,7 +158,24 @@ export default function CartPage() {
       const res = await api<CartCheckoutResult>("/campaigns/orders/checkout", {
         method: "POST",
         token,
-        body: { items: posted.map(checkoutItem) }
+        /* THE LICENCE IS STAMPED ONTO EVERY LINE, not posted beside `items`.
+           The endpoint takes it per item (CartItemIn inherits OrderIn, so a
+           basket line is literally an order body), and a top-level
+           licence_terms is a key CartCheckoutIn does not declare: pydantic
+           ignores it, every line resolves with no licence at all, and the
+           first anybody hears of it is contract_licence_terms_missing on the
+           creator's screen days later when they try to accept.
+
+           ONE STATEMENT IN THE UI, IDENTICAL ON EVERY LINE, which is the
+           shape the server requires rather than a simplification of it:
+           cart._one_licence refuses with licence_terms_invalid when two lines
+           for the SAME creator state different blocks, because those lines
+           become one order with one contract behind it and a contract states
+           one licence. Sending the same object on every line cannot disagree
+           with itself. Asking per line is the thing we must NOT do: it would
+           let a buyer state two answers to one campaign's article 10, and
+           there is no coherent contract at the other end of that. */
+        body: { items: posted.map((line) => ({ ...checkoutItem(line), ...terms })) }
       });
       setOrders(res.orders);
       setOrderedLines(posted);
@@ -159,6 +206,18 @@ export default function CartPage() {
          refusal it re-raises. What IS tested is that the value is a real
          integer — `Number(null)` is 0, which would confidently highlight the
          first row of a basket the server never said anything about.
+
+         A LICENCE REFUSAL MAY NOW CARRY AN INDEX, and it is worth knowing
+         which kind does. licence_terms_invalid reaches here from two places:
+         cart._one_licence, which has no row to blame and sends no index, and
+         the per-line validation inside _resolve_item, which re-raises
+         whatever the resolver said and stamps the position onto it. Since the
+         same block goes onto every line, that second kind can only be an
+         incomplete statement, and it would highlight line 0 for something
+         that is about the card above the total rather than about that row.
+         The button is gated on licenceIsComplete, so it should be
+         unreachable; if it is ever reached, one highlighted row beside the
+         right sentence is a smaller wrong than no sentence at all.
 
          The refusal keeps the resolver's own code, so the sentence beside the
          row is the specific one ("you cannot order your own package"), in the
@@ -348,6 +407,20 @@ export default function CartPage() {
               );
             })}
 
+            {/* THE LICENCE, IN ITS OWN CARD ABOVE THE TOTAL, because it is
+                about every order in the checkout and not about any one pile.
+                Putting it inside a creator's card would say the opposite, and
+                the server has no way to honour a different answer per
+                creator: see the note on the `licence` state above.
+
+                Above the total rather than below it, so it is read as part of
+                what is being bought rather than as a confirmation step. The
+                creator reads the same statement on their invitations page
+                before answering the order it becomes. */}
+            <div className="card" style={{ marginTop: 16 }}>
+              <LicenceFields idPrefix="cart" value={licence} onChange={setLicence} disabled={busy} />
+            </div>
+
             <div className="card" style={{ marginTop: 16 }}>
               {selectedTotals.length === 0 ? (
                 <p className="muted" style={{ margin: 0, fontSize: 14 }}>{t("cart.noneSelected")}</p>
@@ -376,8 +449,12 @@ export default function CartPage() {
               {groups.length > 1 && (
                 <p className="muted" style={{ fontSize: 13, margin: "6px 0 0" }}>{t("cart.selectionNote")}</p>
               )}
+              {/* The licence gates the button the same way the selection does.
+                  The sentence saying which half is missing lives under the
+                  control itself, in components/LicenceFields.tsx, so this card
+                  does not hold a second copy of it. */}
               <button className="btn btn-primary btn-block" style={{ marginTop: 12 }}
-                disabled={busy || selectedGroups.length === 0} onClick={checkout}>
+                disabled={busy || selectedGroups.length === 0 || !licenceIsComplete(licence)} onClick={checkout}>
                 {busy
                   ? t("auth.working")
                   : selectedGroups.length === groups.length

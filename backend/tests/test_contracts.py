@@ -4,6 +4,11 @@ The party-details block at the bottom of the file covers slice 1 of
 claude/kolabo-contract-parties-spec.md: a generated contract has to say WHO
 signed it, from a snapshot taken at generation, and it has to be able to prove
 afterwards that the text has not moved.
+
+The licence block after it covers Article 10 of the approved model
+(claude/kolabo-contrat-collaboration-modele-fr.md): the parties have to choose
+how the brand may use the content, the brand states that choice before the
+contract exists, and the contract freezes it.
 """
 import hashlib
 import re
@@ -120,6 +125,34 @@ AGENCY_PARTY = {
     "representative_capacity": "Directeur",
 }
 
+# And how the brand says it may use the content: the three options of Article
+# 10, each one COMPLETE for its own option and carrying no key that belongs to
+# another.
+#
+# Written out as stored blocks rather than built from a helper, for the reason
+# the party blocks above are: a reader of a failing assertion needs to see the
+# exact value, and the point of several of these cases is that a block holds
+# the keys its option requires AND NO OTHERS.
+#
+# The French is real French, accents included, because these values are quoted
+# into a contract verbatim. Nothing on the way in or the way out normalises,
+# folds or translates them, and a fixture written in ASCII would hide that.
+LICENCE_CREATOR_ONLY = {"licence_option": "1"}
+
+LICENCE_REDISTRIBUTION = {
+    "licence_option": "2",
+    "licence_duration": "douze (12) mois à compter de la première publication",
+    "licence_territories": "Bénin, Togo et Côte d'Ivoire",
+    "licence_media": "réseaux sociaux de la marque, son site web et la publicité payante en ligne",
+}
+
+LICENCE_ASSIGNMENT = {
+    "licence_option": "3",
+    "licence_duration": "toute la durée légale de protection",
+    "licence_territories": "monde entier",
+    "licence_consideration": "contrepartie distincte de 150 000 XOF convenue entre les Parties",
+}
+
 
 def _setup(
     client,
@@ -127,6 +160,7 @@ def _setup(
     country="BJ",
     business_party=BUSINESS_PARTY,
     creator_party=CREATOR_PARTY,
+    licence_terms=LICENCE_REDISTRIBUTION,
 ):
     """Create a business, an influencer, a published campaign, and a proposal.
 
@@ -134,6 +168,12 @@ def _setup(
     them: a contract that cannot name its parties is not one this product
     writes. Pass None for either side to get a profile row with an empty block,
     which is what a user who has not filled the form yet looks like.
+
+    AND THE BRIEF CARRIES A LICENCE, for the same reason: generation refuses
+    without one too (contract_licence_terms_missing). Option 2 by default
+    because it is the one with the longest required set and the one the model's
+    own annex calls the most frequent in practice; pass another block to
+    generate under a different option, or None for a brief that states none.
 
     The creator's profile deliberately has NO display_name. party_details and
     display_name answer different questions and neither is derived from the
@@ -164,6 +204,7 @@ def _setup(
         camp = campaigns.Campaign(
             business_user_id=biz.id, title="Launch push", budget_amount=50000, budget_currency="XOF",
             deliverables=[{"platform": "instagram", "type": "post", "quantity": 2}],
+            licence_terms=dict(licence_terms) if licence_terms else None,
             deadline=None, status=campaigns.PUBLISHED,
         )
         db.add(camp); db.commit(); db.refresh(camp)
@@ -436,8 +477,9 @@ def _counter_from_business(client, camp, inf, rate_amount=8000):
             timeline_days=7,
             author_role=campaigns.AUTHOR_BUSINESS,
             status=campaigns.SUBMITTED,
-            # Carried forward, the way reply_to_proposal carries it.
+            # Carried forward, the way reply_to_proposal carries them.
             expires_at=previous.expires_at,
+            licence_terms=previous.licence_terms,
         )
         db.add(counter)
         db.commit()
@@ -1142,3 +1184,413 @@ def test_the_campaign_title_locks_once_a_contract_exists(client):
     assert "Contract for campaign: Launch push v2" in _contract_row(
         client, _contracts_for(client, camp)[0].id
     ).body
+
+
+# --------------------------------------------------------------------------
+# The content licence: Article 10 of the approved model
+#
+# The parties have to choose how the brand may use the content, and the model
+# offers three options with "Option retenue : [ 1 / 2 / 3 ]" left to be filled
+# in per contract. The founder decided the BRAND states that choice before the
+# contract exists, with all three kept on offer, and that Kolabo captures it.
+#
+# What this suite owns is the contract end of it: what a complete statement
+# looks like per option, what generation freezes, and what happens when
+# nobody stated one. Where a brand states it, and how it reaches a creator
+# before they price, is pinned in test_campaigns_negotiation.py (the brief, on
+# the board and on the invitation), test_orders.py and
+# test_orders_negotiated.py (the order, on the offer row) and test_cart.py.
+#
+# NOTHING IN A LICENCE BLOCK IS CHECKED AGAINST ANYTHING, and no test here may
+# be read as saying otherwise. These are the parties' own words, quoted into a
+# contract verbatim; whether a given wording achieves what they want in a
+# given market is counsel's question and question 6 of the annex to the model
+# already puts it to her.
+#
+# ARTICLE 10 IS NOT PRINTED INTO THE BODY, deliberately, so no case below
+# looks for it there. contracts/service.py::_build_body carries the reasoning:
+# the approved model is French only, the body is generated in two languages,
+# and inventing an English clause counsel has not seen would be frozen into
+# every early contract by the body hash. The column is filled from the first
+# contract that carries it precisely because that half cannot be added later.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "block",
+    [LICENCE_CREATOR_ONLY, LICENCE_REDISTRIBUTION, LICENCE_ASSIGNMENT],
+    ids=["creator_only", "redistribution", "assignment"],
+)
+def test_a_contract_is_generated_under_any_of_the_three_options(client, block):
+    """All three, and the snapshot is the block byte for byte.
+
+    OPTION 1 IS A FIRST-CLASS CHOICE and this is where that is proved: a block
+    holding nothing but the option generates a contract exactly as the other
+    two do. It is also the shortest possible licence, so a gate that tested
+    the block's SIZE rather than its presence would pass the other two and
+    refuse this one.
+
+    The values come back unchanged, accents and spacing included, because they
+    are quoted into a contract verbatim: nothing between the request and the
+    column lower-cases, folds or reorders them.
+    """
+    biz, inf, camp, prop = _setup(client, licence_terms=block)
+    cid = _generate(client, biz, prop)
+
+    assert _contract_row(client, cid).licence_terms == block
+
+
+def test_a_block_carries_only_the_keys_its_option_requires(client):
+    """The required set per option, read off the module that owns it.
+
+    DRIVEN AT campaigns.licence DIRECTLY, for the reason the title-lock test
+    above drives editing.update_campaign directly: this fixture mounts the
+    contracts router alone, so there is no POST /campaigns here to send a
+    form to. The endpoint path is covered in test_orders.py, which does have
+    one; what is pinned here is the TABLE, because it is the thing that
+    decides what both clients' forms have to ask for.
+
+    Asserted against REQUIRED_BY_OPTION rather than against a literal list, so
+    a field moving between required and optional fails in this file rather
+    than in a brand's form at the end of a long evening.
+    """
+    from app.modules.campaigns import licence
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    # Option 1 asks for nothing beyond the choice. The whole point of having
+    # three options is that the creator publishing on their own accounts is a
+    # complete answer and not a reduced one.
+    assert licence.REQUIRED_BY_OPTION["1"] == ()
+    assert licence.REQUIRED_BY_OPTION["2"] == (
+        "licence_duration",
+        "licence_territories",
+        "licence_media",
+    )
+    assert licence.REQUIRED_BY_OPTION["3"] == ("licence_duration", "licence_territories")
+    # And a separate consideration belongs to the assignment alone, because
+    # that is the only option the model mentions one under.
+    assert licence.OPTIONAL_BY_OPTION["3"] == ("licence_consideration",)
+    assert licence.OPTIONAL_BY_OPTION["2"] == ()
+
+    # Everything that does not belong to the stated option is DROPPED rather
+    # than stored, so a reader can trust that a key's presence means the brand
+    # stated it. A consideration sitting on an option 2 licence would read, to
+    # a creator or to counsel, as money agreed outside the escrow.
+    stored = licence.validated_block(
+        campaigns_schemas.LicenceTermsIn(
+            licence_option="1",
+            licence_duration="douze mois",
+            licence_territories="Bénin",
+            licence_media="télévision",
+            licence_consideration="500 000 XOF",
+        )
+    )
+    assert stored == {"licence_option": "1"}
+
+
+@pytest.mark.parametrize(
+    "payload,missing",
+    [
+        (
+            {"licence_option": "2", "licence_territories": "Bénin", "licence_media": "web"},
+            "licence_duration",
+        ),
+        (
+            {"licence_option": "2", "licence_duration": "12 mois", "licence_media": "web"},
+            "licence_territories",
+        ),
+        (
+            {"licence_option": "2", "licence_duration": "12 mois", "licence_territories": "Bénin"},
+            "licence_media",
+        ),
+        (
+            {"licence_option": "3", "licence_territories": "monde entier"},
+            "licence_duration",
+        ),
+        (
+            {"licence_option": "3", "licence_duration": "20 ans"},
+            "licence_territories",
+        ),
+    ],
+)
+def test_a_sub_field_the_option_requires_cannot_be_left_out(client, payload, missing):
+    """One case per required field per option, and the refusal names it.
+
+    THE DURATION IS THE ONE WORTH READING. A redistribution licence with no
+    stated duration is a licence of unbounded duration: the brand may run the
+    creator's face in paid advertising for as long as it likes, which is not
+    what either side agreed and is the single most expensive blank on the
+    page. The other two are the same argument one step down.
+
+    licence_terms_invalid for all of them, with the missing fields in `values`,
+    which is the trade party_details_invalid already makes: both clients render
+    one sentence per code, and a code per field would be ten more sentences to
+    keep in step in two languages for what is, to the reader, one message about
+    one form.
+    """
+    from app.modules.campaigns import licence
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    with pytest.raises(AppError) as refused:
+        licence.validated_block(campaigns_schemas.LicenceTermsIn(**payload))
+    assert refused.value.status_code == 400
+    assert refused.value.code == "licence_terms_invalid"
+    assert refused.value.values["fields"] == missing
+
+
+def test_a_value_that_is_only_whitespace_counts_as_missing(client):
+    """Blank after trimming is blank.
+
+    A form every input of which is sent posts "" for a field nobody typed in,
+    and a textarea somebody tabbed through returns a newline. Storing either
+    would put a key on the block saying this brand stated an empty territory,
+    and a contract would then quote a clause with a hole in it.
+    """
+    from app.modules.campaigns import licence
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    with pytest.raises(AppError) as refused:
+        licence.validated_block(
+            campaigns_schemas.LicenceTermsIn(
+                licence_option="2",
+                licence_duration="   ",
+                licence_territories="Bénin",
+                licence_media="web",
+            )
+        )
+    assert refused.value.values["fields"] == "licence_duration"
+
+    # And a licence nobody has stated at all is None rather than a refusal:
+    # the columns are nullable because every brief written before they existed
+    # has nothing in them, and generation is the gate.
+    assert licence.validated_block(campaigns_schemas.LicenceTermsIn()) is None
+    assert licence.validated_block(None) is None
+
+
+def test_sub_fields_with_no_option_are_refused_rather_than_stored(client):
+    """A duration and no option is a form half filled in.
+
+    Storing the duration against no option would record a licence nobody can
+    read while silently losing the only part that decides what the other
+    fields mean. The refusal names all three options, because the caller has
+    to choose one before any of the rest means anything.
+    """
+    from app.modules.campaigns import licence
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    with pytest.raises(AppError) as refused:
+        licence.validated_block(
+            campaigns_schemas.LicenceTermsIn(licence_duration="douze (12) mois")
+        )
+    assert refused.value.code == "licence_terms_invalid"
+    assert refused.value.values["options"] == "1, 2, 3"
+
+
+def test_editing_the_brief_after_generation_leaves_the_licence_snapshot_alone(client):
+    """The reason the licence is a copy and not a join.
+
+    The same argument the party blocks make, with a sharper consequence. A
+    rename restates WHO signed; a rewritten licence restates WHAT THE BRAND
+    MAY DO with the creator's face, retroactively, on a document somebody has
+    already signed. A join would add a redistribution right nobody agreed to
+    and nothing anywhere would record that it had been added.
+
+    The brief is edited directly here rather than through the API, because
+    campaigns.editing refuses this edit outright once a proposal exists
+    (campaign_field_locked, licence_terms being one of the locked terms, which
+    the test below pins). The lock and the snapshot are two independent
+    defences and this is the one that holds when the lock is bypassed: a
+    backfill, a support fix, or any future path that writes the column.
+    """
+    biz, inf, camp, prop = _setup(client, licence_terms=LICENCE_REDISTRIBUTION)
+    cid = _generate(client, biz, prop)
+
+    db = client.session_factory()
+    try:
+        campaign = db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first()
+        campaign.licence_terms = {
+            "licence_option": "3",
+            "licence_duration": "toute la durée légale de protection",
+            "licence_territories": "monde entier",
+        }
+        db.commit()
+    finally:
+        db.close()
+
+    # The contract still says what it said, field for field.
+    assert _contract_row(client, cid).licence_terms == LICENCE_REDISTRIBUTION
+
+    # And the brief did change, so this is a real divergence rather than an
+    # edit that silently failed.
+    db = client.session_factory()
+    try:
+        assert (
+            db.query(campaigns.Campaign)
+            .filter(campaigns.Campaign.id == camp)
+            .first()
+            .licence_terms["licence_option"]
+            == "3"
+        )
+    finally:
+        db.close()
+
+
+def test_the_licence_locks_once_a_creator_has_priced_against_it(client):
+    """A bid is a price for the licence as much as for the deliverables.
+
+    licence_terms sits in campaigns.editing.LOCKED_FIELDS with budget,
+    currency, deliverables and deadline, because a creator who bid on a brief
+    saying the brand would not redistribute the content did not bid on one
+    saying the brand may run it in paid advertising for a year. Clearing it is
+    a change too, and falls out of the same comparison.
+
+    THE OTHER HALF MATTERS JUST AS MUCH. Re-sending the SAME licence is not a
+    change, and that is what keeps the rest of the form editable for any
+    client that posts all of it — which both of these do. It is also the only
+    thing standing between a nested payload and a field that is permanently
+    locked, because the comparison is against the stored block: a raw model
+    dump carries all five keys with nulls, the column carries only the keys
+    its option needs, and update_campaign converts before it compares.
+
+    Driven at editing.update_campaign directly, for the reason the title-lock
+    test above gives: this fixture mounts the contracts router alone.
+    """
+    from app.modules.campaigns import editing
+    from app.modules.campaigns import schemas as campaigns_schemas
+
+    # A proposal exists from the moment _setup returns, which is what arms the
+    # lock: this brief has been priced against.
+    biz, inf, camp, prop = _setup(client, licence_terms=LICENCE_REDISTRIBUTION)
+
+    db = client.session_factory()
+    try:
+        out = editing.update_campaign(
+            db,
+            camp,
+            biz,
+            campaigns_schemas.CampaignPatch(
+                licence_terms=campaigns_schemas.LicenceTermsIn(**LICENCE_REDISTRIBUTION),
+                description="Clearer brief",
+            ),
+        )
+        assert out["licence_terms"] == LICENCE_REDISTRIBUTION
+        assert out["description"] == "Clearer brief"
+
+        with pytest.raises(AppError) as refused:
+            editing.update_campaign(
+                db,
+                camp,
+                biz,
+                campaigns_schemas.CampaignPatch(
+                    licence_terms=campaigns_schemas.LicenceTermsIn(**LICENCE_CREATOR_ONLY)
+                ),
+            )
+        assert refused.value.code == "campaign_field_locked"
+        assert refused.value.values == {"field": "licence_terms"}
+
+        # Taking the clause back out is a change like any other.
+        with pytest.raises(AppError) as cleared:
+            editing.update_campaign(
+                db, camp, biz, campaigns_schemas.CampaignPatch(licence_terms=None)
+            )
+        assert cleared.value.values == {"field": "licence_terms"}
+    finally:
+        db.close()
+
+    # Nothing moved on the brief the creator priced.
+    db = client.session_factory()
+    try:
+        assert (
+            db.query(campaigns.Campaign).filter(campaigns.Campaign.id == camp).first().licence_terms
+            == LICENCE_REDISTRIBUTION
+        )
+    finally:
+        db.close()
+
+
+def test_the_offer_s_own_licence_wins_over_the_campaign_s(client):
+    """The precedence _licence_snapshot exists for, which is how an order works.
+
+    A brief states its licence on the brief; a direct order states it on the
+    brand's own offer row, because there the proposal IS the offer and the
+    campaign behind it is a wrapper nobody reads terms from. So a proposal that
+    states one wins, and that is the only rule in that function.
+
+    Both are set here, which cannot happen through any endpoint today — an
+    order's campaign carries no licence and a brief's proposals carry none —
+    and that is the point: the rule is asserted directly rather than inferred
+    from a path that happens to only ever set one of the two.
+    """
+    biz, inf, camp, prop = _setup(client, licence_terms=LICENCE_REDISTRIBUTION)
+
+    db = client.session_factory()
+    try:
+        offer = db.query(campaigns.Proposal).filter(campaigns.Proposal.id == prop).first()
+        offer.licence_terms = dict(LICENCE_CREATOR_ONLY)
+        db.commit()
+    finally:
+        db.close()
+
+    cid = _generate(client, biz, prop)
+    assert _contract_row(client, cid).licence_terms == LICENCE_CREATOR_ONLY
+
+
+def test_generation_refuses_when_nobody_has_stated_a_licence(client):
+    """No licence on the brief and none on the offer, so there is nothing to freeze.
+
+    IT REFUSES RATHER THAN DEFAULTING, and option 1 is why that is worth a
+    test. Option 1 grants the brand least, so assuming it looks conservative
+    and is not: recorded against a brief whose brand meant to redistribute, it
+    is a statement nobody made, frozen into a document two people sign, and
+    the first anybody would hear of it is a brand running content it believes
+    it licensed.
+
+    And nothing is written on the way out, for the reason the party gate gives:
+    marking the chain accepted is what makes the creator's decline fail with
+    order_not_open, so a refusal below that line would take the creator's way
+    out with it. Both gates therefore sit above it, with the other guards.
+    """
+    biz, inf, camp, prop = _setup(client, licence_terms=None)
+
+    r = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_licence_terms_missing"
+    # The sentence names the brand as the party who has to act, because the
+    # creator reads this one too on a direct order and it is not theirs to fix.
+    assert "brand" in r.json()["detail"]
+
+    assert _contracts_for(client, camp) == []
+    assert _proposal_status(client, prop) == campaigns.SUBMITTED
+
+
+def test_the_detail_response_carries_all_three_snapshots(client):
+    """What the clients read, because the body prints none of these three.
+
+    The party blocks ARE rendered into the text as well; Article 10 is not, so
+    this payload is the only way either client can show a party the licence
+    their contract was generated under. It is also the fix for the two party
+    blocks, which were declared on ContractDetailOut and never put on the dict
+    the service returns, so they had been arriving null on every read.
+
+    Read off the row and not through a join: what this says is what the
+    contract said when it was generated, whatever the profiles and the brief
+    say now.
+    """
+    biz, inf, camp, prop = _setup(client)
+    cid = _generate(client, biz, prop)
+
+    detail = client.get(f"/contracts/{cid}", headers=_headers(biz)).json()
+    assert detail["business_party"] == BUSINESS_PARTY
+    assert detail["influencer_party"] == CREATOR_PARTY
+    assert detail["licence_terms"] == LICENCE_REDISTRIBUTION
+
+    # The creator, the other party, reads the same three.
+    creator_side = client.get(f"/contracts/{cid}", headers=_headers(inf)).json()
+    assert creator_side["licence_terms"] == LICENCE_REDISTRIBUTION
+    assert creator_side["business_party"] == BUSINESS_PARTY
+
+    # And Article 10 is still not in the document itself. If this assertion
+    # ever fails it is because somebody rendered the clause, which is a change
+    # counsel has to have answered for first (contracts/service.py::_build_body).
+    assert "licence" not in detail["body"].lower()
+    assert LICENCE_REDISTRIBUTION["licence_duration"] not in detail["body"]

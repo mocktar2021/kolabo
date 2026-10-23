@@ -2,9 +2,16 @@
    invitation. Mirrored from web/src/lib/types.ts (OpenBrief) and the
    campaigns/board API. */
 
+import type { LicenceTerms } from "./licenceTerms";
+
 export type BriefDeliverable = { platform: string; type: string; quantity: number };
 
-export type OpenBrief = {
+/* THE CONTENT LICENCE ARRIVES AS AN INTERSECTION, so the five pinned field
+   names are declared once in this client (lib/licenceTerms) and not spelled
+   out a second time here, where a rename could miss them. A creator reads
+   them on the board card before applying, because a brief priced without
+   them is a brief priced blind. */
+export type OpenBrief = LicenceTerms & {
   id: string;
   title: string;
   description: string | null;

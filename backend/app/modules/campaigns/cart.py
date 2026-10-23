@@ -25,6 +25,13 @@ would leave a brand not knowing which half: two creators booked and paid for,
 a third silently dropped, and no way to tell from the response which is which.
 A brand that has to audit its own basket after every checkout will go back to
 ordering one at a time — or to WhatsApp.
+
+TWO THINGS A CREATOR'S PILE HAS TO AGREE ON, because several lines become ONE
+order with one contract behind it: the currency (_one_currency) and the content
+licence (_one_licence). Everything else merges — the deliverables list grows,
+the price sums, the timeline takes the longest, the notes concatenate — and
+those two cannot, because an escrow holds one currency and a contract states
+one licence.
 """
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -47,9 +54,10 @@ def _resolve_item(db: Session, business_user_id: str, item, index: int) -> dict:
     Every rule a lone order runs — the package exists and is active, the
     creator exists and is a creator, the platform/deliverable pair is real,
     the rate clears the currency floor, the quantity and timeline are in
-    range, nobody is ordering from themselves — comes from the same two
-    resolvers create_direct_order and create_negotiated_order use. A cart with
-    its own copy of those checks is a cart that eventually disagrees with the
+    range, the stated licence is complete for the option it names, nobody is
+    ordering from themselves — comes from the same two resolvers
+    create_direct_order and create_negotiated_order use. A cart with its own
+    copy of those checks is a cart that eventually disagrees with the
     single-order endpoint about what a valid order is, and the disagreement
     would be about money.
 
@@ -81,7 +89,9 @@ def _resolve_item(db: Session, business_user_id: str, item, index: int) -> dict:
     try:
         service.check_order_form(item)
         if item.package_id is not None:
-            return service.resolve_package_terms(db, business_user_id, item.package_id, item.note)
+            return service.resolve_package_terms(
+                db, business_user_id, item.package_id, item.note, item.licence_terms
+            )
         return service.resolve_negotiated_terms(db, business_user_id, item)
     except AppError as exc:
         exc.status_code = status.HTTP_400_BAD_REQUEST
@@ -150,6 +160,58 @@ def _one_currency(creator_user_id: str, lines: list[dict]) -> str:
     return currencies.pop()
 
 
+def _one_licence(creator_user_id: str, lines: list[dict]) -> dict | None:
+    """And it has to be bought under a single content licence.
+
+    THE SAME SHAPE OF RULE AS _one_currency AND FOR THE SAME REASON. A
+    creator's lines become ONE order, one contract and one escrow; a contract
+    states one Article 10 option, with one duration, one set of territories and
+    one set of media. Two licences for one creator is not a merge the server
+    can perform — there is no sensible union of "the creator posts it on their
+    own feed" and "the brand may run it in paid advertising for a year" — and
+    it is not a conflict it may resolve quietly either. Keeping the first line's
+    block and dropping the second would put terms in a signed document that the
+    brand did not state for half of what it bought, and nobody would find out
+    until somebody redistributed something.
+
+    Every line merges or refuses, and this one refuses. Contrast the three that
+    merge, which all have an answer that is true of the whole order: the
+    deliverables list grows, the price sums, the timeline takes the longest
+    because the order is met when the slowest piece lands.
+
+    licence_terms_invalid, not a cart code of its own. It is the same rule the
+    per-line validation enforces one layer up — a licence block that does not
+    say one thing is not a licence — and a second code would be two more
+    sentences to keep in step in two languages. The creator id is in the
+    English for a support agent reading a log; what the buyer can act on is the
+    instruction, so that is what the sentence ends with.
+
+    NO `values`, deliberately. There is nothing here a sentence could usefully
+    interpolate: the options may well be identical and the disagreement be in
+    the duration, so naming them would produce "the licences differ (2, 2)".
+    Both clients render their own sentence for this code and it has to read
+    correctly with nothing substituted into it.
+
+    In practice this fires on a client bug rather than on a buyer: a checkout
+    screen carries one licence control and sends the same block on every line.
+    It exists because a merge rule that guessed would be silent, and this is
+    not.
+    """
+    blocks = [line["licence_terms"] for line in lines]
+    first = blocks[0]
+    if any(block != first for block in blocks):
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="licence_terms_invalid",
+            detail=(
+                f"The items for creator {creator_user_id} state different content "
+                "licences. An order becomes one contract and a contract states one "
+                "licence, so check out each licence separately."
+            ),
+        )
+    return first
+
+
 def _merge(lines: list[dict]) -> dict:
     """Several basket lines, as the one order the creator will answer.
 
@@ -165,6 +227,10 @@ def _merge(lines: list[dict]) -> dict:
     The notes are concatenated in basket order. A proposal carries one note
     and each line may have brought its own word to the creator; dropping all
     but the first would quietly lose instructions somebody typed.
+
+    The licence is NOT merged here. It is the one field that has no true answer
+    for a pile of disagreeing lines, so it is settled by _one_licence before
+    this runs.
     """
     notes = [line["note"] for line in lines if line["note"]]
     return {
@@ -212,6 +278,7 @@ def checkout(db: Session, business_user_id: str, payload: schemas.CartCheckoutIn
     orders = []
     for creator_user_id, lines in _group_by_creator(resolved).items():
         currency = _one_currency(creator_user_id, lines)
+        licence_terms = _one_licence(creator_user_id, lines)
         merged = _merge(lines)
         # commit=False: the orders are written together and committed once
         # below, so a failure part-way through this loop rolls back the
@@ -226,6 +293,7 @@ def checkout(db: Session, business_user_id: str, payload: schemas.CartCheckoutIn
             currency=currency,
             timeline_days=merged["timeline_days"],
             note=merged["note"],
+            licence_terms=licence_terms,
             notice=(
                 f"A brand ordered {merged['title']} from you. You have "
                 f"{service.ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."

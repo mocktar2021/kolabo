@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { DayInput } from "../components/DayInput";
 import { Layout } from "../components/Layout";
 import { PartyDetailsCard } from "../components/PartyDetailsCard";
 import { ApiError, api, mediaSrc, uploadFile } from "../lib/api";
@@ -1177,7 +1178,7 @@ export default function ProfileSetup() {
                 </div>
                 <div className="field">
                   <label className="label" htmlFor="bd">{t("profile.birthDate")}</label>
-                  <input id="bd" type="date" className="input" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                  <DayInput id="bd" value={birthDate} onChange={setBirthDate} />
                   <div className="hint">{t("profile.birthDateHint")}</div>
                 </div>
                 <div className="field">

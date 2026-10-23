@@ -3,6 +3,13 @@
 An admin can list countries, add a new one, edit it, and enable or disable it,
 all as data. Adding or turning on a market is a config write, not a deploy.
 Every write is attributed to an admin in the AdminActionLog.
+
+NOTE ON REACH. The `enabled` flag written here is read by exactly one caller,
+GET /admin/countries with enabled_only. No public endpoint and no registration
+path consults it, so disabling a market here closes it in the admin view and
+nowhere else. The list a user actually sees is web/src/lib/countries.ts, and
+there is a third in app.core.country_config. Opening or closing a market means
+changing all of them until one is derived from the others.
 """
 from fastapi import status
 from sqlalchemy.orm import Session
@@ -11,24 +18,39 @@ from app.core.errors import AppError
 from app.modules.admin.models import AdminActionLog
 from app.modules.config import models
 
-# Seed values for the seven target markets, all open for registration — the
-# same product decision as app.core.country_config: `enabled` gates rollout
-# only, not payments readiness, and stays so a market can be closed again
-# with one config write. Phone prefixes are country calling codes. Providers
-# are intentionally left unset until one is chosen per country.
+# Seed values for the seven markets this product has ever named. FOUR ARE OPEN:
+# Benin, Togo, Cote d'Ivoire and Senegal, which are the four where the payment
+# provider can actually move money, confirmed against the FeexPay production
+# dashboard on 23 October 2026. Ghana, Cameroon and Nigeria seed disabled: GHS,
+# XAF and NGN sit outside the XOF area the gateway's BCEAO licence covers, so
+# they were never payable. They stay as rows so reopening one is a config write
+# with an audit entry rather than a deploy.
+#
+# THIS ONLY AFFECTS A FRESH DATABASE. seed_countries below returns early when
+# the table already holds rows, so editing this list changes nothing on a box
+# that has booted once. Both deployed databases were seeded with all seven
+# enabled and have to be corrected through POST /admin/countries/{code}/enabled
+# or by hand. A change here looks done long before it is.
+#
+# Phone prefixes are country calling codes. Providers are intentionally left
+# unset until one is chosen per country.
 SEED = [
     {"code": "BJ", "name": "Benin", "currency": "XOF", "phone_prefix": "+229", "enabled": True},
     {"code": "TG", "name": "Togo", "currency": "XOF", "phone_prefix": "+228", "enabled": True},
     {"code": "CI", "name": "Cote d'Ivoire", "currency": "XOF", "phone_prefix": "+225", "enabled": True},
-    {"code": "GH", "name": "Ghana", "currency": "GHS", "phone_prefix": "+233", "enabled": True},
+    {"code": "GH", "name": "Ghana", "currency": "GHS", "phone_prefix": "+233", "enabled": False},
     {"code": "SN", "name": "Senegal", "currency": "XOF", "phone_prefix": "+221", "enabled": True},
-    {"code": "CM", "name": "Cameroon", "currency": "XAF", "phone_prefix": "+237", "enabled": True},
-    {"code": "NG", "name": "Nigeria", "currency": "NGN", "phone_prefix": "+234", "enabled": True},
+    {"code": "CM", "name": "Cameroon", "currency": "XAF", "phone_prefix": "+237", "enabled": False},
+    {"code": "NG", "name": "Nigeria", "currency": "NGN", "phone_prefix": "+234", "enabled": False},
 ]
 
 
 def seed_countries(db: Session) -> None:
-    """Populate the table once if it is empty. Idempotent and safe to call on boot."""
+    """Populate the table once if it is empty. Idempotent and safe to call on boot.
+
+    Idempotent by doing nothing at all once a row exists, which also means it
+    never corrects a table seeded by an older version of SEED. See the comment
+    above."""
     if db.query(models.CountryConfig).count() > 0:
         return
     for row in SEED:

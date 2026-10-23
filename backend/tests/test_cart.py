@@ -10,6 +10,11 @@ The other half is that it is all or nothing. A brand that half-orders does not
 know which half happened, so a single bad line has to leave the database
 untouched.
 
+And two things a creator's pile has to agree on, because several lines become
+one order: the currency, and the content licence. Both are refused rather than
+merged, for the same reason — an escrow holds one currency and a contract
+states one licence.
+
 A separate file from test_orders.py (the package form) and
 test_orders_negotiated.py (typed-in terms), both of which are about a single
 order.
@@ -31,10 +36,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
-# The party details both sides have to have stated before a contract can be
-# generated. Shared with the three other suites that reach contract
-# generation; tests/party_fixtures.py carries the argument.
-from tests.party_fixtures import seed_party_details
+# The party details both sides have to have stated, and the licence the brand
+# has to have stated, before a contract can be generated. Shared with the three
+# other suites that reach contract generation; tests/party_fixtures.py carries
+# the argument.
+from tests.party_fixtures import LICENCE_TERMS, licence_terms, seed_party_details
 
 
 @pytest.fixture()
@@ -83,6 +89,10 @@ def _user(client, phone, role):
         # in that one test: a cart fans out to several creators, and which of
         # them ends up answering is exactly the sort of thing a test here
         # rearranges.
+        #
+        # The licence generation also refuses without is not seeded here. It
+        # belongs to the ORDER rather than to a party, so it is stated on every
+        # basket line in _checkout below.
         seed_party_details(db, u.id, role)
         return u.id
     finally:
@@ -116,6 +126,19 @@ def _rows(client, model, **filters):
 
 
 def _checkout(client, buyer, items):
+    """Post a basket, with the brand's licence on every line.
+
+    A CART LINE IS AN ORDER BODY, so it carries a licence exactly as a single
+    order does, and a checkout screen has one licence control whose value goes
+    onto every line it sends. Stamped here rather than written into each test's
+    items so that a test's list still reads as the thing it is about — a
+    package id, a custom offer, a deliberately broken line — and so that the
+    block has one copy in this file.
+
+    Lines that already name one keep it, which is what lets the disagreement
+    test below send two different licences for one creator on purpose.
+    """
+    items = [{"licence_terms": licence_terms(), **item} for item in items]
     return client.post("/campaigns/orders/checkout", json={"items": items}, headers=_headers(buyer))
 
 
@@ -175,6 +198,12 @@ def test_two_creators_become_two_independent_orders(client, market):
     assert len(_rows(client, campaigns.CampaignInvitation)) == 2
     assert len(_rows(client, campaigns.Proposal)) == 2
     assert all(o["expires_at"] is not None for o in orders)
+    # Each order carries the licence the basket was checked out under, on the
+    # offer row like any other direct order.
+    assert [p.licence_terms for p in _rows(client, campaigns.Proposal)] == [
+        LICENCE_TERMS,
+        LICENCE_TERMS,
+    ]
 
     # Each creator hears about their own order and nothing else.
     assert len(_rows(client, Notification, user_id=market["ama"], type="direct_order")) == 1
@@ -207,6 +236,10 @@ def test_two_packages_from_one_creator_are_one_order_with_two_deliverables(clien
     assert proposal.rate_currency == "XOF"
     assert proposal.author_role == campaigns.AUTHOR_BUSINESS
     assert proposal.version == 1
+    # Two lines, one licence: both stated the same one, so the merged order
+    # carries it once. There is nothing to add up here the way the price and
+    # the deliverables add up.
+    assert proposal.licence_terms == LICENCE_TERMS
     # Both titles are in it, because the creator has to see what was bought.
     assert "Two reels" in campaign.title and "A story set" in campaign.title
 
@@ -254,7 +287,7 @@ def test_the_order_promises_the_longest_of_its_timelines(client, market):
 
 
 # --------------------------------------------------------------------------
-# One escrow, one currency
+# One escrow, one currency. One contract, one licence.
 # --------------------------------------------------------------------------
 
 
@@ -284,6 +317,70 @@ def test_two_creators_in_two_currencies_are_fine(client, market):
     assert r.status_code == 201
     currencies = {c.budget_currency for c in _rows(client, campaigns.Campaign)}
     assert currencies == {"XOF", "GHS"}
+
+
+def test_two_licences_for_one_creator_are_refused(client, market):
+    """One creator's lines become one order, one contract, one licence.
+
+    There is no union of "the creator posts it on their own feed" and "the
+    brand may run it in paid advertising for a year", and keeping the first
+    line's block would put terms in a signed document that the brand did not
+    state for half of what it bought. So it is refused, exactly as two
+    currencies are, and nothing is written.
+
+    licence_terms_invalid rather than a cart code of its own: it is the same
+    rule the per-line validation enforces, which is that a licence has to say
+    one thing.
+    """
+    second = _package(
+        client, market["ama"], "A story set", deliverable_type="story", price=10000, quantity=3,
+    )
+    r = _checkout(client, market["buyer"], [
+        {"package_id": market["ama_pkg"]},
+        {"package_id": second, "licence_terms": {"licence_option": "1"}},
+    ])
+    assert r.status_code == 400
+    assert r.json()["code"] == "licence_terms_invalid"
+    detail = r.json()["detail"]
+    assert market["ama"] in detail
+    assert "licence" in detail
+    assert _nothing_was_created(client)
+
+
+def test_two_creators_under_two_licences_are_fine(client, market):
+    """The rule is per creator, like the currency one: two orders, two
+    contracts, one licence each."""
+    r = _checkout(client, market["buyer"], [
+        {"package_id": market["ama_pkg"]},
+        {"package_id": market["kofi_pkg"], "licence_terms": {"licence_option": "1"}},
+    ])
+    assert r.status_code == 201
+    orders = r.json()["orders"]
+    assert _rows(client, campaigns.Proposal, id=orders[0]["proposal_id"])[0].licence_terms == LICENCE_TERMS
+    assert _rows(client, campaigns.Proposal, id=orders[1]["proposal_id"])[0].licence_terms == {
+        "licence_option": "1"
+    }
+
+
+def test_a_half_stated_licence_aborts_the_whole_checkout_naming_its_line(client, market):
+    """Option 2 without a duration is not a licence anybody can rely on.
+
+    Checked per line in the resolver, like the price floor, so the refusal
+    carries the position in the basket and nothing is written — which is the
+    whole reason the resolvers answer questions instead of building rows.
+    """
+    r = _checkout(client, market["buyer"], [
+        {"package_id": market["ama_pkg"]},
+        {
+            "package_id": market["kofi_pkg"],
+            "licence_terms": {"licence_option": "2", "licence_territories": "Benin"},
+        },
+    ])
+    assert r.status_code == 400
+    assert r.json()["code"] == "licence_terms_invalid"
+    assert r.json()["detail"].startswith("Item 1:")
+    assert r.json()["values"]["cart_index"] == 1
+    assert _nothing_was_created(client)
 
 
 # --------------------------------------------------------------------------
@@ -425,6 +522,9 @@ def test_each_creator_only_ever_sees_their_own_order(client, market):
     ama_invites = client.get("/campaigns/invitations/mine", headers=_headers(market["ama"])).json()
     assert [i["campaign_id"] for i in ama_invites] == [ama_order["campaign_id"]]
     assert market["kofi"] not in str(ama_invites)
+    # The licence travels on the row the creator answers, which is the only
+    # place an order's terms appear on a creator-facing payload.
+    assert ama_invites[0]["proposal"]["licence_terms"] == LICENCE_TERMS
 
     # The buyer sees both, because they placed both.
     mine = client.get("/campaigns/mine", headers=_headers(market["buyer"])).json()

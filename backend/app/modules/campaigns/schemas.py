@@ -1,5 +1,6 @@
 """Schemas for the campaigns module."""
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,6 +14,23 @@ MAX_NOTE_LENGTH = 2000
 # brand explaining context, tone and what it is trying to say. The cap is here
 # so a paste of an entire deck cannot become a campaign row.
 MAX_DESCRIPTION_LENGTH = 5000
+
+# The licence sub-fields are one line each of a contract clause, not prose.
+#
+# "douze (12) mois a compter de la premiere publication" is a duration.
+# "Benin, Togo, Cote d'Ivoire et Ghana" is a territory list. "les reseaux
+# sociaux de la marque, son site web et la publicite payante en ligne" is a
+# media list. The caps are generous enough for a wordy legal formulation in
+# French — which runs longer than its English equivalent — and small enough
+# that nobody pastes a brief into the field a contract quotes verbatim.
+#
+# Duration is the shortest of the three because it is one span of time however
+# carefully it is phrased, while territories and media are lists that grow with
+# the deal.
+MAX_LICENCE_DURATION_LENGTH = 120
+MAX_LICENCE_TERRITORIES_LENGTH = 200
+MAX_LICENCE_MEDIA_LENGTH = 200
+MAX_LICENCE_CONSIDERATION_LENGTH = 200
 
 # The fields that together make up a negotiated offer. Named as a group
 # because the rule about them is a group rule: all of them or none of them,
@@ -37,6 +55,54 @@ class Deliverable(BaseModel):
     platform: str
     type: str
     quantity: int = Field(ge=1)
+
+
+class LicenceTermsIn(BaseModel):
+    """How the brand says it may use the content, on the way in.
+
+    Article 10 of the model counsel approved
+    (claude/kolabo-contrat-collaboration-modele-fr.md) makes the Parties retain
+    one of three options and leaves "Option retenue : [ 1 / 2 / 3 ]" to be
+    filled in per contract. This is the shape a brand states it in, and the
+    same shape on a brief (CampaignCreate, CampaignPatch) and on a direct order
+    (OrderIn), because it is one statement about one thing however the deal was
+    reached.
+
+    A NESTED OBJECT AND NOT FIVE FLAT FIELDS, which is the one shape decision
+    here. The block is read and written whole everywhere it goes: it is stored
+    as a single JSON column, snapshotted as a single value onto the contract,
+    and campaigns.editing compares what a patch sends against what the column
+    holds to decide whether this term is locked. Flat fields would make that
+    comparison five against five and would put the brand's licence in a
+    different shape on the way in from the one it has everywhere else.
+
+    EVERY FIELD IS OPTIONAL HERE AND THAT IS NOT THE RULE. What each option
+    requires is answered in campaigns/licence.py, with a 400 naming the fields
+    that are missing, because the requirement depends on licence_option: a 422
+    saying licence_duration is invalid would never mention that option 2 is
+    what asks for it. This schema's job is the shape and the length caps.
+
+    licence_option IS A STRING, "1", "2" or "3", because it is the label
+    Article 10 prints and not a quantity anybody does arithmetic on. A client
+    sending the number 1 gets a 422 from pydantic rather than a
+    licence_terms_invalid, which is worth knowing when reading a client bug
+    report.
+
+    THE VALUES ARE QUOTED INTO A CONTRACT VERBATIM. A duration stated in French
+    stays French; nothing on the way in or the way out normalises, translates or
+    maps them onto a vocabulary. campaigns/licence.py strips the edges and that
+    is all.
+    """
+
+    licence_option: str | None = None
+    licence_duration: str | None = Field(default=None, max_length=MAX_LICENCE_DURATION_LENGTH)
+    licence_territories: str | None = Field(
+        default=None, max_length=MAX_LICENCE_TERRITORIES_LENGTH
+    )
+    licence_media: str | None = Field(default=None, max_length=MAX_LICENCE_MEDIA_LENGTH)
+    licence_consideration: str | None = Field(
+        default=None, max_length=MAX_LICENCE_CONSIDERATION_LENGTH
+    )
 
 
 class TargetingIn(BaseModel):
@@ -83,6 +149,17 @@ class CampaignCreate(TargetingIn):
     budget_amount: int | None = Field(default=None, ge=1)
     budget_currency: str | None = None
     deliverables: list[Deliverable] = Field(default_factory=list)
+    # How the brand may use the content. Taken at creation beside the budget
+    # and the deliverables because it is a TERM and not a description: a
+    # creator prices a licence to redistribute in paid advertising differently
+    # from a post on the creator's own feed, so it belongs on the brief they
+    # are pricing rather than on a second screen afterwards.
+    #
+    # Optional, like every other term on a draft: somebody writing down an
+    # idea before they know what it is should not be stopped on Article 10.
+    # What is not optional is generating a contract from a brief that never
+    # stated one, which contracts/service.py refuses.
+    licence_terms: LicenceTermsIn | None = None
     deadline: date | None = None
     publish: bool = False
     # Whether the brief goes onto the open board. Accepted at creation as well
@@ -115,6 +192,10 @@ class CampaignPatch(TargetingIn):
     meant before the brand widened its board. is_open is the same — closing a
     brief to new applications takes nothing away from the offers already made.
 
+    licence_terms, by contrast, IS in LOCKED_FIELDS, and the difference is the
+    whole reason that tuple exists: a creator who bid on a brief that said the
+    brand would not redistribute did not bid on one that says it may.
+
     publish is absent on purpose. Going live is a state change with its own
     readiness gate (POST /campaigns/{id}/publish), not a field to set.
     """
@@ -127,6 +208,12 @@ class CampaignPatch(TargetingIn):
     budget_amount: int | None = Field(default=None, ge=1)
     budget_currency: str | None = None
     deliverables: list[Deliverable] | None = None
+    # An explicit null clears the licence, exactly as it clears a deadline:
+    # that is how a form unsets a value, and a brand that has not published
+    # yet is entitled to take the clause back out. Once a creator has priced
+    # against it, clearing it is a change like any other and campaigns.editing
+    # refuses it with campaign_field_locked.
+    licence_terms: LicenceTermsIn | None = None
     deadline: date | None = None
     is_open: bool | None = None
 
@@ -139,6 +226,24 @@ class CampaignOut(BaseModel):
     budget_amount: int | None
     budget_currency: str | None
     deliverables: list[Deliverable]
+    # The licence the brand stated, or null when it has stated none.
+    #
+    # ON THE ORDINARY CAMPAIGN PAYLOAD AND NOT ONLY ON THE BOARD'S, because
+    # this is the payload every creator-facing surface nests: the open board
+    # row (OpenBriefOut) and the invitation card (InvitationWithCampaign) both
+    # carry a CampaignOut, and the licence has to reach the creator while they
+    # still have a decision to make. It also has to reach the buyer's own list,
+    # which is where a brand checks what it published.
+    #
+    # A PLAIN DICT, the same choice ContractDetailOut makes about its party
+    # blocks and for the same reason: the block's shape varies by option, which
+    # is why the column is JSON rather than five mostly null columns, and a
+    # response model enumerating every field would be a second place to keep in
+    # step with the capture schema. Both clients already carry the typed shape.
+    #
+    # Null means the brand has stated nothing, which both clients must render
+    # as unstated rather than as option 1. Nobody chose option 1.
+    licence_terms: dict[str, Any] | None = None
     deadline: date | None
     status: str
     # True when this campaign is really a direct order. The client needs it to
@@ -163,6 +268,11 @@ class OpenBriefOut(CampaignOut):
     The whole brief, not a summary of it: a creator decides from this card
     whether to spend an evening pricing the job, and deliverables, budget and
     deadline are exactly what they would be pricing.
+
+    So is the licence, inherited from CampaignOut. A brief that says the brand
+    may redistribute the content in paid advertising for a year is a bigger job
+    than one that says the creator posts it once, and a board that showed the
+    budget without the licence would be a board creators price wrong.
 
     match_score is shown rather than hidden. A board that silently reorders
     itself is a board creators invent theories about, and the number is small,
@@ -220,6 +330,12 @@ class ProposalIn(BaseModel):
     # Optional: a creator who wants to send bare numbers still can. It is only
     # there for the ones who have something to say about them.
     note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
+    # NO LICENCE FIELD, AND THAT IS THE RULE RATHER THAN AN OMISSION. The brand
+    # states how it may use the content; the creator accepts or declines those
+    # terms. A creator countering a direct order writes this payload, and
+    # service.submit_proposal carries the brand's block forward onto the new
+    # version rather than taking one from here, so a counter answers the price
+    # without rewriting the licence it was offered under.
 
 
 class ProposalReplyIn(BaseModel):
@@ -233,6 +349,14 @@ class ProposalReplyIn(BaseModel):
 
     Currency is not on this schema: a chain is priced in one currency or it is
     two negotiations pretending to be one.
+
+    Neither is the licence, for a reason worth stating because the buyer DOES
+    author this one. A reply is a counter on the money and the date, which are
+    the two things a negotiation moves; the licence was stated when the order
+    was placed and the creator has been reading it ever since. Changing it
+    mid-chain would move what is being bought rather than what it costs, and
+    silently: there is no creator-facing diff of a licence. A brand that wants
+    different licence terms places a new order.
     """
 
     note: str = Field(min_length=1, max_length=MAX_NOTE_LENGTH)
@@ -260,15 +384,24 @@ class OrderIn(BaseModel):
     Exactly one form per request. A body carrying both is not a preference to
     resolve, it is two different orders in one envelope.
 
+    THE LICENCE BELONGS TO NEITHER FORM AND TRAVELS WITH BOTH. A package is
+    the creator's statement of what they will make and what it costs; how the
+    brand may then use it is the brand's to state, on a listed package exactly
+    as on terms it typed itself. So licence_terms sits beside `note` as a
+    field both shapes carry, and check_order_form has no opinion about it.
+
     The bounds on the custom fields (quantity, floor price, timeline) are NOT
     declared here. They are checked in campaigns.negotiated so the answer is a
     400 naming the rule and what is allowed, in the same words the packages
     module uses — a 422 field-error would tell a brand that its price is
-    invalid without ever mentioning the floor.
+    invalid without ever mentioning the floor. The licence is checked in
+    campaigns.licence for the same reason.
     """
 
     # Shared by both forms: a word to the creator about the offer.
     note: str | None = Field(default=None, max_length=MAX_NOTE_LENGTH)
+    # Shared by both forms: how the brand may use what it is buying.
+    licence_terms: LicenceTermsIn | None = None
 
     package_id: str | None = None
 
@@ -289,6 +422,12 @@ class CartItemIn(OrderIn):
     same two forms, under the same rules. Copying the fields would let the two
     drift, and the first place they drifted would be which terms a checkout
     accepts that a single order does not.
+
+    WHICH MEANS A LINE CARRIES A LICENCE, and a basket can therefore state two
+    different ones for the same creator. That is not a merge for the server to
+    resolve: one creator's lines become ONE order with one contract, and a
+    contract states one licence. campaigns.cart refuses the disagreement
+    naming it, the same way it refuses two currencies for one creator.
     """
 
 
@@ -352,6 +491,20 @@ class ProposalOut(CreatorIdentity):
     # Which side wrote this version. Defaults to the creator: every proposal
     # that predates the business reply came from one.
     author_role: str = "influencer"
+    # The licence this offer was made under, or null when the row states none.
+    #
+    # THIS IS THE ONLY PLACE A CREATOR READS A DIRECT ORDER'S LICENCE, which is
+    # why it is on the proposal payload and not only on the campaign's. An
+    # order's terms live on the brand's offer row, the creator meets that row as
+    # `proposal` on their invitation card, and accept and decline are addressed
+    # by its id. A card that showed the price without the licence would ask
+    # somebody to accept terms they cannot see.
+    #
+    # Null on everything born of a brief, where the licence is on the campaign
+    # instead, so a client reads the proposal's block when there is one and the
+    # nested campaign's otherwise — which is the same precedence
+    # contracts/service.py::_licence_snapshot applies at generation.
+    licence_terms: dict[str, Any] | None = None
     # When a direct order stops being answerable. Null on everything else —
     # only direct orders run on a clock.
     expires_at: datetime | None = None
@@ -403,6 +556,9 @@ class InvitationWithCampaign(BaseModel):
     # detail is owner-only, so without this the creator could see an order and
     # have nothing to answer it with. expires_at on it is also what tells the
     # two kinds of row apart client-side: only a direct order runs on a clock.
+    #
+    # It is also where an order's licence arrives: the nested campaign above
+    # carries a brief's block, and this carries an order's.
     proposal: ProposalOut | None = None
     # Every version of that same chain, OLDEST FIRST, capped exactly as the
     # brand's list is (service.MAX_PROPOSAL_VERSIONS, taken from the recent

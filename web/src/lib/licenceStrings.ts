@@ -132,8 +132,8 @@ const fr = {
   unknownOption: "L'option indiquée ({{option}}) n'est pas une de celles que cette version de l'application sait expliquer. Les précisions de l'entreprise figurent ci-dessous, telles qu'elle les a écrites.",
 
   /* NOTHING STATED, which is an ordinary state and not a fault: every brief and
-     every contract written before ces précisions were recueillies is in it. Two
-     sentences rather than one, because what to do about it differs by screen. */
+     every contract written before this was captured is in it. Two sentences
+     rather than one, because what to do about it differs by screen. */
   missingBrief: "La marque n'a pas encore indiqué ce qu'elle pourra faire des contenus. Demandez-le-lui avant d'accepter.",
   missingContract: "Ce contrat a été généré avant que cette précision soit recueillie. L'article 10 du document ci-dessous dit ce qui a été retenu."
 };

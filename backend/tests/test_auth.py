@@ -143,25 +143,44 @@ def test_register_creates_unverified_account_and_blocks_login(client):
     assert resp.status_code == 403
 
 
-def test_all_seven_pilot_countries_can_register(client):
-    # Product decision: registration is open in every pilot market, including
-    # the five that launched disabled.
-    for i, country in enumerate(["BJ", "TG", "CI", "GH", "SN", "CM", "NG"]):
-        resp = _register(client, email=f"pilot{i}@example.com", country=country)
+def test_the_four_open_markets_register_and_the_closed_three_do_not(client):
+    """Launch decision of 23 October 2026: Benin, Togo, Cote d'Ivoire, Senegal.
+
+    Those are the four where the payment provider can actually move money.
+    Ghana, Cameroon and Nigeria are refused at the door rather than allowed to
+    register, build a profile, win work, deliver it, and only then discover at
+    the payout form that GHS, XAF and NGN sit outside the XOF area the
+    gateway's BCEAO licence covers.
+
+    Both halves are asserted. A test that only checked the four would stay
+    green on the day somebody widened the gate back to seven.
+    """
+    for i, country in enumerate(["BJ", "TG", "CI", "SN"]):
+        resp = _register(client, email=f"open{i}@example.com", country=country)
         assert resp.status_code == 201, resp.text
 
+    for i, country in enumerate(["GH", "CM", "NG"]):
+        resp = _register(client, email=f"closed{i}@example.com", country=country)
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["code"] == "auth_country_unavailable"
 
-def test_disabled_country_still_rejected(client, monkeypatch):
-    """All seven countries are open now, so disable one artificially: the
-    config gate is the mechanism that closes a market again, and it must
-    keep rejecting registrations the day it is flipped back."""
+
+def test_closing_an_open_market_rejects_its_registrations(client, monkeypatch):
+    """The gate is the mechanism for closing a market again without a deploy,
+    so it has to be exercised against a country that is actually open.
+
+    This test used to disable NIGERIA artificially. Nigeria now ships
+    disabled, which would have made it pass whether the gate was consulted or
+    not: a test of nothing, still green. It closes Togo instead, so it still
+    goes red the day registration stops asking.
+    """
     from app.core import country_config
     monkeypatch.setitem(
         country_config.COUNTRY_CONFIG,
-        "NG",
-        {**country_config.COUNTRY_CONFIG["NG"], "enabled": False},
+        "TG",
+        {**country_config.COUNTRY_CONFIG["TG"], "enabled": False},
     )
-    resp = _register(client, country="NG")
+    resp = _register(client, country="TG")
     assert resp.status_code == 400
     assert resp.json()["detail"] == "Country is not available yet"
 

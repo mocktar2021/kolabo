@@ -254,9 +254,15 @@ def test_a_token_addressed_to_another_application_is_refused(client, fake_google
 def test_both_configured_client_ids_are_offered_as_the_audience(client, fake_google):
     """Web and mobile are different OAuth clients. A verifier that offered only
     the first id would work on one surface and refuse the other, and the
-    refusal would look like a broken button rather than a configuration bug."""
+    refusal would look like a broken button rather than a configuration bug.
+
+    The country here is incidental and is simply an open one. This used to sign
+    in from Ghana, which stopped registering when the launch list narrowed to
+    Benin, Togo, Cote d'Ivoire and Senegal, and the failure then looked like an
+    audience bug rather than a country one.
+    """
     fake_google.issue("from-the-phone", aud=MOBILE_CLIENT_ID)
-    assert _sign_in(client, "from-the-phone", role="business", country_code="GH").status_code == 200
+    assert _sign_in(client, "from-the-phone", role="business", country_code="BJ").status_code == 200
     assert sorted(fake_google.audiences_seen[-1]) == sorted([WEB_CLIENT_ID, MOBILE_CLIENT_ID])
 
 
@@ -346,7 +352,13 @@ def test_the_address_is_folded_the_way_registration_folds_it(client, fake_google
 
 def test_an_unknown_role_and_a_closed_country_are_refused_as_at_registration(client, fake_google, monkeypatch):
     """Validated with the same two codes register uses, so there is one rule
-    about what a role is and one about which markets are open."""
+    about what a role is and one about which markets are open.
+
+    The country closed here is TOGO, which is open, and that matters. This used
+    to close Nigeria, and Nigeria now ships disabled, so the assertion would
+    have held whether the Google path consulted the gate or not: a test of
+    nothing, still green. Closing an open market keeps it pointed at the gate.
+    """
     fake_google.issue("newcomer")
     bad_role = _sign_in(client, "newcomer", role="astronaut", country_code="BJ")
     assert bad_role.status_code == 400
@@ -356,10 +368,10 @@ def test_an_unknown_role_and_a_closed_country_are_refused_as_at_registration(cli
 
     monkeypatch.setitem(
         country_config.COUNTRY_CONFIG,
-        "NG",
-        {**country_config.COUNTRY_CONFIG["NG"], "enabled": False},
+        "TG",
+        {**country_config.COUNTRY_CONFIG["TG"], "enabled": False},
     )
-    closed = _sign_in(client, "newcomer", role="influencer", country_code="NG")
+    closed = _sign_in(client, "newcomer", role="influencer", country_code="TG")
     assert closed.status_code == 400
     assert closed.json()["code"] == "auth_country_unavailable"
     assert _user(client, EMAIL) is None

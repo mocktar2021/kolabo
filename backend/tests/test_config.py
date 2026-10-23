@@ -36,6 +36,9 @@ def client():
 
 
 def test_seed_populates_seven_markets(client, admin_headers):
+    # Seven ROWS, four of them open. A closed market keeps its row so that
+    # reopening it is a config write rather than research into what its
+    # currency and calling code were.
     r = client.get("/admin/countries", headers=admin_headers)
     assert r.status_code == 200
     countries = r.json()
@@ -44,12 +47,34 @@ def test_seed_populates_seven_markets(client, admin_headers):
     assert {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"} == codes
 
 
-def test_all_seven_markets_enabled_by_default(client, admin_headers):
-    # Product decision: registration is open across all seven markets. The
-    # enabled flag is kept anyway, because closing a market again must stay a
-    # config write — see test_enable_and_disable_market for the mechanism.
+def test_four_markets_enabled_by_default(client, admin_headers):
+    # The four where the payment provider can actually move money. Ghana,
+    # Cameroon and Nigeria are seeded disabled because GHS, XAF and NGN sit
+    # outside the XOF area the gateway's licence covers, so they were never
+    # payable and offering them produced a signup that ends at a payout form
+    # which cannot pay.
+    #
+    # The flag is kept rather than the rows being dropped, because closing and
+    # reopening a market must stay a config write. See
+    # test_enable_and_disable_market for the mechanism.
     enabled = client.get("/admin/countries?enabled_only=true", headers=admin_headers).json()
-    assert {c["code"] for c in enabled} == {"BJ", "TG", "CI", "GH", "SN", "CM", "NG"}
+    assert {c["code"] for c in enabled} == {"BJ", "TG", "CI", "SN"}
+
+    disabled = [c for c in client.get("/admin/countries", headers=admin_headers).json() if not c["enabled"]]
+    assert {c["code"] for c in disabled} == {"GH", "CM", "NG"}
+
+
+def test_core_config_and_seed_agree_on_open_markets():
+    """app.core.country_config and this module's SEED are two independent
+    country lists with nothing deriving one from the other. That is how both
+    came to advertise seven open markets while the payment provider served
+    four, for a month, with nothing failing. This is the guard that makes the
+    next divergence fail here instead of on a signup form."""
+    from app.core.country_config import get_enabled_countries
+    from app.modules.config.service import SEED
+
+    seeded_open = {row["code"] for row in SEED if row["enabled"]}
+    assert seeded_open == set(get_enabled_countries())
 
 
 def test_add_new_country_without_deploy(client, admin_headers):
@@ -63,8 +88,8 @@ def test_add_new_country_without_deploy(client, admin_headers):
     # Code and currency are normalized to upper case.
     assert body["code"] == "KE" and body["currency"] == "KES"
     assert body["mobile_money_provider"] == "mpesa"
-    # All seven seeded markets are enabled, plus the new one.
-    assert client.get("/admin/countries?enabled_only=true", headers=admin_headers).json().__len__() == 8
+    # The four seeded open markets, plus the new one.
+    assert client.get("/admin/countries?enabled_only=true", headers=admin_headers).json().__len__() == 5
 
 
 def test_upsert_edits_existing_country(client, admin_headers):
@@ -80,10 +105,10 @@ def test_upsert_edits_existing_country(client, admin_headers):
 
 
 def test_enable_and_disable_market(client, admin_headers):
-    # The rollout gate must keep working now that everything ships enabled:
-    # disabling is how a market is closed again without a deploy.
-    assert client.post("/admin/countries/GH/enabled", json={"enabled": False}, headers=admin_headers).json()["enabled"] is False
+    # The rollout gate is how a market is closed again, and reopened, without
+    # a deploy. Ghana seeds disabled, so this walks it the other way first.
     assert client.post("/admin/countries/GH/enabled", json={"enabled": True}, headers=admin_headers).json()["enabled"] is True
+    assert client.post("/admin/countries/GH/enabled", json={"enabled": False}, headers=admin_headers).json()["enabled"] is False
 
 
 def test_enable_unknown_country_404(client, admin_headers):

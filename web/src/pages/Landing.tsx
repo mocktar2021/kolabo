@@ -384,7 +384,14 @@ export default function Landing() {
             heading here uses, so nothing is invented: the band simply carries
             `.section` (its padding stays `.tb-band`'s either way, that rule
             comes later in the file). Only the centring is local, matching the
-            centred grid underneath. */}
+            centred grid underneath.
+
+            THE PILOT LINE THAT USED TO SIT UNDER THIS GRID IS GONE. It read
+            "Pilote au Bénin et au Togo." on a product now open in four
+            markets, and a public claim about where a marketplace operates is
+            exactly the kind of detail a brand checks. The countries question
+            is answered properly in the guide; this band is about how a
+            collaboration is protected, not about geography. */}
         <h2 style={{ textAlign: "center", marginBottom: 26 }}>{t("landing.trustedBy")}</h2>
         <div className="tb-grid">
           {trustStats.map((s) => (
@@ -394,7 +401,6 @@ export default function Landing() {
             </div>
           ))}
         </div>
-        <p className="hint" style={{ textAlign: "center", marginTop: 18 }}>{t("landing.trustedByNote")}</p>
       </section>
 
       <section className="section" style={{ background: "var(--surface)" }}>

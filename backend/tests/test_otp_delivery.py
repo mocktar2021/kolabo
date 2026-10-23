@@ -203,10 +203,34 @@ class TestRegistration:
         """Asserted through the router rather than on the template function,
         because what can break is the WIRING: _issue_otp has to pass the
         account's country, and a signup that quietly sent French to Accra would
-        look perfectly healthy from every other test in this file."""
+        look perfectly healthy from every other test in this file.
+
+        THIS USED TO REGISTER IN GHANA, which was the only anglophone market a
+        signup could reach. The launch list is Benin, Togo, Cote d'Ivoire and
+        Senegal, and all four default to French, so no country reachable
+        through registration produces an English message any more.
+
+        Weakening it to "French came out" would have proved nothing, because
+        French is also the fallback: a signup that ignored the account's
+        country entirely would pass that assertion. So an open market's
+        language is patched instead. The test still points at the wiring, and
+        it no longer depends on which countries happen to be open. If
+        _issue_otp stops passing the country, the message falls back to French
+        and this goes red, which is the only thing it was ever testing.
+
+        The template itself keeps its own coverage in TestTheMessageItself,
+        which calls verification_message("GH", ...) directly.
+        """
+        from app.core import country_config
+
+        monkeypatch.setitem(
+            country_config.COUNTRY_CONFIG,
+            "BJ",
+            {**country_config.COUNTRY_CONFIG["BJ"], "language": "en"},
+        )
         good = _Accepting()
         monkeypatch.setattr(service, "_sender", good)
-        assert _register(client, email="accra@example.com", country="GH").status_code == 201
+        assert _register(client, email="anglophone@example.com", country="BJ").status_code == 201
         assert good.sent[0][1].startswith("Your Kolabo verification code\n")
 
     def test_the_failure_is_logged_with_the_providers_words(self, client, monkeypatch, caplog):
@@ -457,7 +481,12 @@ class TestEmailSender:
 
 
 class TestTheMessageItself:
-    """Subject and body, in the language the account's country defaults to."""
+    """Subject and body, in the language the account's country defaults to.
+
+    These call the template directly, which is why closing Ghana and Nigeria to
+    registration costs them nothing: default_language still knows both, because
+    a party may contract from a country Kolabo does not sell in.
+    """
 
     def test_french_for_a_francophone_market(self):
         message = otp.verification_message("BJ", "123456", 10)

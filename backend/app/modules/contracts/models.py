@@ -10,6 +10,11 @@ freeze was who had signed it: the body carried two user ids, and every name
 shown around the document was resolved live from a profile that its owner can
 rename at any time. See the columns below and
 claude/kolabo-contract-parties-spec.md.
+
+AND IT COVERS THE CONTENT LICENCE. Article 10 of the approved model
+(claude/kolabo-contrat-collaboration-modele-fr.md) is the clause the parties
+have to choose between three options on, and until licence_terms below there
+was nothing in this schema that recorded which one they chose.
 """
 import uuid
 from datetime import datetime, timezone
@@ -117,6 +122,51 @@ class Contract(Base):
     # both: contracts/service.py refuses to generate without them.
     business_party: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     influencer_party: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # HOW THE BRAND MAY USE THE CONTENT, AS THE PARTIES AGREED IT, FROZEN AT
+    # GENERATION. Article 10 of the approved model, which offers three options
+    # and leaves "Option retenue : [ 1 / 2 / 3 ]" to be filled in per contract.
+    #
+    #   licence_option         "1" | "2" | "3"
+    #   licence_duration       free text, option 2 and 3 only
+    #   licence_territories    free text, option 2 and 3 only
+    #   licence_media          free text, option 2 only
+    #   licence_consideration  free text, option 3 only, optional
+    #
+    # Only the keys belonging to the stated option are present, so an option 1
+    # block carries no empty duration. campaigns/licence.py enforces that and
+    # argues each option's required set from the model's own table.
+    #
+    # COPIED, NEVER JOINED, for the identical reason the two party blocks above
+    # are copied. The brief a contract was generated from stays editable in
+    # every respect this column does not lock, and the direct order's offer row
+    # can be superseded by a later version; a join to either would silently
+    # restate what a signed document permits. "The brand may redistribute this
+    # for twelve months" is not a sentence anybody gets to add to a contract
+    # after it was signed, and a join would add it retroactively to every
+    # contract on the brief at once.
+    #
+    # WHERE IT IS COPIED FROM is the proposal's block if it has one, otherwise
+    # the campaign's: an order states its licence on the brand's own offer, a
+    # brief states it on the brief. contracts/service.py::_licence_snapshot is
+    # that rule and the only place it is written down.
+    #
+    # NOT RENDERED INTO `body` YET, DELIBERATELY, which is the one asymmetry
+    # with the party blocks. The approved model is French only, and whether an
+    # English contract should carry a courtesy translation of Article 10 or
+    # stay silent is an open question for counsel rather than one a renderer
+    # settles by printing something. The data is here and frozen from the day
+    # the first contract carried it, which is the part that cannot be bought
+    # back later: the body is hashed at generation and never rehashed, so a
+    # clause added when counsel answers is absent from every contract signed
+    # before that day, while a column filled from the start can be printed,
+    # exported or quoted whenever she does.
+    #
+    # Nullable because every contract generated before this existed has nothing
+    # to backfill from. Null means "generated before licence terms were
+    # captured" and must never be read as "no licence applies" or as option 1 —
+    # those are statements the parties did not make. New contracts always carry
+    # a block: contracts/service.py refuses to generate without one.
+    licence_terms: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     language: Mapped[str] = mapped_column(String, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # THE EVIDENCE THAT THE TEXT HAS NOT MOVED. sha256 of `body` as it stood at

@@ -7,6 +7,7 @@ import { Layout } from "../components/Layout";
 import { EvidencePicker } from "../components/EvidencePicker";
 import { DeliverablesPanel } from "../components/DeliverablesPanel";
 import { ContractParties } from "../components/ContractParties";
+import { LicenceTerms } from "../components/LicenceTerms";
 import { useAuth } from "../lib/auth";
 import {
   DISPUTE_REASONS,
@@ -330,6 +331,36 @@ export default function ContractPage() {
                 with contract_not_a_party, so a reader holding them is a party
                 or an admin. See components/ContractParties.tsx. */}
             <ContractParties business={contract.business_party} influencer={contract.influencer_party} />
+
+            {/* WHAT THE BUSINESS MAY DO WITH THE CONTENT, immediately beside
+                the party blocks and for the same three reasons.
+
+                BESIDE THEM RATHER THAN INSIDE THEM, because it is not a fact
+                about either party: it is one clause of the agreement between
+                them, which is why it is its own card rather than a row in
+                somebody's block. A card of its own also survives the legacy
+                case cleanly, where the parties are known and the licence is
+                not, or the other way round.
+
+                ABOVE THE DOCUMENT, like the party blocks: on a contract
+                generated before this was captured the card says article 10 of
+                the document below says what was agreed, and the document has
+                to actually be below.
+
+                NOT GATED ON fully_signed, for the plainest version of the
+                reason the party blocks are not. The signature box is on this
+                page while the contract binds nobody, and whether the brand may
+                run this content as a paid advertisement for two years is
+                exactly what somebody wants to know BEFORE they type their name
+                into it. A creator who reads it afterwards has signed it.
+
+                voice="parties" because both sides and an admin read this page,
+                so there is no "you" that is true for every reader: the
+                sentence names the business and the creator in the third
+                person. The creator read the second person version of the same
+                fact on the board or on their invitations page, before they
+                accepted. See components/LicenceTerms.tsx. */}
+            <LicenceTerms row={contract} voice="parties" framed />
 
             <div className="card" style={{ marginTop: 16 }}>
               <h3 style={{ marginTop: 0 }}>{t("contract.document")}</h3>

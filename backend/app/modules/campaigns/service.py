@@ -21,6 +21,19 @@ it. The two are the same rule at different blast radii — a note is read by one
 counterparty, while an open brief is readable by every signed-in creator on
 the board.
 
+THE BRAND ALSO STATES HOW IT MAY USE THE CONTENT, and it states it here. That
+is Article 10 of the model counsel approved, which makes the Parties retain one
+of three options and leaves "Option retenue : [ 1 / 2 / 3 ]" to be filled in
+per contract; campaigns.licence owns the rule and the per-option field sets.
+This module's part is WHERE it is captured and WHO can see it, and both are
+decisions rather than plumbing. It is captured where a brand states the rest of
+its terms — on the brief at create_campaign, on either form of order through
+the two resolvers — because a creator prices option 2 differently from option 1
+and a licence stated after the price was agreed is a term introduced after the
+deal. It reaches the creator on every payload they read before deciding, which
+is what _to_out and _proposal_out do between them: the open board, the
+invitation card, and the direct order sitting on it.
+
 Direct orders: a brand can also skip the brief entirely and buy a creator's
 package at the published price — or offer terms of its own when no listed
 package fits. Both are created here, as hidden single-creator campaigns,
@@ -59,7 +72,7 @@ from app.core.contact_guard import check_no_contact_details
 from app.core.identity import blank_identity, creator_identities
 from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
-from app.modules.campaigns import models, negotiated, schemas
+from app.modules.campaigns import licence, models, negotiated, schemas
 from app.modules.notifications.service import notify
 from app.modules.profiles.models import BusinessProfile, Package
 
@@ -199,6 +212,13 @@ def _checked_note(note: str | None) -> str | None:
     which keeps the property campaigns.cart depends on: every item in a basket
     is held to the rule before a single row is written.
 
+    THE LICENCE SUB-FIELDS ARE NOT GUARDED THIS WAY, and the asymmetry is
+    deliberate. They are read by the same people and are just as free, but they
+    are quoted into a contract clause rather than into a message, and a number
+    inside "sur les territoires de ..." is not how a deal leaves the platform.
+    If that turns out to be wrong it is one call in campaigns.licence, with a
+    surface of its own in contact_guard.SURFACES.
+
     Never redacted. An altered note is worse than a refused one — these are
     the terms of a deal, and a sentence quietly edited by the platform is a
     term nobody agreed to.
@@ -320,6 +340,18 @@ def _to_out(campaign: models.Campaign) -> dict:
         "budget_amount": campaign.budget_amount,
         "budget_currency": campaign.budget_currency,
         "deliverables": campaign.deliverables,
+        # THE LICENCE TRAVELS ON EVERY CAMPAIGN PAYLOAD THERE IS, which is the
+        # point of putting it here rather than at any particular caller. This
+        # one function builds the buyer's list and detail, the row
+        # campaigns.board decorates for the open board, and the campaign nested
+        # inside each row of the creator's invitations list — so a creator meets
+        # the brand's Article 10 choice on the two surfaces they decide from,
+        # before they price anything, and the buyer sees on its own list what
+        # it published.
+        #
+        # Null when the brand has stated nothing, and a client must render that
+        # as unstated rather than as option 1: nobody chose option 1.
+        "licence_terms": campaign.licence_terms,
         "deadline": campaign.deadline,
         "status": campaign.status,
         "is_direct": campaign.is_direct,
@@ -353,6 +385,13 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
     # prose cannot be published should hear about the prose, not first be
     # marched through a deliverables error it would have hit anyway.
     description = _checked_description(payload.description)
+    # And before the catalog check too, for the same reason in the other
+    # direction: a brand that half-stated its licence should hear about the
+    # licence rather than about a deliverable it would have fixed anyway. The
+    # block comes back trimmed and carrying only the keys its option needs, or
+    # None when the brand stated nothing at all, which is allowed on a draft
+    # and on a published brief alike. Generation is the gate, not this.
+    licence_terms = licence.validated_block(payload.licence_terms)
     deliverables = [d.model_dump() for d in payload.deliverables]
     # Validated even for drafts: a draft with deliverables the catalog does
     # not recognise would only blow up later, at publish, when the fix is no
@@ -365,6 +404,7 @@ def create_campaign(db: Session, business_user_id: str, payload: schemas.Campaig
         budget_amount=payload.budget_amount,
         budget_currency=payload.budget_currency,
         deliverables=deliverables,
+        licence_terms=licence_terms,
         deadline=payload.deadline,
         status=models.DRAFT,
         # Taken at creation as well as on a PATCH, because deciding who a
@@ -424,6 +464,14 @@ def publish_campaign(db: Session, campaign_id: str, business_user_id: str) -> di
     # Re-checked at publish even though create validates too: rows saved
     # before this validation existed (or edited outside the API) must not
     # become a live brief asking creators for something that does not exist.
+    #
+    # THE LICENCE IS NOT CHECKED HERE and a brief with none still publishes.
+    # That is the same call _publish_ready already makes about everything it
+    # does require: a brand can perfectly well put a brief in front of
+    # creators while Article 10 is still with its own lawyer, and the only
+    # thing that cannot happen without a licence is a CONTRACT. Requiring one
+    # to publish would be a second gate on a different surface for the same
+    # rule, and the brief flow is not where the asymmetry hurts.
     _validate_deliverables(campaign.deliverables or [])
     campaign.status = models.PUBLISHED
     db.commit()
@@ -548,6 +596,7 @@ def _place_order(
     note: str | None,
     notice: str,
     notice_key: str,
+    licence_terms: dict | None = None,
     commit: bool = True,
 ) -> dict:
     """Build the order itself: a hidden campaign, one invitation, one offer.
@@ -582,11 +631,30 @@ def _place_order(
     basket before it has written half of it. Nothing is re-checked here; one
     answer to "may this note be written" is enough.
 
+    THE LICENCE ARRIVES ALREADY VALIDATED, FOR THE SAME REASON AND BY THE SAME
+    ROUTE. Both resolvers run licence.validated_block, so a basket is refused
+    on a half-stated licence before any of it is written, and a cart that
+    merged several lines for one creator has already settled which single
+    block the order is placed under (cart._one_licence).
+
+    IT LANDS ON THE PROPOSAL AND NOT ON THE CAMPAIGN, which is the one thing
+    about an order's licence worth reading twice. On an order the brand's
+    OFFER is the proposal row below — version 1, authored by the business —
+    and the campaign is a wrapper that exists so contracts and escrow have
+    something familiar to hang off. A creator meets the offer, not the
+    wrapper: the invitation card renders `proposal`, accept and decline are
+    addressed by its id, and a counter is the next version of it. So the
+    licence goes where the terms it belongs to are, and
+    contracts._licence_snapshot reads the proposal first for exactly that
+    reason.
+
     Who is proposing, and why it is the business. Either the buyer picked a
     price the creator had already published and offered it back, or it named
     terms of its own; both are the brand making an offer, so author_role is
     business. That is what makes the creator's accept-or-decline an answer
-    rather than a second offer.
+    rather than a second offer. It is also what makes the licence the brand's
+    statement rather than a negotiated term: the creator answers it, like the
+    price.
 
     commit=False is for callers placing several orders that must land
     together. It flushes instead, so the ids in the returned dict are real,
@@ -642,6 +710,11 @@ def _place_order(
         note=note,
         author_role=models.AUTHOR_BUSINESS,
         status=models.SUBMITTED,
+        # The brand's Article 10 choice, on the row that IS the brand's offer.
+        # See the docstring above for why it is here rather than on the
+        # campaign, and models.Proposal for why a creator's counter carries it
+        # forward instead of clearing it.
+        licence_terms=licence_terms,
         # Only direct orders carry an expiry. A brief's proposals stay open
         # indefinitely because nobody promised anything by leaving one open;
         # here a buyer is waiting on an answer to terms it already named.
@@ -694,10 +767,17 @@ def create_order(db: Session, business_user_id: str, payload: schemas.OrderIn) -
     A half-filled custom offer is rejected the same way. There is no sensible
     default for a rate or a deliverable: an order with a blank in it is an
     order the creator cannot answer.
+
+    The licence belongs to neither form and travels with both, which is why it
+    is handed to the package path explicitly here and read off the payload by
+    the negotiated one: a package is the creator's statement of what they will
+    make, and how the brand may then use it is the brand's to state either way.
     """
     check_order_form(payload)
     if payload.package_id is not None:
-        return create_direct_order(db, business_user_id, payload.package_id, payload.note)
+        return create_direct_order(
+            db, business_user_id, payload.package_id, payload.note, payload.licence_terms
+        )
     return create_negotiated_order(db, business_user_id, payload)
 
 
@@ -708,6 +788,11 @@ def check_order_form(payload) -> None:
     rule before anything is written. The rule is about the SHAPE of a request
     and nothing else — no database, no side effects — which is what makes it
     safe to run over twenty items in a loop.
+
+    licence_terms is not part of either shape and is deliberately absent from
+    CUSTOM_OFFER_FIELDS: it travels with both forms, so a body carrying a
+    package id and a licence is one order rather than two, and a licence sent
+    with nothing else is still a body with no order in it.
     """
     supplied = [f for f in schemas.CUSTOM_OFFER_FIELDS if getattr(payload, f) is not None]
 
@@ -799,11 +884,19 @@ def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
         # before it has written any of its rows, which is the whole reason
         # this function exists apart from the builder.
         "note": _checked_note(offer.note),
+        # And the licence, for the identical reason: a basket whose third line
+        # names option 2 without saying for how long must be refused before
+        # the first two creators have been ordered from.
+        "licence_terms": licence.validated_block(offer.licence_terms),
     }
 
 
 def resolve_package_terms(
-    db: Session, business_user_id: str, package_id: str, note: str | None = None
+    db: Session,
+    business_user_id: str,
+    package_id: str,
+    note: str | None = None,
+    licence_terms=None,
 ) -> dict:
     """Read a package's terms off the live row, and check it can be bought.
 
@@ -812,6 +905,13 @@ def resolve_package_terms(
     price. Read at order time rather than trusted from the client, which is
     also why a cart needs no stored prices — whatever the package says at
     checkout is what the order says.
+
+    EXCEPT THE LICENCE, which is not the package's to decide and is the one
+    thing here that does come from the buyer. A package says what the creator
+    will make and what it costs; how the brand may then use it is a statement
+    about the brand's own plans, and the same creator sells the same package to
+    one brand that will post it once and another that will run it as an
+    advertisement for a year.
 
     Like resolve_negotiated_terms this only asks questions, so a cart can
     validate every item before writing anything.
@@ -861,6 +961,9 @@ def resolve_package_terms(
         # so the only place contact details could ride in. Same rule, same
         # helper, same reason as everywhere else this column is written.
         "note": _checked_note(note),
+        # The buyer's other statement about a transaction whose terms are
+        # otherwise entirely the creator's.
+        "licence_terms": licence.validated_block(licence_terms),
     }
 
 
@@ -895,6 +998,7 @@ def create_negotiated_order(db: Session, business_user_id: str, payload: schemas
         currency=terms["currency"],
         timeline_days=terms["timeline_days"],
         note=terms["note"],
+        licence_terms=terms["licence_terms"],
         notice=(
             f"A brand sent you a custom offer: {terms['title']}. You have "
             f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
@@ -903,15 +1007,25 @@ def create_negotiated_order(db: Session, business_user_id: str, payload: schemas
     )
 
 
-def create_direct_order(db: Session, business_user_id: str, package_id: str, note: str | None = None) -> dict:
+def create_direct_order(
+    db: Session,
+    business_user_id: str,
+    package_id: str,
+    note: str | None = None,
+    licence_terms=None,
+) -> dict:
     """A brand buys a creator's package at the published price.
 
     The terms are the package's, none of them re-entered, and they are read by
     resolve_package_terms. The order this produces is built by _place_order
     like every other, which is where the shape of an order and the reasons for
     it are written down.
+
+    The licence is the buyer's, passed through to the resolver with the note:
+    the package decides what gets made, the brand decides what it may do with
+    it afterwards.
     """
-    terms = resolve_package_terms(db, business_user_id, package_id, note)
+    terms = resolve_package_terms(db, business_user_id, package_id, note, licence_terms)
     # Same guard, same rule, same wording as authoring a brief: an order IS a
     # campaign, and the buying side of the market is the side that may create
     # one. Reused rather than re-stated so the two can never drift apart.
@@ -927,6 +1041,7 @@ def create_direct_order(db: Session, business_user_id: str, package_id: str, not
         currency=terms["currency"],
         timeline_days=terms["timeline_days"],
         note=terms["note"],
+        licence_terms=terms["licence_terms"],
         notice=(
             f"A brand ordered your package {terms['title']}. You have "
             f"{ORDER_ACCEPT_WINDOW_HOURS} hours to accept or decline."
@@ -1168,6 +1283,29 @@ def submit_proposal(
         note=note,
         author_role=models.AUTHOR_INFLUENCER,
         status=models.SUBMITTED,
+        # THE BRAND'S LICENCE, CARRIED FORWARD AND NEVER AUTHORED HERE.
+        #
+        # This is the creator's row, and the creator does not get to state how
+        # the brand may use the content: there is no licence field on
+        # ProposalIn, so there is nothing to take from the payload even if
+        # somebody wanted to. What this line does is keep the brand's own
+        # statement attached to the live version of the chain.
+        #
+        # It matters on a DIRECT ORDER, where the licence lives on the offer
+        # row rather than on the campaign. A creator countering the price
+        # writes a new version, that version becomes the one a contract is
+        # generated from, and left to default it would carry no licence at all
+        # — so generation would refuse with contract_licence_terms_missing and
+        # a creator would have killed their own deal by negotiating it.
+        #
+        # Null stays null for a brief, which is what a brief wants: there the
+        # licence is on the campaign and contracts._licence_snapshot reads it
+        # from there.
+        #
+        # The same shape and the same reasoning as expires_at just below, which
+        # is carried forward for a closely related reason: a counter is the same
+        # order, on the same clock, under the same licence.
+        licence_terms=latest.licence_terms if latest is not None else None,
         # Carried forward from whatever this version answers, exactly as
         # reply_to_proposal carries it the other way. This is how a creator
         # counters a direct order — there is no creator-side counter endpoint,
@@ -1344,6 +1482,15 @@ def reply_to_proposal(
         note=note,
         author_role=models.AUTHOR_BUSINESS,
         status=models.SUBMITTED,
+        # Carried forward, NOT re-stated, even though this version is the
+        # brand's own. ProposalReplyIn has no licence field on purpose: a reply
+        # counters the money and the date, which is what a negotiation moves,
+        # while the licence is what the creator has been reading since the
+        # order was placed. Changing it here would move what is being bought
+        # rather than what it costs, silently, with no creator-facing diff of a
+        # licence anywhere. A brand that wants different licence terms places a
+        # new order.
+        licence_terms=latest.licence_terms,
         # Carried forward, not restarted. A direct order that is being
         # negotiated is still the same order on the same clock; resetting the
         # window on every counter would let a chain run forever.
@@ -1433,6 +1580,18 @@ def _proposal_out(p: models.Proposal, identity: dict | None = None) -> dict:
         "status": p.status,
         "note": p.note,
         "author_role": p.author_role,
+        # THE LICENCE A DIRECT ORDER WAS PLACED UNDER, and the only way a
+        # creator ever sees one. An order's terms live on the brand's offer
+        # row, the creator meets that row as `proposal` on their invitation
+        # card, and accept and decline are addressed by its id — so a payload
+        # that carried the price without the licence would be asking somebody
+        # to accept terms they cannot read.
+        #
+        # Null on everything born of a brief, where the campaign carries it
+        # instead; the client reads this when it is there and the nested
+        # campaign's block otherwise, which is the same precedence
+        # contracts._licence_snapshot applies at generation.
+        "licence_terms": p.licence_terms,
         "expires_at": p.expires_at,
         # When this version was sent. A chain without timestamps is a list of
         # numbers; with them it is a conversation, and "they countered four
@@ -1569,9 +1728,9 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
 
     This list backs the invitation card, which is where a creator decides what
     to charge. Pricing a brief means seeing the brief: the deliverables as
-    stored (platform, type, quantity), the budget, the deadline, the title —
-    and who is asking, because the same deliverables are worth different money
-    to different buyers.
+    stored (platform, type, quantity), the budget, the deadline, the title,
+    the licence the brand is asking for — and who is asking, because the same
+    deliverables are worth different money to different buyers.
 
     Direct orders appear here too, and must: the creator is the invited party,
     and this is the surface where they find out somebody bought their package
@@ -1586,6 +1745,12 @@ def list_my_invitations(db: Session, influencer_user_id: str) -> list[dict]:
     detail is owner-only), so without it the creator would see an order they
     had no way to answer. `proposal_history` is every version, oldest first,
     which is what the brand has always had and the creator never did.
+
+    WHICH IS ALSO WHERE AN ORDER'S LICENCE ARRIVES. A brief states its licence
+    on the campaign, which is nested here whole; an order states it on the
+    brand's offer row, which is `proposal`. A client reads the proposal's block
+    when there is one and the campaign's otherwise, the same precedence
+    contracts._licence_snapshot applies when it freezes one onto a contract.
     """
     invitations = (
         db.query(models.CampaignInvitation)

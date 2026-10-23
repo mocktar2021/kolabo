@@ -27,10 +27,11 @@ from app.modules.contracts.router import router as contracts_router
 from app.modules.notifications.models import Notification
 from app.modules.profiles.models import Package
 
-# The party details both sides have to have stated before a contract can be
-# generated from anything at all. Shared with the three other suites that
-# reach contract generation; tests/party_fixtures.py carries the argument.
-from tests.party_fixtures import seed_both_parties
+# The party details both sides have to have stated, and the licence the brand
+# has to have stated, before a contract can be generated from anything at all.
+# Shared with the three other suites that reach contract generation;
+# tests/party_fixtures.py carries the argument.
+from tests.party_fixtures import LICENCE_TERMS, licence_terms, seed_both_parties
 
 
 @pytest.fixture()
@@ -92,6 +93,10 @@ def _setup(client, price=25000, currency="XOF", active=True, quantity=2):
         # generation. The fresh order in the expiry sweep is never accepted,
         # and every refusal involving the bystander is raised by
         # orders._load_order, which runs before the party gate.
+        #
+        # The licence generation also refuses without is not a property of
+        # either party: the brand states it on the order, so it is in _order
+        # below.
         seed_both_parties(db, biz.id, creator.id)
         pkg = Package(
             user_id=creator.id,
@@ -132,7 +137,18 @@ def _second_package(client, phone="+22990000004", price=15000):
 
 
 def _order(client, buyer, package_id, note=None):
-    body = {"package_id": package_id}
+    # The licence travels with the order even though every other term comes
+    # off the package, and that is the rule rather than a convenience: a
+    # package says what the creator will make and what it costs, while how the
+    # brand may then use it is a statement about the brand's own plans. The
+    # same package is sold to somebody who will post it once and to somebody
+    # who will run it as an advertisement for a year.
+    #
+    # Stated here, in the one helper every order in this file goes through,
+    # because that is where a real buyer states it: generation refuses without
+    # a licence (contract_licence_terms_missing), so an order placed with none
+    # is an order nobody can turn into a contract.
+    body = {"package_id": package_id, "licence_terms": licence_terms()}
     if note is not None:
         body["note"] = note
     return client.post("/campaigns/orders", json=body, headers=_headers(buyer))
@@ -189,6 +205,10 @@ def _stranger_chain(client, campaign_id, stranger_id, author_role=None, rate=300
 
     author_role defaults to the creator, which is what the old endpoint wrote.
     The accept test overrides it, for the reason stated there.
+
+    NO LICENCE, for the same reason the old endpoint wrote none: this row is a
+    creator's own, and a creator never states one. Every test using it is
+    refused before generation anyway.
     """
     db = client.session_factory()
     try:
@@ -235,6 +255,11 @@ def _publish_brief(client, biz):
             # (campaigns.board) and defaults to false, so this helper was
             # describing an open brief while building a closed one.
             "is_open": True,
+            # NO LICENCE, deliberately, unlike the orders this file places.
+            # Neither test that uses this brief reaches a contract, and a brief
+            # with no licence stated is a real and publishable state: the only
+            # thing it cannot do is become a contract. Stating one here would
+            # imply publishing requires it, which it does not.
         },
         headers=_headers(biz),
     )
@@ -259,6 +284,10 @@ def test_order_creates_campaign_invitation_and_proposal_from_package_terms(clien
     assert campaign.budget_currency == "XOF"
     assert campaign.deadline is None
     assert campaign.deliverables == [{"platform": "instagram", "type": "reel", "quantity": 2}]
+    # The licence is NOT on the wrapper campaign. On an order the brand's offer
+    # is the proposal, which is the row the creator reads and answers, so the
+    # block goes there and contracts._licence_snapshot reads it first.
+    assert campaign.licence_terms is None
 
     invitations = _rows(client, campaigns.CampaignInvitation, campaign_id=campaign.id)
     assert len(invitations) == 1
@@ -275,6 +304,9 @@ def test_order_creates_campaign_invitation_and_proposal_from_package_terms(clien
     assert proposal.timeline_days == campaigns_service.DEFAULT_ORDER_TIMELINE_DAYS
     assert proposal.status == campaigns.SUBMITTED
     assert proposal.note == "For the December launch"
+    # Every other term came off the package; this one came off the buyer, and
+    # it is stored exactly as sent because a contract quotes it verbatim.
+    assert proposal.licence_terms == LICENCE_TERMS
 
 
 def test_order_expires_in_48_hours_and_notifies_the_creator(client):
@@ -320,6 +352,86 @@ def test_ordering_requires_auth(client):
     assert client.post("/campaigns/orders", json={"package_id": pkg}).status_code == 401
 
 
+def test_an_order_with_a_half_stated_licence_is_refused(client):
+    """Option 2 without a duration is not a licence anybody can rely on.
+
+    Refused at the point the brand states it rather than later, which is the
+    whole reason capture is validated: the alternative is a stored block that
+    only fails when somebody tries to accept the order, by which time the
+    refusal has landed on the creator.
+
+    licence_terms_invalid naming the fields that are missing, as
+    party_details_invalid names its own. The option itself decides which they
+    are, so the sentence cannot name them without the values.
+    """
+    biz, creator, pkg = _setup(client)
+    r = client.post(
+        "/campaigns/orders",
+        json={
+            "package_id": pkg,
+            "licence_terms": {"licence_option": "2", "licence_duration": "douze mois"},
+        },
+        headers=_headers(biz),
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "licence_terms_invalid"
+    assert r.json()["values"]["fields"] == "licence_territories, licence_media"
+    # And nothing was written: a refused licence leaves no order behind.
+    assert _rows(client, campaigns.Campaign) == []
+    assert _rows(client, campaigns.Proposal) == []
+
+
+def test_an_order_with_an_unknown_licence_option_is_refused(client):
+    """Three options, and the refusal names all of them.
+
+    The set is closed because it IS Article 10 of the approved model: a fourth
+    option is a change to a document counsel signed off, not a configuration
+    value.
+    """
+    biz, creator, pkg = _setup(client)
+    r = client.post(
+        "/campaigns/orders",
+        json={"package_id": pkg, "licence_terms": {"licence_option": "4"}},
+        headers=_headers(biz),
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "licence_terms_invalid"
+    assert r.json()["values"]["options"] == "1, 2, 3"
+    assert _rows(client, campaigns.Campaign) == []
+
+
+def test_an_order_can_be_placed_with_no_licence_and_then_not_contracted(client):
+    """Capture is optional and generation is the gate, which is a real seam.
+
+    The columns are nullable because every brief and order written before this
+    existed has nothing in them, so an order with no licence is accepted and
+    sits there answerable. What it cannot do is become a contract, and the
+    refusal then lands on the CREATOR, who is the one accepting and the one
+    person who cannot fix it.
+
+    That asymmetry is pinned here rather than hidden, because it is the
+    argument for requiring a licence when an order is placed. Doing that is a
+    change to what both clients send; contracts/service.py says so beside the
+    refusal.
+    """
+    biz, creator, pkg = _setup(client)
+    placed = client.post(
+        "/campaigns/orders", json={"package_id": pkg}, headers=_headers(biz)
+    )
+    assert placed.status_code == 201
+    order = placed.json()
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].licence_terms is None
+
+    r = client.post(f"/campaigns/orders/{order['proposal_id']}/accept", headers=_headers(creator))
+    assert r.status_code == 400
+    assert r.json()["code"] == "contract_licence_terms_missing"
+    assert _rows(client, contracts.Contract) == []
+    # And the order is exactly as it was: the creator can still decline it,
+    # which is what a refusal written above the accepted-marking leaves them.
+    assert _rows(client, campaigns.Proposal, id=order["proposal_id"])[0].status == campaigns.SUBMITTED
+    assert _rows(client, campaigns.CampaignInvitation, campaign_id=order["campaign_id"])[0].status == campaigns.INVITED
+
+
 def test_a_direct_order_is_hidden_from_outsiders_but_visible_to_both_parties(client):
     """A direct order is a private transaction, not a brief anyone can bid on.
 
@@ -339,6 +451,10 @@ def test_a_direct_order_is_hidden_from_outsiders_but_visible_to_both_parties(cli
     invitations = client.get("/campaigns/invitations/mine", headers=_headers(creator)).json()
     assert [i["campaign_id"] for i in invitations] == [campaign_id]
     assert invitations[0]["campaign"]["is_direct"] is True
+    # The order's terms, on the row the creator answers. This list is the only
+    # creator-facing surface a direct order appears on, so it is the only place
+    # the licence can reach them before they accept.
+    assert invitations[0]["proposal"]["licence_terms"] == LICENCE_TERMS
 
     # A stranger sees it on no listing and cannot open it.
     assert client.get("/campaigns/mine", headers=_headers("stranger")).json() == []
@@ -387,6 +503,9 @@ def test_creator_accepts_and_a_contract_exists_on_the_package_terms(client):
     assert contract["timeline_days"] == campaigns_service.DEFAULT_ORDER_TIMELINE_DAYS
     assert contract["status"] == contracts.PENDING
     assert contract["fully_signed"] is False
+    # And the licence the order was placed under, frozen onto the contract off
+    # the offer row. test_contracts.py owns the snapshot rules.
+    assert _rows(client, contracts.Contract, id=contract["id"])[0].licence_terms == LICENCE_TERMS
 
     proposal = _rows(client, campaigns.Proposal, id=order["proposal_id"])[0]
     assert proposal.status == campaigns.PROPOSAL_ACCEPTED

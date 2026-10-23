@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
 import { useAuth } from "../lib/auth";
 import { formatDate } from "../lib/dates";
+import { licenceTermsFor } from "../lib/licenceTerms";
 import { directOrderOf } from "../lib/orders";
 import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
 import type { InvitationWithCampaign } from "../lib/campaignTypes";
@@ -198,8 +199,19 @@ function InvitationCard({ inv, onDone, onContract }: {
       {/* Between what is being asked for and the offer on the table, because
           that is the order the decision gets made in. A direct order is the
           sharpest case: the price is already named, Accept is a few lines
-          below, and accepting generates the contract. */}
-      <LicenceTermsNotice terms={c} />
+          below, and accepting generates the contract.
+
+          THE OFFER'S BLOCK FIRST, THE BRIEF'S SECOND, which is the backend's
+          precedence rather than this card's choice. A brief states its licence
+          on the campaign; a direct order states it on the brand's own proposal
+          row, because there the proposal IS the offer and the campaign behind
+          it is a wrapper nobody reads terms from. Passing `c` alone, which is
+          what this card used to do, printed "not stated" on every order while
+          the licence sat on the very proposal the Accept button is addressed
+          to. licenceTermsFor holds that rule once, and
+          contracts.service._licence_snapshot applies the same order when the
+          contract is written, so the creator reads what will be signed. */}
+      <LicenceTermsNotice terms={licenceTermsFor(live, c)} />
 
       {live ? (
         <Negotiation

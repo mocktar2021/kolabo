@@ -4,13 +4,24 @@
    slice creates, lists and publishes. Proposals and the negotiation thread are
    a later slice and their shapes land with it. */
 
+import type { LicenceTerms } from "./licenceTerms";
+
 /* A campaign deliverable uses `type`, not `deliverable_type` — that second
    spelling belongs to profile packages. The pair is validated against the
    platform catalog on the server, so DeliverableRows only ever builds a valid
    one. */
 export type Deliverable = { platform: string; type: string; quantity: number };
 
-export type Campaign = {
+/* THE CONTENT LICENCE ARRIVES AS AN INTERSECTION rather than as five more
+   lines spelled out here, so those pinned names are declared exactly once in
+   the mobile client. They are shared with the backend and the web app, and a
+   second copy of them in this file is a second place for a rename to miss.
+   lib/licenceTerms is where they live and what reads them.
+
+   They hang off a CAMPAIGN rather than off a proposal because a direct order
+   IS a campaign on this API (is_direct), so a brief and an order carry the
+   same clause and InvitationWithCampaign.campaign below gets it for free. */
+export type Campaign = LicenceTerms & {
   id: string;
   business_user_id: string;
   title: string;

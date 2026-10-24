@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core import ratelimit
+from app.core import ratelimit, turnstile
 from app.core.errors import AppError
 from app.modules.auth import account, schemas, service
 from app.modules.auth.deps import get_current_user_id
@@ -33,17 +33,12 @@ router = APIRouter()
 # auth_otp_capacity, which tells the reader to wait a few minutes without
 # blaming them, and that is what is true.
 #
-# LOGIN BORROWS `generic`, WHICH IS VAGUE, and that is a deliberate interim.
-# The honest sentence is "too many attempts from this connection, wait a few
-# minutes", and giving it one means a new code, which means adding a line to
-# web/src/lib/errorMessages.ts and mobile/src/lib/errorMessages.ts. Those are
-# 60 KB each of hand tuned copy in two languages, and the tooling this
-# repository is edited with rewrites a file whole, so the precise sentence
-# costs a 1,600 line rewrite of bilingual copy against a two line gain. That
-# is a change that deserves its own small diff and its own review, not a ride
-# along inside a security fix. KOL-139 carries it. Until then the status is
-# still 429, which every client can act on, and "try again in a moment" is
-# at least not false.
+# LOGIN HAS ITS OWN SENTENCE NOW. It shipped borrowing `generic` for one
+# release, because the honest wording needed a new code and a new code needs a
+# line in two 60 KB bilingual catalogues; that arrived separately as KOL-139,
+# which is why auth_rate_limited exists. It says "this connection" rather than
+# "you" on purpose: these markets run many subscribers behind carrier NAT, so
+# the address may be shared by people who have done nothing.
 #
 # See app/core/ratelimit.py for the numbers and the reasoning behind them.
 def _register_limit(request: Request) -> None:
@@ -68,8 +63,7 @@ def _login_limit(request: Request) -> None:
     if ratelimit.exceeded("login", ratelimit.LOGIN, request):
         raise AppError(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            # Vague on purpose and only for now. See the note above and KOL-139.
-            code="generic",
+            code="auth_rate_limited",
             detail="Too many attempts from this connection, wait a few minutes",
         )
 
@@ -83,6 +77,40 @@ def _reset_limit(request: Request) -> None:
         )
 
 
+# THE CHALLENGE, in front of the three endpoints a stranger can reach that
+# cost us something: an account, an email, a password reset. Not /verify-otp,
+# which is reached with a code we only send to somebody who already passed the
+# challenge on the way in, and where a second widget would be one more thing
+# between a person and the account they are three keystrokes from finishing.
+#
+# ONE DEPENDENCY FOR ALL THREE rather than one each, because unlike the rate
+# limits there is nothing per endpoint to say: same header, same verdict, same
+# refusal. The code is still a literal, written once, which is all
+# test_error_codes.py asks.
+#
+# WHAT EACH STATE DOES is in app/core/turnstile.py, including why a missing
+# token and a bad token are different questions and why one of them is a
+# setting. The short version: no secret key configured and this is a no-op.
+def _challenge(request: Request) -> None:
+    if not turnstile.configured():
+        return
+    token = request.headers.get(turnstile.HEADER, "")
+    if not token:
+        if turnstile.required():
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                code="auth_challenge_failed",
+                detail="This request did not carry a browser check",
+            )
+        return
+    if not turnstile.verify(token, ratelimit.client_ip(request)):
+        raise AppError(
+            status.HTTP_403_FORBIDDEN,
+            code="auth_challenge_failed",
+            detail="The browser check could not be confirmed",
+        )
+
+
 @router.post(
     "/register",
     response_model=schemas.RegisterResponse,
@@ -92,6 +120,7 @@ def register(
     payload: schemas.RegisterRequest,
     db: Session = Depends(get_db),
     _: None = Depends(_register_limit),
+    __: None = Depends(_challenge),
 ):
     """Register with an email address and receive an OTP. See KOL-12, KOL-13."""
     return service.register(db, payload)
@@ -112,6 +141,7 @@ def login(
     payload: schemas.LoginRequest,
     db: Session = Depends(get_db),
     _: None = Depends(_login_limit),
+    __: None = Depends(_challenge),
 ):
     """Log in a verified account."""
     return service.login(db, payload)
@@ -230,6 +260,7 @@ def request_password_reset(
     payload: schemas.PasswordResetRequest,
     db: Session = Depends(get_db),
     _: None = Depends(_reset_limit),
+    __: None = Depends(_challenge),
 ):
     """Ask for a reset code by email. Always 202, always the same body.
 

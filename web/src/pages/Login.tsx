@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
+import { TurnstileWidget } from "../components/TurnstileWidget";
 import { GoogleDivider, GoogleSignInButton } from "../components/GoogleSignInButton";
 import { api, type TokenResponse } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -53,6 +54,14 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* The Turnstile token, and the counter that redraws the widget.
+
+     The token is single use and expires after five minutes, so every attempt
+     spends it: `challenge` is cleared and `challengeRound` bumped in the
+     finally below, which makes the widget draw a fresh one for the next try.
+     Submission is never gated on having one. See components/TurnstileWidget. */
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [challengeRound, setChallengeRound] = useState(0);
 
   const tooShort = password !== "" && password.length < MIN_PASSWORD_LENGTH;
   const mismatch = confirm !== "" && confirm !== password;
@@ -64,7 +73,11 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/password-reset/request", { method: "POST", body: { email: email.trim() } });
+      await api("/auth/password-reset/request", {
+        method: "POST",
+        body: { email: email.trim() },
+        challenge
+      });
       setStep("code");
     } catch (err) {
       /* 429 is the ONE case this endpoint is not silent about, and the
@@ -76,6 +89,9 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
       setError(errorText(err, t));
     } finally {
       setBusy(false);
+      // Spent either way: a token is good for one verification.
+      setChallenge(null);
+      setChallengeRound((n) => n + 1);
     }
   }
 
@@ -114,6 +130,7 @@ function PasswordReset({ onDone, onCancel }: { onDone: () => void; onCancel: () 
             <input id="reset-email" className="input" type="email" autoComplete="email" inputMode="email"
               value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
+          <TurnstileWidget onToken={setChallenge} resetSignal={challengeRound} />
           <button className="btn btn-primary btn-block" type="submit" disabled={busy || !email.trim()}>
             {busy ? t("auth.working") : t("reset.request")}
           </button>
@@ -250,6 +267,14 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* The Turnstile token, and the counter that redraws the widget.
+
+     The token is single use and expires after five minutes, so every attempt
+     spends it: `challenge` is cleared and `challengeRound` bumped in the
+     finally below, which makes the widget draw a fresh one for the next try.
+     Submission is never gated on having one. See components/TurnstileWidget. */
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [challengeRound, setChallengeRound] = useState(0);
   const [resetting, setResetting] = useState(false);
   // Set by a completed reset, cleared by nothing: the person is about to sign
   // in with the password they just chose, and the line above the form is what
@@ -274,7 +299,11 @@ export default function Login() {
     setMaybeGoogleOnly(false);
     setBusy(true);
     try {
-      const res = await api<TokenResponse>("/auth/login", { method: "POST", body: { email, password } });
+      const res = await api<TokenResponse>("/auth/login", {
+        method: "POST",
+        body: { email, password },
+        challenge
+      });
       // The response carries the stored role; login persists it so the app
       // renders the right experience even after a logout wiped nothing but
       // the token.
@@ -287,6 +316,9 @@ export default function Login() {
       setMaybeGoogleOnly(looksLikeWrongPassword(err) && googleConfigured());
     } finally {
       setBusy(false);
+      // Spent either way: a token is good for one verification.
+      setChallenge(null);
+      setChallengeRound((n) => n + 1);
     }
   }
 
@@ -378,6 +410,7 @@ export default function Login() {
                       failed. See maybeGoogleOnly. */}
                   {maybeGoogleOnly && <div className="hint">{t("auth.googleWrongPassword")}</div>}
                 </div>
+                <TurnstileWidget onToken={setChallenge} resetSignal={challengeRound} />
                 <button className="btn btn-primary btn-block btn-lg" disabled={busy} type="submit">
                   {busy ? t("auth.working") : t("auth.submitLogin")}
                 </button>

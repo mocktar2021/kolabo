@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PasswordInput } from "../components/PasswordInput";
 import { Layout } from "../components/Layout";
+import { TurnstileWidget } from "../components/TurnstileWidget";
 import { GoogleDivider, GoogleSignInButton } from "../components/GoogleSignInButton";
 import { api, type RegisterResponse } from "../lib/api";
 import { errorText } from "../lib/errorMessages";
@@ -27,6 +28,14 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /* The Turnstile token, and the counter that redraws the widget.
+
+     The token is single use and expires after five minutes, so every attempt
+     spends it: `challenge` is cleared and `challengeRound` bumped in the
+     finally below, which makes the widget draw a fresh one for the next try.
+     Submission is never gated on having one. See components/TurnstileWidget. */
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [challengeRound, setChallengeRound] = useState(0);
 
   const roleLabel: Record<Role, { t: string; d: string }> = {
     influencer: { t: t("auth.roleInfluencer"), d: t("auth.roleInfluencerD") },
@@ -82,7 +91,8 @@ export default function Register() {
           country_code: country,
           role,
           ...(referralCode ? { referral_code: referralCode } : {})
-        }
+        },
+        challenge
       });
       localStorage.setItem("kolabo_role", role);
       navigate(`/verify?email=${encodeURIComponent(email)}`);
@@ -90,6 +100,9 @@ export default function Register() {
       setError(errorText(err, t));
     } finally {
       setBusy(false);
+      // Spent either way: a token is good for one verification.
+      setChallenge(null);
+      setChallengeRound((n) => n + 1);
     }
   }
 
@@ -141,6 +154,7 @@ export default function Register() {
                 <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
                 <div className="hint">8+ characters.</div>
               </div>
+              <TurnstileWidget onToken={setChallenge} resetSignal={challengeRound} />
               <button className="btn btn-primary btn-block btn-lg" disabled={busy} type="submit">
                 {busy ? t("auth.working") : t("auth.submitRegister")}
               </button>

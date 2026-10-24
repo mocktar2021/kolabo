@@ -392,6 +392,52 @@ class Settings(BaseSettings):
     # which is why it is a deliberate flag and not implied by the key.
     turnstile_required: bool = False
 
+    # ------------------------------------------------------------- feexpay
+    # THE PAYOUT PROVIDER, and that is the whole reason it exists. Until the
+    # FeexPay adapter there was no payout path in this backend for any
+    # country: FedaPay's live dashboard never grew a payouts menu after three
+    # weeks of asking, so a creator could be hired, deliver, have the brand
+    # approve, and reach a Payout row that no gateway could send. FeexPay is
+    # the provider where both legs are proven. See
+    # app/modules/payments/gateways/feexpay.py.
+    #
+    # UNSET MEANS ABSENT, NOT BROKEN, the same rule fedapay_secret_key and
+    # youtube_api_key follow. With no key the gateway is not built, not
+    # registered, and payouts fall through to whatever was there before.
+    #
+    # feexpay_api_key   the private key from the dashboard's Developpeurs page,
+    #   API card, "Cle privee" tab. A REAL SECRET: deploy/.env on the server,
+    #   never this repository, an image or a screenshot. Do not press
+    #   Regenerer once it is deployed; it invalidates the old one.
+    # feexpay_shop_id   the boutique id, sent on EVERY call in both legs. Not
+    #   a secret, and not optional: without it every request is a 400 rather
+    #   than a degraded mode, which is why the adapter takes it as a
+    #   constructor argument.
+    #
+    #   THE IP ALLOWLIST IS SCOPED PER BOUTIQUE, not per account, and this is
+    #   the configuration mistake most likely to be mistaken for a bad key.
+    #   The payout API refuses a correct key arriving from an address that is
+    #   not on that shop's IP list, with a 401 indistinguishable from a wrong
+    #   credential. A second shop later needs its own IP row. The adapter's
+    #   401 message says so, so that nobody rotates a working key over it.
+    feexpay_api_key: str = ""
+    feexpay_shop_id: str = ""
+    # The endpoint secret for inbound callbacks.
+    #
+    # PRESENT FOR SYMMETRY AND NOT YET LOAD BEARING. FeexPay's callback was
+    # never configured during the sandbox work, so the signature scheme has
+    # never been observed, and feexpay.verify_webhook REFUSES rather than
+    # guessing one: a wrong guess either rejects every real callback or
+    # accepts forged ones, and the second failure is silent and costs money.
+    # Setting this does not switch verification on. It is here so that the
+    # value has a home the day the scheme is measured.
+    feexpay_webhook_secret: str = ""
+    # Sandbox by default, so a deployment handed live keys without being told
+    # to use them stays in the test environment instead of moving real money.
+    # Going live is an explicit FEEXPAY_SANDBOX=false, exactly as
+    # fedapay_sandbox above works.
+    feexpay_sandbox: bool = True
+
     class Config:
         env_file = ".env"
 

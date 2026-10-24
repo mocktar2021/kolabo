@@ -162,11 +162,10 @@ class TestLoginIsThrottled:
 
         refused = _login(client, "203.0.113.7")
         assert refused.status_code == 429
-        # `generic` is an interim: the precise sentence needs a new code, which
-        # needs a line in two 60 KB bilingual catalogues. KOL-139. The status
-        # is what clients act on and it is right either way, which is why this
-        # asserts on both rather than on the code alone.
-        assert refused.json()["code"] == "generic"
+        # auth_rate_limited since KOL-139. It shipped as `generic` for one
+        # release because the sentence did not exist yet; this is the line
+        # that would have caught the switch being forgotten.
+        assert refused.json()["code"] == "auth_rate_limited"
 
     def test_one_address_running_out_does_not_lock_out_another(self, client):
         """The failure the global OTP ceiling has and this does not: one

@@ -182,6 +182,8 @@ export const error_fr = {
   auth_reset_too_many: "Trop de demandes de réinitialisation. Réessayez plus tard.",
   auth_otp_too_many: "Trop de codes de vérification demandés. Réessayez plus tard.",
   auth_otp_capacity: "Les codes de vérification sont momentanément indisponibles. Réessayez dans quelques minutes.",
+  auth_rate_limited: "Trop de tentatives depuis cette connexion. Attendez quelques minutes et réessayez.",
+  auth_challenge_failed: "Nous n'avons pas pu vérifier votre navigateur. Rechargez la page et réessayez.",
   auth_otp_delivery_failed: "Nous n'avons pas pu envoyer le code de vérification. Réessayez dans un instant.",
   auth_reset_code_invalid: "Ce code de réinitialisation est invalide ou expiré.",
 
@@ -548,6 +550,8 @@ export const error_en = {
   auth_reset_too_many: "Too many reset requests. Try again later.",
   auth_otp_too_many: "Too many verification codes requested. Try again later.",
   auth_otp_capacity: "Verification codes are temporarily unavailable. Try again in a few minutes.",
+  auth_rate_limited: "Too many attempts from this connection. Wait a few minutes and try again.",
+  auth_challenge_failed: "We could not verify your browser. Reload the page and try again.",
   auth_otp_delivery_failed: "We could not send the verification code. Try again in a moment.",
   auth_reset_code_invalid: "That reset code is invalid or expired.",
 

@@ -370,6 +370,28 @@ class Settings(BaseSettings):
     # is not the From address. Empty simply omits the header.
     mail_reply_to: str = ""
 
+    # CLOUDFLARE TURNSTILE, the challenge in front of register, login and
+    # password reset. The other half of the anti-abuse story: core/ratelimit.py
+    # raises the cost of a flood from one address, this one asks whether there
+    # is a browser there at all. See app/core/turnstile.py.
+    #
+    # UNSET MEANS NOTHING HAPPENS, the same rule fedapay_secret_key and
+    # youtube_api_key follow. Development and CI are untouched, and a box that
+    # has not been configured behaves exactly as it did before.
+    turnstile_secret_key: str = ""
+    # Whether a request arriving with NO token is refused, as opposed to one
+    # arriving with a bad one, which is always refused once the secret is set.
+    #
+    # A SECOND SWITCH BECAUSE OF THE PHONE. The mobile app sends no token and
+    # cannot easily be made to: Turnstile has no native React Native widget,
+    # and KOL-130 exists to keep this API working with the last store-approved
+    # build. Setting the secret protects the web, which always sends one.
+    # Turning this on closes the remaining hole, which is a caller that simply
+    # omits the header and looks like a phone, AND breaks every shipped mobile
+    # build in the same movement. That consequence belongs to whoever deploys,
+    # which is why it is a deliberate flag and not implied by the key.
+    turnstile_required: bool = False
+
     class Config:
         env_file = ".env"
 

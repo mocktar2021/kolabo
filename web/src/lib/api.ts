@@ -55,6 +55,16 @@ type Options = {
   method?: string;
   body?: unknown;
   token?: string | null;
+  /* A solved Turnstile token, for the three endpoints that ask for one.
+
+     NAMED RATHER THAN A GENERIC `headers` BAG, because a bag invites every
+     future caller to invent its own header and there is exactly one thing
+     this needs to carry. Null and undefined both mean "no token": the widget
+     may have failed, been blocked, or not finished, and the server decides
+     what an absent one means (app/core/turnstile.py). The header is never
+     sent empty, because an empty string is a token that would be verified and
+     refused rather than read as missing. */
+  challenge?: string | null;
 };
 
 /* The token to send: the caller's if they gave one, otherwise the session's.
@@ -97,6 +107,8 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = authFor(opts.token);
   if (token) headers.Authorization = `Bearer ${token}`;
+  /* Must match HEADER in backend/app/core/turnstile.py. */
+  if (opts.challenge) headers["cf-turnstile-response"] = opts.challenge;
 
   const res = await fetch(`${BASE}${path}`, {
     method: opts.method || "GET",

@@ -4,15 +4,18 @@
 #
 #   cd kolabo/deploy && bash backup.sh
 #
-# INSTALL IT AS A CRON JOB, because a backup somebody has to remember is not a
-# backup. As root on each box:
+# PUT IT ON A SCHEDULE, because a backup somebody has to remember is not a
+# backup. systemd/kolabo-backup.timer in this directory, installed by symlink
+# so a `git pull` updates it. See RESTORE.md section 3.2.
 #
-#   crontab -e
-#   17 2 * * * cd /root/kolabo/deploy && bash backup.sh >> /var/log/kolabo-backup.log 2>&1
+# A TIMER AND NOT CRON. These boxes are Debian 13 minimal and ship without a
+# crontab binary, and a timer is the better answer regardless: the failure this
+# ticket cares about is a schedule that quietly stopped, and a crontab that is
+# no longer there looks exactly like one that is, while
+# `systemctl list-timers` says when a timer last ran and when it runs next.
 #
-# 02:17 rather than 02:00 on purpose: every other cron on every other box runs
-# on the hour, and a dump competing with somebody else's for disk and CPU is
-# slower for no reason.
+# 02:17 rather than 02:00 on purpose: schedules cluster on the hour, and a dump
+# competing with somebody else's for disk and CPU is slower for no reason.
 #
 # WHAT THIS PROTECTS, and it is everything. verification_documents.ciphertext
 # and the social OAuth access and refresh tokens are LargeBinary columns in
@@ -75,7 +78,7 @@ flock -n 9 || die "another backup is already running"
 # otherwise run as this script's user, and that file holds POSTGRES_PASSWORD,
 # JWT_SECRET, DOCUMENT_ENCRYPTION_KEY and META_APP_SECRET.
 #
-# It matters more here than there. This script runs as root, from cron, with
+# It matters more here than there. This script runs as root, from a timer, with
 # nobody watching.
 get() {
   sed -n "s/^[[:space:]]*$1=//p" ./.env | tail -n 1 \

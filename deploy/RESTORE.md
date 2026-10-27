@@ -185,10 +185,15 @@ through the app first; the drill needs a `user_id` to hang the document off.
 
 ### 3.1 rclone and R2
 
-Free tier is 10 GB and a gzipped dump of this database is well under a
-megabyte, so the limit is not a concern for a long time. R2 is a different
-provider from the VPS, which is the point: a backup on the other Hostinger box
-does not survive losing the Hostinger account.
+R2 is a different provider from the VPS, which is the point: a backup on the
+other Hostinger box does not survive losing the Hostinger account.
+
+**The free tier is 10 GB and that is comfortable, not tight.** Measured rather
+than guessed: the dev box dumps to 6.4 MB gzipped, so 90 days of retention is
+about 580 MB per box and roughly 1.2 GB for both. An earlier version of this
+file said "well under a megabyte", which was wrong by a factor of six. Recheck
+the arithmetic if a dump ever gets into the tens of megabytes, because at 100
+MB a day two boxes would reach the free tier in a bit over six months.
 
 In the Cloudflare dashboard: **R2 -> Create bucket** (`kolabo-backups`), then
 **Manage R2 API Tokens -> Create API token**, Object Read and Write, scoped to
@@ -224,25 +229,49 @@ R2_KEEP_DAYS=90
 dumps, still verifies, and warns on every run that the dump exists only on that
 box. So the nightly backup can start before R2 is ready.
 
-### 3.2 The cron
+### 3.2 The schedule
 
-As root on each box:
+**These boxes ship without cron.** Debian 13 minimal has no `crontab` binary,
+and installing one would be the worse answer anyway. KOL-53 asks that backup
+failure be visible, and the usual failure is a schedule that quietly stopped
+weeks ago. A crontab that is no longer there looks exactly like one that is. A
+systemd timer can be interrogated.
 
-```bash
-crontab -e
-```
-
-```
-17 2 * * * cd /root/kolabo/deploy && bash backup.sh >> /var/log/kolabo-backup.log 2>&1
-```
-
-Confirm it took, and that a manual run works:
+The units live in the repository, so `git pull` updates them. As root on each
+box:
 
 ```bash
-crontab -l
-cd ~/kolabo/deploy && bash backup.sh
-tail -20 /var/log/kolabo-backup.log
+ln -sf /root/kolabo/deploy/systemd/kolabo-backup.service /etc/systemd/system/
+ln -sf /root/kolabo/deploy/systemd/kolabo-backup.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now kolabo-backup.timer
 ```
+
+Confirm it is scheduled, then force one run and read the result:
+
+```bash
+systemctl list-timers kolabo-backup.timer
+systemctl start kolabo-backup.service
+systemctl status kolabo-backup.service
+journalctl -u kolabo-backup.service -n 20 --no-pager
+```
+
+**After a `git pull` that changes either unit file, run `systemctl
+daemon-reload`.** The symlink points at the working tree, so the new content is
+there immediately, but systemd keeps its parsed copy until told otherwise.
+
+Three commands worth remembering, because they are the answer to "is the backup
+actually running":
+
+| Question | Command |
+|---|---|
+| When did it last run, when does it run next | `systemctl list-timers kolabo-backup.timer` |
+| How did the last run exit | `systemctl status kolabo-backup.service` |
+| What did it print, every run | `journalctl -u kolabo-backup.service` |
+
+`Persistent=true` is on, so a run missed because the box was down fires on the
+next boot rather than being skipped. That is the behaviour cron does not have
+and it matters most on the kind of box where you want backups.
 
 ### 3.3 What `backup.sh` refuses to do
 

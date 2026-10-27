@@ -1,0 +1,28 @@
+# When the nightly dump runs. KOL-53.
+#
+# A TIMER RATHER THAN CRON, and not only because the boxes ship without cron.
+# KOL-53 asks that backup failure be visible, and the common failure is a
+# schedule that quietly stopped weeks ago. A timer can be interrogated:
+#
+#   systemctl list-timers kolabo-backup.timer     when it last ran, when next
+#   systemctl status kolabo-backup.service        how the last run exited
+#   journalctl -u kolabo-backup.service           every run, with its output
+#
+# A crontab that is no longer there looks exactly like one that is.
+[Unit]
+Description=Kolabo nightly Postgres backup
+Documentation=file:/root/kolabo/deploy/RESTORE.md
+
+[Timer]
+OnCalendar=*-*-* 02:17:00
+# RUN A MISSED BACKUP ON BOOT. cron simply skips a run when the box is down at
+# the appointed minute, so a VPS rebooted across 02:17 silently has no backup
+# for that day. This catches up instead, which matters most on exactly the kind
+# of unstable box where you want backups.
+Persistent=true
+# Spread the start a little. Harmless here, and it keeps two boxes from hitting
+# the same provider disk at the same second if they ever share one.
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

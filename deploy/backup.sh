@@ -68,20 +68,45 @@ flock -n 9 || die "another backup is already running"
 
 # ------------------------------------------------------------------ the config
 [[ -f .env ]] || die "deploy/.env not found; run this from kolabo/deploy"
-# shellcheck disable=SC1091
-set -a; source ./.env; set +a
 
-: "${POSTGRES_USER:?POSTGRES_USER is not set in deploy/.env}"
-: "${POSTGRES_DB:?POSTGRES_DB is not set in deploy/.env}"
+# READ VALUES WITHOUT SOURCING THE FILE, which is the convention
+# checks/preflight-env.sh established and wrote the reason beside: nothing in
+# .env is executed, because a value containing a backtick or a $( would
+# otherwise run as this script's user, and that file holds POSTGRES_PASSWORD,
+# JWT_SECRET, DOCUMENT_ENCRYPTION_KEY and META_APP_SECRET.
+#
+# It matters more here than there. This script runs as root, from cron, with
+# nobody watching.
+get() {
+  sed -n "s/^[[:space:]]*$1=//p" ./.env | tail -n 1 \
+    | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
 
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/kolabo}"
-BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
-R2_REMOTE="${R2_REMOTE:-}"
-R2_KEEP_DAYS="${R2_KEEP_DAYS:-90}"
+POSTGRES_USER="$(get POSTGRES_USER)"
+POSTGRES_DB="$(get POSTGRES_DB)"
+[[ -n "$POSTGRES_USER" ]] || die "POSTGRES_USER is not set in deploy/.env"
+[[ -n "$POSTGRES_DB" ]] || die "POSTGRES_DB is not set in deploy/.env"
 
-case "$BACKUP_DIR" in
-  "$PWD"*|"$PWD/..") die "BACKUP_DIR is inside the git tree: $BACKUP_DIR" ;;
+BACKUP_DIR="$(get BACKUP_DIR)"; BACKUP_DIR="${BACKUP_DIR:-/var/backups/kolabo}"
+BACKUP_KEEP_DAYS="$(get BACKUP_KEEP_DAYS)"; BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
+R2_REMOTE="$(get R2_REMOTE)"
+R2_KEEP_DAYS="$(get R2_KEEP_DAYS)"; R2_KEEP_DAYS="${R2_KEEP_DAYS:-90}"
+
+# NOT INSIDE THE REPOSITORY, and the check is against the repository root
+# rather than against this directory. An earlier version compared with $PWD,
+# which is deploy/, so /root/kolabo/backups would have passed and then sat in
+# the working tree, one `git add -A` away from putting every user row and every
+# document ciphertext into this repository's history. That has nearly happened
+# once already, which is why deploy/README.md §9 carries the same warning.
+#
+# readlink -m rather than realpath: it canonicalises a path that does not exist
+# yet, which BACKUP_DIR usually does not on a first run.
+REPO_ROOT="$(cd .. && pwd -P)"
+BACKUP_ABS="$(readlink -m "$BACKUP_DIR")"
+case "$BACKUP_ABS/" in
+  "$REPO_ROOT"/*) die "BACKUP_DIR is inside the git tree ($REPO_ROOT): $BACKUP_DIR" ;;
 esac
+BACKUP_DIR="$BACKUP_ABS"
 
 # The box name is in the filename so that a shared bucket cannot confuse the
 # production dump with the dev one. Restoring the wrong box's data over a live

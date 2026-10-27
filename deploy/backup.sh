@@ -144,20 +144,42 @@ chmod 600 "$DEST"
 #
 # pg_dump writes a completion marker as the last line of its output, so the
 # presence of that line is proof the dump ran to the end rather than being
-# truncated. Checked on every run, and a dump that fails is deleted rather than
-# left to be found and trusted.
+# truncated. A completion marker on an empty database is still a completion
+# marker, so the users table is checked too: it is the one table no Kolabo
+# database can be missing. A dump failing either is deleted rather than left to
+# be found and trusted.
 log "verifying ${NAME}"
 gzip -t "$DEST" 2>/dev/null || { rm -f "$DEST"; die "the dump is not valid gzip"; }
 
-if ! gunzip -c "$DEST" | tail -5 | grep -q 'PostgreSQL database dump complete'; then
+# ONE AWK PASS, AND NO `grep -q` ANYWHERE. This shape exists because the
+# obvious version shipped and was wrong:
+#
+#   gunzip -c "$DEST" | grep -q PATTERN
+#
+# grep -q exits the instant it matches, which closes the pipe, which kills
+# gunzip with SIGPIPE, which under `set -o pipefail` fails the WHOLE PIPELINE
+# with 141 even though the match succeeded. A perfectly good dump was therefore
+# reported as "not a Kolabo database" and deleted, on the first real run.
+#
+# IT PASSED EVERY TEST, because the stubbed dump was seven lines: gunzip
+# finished writing before grep could exit, so there was no pipe left to break.
+# Exit 0 on a toy file and 141 on anything real. The marker check above it
+# survived only by accident, through a `tail -5` that reads to EOF.
+#
+# awk reads to EOF, so nothing closes the pipe early, and both checks happen in
+# one decompression rather than two.
+summary="$(gunzip -c "$DEST" | awk '
+  /CREATE TABLE (public\.)?users/    { u = 1 }
+  /PostgreSQL database dump complete/ { c = 1 }
+  END                                 { print u + 0, c + 0 }
+')"
+read -r has_users has_marker <<<"$summary"
+
+if [[ "$has_marker" != "1" ]]; then
   rm -f "$DEST"
   die "the dump has no completion marker, so it is truncated; deleted it"
 fi
-
-# A completion marker on an empty database is still a completion marker, so
-# check that the thing actually contains the tables we expect. `users` is the
-# one table no Kolabo database can be missing.
-if ! gunzip -c "$DEST" | grep -qE 'CREATE TABLE (public\.)?users'; then
+if [[ "$has_users" != "1" ]]; then
   rm -f "$DEST"
   die "the dump has no users table, so it is not a Kolabo database; deleted it"
 fi

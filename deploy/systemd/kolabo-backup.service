@@ -1,0 +1,27 @@
+# The nightly dump, as a systemd oneshot. KOL-53. Installed by symlink from
+# the repository, so a `git pull` updates it; see deploy/RESTORE.md.
+#
+# NO LOG REDIRECT, unlike the cron line this replaces. stdout and stderr go to
+# the journal, so the history is `journalctl -u kolabo-backup.service` rather
+# than a file that grows forever with nothing rotating it.
+[Unit]
+Description=Kolabo nightly Postgres backup
+Documentation=file:/root/kolabo/deploy/RESTORE.md
+# The dump runs `docker compose exec db pg_dump`, so there is no point starting
+# before docker is up. Wants rather than Requires: on a box where docker is
+# genuinely broken, this should fail with a readable error from the script
+# rather than be silently skipped by a dependency that never became ready.
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# THE REPOSITORY PATH IS HARDCODED because both boxes check out to the same
+# place, /root/kolabo, and a unit file that guesses is worse than one that
+# states. If that ever changes, this line and the Documentation= lines are
+# what to change.
+WorkingDirectory=/root/kolabo/deploy
+ExecStart=/usr/bin/env bash backup.sh
+# Generous: a dump of a growing database on a small VPS should be allowed to
+# take its time, and the flock in the script already prevents two overlapping.
+TimeoutStartSec=30min

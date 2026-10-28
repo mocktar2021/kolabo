@@ -154,6 +154,23 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      # So the backup_freshness job can read BACKUP_DIR/last-success, which
+      # deploy/backup.sh writes as its final act and only after the dump has
+      # passed verification. READ ONLY: this container must never be able to
+      # touch a dump, and the marker is the only thing it needs.
+      #
+      # THE SAME PATH ON BOTH SIDES, driven by the one setting both read from
+      # .env, so BACKUP_DIR means one thing in backup.sh, in this file and in
+      # the job. Mapping it to a different path inside would mean the job
+      # needed a second setting that had to agree with this line, which is one
+      # more thing to get wrong for no benefit.
+      #
+      # Docker creates the host directory if it is missing, as root and 0755;
+      # backup.sh chmods it to 700 on its first run. A box that mounts this and
+      # has no marker in it is reported as "no verified backup has ever
+      # completed here", which is the correct thing to say about it.
+      - ${BACKUP_DIR:-/var/backups/kolabo}:${BACKUP_DIR:-/var/backups/kolabo}:ro
     logging: *default-logging
     depends_on:
       db:

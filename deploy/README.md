@@ -273,17 +273,21 @@ Anything in that diff that is genuinely per box belongs in `deploy/caddy-extra/`
 
 ### Backups
 
-Nothing here backs up the database. For a dev environment that may be fine, but decide deliberately rather than by omission:
+`backup.sh` dumps the database, verifies the dump, uploads it off the box and prunes both copies. A systemd timer runs it nightly. **`deploy/RESTORE.md` is the file to read**: it covers the settings, the Cloudflare R2 and rclone setup, the timer, and the restore itself.
 
 ```bash
-mkdir -p ~/kolabo-backups
-docker compose -f docker-compose.prod.yml exec -T db \
-  pg_dump -U kolabo kolabo | gzip > ~/kolabo-backups/kolabo-$(date +%F).sql.gz
+cd ~/kolabo/deploy
+bash backup.sh                                     # one run, now
+systemctl list-timers kolabo-backup.timer          # is it still scheduled
+journalctl -u kolabo-backup.service -n 20 --no-pager
 ```
 
-**Note the destination, because the earlier version of this line did not have one** and therefore wrote the dump into `deploy/`, inside the git working tree. That is how a `kolabo-2026-09-01.sql.gz` came to be sitting there untracked, one `git add -A` away from putting every user row, every verification document ciphertext and every social OAuth token into the repository's history. `.gitignore` now covers `deploy/*.sql.gz` as well, but the right answer is not to write it there in the first place.
+Two things a dump does not carry, both covered in `RESTORE.md`:
 
-**A dump alone is not a recovery plan.** Restoring it without the matching `DOCUMENT_ENCRYPTION_KEY` leaves every verification document and every stored social token permanently unreadable, so the key has to be backed up separately and somewhere else. And a backup nobody has restored is not a backup: take a dump, restore it into a scratch database, confirm a document decrypts. Until that has been done once, treat the environment as unprotected.
+- **`DOCUMENT_ENCRYPTION_KEY` is not in it and never will be.** `backup.sh` writes it nowhere, on purpose. A dump restored without the matching key comes back looking fine, with users, contracts, escrows and payments all readable, and every verification document and every stored social token permanently unreadable ciphertext. Nothing warns you. The key belongs in a password manager.
+- **A backup nobody has restored is not a backup.** `RESTORE.md` section 2 is a drill that takes a dump, restores it into a scratch database and decrypts a known document out of it. Run it again after any change to `backup.sh` or the Postgres version.
+
+**Do not hand-roll a `pg_dump` one-liner here.** The earlier version of this section had one, with no destination, so it wrote the dump into `deploy/` inside the git working tree: one `git add -A` away from putting every user row, every verification document ciphertext and every social OAuth token into this repository's history. `.gitignore` now covers `deploy/*.sql.gz` and `backup.sh` refuses to write anywhere under the repository, but neither of those existed at the time.
 
 ---
 
@@ -318,5 +322,5 @@ docker compose -f docker-compose.prod.yml exec -T db \
 - **No log aggregation, metrics or alerting.** Diagnosis is `docker compose logs`.
 - **Payments are UEMOA-only** (Benin, Togo, Côte d'Ivoire). Ghana and Cameroon refuse by design — see `docs/PAYMENTS_FEDAPAY.md`.
 - **`ENV` is now a required choice and `.env.example` ships it empty.** Three behaviours read it, all of them wrong in the unsafe direction on a box left saying `development`: `auth/otp.py` prints every OTP code to the container logs, `gateway_router.py` advertises `mock_payments` so checkout can settle without money moving, and `main.py` serves `/docs`, `/redoc` and `/openapi.json`. `config.py` separately refuses to boot with `ENV=production` while `JWT_SECRET` or `DOCUMENT_ENCRYPTION_KEY` is a committed default, which is the one check `checks/preflight-env.sh` deliberately does not duplicate.
-- **No database backup exists.** §9 has the `pg_dump` one-liner and nothing runs it. This is the outstanding blocker for putting real users on any environment, dev box included.
+- ~~**No database backup exists**~~ **Resolved.** `backup.sh` runs nightly from a systemd timer on both boxes: it dumps, verifies the dump is complete, uploads it to a Cloudflare R2 bucket on a different provider, and prunes the box at 14 days and R2 at 90. The drill has been performed rather than described: a dump taken, restored into a scratch database, and a known verification document decrypted out of it. `deploy/RESTORE.md` is the whole story, §9 the short version. What is still missing is narrower than it was. Nothing watches for a *stale* success, so a timer that quietly stops firing is still something you have to go and look at, with `systemctl list-timers kolabo-backup.timer`.
 - **The dev box's caddy is a single point of failure for three products.** Kolabo, FastaNow and Educazzi all terminate TLS through one container that this repository ships, so a Kolabo deploy that breaks the edge breaks all three. Supported now rather than accidental (§5), and still the wrong shape: the edge is shared infrastructure and wants to be its own small project that each product joins, rather than a service inside one of them. Production is a separate box and fronts Kolabo alone, so this is a dev box question only.

@@ -195,26 +195,110 @@ file said "well under a megabyte", which was wrong by a factor of six. Recheck
 the arithmetic if a dump ever gets into the tens of megabytes, because at 100
 MB a day two boxes would reach the free tier in a bit over six months.
 
-In the Cloudflare dashboard: **R2 -> Create bucket** (`kolabo-backups`), then
-**Manage R2 API Tokens -> Create API token**, Object Read and Write, scoped to
-that bucket. Keep the account ID, access key ID and secret.
+#### The bucket and the token
 
-On each box:
+In the Cloudflare dashboard: **R2 Object Storage -> Create bucket**
+(`kolabo-backups`). Then, in the **Account Details** panel on that page,
+**Manage** next to **API Tokens -> Create Account API token**, permission
+**Object Read & Write**, scoped to that bucket, **no expiration**. Keep the
+account ID, the Access Key ID and the Secret Access Key: the secret is shown
+once.
+
+The general **Account API Tokens** builder also works, with the permission
+group *Workers R2 Storage Bucket Item* at Read and Edit scoped to the bucket.
+That is recorded because a previous version of this file blamed that flow for a
+403 it did not cause. See the jurisdiction note below for what actually caused
+it.
+
+#### NOTE THE BUCKET'S JURISDICTION. THIS IS THE ONE THAT COSTS AN HOUR.
+
+A bucket created in a jurisdiction is reachable **only** through that
+jurisdiction's endpoint:
+
+| Bucket | Endpoint |
+|---|---|
+| Automatic, no jurisdiction | `https://<accountid>.r2.cloudflarestorage.com` |
+| **EU** | `https://<accountid>.eu.r2.cloudflarestorage.com` |
+
+**`kolabo-backups` is an EU bucket, so it needs the `.eu.` endpoint.** The
+bucket list shows the jurisdiction as a small tag beside the name.
+
+Cloudflare answers a wrong-jurisdiction request with **403 Forbidden** and
+**AccessDenied**, saying nothing about endpoints, so it reads exactly like a
+permissions problem and sends you off to rebuild a token that was fine.
+
+#### rclone
+
+**Not the Debian package.** Debian 13 ships rclone v1.60.1 from 2022, and every
+R2 upload fails on the first attempt with `501 NotImplemented` and succeeds on
+the retry, deterministically. The backup still works, while logging an ERROR on
+every single run, which is how a job teaches you to ignore its errors.
+`backup.sh` refuses to run against anything below 1.70 for that reason.
+
+The official installer needs `unzip`, which the minimal image lacks:
 
 ```bash
+apt-get install -y unzip
 curl https://rclone.org/install.sh | sudo bash
-rclone config
+rclone version | head -1
 ```
 
-`n` for new remote, name it `r2`, storage `s3`, provider `Cloudflare`, then the
-access key and secret, region `auto`, and endpoint
-`https://<accountid>.r2.cloudflarestorage.com`. Leave the rest default.
-
-Check it:
+Write the config directly rather than using `rclone config`, so no credential
+reaches your shell history:
 
 ```bash
-rclone lsd r2:
+mkdir -p ~/.config/rclone
+read -rp  'Cloudflare account ID: ' ACC
+read -rp  'R2 Access Key ID: ' KID
+read -rsp 'R2 Secret Access Key: ' SEC; echo
+ACC=$(printf '%s' "$ACC" | grep -oE '[0-9a-f]{32}')
+cat > ~/.config/rclone/rclone.conf <<CONF
+[r2]
+type = s3
+provider = Cloudflare
+region = auto
+no_check_bucket = true
+access_key_id = $KID
+secret_access_key = $SEC
+endpoint = https://$ACC.eu.r2.cloudflarestorage.com
+acl = private
+CONF
+chmod 600 ~/.config/rclone/rclone.conf
+unset KID SEC
 ```
+
+Paste each `read` line **on its own**. Pasted as one block, `read` swallows the
+next line of the paste as the value.
+
+`region = auto` is what R2 expects. `no_check_bucket = true` matters more:
+rclone checks a bucket exists before acting, which is a bucket-level operation
+a correctly scoped token is denied.
+
+#### Checking it
+
+**Not `rclone lsd r2:`.** That lists buckets, an account-level operation your
+object-scoped token cannot do, so it returns 403 even when everything is
+correct. An earlier version of this file told you to verify with exactly that
+command.
+
+Do a round trip inside the bucket instead, which is what `backup.sh` actually
+needs:
+
+```bash
+echo "check $(date -u +%FT%TZ)" > /tmp/r2test.txt
+rclone copy /tmp/r2test.txt r2:kolabo-backups/
+rclone ls   r2:kolabo-backups
+rclone cat  r2:kolabo-backups/r2test.txt
+rclone delete r2:kolabo-backups/r2test.txt
+rclone ls   r2:kolabo-backups
+rm -f /tmp/r2test.txt
+```
+
+The file listed, its contents echoed, then an empty listing. That is write,
+read and delete confirmed, which covers the upload, the size check and the
+prune.
+
+#### The settings
 
 Then add to `deploy/.env` on each box:
 

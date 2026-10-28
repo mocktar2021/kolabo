@@ -26,6 +26,15 @@ WHY ITS OWN CONTAINER rather than a thread in the API process. A sweep that
 wedges — a gateway call with no timeout, a lock held on a big table — must not
 take request handling down with it, and its logs are much easier to read alone.
 
+A FIFTH JOB THAT MOVES NO MONEY, added later:
+
+    check_backup_freshness    is the nightly backup still happening at all?
+
+It is here rather than in a timer of its own because a watcher that shares a
+mechanism with the thing it watches is not a watcher. See
+jobs/backup_freshness.py, which explains that and what "visible" honestly means
+on a box with no alerting.
+
 FAILURE POLICY: every sweep is wrapped, and one blowing up neither stops the
 others in that pass nor kills the loop. A crashed sweeps container is silent
 money not moving, which is the exact failure this module exists to prevent, so
@@ -39,6 +48,7 @@ import time
 
 from app.core.db import SessionLocal, import_all_models
 from app.core.logging import configure_logging
+from app.jobs import backup_freshness
 from app.modules.payments import disputes, payouts
 from app.modules.payments import service as payments_service
 
@@ -78,6 +88,9 @@ JOBS = (
     ("non_delivery_refunds", payments_service.run_non_delivery_refunds),
     ("escalate_disputes", disputes.escalate_stale_disputes),
     ("pending_payouts", payouts.run_pending_payouts),
+    # Reads one file and touches no table. It takes a session it ignores so
+    # that this list stays one line per job; see its own docstring.
+    ("backup_freshness", backup_freshness.check_backup_freshness),
 )
 
 _running = True

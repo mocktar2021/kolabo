@@ -370,6 +370,52 @@ README's one-liner had no destination and wrote a dump into `deploy/`, one
 `git add -A` away from putting every user row and every document ciphertext
 into this repository's history.
 
+### 3.4 Who watches the schedule
+
+A nightly job does not usually fail loudly. It fails as a unit somebody
+disabled, a symlink that broke after a `git pull` with no `daemon-reload`, or a
+script that started exiting non-zero into a journal nobody reads. Weeks later
+somebody needs a restore and the newest dump is from last month. That is the
+failure KOL-53 names, and the three `systemctl` commands above only find it if
+somebody runs them.
+
+So the **sweeps container** reads `BACKUP_DIR/last-success` on every pass. It is
+there rather than in a second timer on purpose: a watcher that shares a
+mechanism with the thing it watches is not a watcher. If the timer system is
+what stopped, a watching timer stopped with it. The sweeps container is a
+different process under a different supervisor, already waking up every five
+minutes for reasons of its own.
+
+`docker-compose.prod.yml` bind mounts `BACKUP_DIR` into that container **read
+only**, at the same path inside as outside, so one setting means one thing in
+`backup.sh`, in the compose file and in the check. The container can read the
+marker and cannot touch a dump.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `BACKUP_MAX_AGE_HOURS` | 36 | How old the last verified backup may get. The timer is nightly, so a healthy gap is about 24. `0` switches the check off. |
+| `BACKUP_ALERT_INTERVAL_HOURS` | 24 | How often it may email `ADMIN_EMAILS`. The log gets a line every pass; `0` keeps the log line and sends no mail. |
+
+What it says, and where:
+
+```bash
+docker compose -f docker-compose.prod.yml logs sweeps | grep BACKUP
+```
+
+- `BACKUP STALE` with an age and the two commands to run next.
+- `BACKUP NEVER` when the directory is mounted and holds no marker at all,
+  which is a box that has prod compose and no verified backup.
+- `BACKUP UNREADABLE` when the marker is there and is not a timestamp.
+- Nothing at all when the directory is not mounted. A laptop on the
+  development compose file is not a box that failed to back up, and a logger
+  that cries wolf is one an operator learns to ignore.
+
+**Two things it cannot promise, stated so that silence is not read as health.**
+The email path swallows its own delivery failures by design, so a Resend outage
+leaves the warning in the sweeps log only. And `ADMIN_EMAILS` empty means the
+warning reaches nobody; the check says that in the log too, once a day, rather
+than appearing to have sent something.
+
 ---
 
 ## 4. Retention

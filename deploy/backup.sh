@@ -202,6 +202,46 @@ if [[ -z "$R2_REMOTE" ]]; then
 elif ! command -v rclone >/dev/null 2>&1; then
   die "R2_REMOTE is set but rclone is not installed; see deploy/RESTORE.md"
 else
+  # THE VERSION LOOKUP LIVES IN HERE, after `command -v rclone` has passed,
+  # and that placement is the fix for a bug this script briefly had. Computed
+  # before the branch, `rclone version | head -1 | sed ...` is a pipeline whose
+  # first command does not exist on a box without rclone; under
+  # `set -o pipefail` that makes the assignment fail, and under `set -e` the
+  # script exits 127. Which killed the local-only backup, the one state this
+  # script explicitly promises to support.
+  RCLONE_MINOR="$(rclone version 2>/dev/null | head -1 \
+    | sed -n 's/^rclone v1\.\([0-9]\{1,\}\)\..*/\1/p')"
+
+  # DEBIAN 13 SHIPS v1.60.1 AND IT DOES NOT WORK PROPERLY WITH R2. Every
+  # upload failed on the first attempt with 501 NotImplemented and succeeded
+  # on the retry, deterministically, so the backup worked while logging an
+  # ERROR on every single run. A nightly job that cries wolf is how a real
+  # failure gets ignored, which is the exact thing this ticket's "backup
+  # failure is visible" criterion exists to prevent. v1.75.2 uploads cleanly.
+  #
+  # 70 IS A FLOOR KNOWN TO WORK, NOT THE PROVEN BOUNDARY. 1.60 is known bad
+  # and 1.75 known good; nothing between them was tested. Move it with
+  # evidence rather than by feel.
+  #
+  # Refusing rather than warning, because a warning here is one more line
+  # nobody reads. An unparseable version does not block: the guard is for the
+  # known-bad distro package, not a gate on unusual builds.
+  if [[ -n "$RCLONE_MINOR" && "$RCLONE_MINOR" -lt 70 ]]; then
+    die "rclone 1.${RCLONE_MINOR} is too old for R2 (needs 1.70+); see deploy/RESTORE.md section 3.1"
+  fi
+
+  # --s3-no-check-bucket ON EVERY RCLONE CALL HERE, not just the upload.
+  # rclone checks the bucket exists before acting, which is a BUCKET level
+  # operation, and a correctly scoped R2 token is denied it: the token grants
+  # object read and write inside one bucket and nothing above that. Without
+  # the flag rclone fails on the check before it ever attempts the real
+  # request. It shipped on the upload only, which would have left the size
+  # check and the prune failing against exactly the tokens we tell people to
+  # create.
+  #
+  # The operator's rclone config can also carry `no_check_bucket = true`, and
+  # RESTORE.md says to set it, but this script does not rely on that: a box
+  # configured by somebody else should still work.
   log "copying to ${R2_REMOTE}"
   rclone copyto "$DEST" "${R2_REMOTE}/${NAME}" --s3-no-check-bucket \
     || die "rclone could not upload to ${R2_REMOTE}"
@@ -209,7 +249,7 @@ else
   # Confirm it is THERE rather than trusting that the command exited zero. A
   # verified local dump and a successful-looking upload still leaves the
   # question of whether the bytes arrived, and that question is cheap to close.
-  REMOTE_SIZE="$(rclone size "${R2_REMOTE}/${NAME}" --json 2>/dev/null \
+  REMOTE_SIZE="$(rclone size "${R2_REMOTE}/${NAME}" --json --s3-no-check-bucket 2>/dev/null \
     | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')"
   LOCAL_SIZE="$(stat -c %s "$DEST")"
   if [[ "$REMOTE_SIZE" != "$LOCAL_SIZE" ]]; then
@@ -218,7 +258,7 @@ else
   log "ok: ${R2_REMOTE}/${NAME} (${LOCAL_SIZE} bytes)"
 
   if [[ "$R2_KEEP_DAYS" -gt 0 ]]; then
-    rclone delete "$R2_REMOTE" --min-age "${R2_KEEP_DAYS}d" \
+    rclone delete "$R2_REMOTE" --min-age "${R2_KEEP_DAYS}d" --s3-no-check-bucket \
       --include "kolabo-${BOX}-*.sql.gz" 2>/dev/null \
       || log "WARNING: remote prune failed; backups still uploaded fine"
   fi

@@ -831,6 +831,7 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
         Package,
         PortfolioItem,
         SocialAccount,
+        SocialToken,
         VerificationDocument,
     )
     from app.modules.trust_safety.models import Report, Review
@@ -859,6 +860,24 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     # portfolio_items reference media_assets, so they go before the assets.
     db.query(PortfolioItem).filter(PortfolioItem.user_id == user_id).delete(synchronize_session=False)
     db.query(MediaAsset).filter(MediaAsset.owner_user_id == user_id).delete(synchronize_session=False)
+    # social_tokens reference social_accounts, so they go before the accounts,
+    # and the join has to be done by hand because the child carries the only
+    # link: SocialToken has a social_account_id and no user_id of its own.
+    #
+    # LEAVING THIS OUT IS HOW ACCOUNT DELETION BROKE IN PRODUCTION. The FK
+    # fk_social_tokens_social_account_id has no ON DELETE CASCADE, so Postgres
+    # refused the DELETE on social_accounts with a ForeignKeyViolation, the
+    # request 500ed, and the only user who ever hit it was one who had
+    # connected a social account. An account with nothing connected deletes
+    # perfectly, which is why the 21 October cascade test passed and this
+    # survived until somebody connected Facebook. See KOL-144.
+    social_account_ids = [
+        row.id for row in db.query(SocialAccount.id).filter(SocialAccount.user_id == user_id).all()
+    ]
+    if social_account_ids:
+        db.query(SocialToken).filter(
+            SocialToken.social_account_id.in_(social_account_ids)
+        ).delete(synchronize_session=False)
     db.query(SocialAccount).filter(SocialAccount.user_id == user_id).delete(synchronize_session=False)
     db.query(VerificationDocument).filter(VerificationDocument.user_id == user_id).delete(synchronize_session=False)
     db.query(Package).filter(Package.user_id == user_id).delete(synchronize_session=False)

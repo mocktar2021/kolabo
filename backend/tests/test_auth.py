@@ -311,6 +311,63 @@ def test_delete_account_removes_user_and_dependents(client):
         db.close()
 
 
+def test_delete_account_takes_the_oauth_tokens_behind_a_connected_account(client):
+    """THE BUG THIS TEST EXISTS FOR, found in production on 29 October 2026.
+
+    The test above creates a SocialAccount and no SocialToken, so the foreign
+    key from social_tokens was never exercised and account deletion looked
+    healthy for months. The first creator to connect Facebook hit
+    fk_social_tokens_social_account_id, which has no ON DELETE CASCADE behind
+    it: Postgres refused the DELETE on social_accounts, the request 500ed, and
+    because Starlette's error handler sits outside CORSMiddleware the browser
+    reported it as "Failed to fetch" rather than as a server error. See
+    KOL-144.
+
+    THE ASSERTIONS ARE ON THE ROWS, NOT ON THE STATUS CODE, and that is the
+    point. SQLite does not enforce foreign keys unless asked, so the request
+    returns 204 here whether or not the tokens are deleted. A test that
+    stopped at the status code would have been green against the exact bug
+    that took production down.
+    """
+    from datetime import datetime
+
+    from app.modules.profiles.models import SocialAccount, SocialToken
+
+    token = _verified_token(client)
+    user_id = _user_id(client)
+
+    db = client.session_factory()
+    try:
+        account = SocialAccount(user_id=user_id, platform="facebook", handle="afrigossip", method="oauth")
+        db.add(account)
+        db.flush()
+        db.add(
+            SocialToken(
+                social_account_id=account.id,
+                access_token_ciphertext=b"not-a-real-token",
+                access_expires_at=datetime(2027, 1, 1),
+            )
+        )
+        db.commit()
+        account_id = account.id
+    finally:
+        db.close()
+
+    r = client.request("DELETE", "/auth/me", json={"password": PASSWORD}, headers=_auth_headers(token))
+    assert r.status_code == 204
+
+    db = client.session_factory()
+    try:
+        assert db.query(models.User).filter(models.User.id == user_id).first() is None
+        assert db.query(SocialAccount).filter(SocialAccount.user_id == user_id).first() is None
+        # The row that was left behind in production.
+        assert db.query(SocialToken).filter(SocialToken.social_account_id == account_id).first() is None
+        # And nothing orphaned anywhere in that table.
+        assert db.query(SocialToken).count() == 0
+    finally:
+        db.close()
+
+
 def test_delete_account_takes_own_credits_but_spares_the_other_half(client):
     """A credit belongs to whoever earned it. The leaving account's own rows
     go; rows where they were merely the source survive with the pointer
@@ -380,7 +437,6 @@ def test_registration_otp_is_rate_limited_per_account(client, sender):
     refused = _register(client)
     assert refused.status_code == 429
     assert refused.json()["code"] == "auth_otp_too_many"
-
     # THE HALF THAT IS ACTUALLY ABOUT THE BILL: the refusal sent nothing, and
     # wrote no fourth challenge either. Both are asserted because a future
     # _issue_otp could write the row without sending, or send without writing.

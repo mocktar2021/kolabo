@@ -277,11 +277,21 @@ def test_the_code_challenge_is_unpadded_s256():
     assert challenge == oauth.code_challenge("a" * 64)
 
 
-def test_no_provider_is_configured_by_default():
+def test_no_provider_is_configured_by_default(monkeypatch):
     """build_default_providers() is empty, exactly as build_default_enricher()
-    is a NoopEnricher: no platform in this repo has an OAuth client id or an
-    approved developer app, so there is nothing that could honestly be
-    registered."""
+    is a NoopEnricher: every provider is gated on its own credentials, this
+    repository ships none, and a deployment that has configured none gets the
+    registry #162 shipped.
+
+    EVERY PLATFORM'S CREDENTIALS ARE CLEARED EXPLICITLY, which the original
+    version of this test did not need to do because there was only one
+    provider and CI never set it. Two providers in, the implicit version was
+    asserting something about the environment of whoever ran it rather than
+    about this function."""
+    monkeypatch.setattr(oauth.settings, "meta_app_id", "")
+    monkeypatch.setattr(oauth.settings, "meta_app_secret", "")
+    monkeypatch.setattr(oauth.settings, "tiktok_client_key", "")
+    monkeypatch.setattr(oauth.settings, "tiktok_client_secret", "")
     assert oauth.build_default_providers() == {}
 
 

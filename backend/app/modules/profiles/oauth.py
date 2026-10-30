@@ -1,4 +1,4 @@
-"""OAuth against the social platforms: the mechanism, and the first provider.
+"""OAuth against the social platforms: the mechanism, and the providers.
 
 WHY THIS EXISTS. Connecting a social account is the one claim on this platform
 a creator cannot settle by typing. Before #162 every connection was a handle
@@ -19,14 +19,23 @@ film and no way to open either review. Meta is first because Meta is the one
 whose review can be opened from where we already stand: Business Verification
 is approved, the app exists, and what was missing was a working handshake.
 
-WHAT IS HERE. The shape of a provider, the registry that holds them, and one
-implementation. The mechanism itself is still proved against a FAKE provider in
-backend/tests/test_social_oauth.py, which needs no network, no developer
-account and no app review to run in CI; MetaOAuthProvider is proved separately
-in test_meta_oauth.py against a fake HTTP layer. Keeping those apart is
-deliberate: a change to Meta's endpoints must not be able to quietly weaken the
-state, encryption and rotation rules, and a change to those rules must fail in
-a file whose name says so.
+AND NOW IT IS. TikTok's app exists, its Login Kit is configured, and its
+provider is below. The order in the paragraph above held: Meta's handshake had
+to work before there was anything to film, the film opened Meta's review, and
+the same working mechanism is what TikTok's own review is now demonstrated
+against. Note what that does NOT mean. TikTok's provider is registered from
+credentials and is inert without them, so a deployment that has not been
+given a key is exactly as it was.
+
+WHAT IS HERE. The shape of a provider, the registry that holds them, and two
+implementations. The mechanism itself is still proved against a FAKE provider
+in backend/tests/test_social_oauth.py, which needs no network, no developer
+account and no app review to run in CI; each real provider is proved
+separately against a fake HTTP layer, in test_meta_oauth.py and
+test_tiktok_oauth.py. Keeping those apart is deliberate: a change to one
+platform's endpoints must not be able to quietly weaken the state, encryption
+and rotation rules, and a change to those rules must fail in a file whose name
+says so.
 
 THE SHAPE MIRRORS enrichment.py DELIBERATELY, and now in one more way than it
 used to. A Protocol, concrete implementations IN THE SAME MODULE beside it,
@@ -39,9 +48,11 @@ credentials build_default_providers() still returns an EMPTY registry and
 `oauth_platform_unsupported` is still the sentence a creator gets — a feature
 with no credentials reports itself unavailable rather than half working.
 
-THE THREE THINGS ABOUT META THAT ARE NOT LIKE THE OTHER PLATFORMS, stated here
-because the next provider author will read this docstring and should not carry
-them over:
+THE THREE THINGS ABOUT META THAT ARE NOT LIKE THE OTHER PLATFORMS. They were
+written down for the next provider author, and TikTok turned out to be the
+opposite of all three: it issues a refresh token, it rotates it, and the token
+it first hands back is the one to keep. TikTokOAuthProvider carries the
+matching list from its own side. Read both before writing a third.
 
   * IT ISSUES NO REFRESH TOKEN. Not "not for this grant" — none, ever. The
     protocol's refresh() is therefore unimplementable for Meta and says so out
@@ -845,6 +856,396 @@ class MetaOAuthProvider:
         return self._graph("me", {"fields": "id", "access_token": access_token}).get("id")
 
 
+# ---------------------------------------------------------------------------
+# TikTok (Login Kit)
+# ---------------------------------------------------------------------------
+
+# TWO HOSTS, SPLITTING THE SAME WAY META'S DO AND FOR THE SAME REASON. The
+# consent screen is served from www.tiktok.com; the token endpoint and every
+# data call go to open.tiktokapis.com. Pointing the dialog at the API host
+# does not error, it serves something that is not a consent screen.
+TIKTOK_AUTHORIZE_HOST = "https://www.tiktok.com"
+TIKTOK_API_HOST = "https://open.tiktokapis.com"
+
+# What a creator is asked for, and nothing beyond it. TikTok's App Review
+# guidelines are explicit that a scope left selected and not demonstrated in
+# the submitted video delays the result, so an unused entry here is not a
+# harmless extra, it is a slower review.
+#
+#   user.info.basic    open_id and display_name. Included in Login Kit itself
+#                      and not separately addable in the portal.
+#   user.info.profile  username, which is the @handle a creator recognises.
+#                      display_name is a changeable label; the username is
+#                      what their audience types.
+#   user.info.stats    follower_count, and the entire reason this provider
+#                      exists. See the module docstring: TikTok publishes no
+#                      handle lookup, so a token is not an optimisation here,
+#                      it is the only way to learn the number at all.
+#
+# COMMA SEPARATED, which is TikTok's spelling and not OAuth 2.0's space, the
+# same trap Meta sets one host over. A space-joined string is not rejected;
+# it is read as one scope with a strange name, granted to nobody, and the
+# handshake then succeeds carrying no permissions.
+TIKTOK_SCOPES = ("user.info.basic", "user.info.profile", "user.info.stats")
+
+# The fields read back once connected, each one paid for by a scope above.
+# Asking for a field whose scope was not granted does not fail the call, it
+# omits the field, which is why read_audience treats a missing value as None
+# rather than as an error.
+TIKTOK_AUDIENCE_FIELDS = ("username", "display_name", "follower_count")
+
+# What a token is assumed to be worth when TikTok does not say. Both numbers
+# are TikTok's own documented lifetimes rather than guesses, and they are only
+# the floor under a response that omits the field. Erring short is the safe
+# direction for the same reason it is for Meta: understating costs a creator
+# an early reconnection, overstating produces a connection that reports itself
+# healthy while every call it makes is refused.
+TIKTOK_ACCESS_FALLBACK_SECONDS = 24 * 60 * 60
+TIKTOK_REFRESH_FALLBACK_SECONDS = 365 * 24 * 60 * 60
+
+# The request fields whose VALUE is a credential, struck out of anything that
+# becomes an exception message or a log line.
+#
+# A DIFFERENT LEAK SURFACE FROM META'S, and worth saying why the same defence
+# is here anyway. Meta's calls are GETs, so its secrets ride in the url, which
+# is the exact shape that leaked in #183. These are POSTs with a form body, so
+# no credential is ever part of a url and the #183 mechanism cannot apply. The
+# redaction stays because the other half of that argument does: TikTok's
+# `error_description` is free text and nothing in TikTok's documentation
+# establishes that it cannot quote a request parameter back. Unverified, not
+# safe.
+#
+#   client_secret  acts as the whole Kolabo app rather than as one creator.
+#   code           the authorization code, still spendable at the moment a
+#                  first token call fails.
+#   refresh_token  a 365 day credential, and the longest lived secret this
+#                  subsystem handles.
+#   access_token   a creator's own bearer token, sent on the user info call.
+TIKTOK_CREDENTIAL_PARAMS = ("client_secret", "code", "refresh_token", "access_token")
+
+
+def _without_tiktok_credentials(message: str, params: dict) -> str:
+    """`message`, with every credential that was in `params` struck out of it."""
+    return redact(message, *(params.get(name) for name in TIKTOK_CREDENTIAL_PARAMS))
+
+
+class TikTokOAuthError(RuntimeError):
+    """A refusal from TikTok, reduced to the parts worth logging.
+
+    Its own class for the same reason MetaOAuthError is: `log_id` is the one
+    string TikTok support will ask for, and a body logged whole is unbounded
+    and routinely quotes its own input back, which at a token endpoint is a
+    token.
+
+    NEVER REACHES A CREATOR. oauth_service turns every exception out of a
+    provider into `oauth_exchange_failed` and logs this beside it.
+    """
+
+
+class TikTokOAuthProvider:
+    """TikTok's half of the handshake, over Login Kit v2.
+
+    THE THREE THINGS ABOUT TIKTOK THAT ARE NOT LIKE META, stated here because
+    the previous provider in this file sets every one of the opposite habits:
+
+      * THE ACCESS TOKEN LIVES 24 HOURS, not 60 days, and there IS a refresh
+        token, which lives 365 days. So refresh() is a real code path here
+        rather than the documented refusal it is for Meta, and it is load
+        bearing: a connection made today is dead tomorrow morning without it.
+      * THE REFRESH TOKEN ROTATES. Every refresh may return a different one,
+        and the old one stops working. Persisting whatever comes back is not
+        an optimisation, it is the difference between a connection that lasts
+        a year and one that dies on its second day. oauth_service.save_tokens
+        already carries that rule; this is the provider that finally exercises
+        it.
+      * THE TOKEN RESPONSE STATES THE GRANTED SCOPE. Meta's does not, which is
+        why MetaOAuthProvider writes scope=None rather than echoing back what
+        it asked for. TikTok sends `scope` as the comma separated list of what
+        the creator actually agreed to, so SocialToken.scope can hold the
+        answer to its own question for the first time.
+
+    NO PKCE, AND THAT IS TIKTOK'S RULE RATHER THAN A CHOICE MADE HERE.
+    TikTok's token documentation marks `code_verifier` as required only for
+    mobile and desktop apps; the web authorization request documents no
+    `code_challenge` parameter at all. This app is registered Web only. So the
+    verifier is accepted and forwarded nowhere, exactly as it is for Meta, and
+    for the same reason: a challenge an endpoint ignores is a claim of
+    protection that is not there. What actually protects this flow is the
+    client secret on a server-side exchange and the state row, which is the
+    whole security surface of the callback.
+
+    IF THE ANDROID OR IOS PLATFORM IS EVER ADDED TO THE APP, this changes. A
+    native client cannot hold the secret, PKCE becomes required rather than
+    optional, and `code_verifier` has to start being sent. The verifier is
+    already minted and stored for every handshake, so that day is a change to
+    this class alone.
+
+    ONE AUTHORIZATION IS ONE ACCOUNT, which is why there is no list_pages
+    here. Meta needs a picker because a person can administer several Pages
+    and nothing in the response says which one they sell; a TikTok creator who
+    authorises is the account. Nothing to choose, so nothing to ask.
+    """
+
+    platform = "tiktok"
+
+    def __init__(self, client_key: str, client_secret: str):
+        self.client_key = client_key
+        self.client_secret = client_secret
+
+    # -- the handshake -----------------------------------------------------
+
+    def authorize_url(self, state: str, code_verifier: str, redirect_uri: str) -> str:
+        """The consent screen, on www.tiktok.com.
+
+        `code_verifier` is accepted and NOT USED. See the class docstring for
+        the whole argument; the signature keeps it because the protocol offers
+        it, not because anything here wants it.
+        """
+        params = {
+            "client_key": self.client_key,
+            "scope": ",".join(TIKTOK_SCOPES),
+            "response_type": "code",
+            # Byte for byte the same string exchange_code will send, because
+            # both take it from oauth_service.redirect_uri. TikTok compares
+            # them and refuses a mismatch without naming either.
+            "redirect_uri": redirect_uri,
+            "state": state,
+        }
+        return f"{TIKTOK_AUTHORIZE_HOST}/v2/auth/authorize/?{urlencode(params)}"
+
+    def exchange_code(self, code: str, code_verifier: str, redirect_uri: str) -> TokenSet:
+        """Trade the callback's code for an access token and a refresh token.
+
+        ONE CALL, unlike Meta's two. There is no short-lived token to launder
+        into a long-lived one here: what the code buys is what gets stored.
+        """
+        body = self._token(
+            {
+                "client_key": self.client_key,
+                "client_secret": self.client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+                # No code_verifier. See the class docstring.
+            }
+        )
+        return self._tokens_from(body, "the token endpoint")
+
+    def refresh(self, refresh_token: str) -> TokenSet:
+        """Renew an expired access token, and store whatever comes back.
+
+        THE RETURNED REFRESH TOKEN MAY NOT BE THE ONE SENT. TikTok documents
+        that it rotates, and that when it differs the new value must be used.
+        This method does nothing special about that beyond returning it,
+        because the rule lives with the only caller that can honour it:
+        oauth_service.save_tokens persists a non-null refresh_token over the
+        stored one. The failure mode if that ever stops being true is quiet
+        and slow, which is what makes it worth naming twice: the connection
+        goes on working until the access token expires, then the next refresh
+        presents a retired credential and the creator reads that their TikTok
+        disconnected itself, a day or a week after the change that caused it.
+
+        NO redirect_uri AND NO code HERE, which is not an omission. TikTok's
+        refresh grant takes exactly four fields and refuses extras.
+        """
+        body = self._token(
+            {
+                "client_key": self.client_key,
+                "client_secret": self.client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            }
+        )
+        return self._tokens_from(body, "the refresh endpoint")
+
+    # -- what can be read once connected -----------------------------------
+
+    def read_audience(self, tokens: TokenSet) -> AudienceSnapshot | None:
+        """The creator's handle and follower count, or None.
+
+        NEVER RAISES, which is the AudienceReader contract and matters more
+        here than anywhere else in this provider: this runs AFTER the tokens
+        are stored, so an exception escaping would turn a connection that
+        succeeded into one the creator is told failed, over a follower count.
+
+        THE HANDLE IS `username`, NOT `display_name`, and the fallback order
+        is deliberate. display_name is a label a creator can change to
+        anything and two creators can share; username is the @handle their
+        audience types and the platform guarantees unique. A profile card
+        showing the display name would be showing the less identifying of the
+        two. display_name is used only when username is absent, which happens
+        when user.info.profile was not granted.
+
+        A MISSING FIELD IS None AND NOT AN ERROR. TikTok omits the fields
+        whose scope was declined rather than refusing the call, so a creator
+        who unticks the stats permission on the consent screen reaches here
+        with a readable response and no follower_count. None is the honest
+        record of that, and it is what keeps the connection standing.
+        """
+        params = {"fields": ",".join(TIKTOK_AUDIENCE_FIELDS)}
+        try:
+            res = httpx.get(
+                f"{TIKTOK_API_HOST}/v2/user/info/",
+                params=params,
+                headers={"Authorization": f"Bearer {tokens.access_token}"},
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            _log.warning(
+                "tiktok user/info: %s",
+                redact(f"{type(exc).__name__}: {exc}", tokens.access_token),
+            )
+            return None
+        try:
+            body = res.json()
+        except Exception:
+            _log.warning("tiktok user/info: HTTP %s, response was not JSON", res.status_code)
+            return None
+        if not isinstance(body, dict):
+            _log.warning("tiktok user/info: HTTP %s, response was not a JSON object", res.status_code)
+            return None
+
+        # A 200 IS NOT A SUCCESS ON THIS ENDPOINT. TikTok answers the user
+        # info call with HTTP 200 and an `error` object whose `code` is "ok"
+        # when all is well and something else when it is not. Reading only the
+        # status here would turn a refused token into an AudienceSnapshot full
+        # of Nones, which is indistinguishable from a creator who declined the
+        # scopes and would be written to their profile as fact.
+        failure = self._user_info_error(body)
+        if res.status_code >= 400 or failure:
+            _log.warning(
+                "tiktok user/info: HTTP %s: %s", res.status_code, failure or "(no error envelope)"
+            )
+            return None
+
+        user = (body.get("data") or {}).get("user")
+        if not isinstance(user, dict):
+            _log.warning("tiktok user/info: no user object in the response")
+            return None
+        handle = user.get("username") or user.get("display_name")
+        return AudienceSnapshot(
+            handle=str(handle) if handle else None,
+            follower_count=_int_at_least(user.get("follower_count"), 0),
+        )
+
+    # -- HTTP --------------------------------------------------------------
+
+    def _token(self, data: dict) -> dict:
+        """One POST against the token endpoint, or TikTokOAuthError.
+
+        RAISES RATHER THAN RETURNING None, the same way Meta's _graph does and
+        for the same reason: a failure here means there is no connection, so
+        it must be impossible to mistake for a call that succeeded and
+        returned nothing.
+
+        FORM ENCODED, NOT JSON, and this is the one that silently half works.
+        TikTok's token endpoint documents application/x-www-form-urlencoded.
+        httpx sends that when the body is passed as `data=`; passing the same
+        dict as `json=` produces a well formed request that the endpoint
+        answers with an error about a missing grant_type, which reads like a
+        bug in the parameters rather than in the encoding.
+
+        NO raise_for_status() ANYWHERE, deliberately, which is the habit
+        carried over from Meta's _graph: it is the one httpx call that renders
+        a url into an exception message, and this request body holds the
+        client secret. The status is read and the sentence is built here.
+        """
+        try:
+            res = httpx.post(
+                f"{TIKTOK_API_HOST}/v2/oauth/token/",
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=HTTP_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:  # DNS, connect, read timeout
+            raise TikTokOAuthError(
+                _without_tiktok_credentials(f"oauth/token: {type(exc).__name__}: {exc}", data)
+            ) from exc
+        try:
+            body = res.json()
+        except Exception as exc:
+            raise TikTokOAuthError(f"oauth/token: HTTP {res.status_code}: not JSON") from exc
+        if not isinstance(body, dict):
+            raise TikTokOAuthError(f"oauth/token: HTTP {res.status_code}: not a JSON object")
+
+        # THE TOKEN ENDPOINT'S ERROR SHAPE IS NOT THE USER INFO ENDPOINT'S,
+        # and they are two calls apart in the same file. Here `error` is a
+        # STRING beside `error_description` and `log_id`; on /v2/user/info/ it
+        # is an OBJECT carrying `code`. Treating either shape as the other
+        # reads a failure as a success.
+        failure = body.get("error")
+        if res.status_code >= 400 or failure:
+            parts = [
+                f"{key}={body[key]}"
+                for key in ("error", "error_description", "log_id")
+                if body.get(key)
+            ]
+            raise TikTokOAuthError(
+                _without_tiktok_credentials(
+                    f"oauth/token: HTTP {res.status_code}: "
+                    + (" ".join(parts) or "(no error envelope)"),
+                    data,
+                )
+            )
+        return body
+
+    def _tokens_from(self, body: dict, what: str) -> TokenSet:
+        """TikTok's token response, translated into a TokenSet.
+
+        SHARED BY BOTH GRANTS because TikTok documents the same seven fields
+        for each. Giving the refresh path its own copy would be two places for
+        the rotation rule to be got right and one place for it to be forgotten.
+        """
+        access_token = body.get("access_token")
+        if not access_token:
+            raise TikTokOAuthError(f"{what} returned no access_token")
+        refresh_token = body.get("refresh_token")
+        scope = body.get("scope")
+        open_id = body.get("open_id")
+        return TokenSet(
+            access_token=str(access_token),
+            # NOT None WHEN ABSENT ONLY BECAUSE save_tokens READS None AS
+            # "unchanged". On the first exchange a missing refresh_token would
+            # mean a connection that cannot survive its first day, and on a
+            # refresh it means keep the one already stored, which is correct
+            # for a provider that chose not to rotate this time.
+            refresh_token=str(refresh_token) if refresh_token else None,
+            access_expires_in=(
+                _int_at_least(body.get("expires_in"), 1) or TIKTOK_ACCESS_FALLBACK_SECONDS
+            ),
+            refresh_expires_in=(
+                _int_at_least(body.get("refresh_expires_in"), 1)
+                or TIKTOK_REFRESH_FALLBACK_SECONDS
+            ),
+            # THE GRANT, NOT THE REQUEST, and TikTok is the first provider
+            # here that can tell the difference. See the class docstring.
+            scope=str(scope) if scope else None,
+            # STRAIGHT OUT OF THE TOKEN RESPONSE, with no second call. Meta
+            # needs a /me round trip for this and treats its failure as fatal
+            # to the exchange; TikTok states open_id in the same body, so the
+            # duplicate-account risk that justified Meta's extra call does not
+            # arise.
+            provider_user_id=str(open_id) if open_id else None,
+        )
+
+    @staticmethod
+    def _user_info_error(body: dict) -> str:
+        """The user info envelope's failure, as a loggable string, or "".
+
+        `{"error": {"code", "message", "log_id"}}`, where code "ok" means
+        there was no failure. Read by name rather than logged whole: log_id is
+        what TikTok support asks for, and a body dumped verbatim is unbounded.
+        """
+        error = body.get("error")
+        if not isinstance(error, dict):
+            return ""
+        code = error.get("code")
+        if not code or str(code).lower() == "ok":
+            return ""
+        parts = [f"{key}={error[key]}" for key in ("code", "message", "log_id") if error.get(key)]
+        return " ".join(parts) or "(no error envelope)"
+
+
 def build_default_providers() -> dict[str, OAuthProvider]:
     """The providers this deployment can actually use, keyed by platform.
 
@@ -863,8 +1264,10 @@ def build_default_providers() -> dict[str, OAuthProvider]:
     which is the worst moment available to discover that a server is
     misconfigured.
 
-    TikTok's provider is added here beside its own `if settings.<...>` guard
-    once its Login Kit application is approved.
+    TWO PROVIDERS NOW, AND THEY ARE INDEPENDENT. A box with Meta's pair and
+    not TikTok's offers one connect button and refuses the other, which is the
+    normal state during either platform's review rather than a misconfigured
+    deployment.
     """
     providers: dict[str, OAuthProvider] = {}
     if settings.meta_app_id and settings.meta_app_secret:
@@ -876,6 +1279,21 @@ def build_default_providers() -> dict[str, OAuthProvider]:
             # version does not fail loudly here either: the dialog and the
             # token endpoint simply stop answering.
             settings.meta_graph_version,
+        )
+    if settings.tiktok_client_key and settings.tiktok_client_secret:
+        providers[TikTokOAuthProvider.platform] = TikTokOAuthProvider(
+            # WHICH PAIR THESE ARE IS INVISIBLE FROM HERE, and that is the
+            # design rather than an omission. TikTok requires a first-time app
+            # to be demonstrated from a sandbox, and a sandbox carries its own
+            # client key and secret beside the production pair on the same
+            # app. Both resolve the same registered redirect URI, so the swap
+            # from one to the other on approval is an edit to deploy/.env and
+            # a restart. Nothing in this file branches on it, and nothing
+            # should start to: a code path that knows it is talking to a
+            # sandbox is a code path that can behave differently in review
+            # from how it behaves in production.
+            settings.tiktok_client_key,
+            settings.tiktok_client_secret,
         )
     return providers
 

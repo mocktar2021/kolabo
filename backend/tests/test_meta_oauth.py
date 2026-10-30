@@ -188,6 +188,18 @@ def _provider():
 # --------------------------------------------------------------------------
 
 
+def _no_other_providers(monkeypatch):
+    """Clear every OTHER platform's credentials for a registry assertion.
+
+    NOT HOUSEKEEPING. These tests assert on the whole registry, so without
+    this they also assert that whoever is running them has no TikTok key in
+    their environment — which is true in CI and false on the machine of
+    anybody who has configured one. A test that passes or fails on an
+    unrelated ambient setting is a test that will eventually be ignored."""
+    monkeypatch.setattr(oauth.settings, "tiktok_client_key", "")
+    monkeypatch.setattr(oauth.settings, "tiktok_client_secret", "")
+
+
 def test_no_meta_credentials_still_means_no_provider_at_all(monkeypatch):
     """THE UNCHANGED-BEHAVIOUR TEST, and the reason this PR is inert until
     somebody configures it. With no app id and no secret the registry is empty,
@@ -195,6 +207,7 @@ def test_no_meta_credentials_still_means_no_provider_at_all(monkeypatch):
     oauth_platform_unsupported."""
     monkeypatch.setattr(oauth.settings, "meta_app_id", "")
     monkeypatch.setattr(oauth.settings, "meta_app_secret", "")
+    _no_other_providers(monkeypatch)
     assert oauth.build_default_providers() == {}
 
 
@@ -202,6 +215,7 @@ def test_both_credentials_register_the_facebook_provider(monkeypatch):
     monkeypatch.setattr(oauth.settings, "meta_app_id", APP_ID)
     monkeypatch.setattr(oauth.settings, "meta_app_secret", APP_SECRET)
     monkeypatch.setattr(oauth.settings, "meta_graph_version", VERSION)
+    _no_other_providers(monkeypatch)
     built = oauth.build_default_providers()
     assert set(built) == {"facebook"}
     assert isinstance(built["facebook"], oauth.MetaOAuthProvider)
@@ -220,6 +234,7 @@ def test_half_configured_is_treated_as_unconfigured(monkeypatch, app_id, app_sec
     moment to discover a server is misconfigured."""
     monkeypatch.setattr(oauth.settings, "meta_app_id", app_id)
     monkeypatch.setattr(oauth.settings, "meta_app_secret", app_secret)
+    _no_other_providers(monkeypatch)
     assert oauth.build_default_providers() == {}
 
 

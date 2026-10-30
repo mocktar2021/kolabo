@@ -8,10 +8,18 @@
    is held to, and it is why several sections are narrower than the product
    description would suggest:
 
-   Facebook is the only network a creator can CONNECT. socialPlatforms.ts sets
-   canConnect on one entry and the backend registers one provider, so the
-   guide says one. Eight networks can be declared by typing a handle, which is
-   a different thing, and the guide says that too rather than blurring them.
+   Facebook and TikTok are the networks a creator can CONNECT.
+   socialPlatforms.ts sets canConnect on two entries and the backend registers
+   two providers, so the guide says two. Eight networks can be declared by
+   typing a handle, which is a different thing, and the guide says that too
+   rather than blurring them.
+
+   THE SENTENCE TRACKS THE BUTTON, NOT THE APPROVAL, which is the rule that
+   kept it honest when Facebook shipped the same way. A connect button appears
+   as soon as a provider is registered, and a platform's own review decides
+   who it will actually authorise in the meantime. Writing the guide against
+   the approval instead would mean a creator reading that a button they can
+   see does not exist.
 
    Discover has four filters: category, country, platform, minimum followers.
    Not price, not city, not verified, not availability. The guide names four.
@@ -81,7 +89,7 @@ const fr = {
 
     socialTitle: "Vos réseaux sociaux",
     social1: "Vous déclarez un réseau en saisissant votre nom d'utilisateur. Huit réseaux sont acceptés : Instagram, TikTok, YouTube, Facebook, X, Snapchat, LinkedIn et WhatsApp.",
-    social2: "Facebook est le seul réseau que vous pouvez connecter aujourd'hui, et connecter n'est pas la même chose que déclarer : la connexion lit votre nombre d'abonnés directement depuis le réseau, ce qu'une saisie à la main ne fait pas. Les autres connexions arriveront.",
+    social2: "Facebook et TikTok sont les deux réseaux que vous pouvez connecter aujourd'hui, et connecter n'est pas la même chose que déclarer : la connexion lit votre nombre d'abonnés directement depuis le réseau, ce qu'une saisie à la main ne fait pas. Les autres connexions arriveront.",
     socialNote: "WhatsApp ne porte pas d'audience publique, donc aucun nombre d'abonnés ne lui est attaché.",
 
     packagesTitle: "Vos offres",
@@ -236,7 +244,7 @@ const en = {
 
     socialTitle: "Your social accounts",
     social1: "You declare an account by typing your username. Eight networks are accepted: Instagram, TikTok, YouTube, Facebook, X, Snapchat, LinkedIn and WhatsApp.",
-    social2: "Facebook is the only network you can connect today, and connecting is not the same as declaring: a connection reads your follower count from the network itself, which a typed number does not. The other connections are coming.",
+    social2: "Facebook and TikTok are the two networks you can connect today, and connecting is not the same as declaring: a connection reads your follower count from the network itself, which a typed number does not. The other connections are coming.",
     socialNote: "WhatsApp carries no public audience, so no follower count is attached to it.",
 
     packagesTitle: "Your packages",

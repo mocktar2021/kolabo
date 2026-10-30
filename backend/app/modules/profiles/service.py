@@ -710,7 +710,35 @@ def update_social_account(db: Session, user_id: str, account_id: str, payload: s
 
 
 def delete_social_account(db: Session, user_id: str, account_id: str) -> None:
+    """Disconnect one social account, and take its credentials with it.
+
+    THE TOKEN ROW GOES FIRST, AND LEAVING IT OUT WAS KOL-144 A SECOND TIME.
+    social_tokens.social_account_id is a foreign key with no ON DELETE, so
+    deleting an account that was CONNECTED rather than typed raises
+    fk_social_tokens_social_account_id and the request is a 500. A manually
+    added account has no token row, which is exactly why this went unnoticed:
+    every test and every creator who had ever pressed Delete was deleting a
+    handle somebody typed.
+
+    IT IS ALSO THE RIGHT THING ON ITS OWN, before any foreign key is
+    considered. The row holds a live bearer credential for somebody else's
+    account on somebody else's platform. A creator who presses Disconnect has
+    withdrawn permission, and keeping the token until the platform happens to
+    expire it is keeping a secret we were told to stop holding.
+
+    THE GENERAL RULE, since this is the second time: a row that points at
+    something being deleted has to be dealt with by the code doing the
+    deleting. Nothing in the schema will do it, and nothing in the test suite
+    will catch it by status code, because SQLite does not enforce foreign keys
+    by default and answers 204 to a delete Postgres refuses. The guard in
+    test_social_oauth.py asserts on ROWS for that reason, and sweeps every
+    foreign key pointing at social_accounts rather than naming this one table,
+    so the next table to point here is covered without anybody remembering.
+    """
     account = _require_own_social_account(db, user_id, account_id)
+    db.query(models.SocialToken).filter(
+        models.SocialToken.social_account_id == account_id
+    ).delete(synchronize_session=False)
     db.delete(account)
     db.commit()
 

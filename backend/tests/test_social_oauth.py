@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -981,3 +981,65 @@ def test_the_public_profile_never_carries_a_token(auth_client, monkeypatch):
     assert "access-1" not in body
     assert "refresh-1" not in body
     assert "ciphertext" not in body
+
+
+# --------------------------------------------------------------------------
+# Disconnecting: the credential goes with the account
+# --------------------------------------------------------------------------
+
+
+def test_disconnecting_a_connected_account_leaves_no_row_pointing_at_it(
+    auth_client, monkeypatch
+):
+    """KOL-144 IN A SECOND PLACE, found by a creator pressing Delete.
+
+    social_tokens.social_account_id is a foreign key with no ON DELETE, so
+    deleting a CONNECTED account without first removing its token raises
+    fk_social_tokens_social_account_id on Postgres. Every earlier test deleted
+    a handle somebody had TYPED, which has no token row, so the whole path
+    looked covered.
+
+    THE ASSERTION IS ON ROWS, NOT ON THE STATUS CODE, and that is the lesson
+    rather than a style choice. SQLite does not enforce foreign keys by
+    default, so this test answers 204 either way and a status assertion would
+    have passed against the broken code it was written to catch. The same
+    mistake made the first version of the KOL-144 regression test green over a
+    production that was still 500ing.
+
+    IT SWEEPS EVERY FOREIGN KEY RATHER THAN NAMING social_tokens, so the next
+    table that points at social_accounts is covered by this test on the day it
+    is created rather than on the day somebody remembers it exists.
+    """
+    _provider, uid, account_id = _connect(auth_client, monkeypatch, "+22990002062")
+    assert _stored_token(auth_client, account_id) is not None, "nothing to prove yet"
+
+    referencing = [
+        (table.name, column.name)
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if any(fk.target_fullname == "social_accounts.id" for fk in column.foreign_keys)
+    ]
+    assert referencing, "no foreign key points at social_accounts, so this proves nothing"
+
+    res = auth_client.delete(
+        f"/profiles/{uid}/social-accounts/{account_id}", headers=_headers(uid)
+    )
+    assert res.status_code == 204, res.text
+
+    db = auth_client.session_factory()
+    try:
+        leftovers = []
+        for table_name, column_name in referencing:
+            count = db.execute(
+                text(f"select count(*) from {table_name} where {column_name} = :aid"),
+                {"aid": account_id},
+            ).scalar()
+            if count:
+                leftovers.append(f"{table_name}.{column_name} still has {count} row(s)")
+        assert leftovers == [], leftovers
+        remaining = db.execute(
+            text("select count(*) from social_accounts where id = :aid"), {"aid": account_id}
+        ).scalar()
+        assert remaining == 0
+    finally:
+        db.close()

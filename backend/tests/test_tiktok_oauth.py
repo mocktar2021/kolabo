@@ -332,6 +332,19 @@ def test_the_authorize_url_is_on_tiktok_com_and_names_all_three_scopes():
     assert query["scope"] == ["user.info.basic,user.info.profile,user.info.stats"]
 
 
+def test_the_consent_screen_is_never_skipped_for_a_signed_in_account():
+    """disable_auto_auth=1, and it has to be sent rather than assumed.
+
+    TikTok documents 0 as "skip the authorization page for a valid session"
+    and 1 as "always show it", and does not document the default. Two things
+    break if the screen is skipped, and neither announces itself: a creator
+    reconnecting never sees the three permissions they are granting over
+    their own audience data, and the App Review demo video loses the only
+    frame where a reviewer can see the scopes named."""
+    url = _provider().authorize_url("the-state", "the-verifier", "https://api.example/cb")
+    assert parse_qs(urlparse(url).query)["disable_auto_auth"] == ["1"]
+
+
 def test_no_pkce_parameter_reaches_tiktok():
     """The verifier is accepted and forwarded nowhere.
 

@@ -820,14 +820,16 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     # imports of their models would invert the dependency direction.
     from app.modules.campaigns.models import Campaign, CampaignInvitation, Proposal
     from app.modules.contracts.models import Contract
+    from app.modules.deliverables.models import DeliverableSubmission
     from app.modules.discovery.models import Favorite
     from app.modules.messaging.models import Message
     from app.modules.notifications.models import Notification, NotificationPreference
-    from app.modules.payments.models import Escrow
+    from app.modules.payments.models import Dispute, DisputeMessage, Escrow
     from app.modules.profiles.models import (
         BusinessProfile,
         InfluencerProfile,
         MediaAsset,
+        OAuthState,
         Package,
         PortfolioItem,
         SocialAccount,
@@ -879,6 +881,13 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
             SocialToken.social_account_id.in_(social_account_ids)
         ).delete(synchronize_session=False)
     db.query(SocialAccount).filter(SocialAccount.user_id == user_id).delete(synchronize_session=False)
+    # oauth_states outlives the handshake it was written for. complete_authorization
+    # marks a state `consumed` rather than deleting it, so every social connect
+    # this account ever made has left a row here pointing at the user. It is the
+    # second half of the same bug as social_tokens, found the same way and missed
+    # the same way: the regression test built a connected account by writing the
+    # rows directly, so the flow that writes THIS one never ran. See KOL-144.
+    db.query(OAuthState).filter(OAuthState.user_id == user_id).delete(synchronize_session=False)
     db.query(VerificationDocument).filter(VerificationDocument.user_id == user_id).delete(synchronize_session=False)
     db.query(Package).filter(Package.user_id == user_id).delete(synchronize_session=False)
     db.query(InfluencerProfile).filter(InfluencerProfile.user_id == user_id).delete(synchronize_session=False)
@@ -912,6 +921,20 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     db.query(Review).filter(
         (Review.reviewer_user_id == user_id) | (Review.reviewee_user_id == user_id)
     ).delete(synchronize_session=False)
+    # Deliverables and disputes hang off a contract or an escrow, so the 409
+    # above should mean none exist by the time we get here. Deleted anyway, for
+    # exactly the reason the reviews line above gives: "should not exist" is a
+    # belief about today's code, and a users FK left dangling by legacy or test
+    # data turns that belief into a 500 on somebody's account deletion.
+    # dispute_messages before disputes, since the messages reference them.
+    db.query(DeliverableSubmission).filter(
+        (DeliverableSubmission.submitted_by_user_id == user_id)
+        | (DeliverableSubmission.reviewed_by_user_id == user_id)
+    ).delete(synchronize_session=False)
+    db.query(DisputeMessage).filter(
+        DisputeMessage.author_user_id == user_id
+    ).delete(synchronize_session=False)
+    db.query(Dispute).filter(Dispute.opened_by_user_id == user_id).delete(synchronize_session=False)
     db.query(Report).filter(Report.reporter_user_id == user_id).delete(synchronize_session=False)
     db.query(OtpChallenge).filter(OtpChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user_id).delete(synchronize_session=False)

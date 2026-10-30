@@ -1010,6 +1010,28 @@ class TikTokOAuthProvider:
             # them and refuses a mismatch without naming either.
             "redirect_uri": redirect_uri,
             "state": state,
+            # ALWAYS SHOW THE CONSENT SCREEN, NEVER SKIP IT FOR A SIGNED IN
+            # ACCOUNT. TikTok documents disable_auto_auth as 0 meaning the
+            # authorization page is skipped for a valid session and 1 meaning
+            # it is always shown. The default is not documented, which is
+            # reason enough to state it rather than inherit it.
+            #
+            # TWO SEPARATE ARGUMENTS FOR 1, and the second is the durable one:
+            #
+            #   * A RECONNECTION SHOULD SHOW WHAT IT GRANTS. A creator coming
+            #     back after a year, or reconnecting because something broke,
+            #     is granting three permissions over their own audience data.
+            #     Silently reusing an old consent to hand us a fresh token
+            #     saves one tap and costs them the only moment where they see
+            #     what they are agreeing to.
+            #   * APP REVIEW NEEDS THE SCREEN ON FILM. TikTok requires every
+            #     selected scope to be demonstrated in the demo video, and the
+            #     consent screen is where a reviewer sees them named. A
+            #     skipped screen means a re-recording, and the only way to get
+            #     it back would be revoking Kolabo from inside TikTok's own
+            #     settings first, which is a step that will be forgotten
+            #     exactly once and will not announce itself.
+            "disable_auto_auth": 1,
         }
         return f"{TIKTOK_AUTHORIZE_HOST}/v2/auth/authorize/?{urlencode(params)}"
 

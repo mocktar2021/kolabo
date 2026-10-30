@@ -277,10 +277,29 @@ function SocialSection({ userId, token }: { userId: string; token: string | null
     }
   }
 
+  /* THE CATCH THAT USED TO BE HERE SWALLOWED EVERY FAILURE, and it hid a live
+     bug for as long as the bug existed. `.catch(() => undefined)` followed by
+     load() means a refused DELETE repaints the same list and the button looks
+     like it does nothing at all: no error, no spinner, no change. That is
+     exactly how a creator found that disconnecting a CONNECTED account was
+     500ing on the server, and the only reason it took a person to find it is
+     that the screen could not say so.
+
+     Written the same way as add() and save() above rather than cleverly: the
+     error goes to the same setError the rest of this component uses, so a
+     refusal reads as a sentence in the same place every other refusal does. */
   async function remove(id: string) {
     if (!window.confirm(t("profile.socialDeleteConfirm"))) return;
-    await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token }).catch(() => undefined);
-    load();
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/profiles/${userId}/social-accounts/${id}`, { method: "DELETE", token });
+      load();
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function add(handle: string) {

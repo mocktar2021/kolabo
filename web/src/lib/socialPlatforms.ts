@@ -24,7 +24,7 @@ export type SocialPlatform = {
 
 export const SOCIAL_PLATFORMS: SocialPlatform[] = [
   { id: "instagram", label: "Instagram", prefix: "instagram.com/", hasAudience: true, canConnect: false },
-  { id: "tiktok", label: "TikTok", prefix: "tiktok.com/@", hasAudience: true, canConnect: false },
+  { id: "tiktok", label: "TikTok", prefix: "tiktok.com/@", hasAudience: true, canConnect: true },
   { id: "youtube", label: "YouTube", prefix: "youtube.com/@", hasAudience: true, canConnect: false },
   { id: "facebook", label: "Facebook", prefix: "facebook.com/", hasAudience: true, canConnect: true },
   { id: "x", label: "X", prefix: "x.com/", hasAudience: true, canConnect: false },
@@ -65,21 +65,28 @@ export function platformHasAudience(platformId: string): boolean {
 
    canConnect answers one question: is there an OAuth provider on the server
    that POST /profiles/oauth/{platform}/start can hand back an authorize_url
-   for? Exactly one platform answers yes today, because
+   for? Two platforms answer yes, because
    oauth.build_default_providers in backend/app/modules/profiles/oauth.py
-   registers exactly one provider, MetaOAuthProvider, whose `platform` is
-   "facebook". Every other id here would get `oauth_platform_unsupported`, so
-   a Connect button on one of them is a button whose only possible outcome is
-   a refusal.
+   registers MetaOAuthProvider and TikTokOAuthProvider, whose `platform`
+   values are "facebook" and "tiktok". Every other id here would get
+   `oauth_platform_unsupported`, so a Connect button on one of them is a
+   button whose only possible outcome is a refusal.
 
-   THE DRIFT IS REAL AND IT RUNS ONE WAY. The day TikTok's Login Kit is
-   approved and a second provider is registered on the server, nothing in this
-   repository fails: the web app goes on not offering the button, and a
-   working backend feature has no way in. Nothing in CI can catch it either,
-   because this file has no way to read a Python dict. The fix is not a
-   sharper comment, it is a server endpoint that lists the configured
-   providers, which this list would then be replaced by rather than kept in
-   step with.
+   AND EITHER OF THOSE TWO CAN STILL REFUSE, because each provider is
+   registered only when its own credentials are set. A box with no TikTok key
+   offers the button and answers the click with
+   `oauth_platform_unsupported` — the safe direction described below, and the
+   normal state of a deployment while an app is waiting on review.
+
+   THE DRIFT IS REAL AND IT RUNS ONE WAY, and this change is the predicted
+   case rather than a new one. A provider registered on the server with a
+   false here means the web app goes on not offering a working feature, and
+   nothing fails: not CI, which has no way to read a Python dict from
+   TypeScript, and not the server, which is simply never asked. The fix is
+   still not a sharper comment, it is a server endpoint that lists the
+   configured providers, which this list would then be replaced by rather
+   than kept in step with. That endpoint is worth more with every provider
+   added.
 
    The other direction is safe, which is why a literal is worth shipping in
    the meantime: a true here for a platform the server has no provider for

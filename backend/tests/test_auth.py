@@ -368,6 +368,94 @@ def test_delete_account_takes_the_oauth_tokens_behind_a_connected_account(client
         db.close()
 
 
+def test_delete_account_leaves_no_row_anywhere_pointing_at_the_user(client):
+    """The generic sweep, written after the specific test above missed a table.
+
+    THE SPECIFIC TEST CHEATED AND THAT IS WHY PRODUCTION STILL BROKE. It built
+    a connected account by inserting the SocialAccount and the SocialToken
+    straight into the database, which is the end state the OAuth flow produces
+    and not the whole of it. The real flow also writes an oauth_states row, and
+    complete_authorization marks it `consumed` rather than deleting it, so it
+    outlives the handshake and keeps pointing at the user forever. Deleting an
+    account that had ever connected Facebook still answered
+    ForeignKeyViolation on fk_oauth_states_user_id.
+
+    So this one does not name tables. It walks the metadata for every column
+    whose foreign key targets users.id and asserts no row anywhere still
+    references the deleted account. A table added next year is covered by it
+    without anybody remembering this file exists, which a hand-written list of
+    assertions never is.
+
+    IT ONLY CATCHES WHAT THE FIXTURE CREATES, which is the honest limit. The
+    seed below is the full footprint of a creator who has connected a social
+    account, because that is the shape that has now broken twice.
+    """
+    from datetime import datetime
+
+    from app.core.db import Base
+    from app.modules.profiles.models import OAuthState, SocialAccount, SocialToken
+
+    token = _verified_token(client)
+    user_id = _user_id(client)
+
+    db = client.session_factory()
+    try:
+        account = SocialAccount(user_id=user_id, platform="facebook", handle="afrigossip", method="oauth")
+        db.add(account)
+        db.flush()
+        db.add(
+            SocialToken(
+                social_account_id=account.id,
+                access_token_ciphertext=b"not-a-real-token",
+                access_expires_at=datetime(2027, 1, 1),
+            )
+        )
+        # The row the flow leaves behind and the first test never created.
+        db.add(
+            OAuthState(
+                state="a-state-nobody-will-reuse",
+                code_verifier="a-verifier",
+                user_id=user_id,
+                platform="facebook",
+                expires_at=datetime(2027, 1, 1),
+                consumed=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.request("DELETE", "/auth/me", json={"password": PASSWORD}, headers=_auth_headers(token))
+    assert r.status_code == 204
+
+    # Every column in the schema whose foreign key points at users.id.
+    referencing = [
+        (table.name, column.name)
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if any(fk.target_fullname == "users.id" for fk in column.foreign_keys)
+    ]
+    # If this is ever empty the sweep is asserting nothing at all, which is a
+    # worse failure than the bug it was written for.
+    assert len(referencing) >= 10, referencing
+
+    db = client.session_factory()
+    try:
+        from sqlalchemy import text
+
+        leftovers = []
+        for table_name, column_name in referencing:
+            count = db.execute(
+                text(f"select count(*) from {table_name} where {column_name} = :uid"),
+                {"uid": user_id},
+            ).scalar()
+            if count:
+                leftovers.append(f"{table_name}.{column_name} still has {count} row(s)")
+        assert leftovers == [], leftovers
+    finally:
+        db.close()
+
+
 def test_delete_account_takes_own_credits_but_spares_the_other_half(client):
     """A credit belongs to whoever earned it. The leaving account's own rows
     go; rows where they were merely the source survive with the pointer

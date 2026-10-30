@@ -307,6 +307,37 @@ class Settings(BaseSettings):
     # screenshot.
     meta_app_id: str = ""
     meta_app_secret: str = ""
+    # The TikTok APP's own credentials, for the Login Kit handshake in
+    # profiles/oauth.py that connects a creator's TikTok account.
+    #
+    # THE SAME GATE AS THE META PAIR ABOVE, and for the same reason: with
+    # neither set, oauth.build_default_providers() does not register the
+    # provider and POST /profiles/oauth/tiktok/start answers
+    # `oauth_platform_unsupported`. Half-configured is treated as
+    # unconfigured, so a missing secret is a sentence a creator reads before
+    # the handshake rather than a 502 after they have already granted
+    # permissions on TikTok's consent screen.
+    #
+    # THE VALUE THAT GOES HERE DEPENDS ON WHERE THE APP IS IN REVIEW, which is
+    # the one thing about this pair that is not like Meta's. A first-time
+    # TikTok app cannot be demonstrated with production credentials at all:
+    # TikTok requires an unapproved app to prove its integration from a
+    # SANDBOX, and a sandbox issues its OWN client key and secret, distinct
+    # from the production pair on the same app. Both pairs point at the same
+    # registered redirect URI, so nothing in this codebase has to know which
+    # one it is holding.
+    #
+    # So the sequence is: while the app is in review, a box carries the
+    # SANDBOX pair and only the sandbox's target users can authorise. On
+    # approval, the two values are replaced with the production pair and the
+    # backend is restarted. That is an edit to deploy/.env, not a deployment,
+    # and no code path branches on it.
+    #
+    # THE SECRET IS A SECRET, on the same terms as meta_app_secret: anyone
+    # holding it can mint tokens as the Kolabo app. deploy/.env on the server,
+    # never this repository, an image, or a screenshot.
+    tiktok_client_key: str = ""
+    tiktok_client_secret: str = ""
     # Anthropic API key for AI drafted profile bios. Unset means the feature is
     # reported as unavailable rather than half working.
     anthropic_api_key: str = ""

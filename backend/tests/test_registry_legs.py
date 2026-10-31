@@ -88,7 +88,7 @@ def test_the_switch_without_credentials_is_loud_and_changes_nothing(
     with caplog.at_level("ERROR"):
         collections = registry.registry(registry.COLLECTIONS)
     assert isinstance(collections["BJ"], FedaPayGateway)
-    assert "FEEXPAY_COLLECTIONS is on" in caplog.text
+    assert "FEEXPAY_COLLECTIONS or FEEXPAY_PAYOUTS is on" in caplog.text
 
 
 # ------------------------------------------------------- the switch, thrown
@@ -197,3 +197,84 @@ def test_gateway_by_name_finds_a_gateway_that_only_does_payouts(only_fedapay):
 def test_gateway_by_name_still_finds_a_gateway_on_both_legs(only_fedapay):
     assert registry.gateway_by_name("fedapay") is not None
     assert registry.gateway_by_name("nobody") is None
+
+
+# ------------------------------------------------------------- the payout leg
+
+
+@pytest.fixture()
+def feexpay_payouts_on(monkeypatch, only_fedapay):
+    monkeypatch.setattr(registry.settings, "feexpay_api_key", "fx_key")
+    monkeypatch.setattr(registry.settings, "feexpay_shop_id", "EGCxXP0ydLLspx0")
+    monkeypatch.setattr(registry.settings, "feexpay_payouts", True)
+    registry.reset_registry()
+
+
+def test_the_payout_switch_moves_payouts_and_leaves_collections(feexpay_payouts_on):
+    """The mirror of the collections switch, and they are independent. Either
+    leg can move without the other, which is the whole reason the registry
+    was split."""
+    payouts = registry.registry(registry.PAYOUTS)
+    for country in FEEX_COUNTRIES:
+        assert isinstance(payouts[country], FeexPayGateway), country
+    for country in FEDA_COUNTRIES:
+        assert isinstance(
+            registry.registry(registry.COLLECTIONS)[country], FedaPayGateway
+        ), country
+
+
+def test_both_switches_share_one_gateway_object(monkeypatch, feexpay_payouts_on):
+    """One key, one shop, one base url. Two instances would be two HTTP
+    clients and two chances for a future per-instance cache to disagree with
+    itself about the same provider."""
+    monkeypatch.setattr(registry.settings, "feexpay_collections", True)
+    registry.reset_registry()
+    assert (
+        registry.registry(registry.COLLECTIONS)["BJ"]
+        is registry.registry(registry.PAYOUTS)["BJ"]
+    )
+
+
+def test_valid_modes_follows_the_routed_payout_gateway(feexpay_payouts_on):
+    """THE FORM CAN NO LONGER OFFER WHAT THE GATEWAY WILL REFUSE.
+
+    valid_modes used to read fedapay.PAYOUT_MODES whatever was routed, so a
+    creator in Benin was offered mtn_open while the gateway behind it
+    accepted MTN. Nothing surfaced that until a real payout failed, days
+    after they saved it."""
+    from app.modules.payments import payouts as payouts_module
+
+    modes = payouts_module.valid_modes("BJ")
+    assert "MTN" in modes
+    assert "mtn_open" not in modes
+
+
+def test_valid_modes_answers_fedapays_table_while_fedapay_holds_the_leg(only_fedapay):
+    """A change of SOURCE, not of answer, until somebody throws the switch."""
+    from app.modules.payments import payouts as payouts_module
+
+    assert payouts_module.valid_modes("BJ") == ("mtn_open", "moov", "sbin")
+
+
+def test_valid_modes_is_empty_where_nothing_is_routed(only_fedapay):
+    """set_payout_method turns this into payout_country_unsupported, which is
+    the honest answer. A dropdown of networks nobody can send to is worse
+    than saying so."""
+    from app.modules.payments import payouts as payouts_module
+
+    assert payouts_module.valid_modes("SN") == ()
+    assert payouts_module.valid_modes("ZZ") == ()
+
+
+def test_a_gateway_that_cannot_pay_out_offers_no_modes(only_fedapay):
+    """getattr, not an interface change. A collection-only gateway has no
+    business declaring payout networks and is not edited into compliance
+    with a method it has no use for."""
+    from app.modules.payments import payouts as payouts_module
+
+    class CollectOnly(_Fake):
+        pass
+
+    assert not hasattr(CollectOnly("collect-only"), "payout_modes")
+    registry.set_gateway("BJ", CollectOnly("collect-only"), registry.PAYOUTS)
+    assert payouts_module.valid_modes("BJ") == ()

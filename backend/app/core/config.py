@@ -496,6 +496,31 @@ class Settings(BaseSettings):
     # days later as creators not being paid. Moving payouts needs a migration
     # of those stored values first, and that is its own ticket.
     feexpay_collections: bool = False
+    # THE PAYOUT LEG, and the reason this exists after all.
+    #
+    # The collections switch above says there is deliberately no payout
+    # equivalent, because moving that leg would strand every creator holding
+    # a saved payout method in FedaPay's vocabulary. That reasoning was
+    # sound and the premise turned out to be empty: `payout_methods` has no
+    # rows on production, checked 31 October. There is nothing to strand.
+    #
+    # AND LEAVING PAYOUTS ON FEDAPAY IS NOT A SAFE DEFAULT, which is the part
+    # that matters more. FedaPay has no payout product: its live dashboard
+    # never grew the menu, which is the whole reason FeexPay was integrated.
+    # So a box with this off can take a brand's money, hold it in escrow,
+    # release it, and reach a Payout row no gateway can send. Off is not
+    # "the old behaviour", it is a leg that does not work.
+    #
+    # THE VOCABULARY TRAP IS STILL REAL, just not yet sprung. payout_methods
+    # .mode holds whatever the gateway of the day accepted: mtn_open and sbin
+    # from FedaPay, MTN and CELTIIS_BJ from FeexPay. Flipping this after
+    # creators have saved methods means migrating those rows. payouts
+    # .valid_modes now asks the routed gateway rather than a hardcoded table,
+    # so the FORM can never again offer a network the gateway will refuse,
+    # and a stored mode the current gateway does not accept fails loudly at
+    # send time with the accepted list in the message. That bounds the damage
+    # rather than removing it.
+    feexpay_payouts: bool = False
 
     class Config:
         env_file = ".env"

@@ -26,7 +26,19 @@ WHY ITS OWN CONTAINER rather than a thread in the API process. A sweep that
 wedges — a gateway call with no timeout, a lock held on a big table — must not
 take request handling down with it, and its logs are much easier to read alone.
 
-A FIFTH JOB THAT MOVES NO MONEY, added later:
+A SIXTH JOB, AND THE ONLY SETTLEMENT PATH ITS LEG HAS:
+
+    run_pending_collections   FINISH A COLLECTION THE PAYER ANSWERED LATE
+
+A mobile money collection sends a prompt to a handset. FeexPay accepts no
+callback url on that endpoint and there is no redirect back, so neither of
+the two triggers the checkout module was built around — webhook, return page
+— exists on that path. What settled a prompt was an open browser tab polling
+for four minutes, and on 31 October a real collection in Benin went
+SUCCESSFUL at the gateway while our row stayed pending with no escrow. This
+job is what asks after the tab is gone.
+
+A JOB THAT MOVES NO MONEY, added earlier:
 
     check_backup_freshness    is the nightly backup still happening at all?
 
@@ -49,7 +61,7 @@ import time
 from app.core.db import SessionLocal, import_all_models
 from app.core.logging import configure_logging
 from app.jobs import backup_freshness
-from app.modules.payments import disputes, payouts
+from app.modules.payments import checkout, disputes, payouts
 from app.modules.payments import service as payments_service
 
 # THIS CONTAINER HAS HAD THE httpx HOLE OPEN FOR LONGER THAN THE API HAS. The
@@ -88,6 +100,7 @@ JOBS = (
     ("non_delivery_refunds", payments_service.run_non_delivery_refunds),
     ("escalate_disputes", disputes.escalate_stale_disputes),
     ("pending_payouts", payouts.run_pending_payouts),
+    ("pending_collections", checkout.run_pending_collections),
     # Reads one file and touches no table. It takes a session it ignores so
     # that this list stays one line per job; see its own docstring.
     ("backup_freshness", backup_freshness.check_backup_freshness),

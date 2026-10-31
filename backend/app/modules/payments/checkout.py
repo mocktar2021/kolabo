@@ -34,6 +34,7 @@ The first is the cheapest fraud against a marketplace — pay 500 against a
 comparing two integers on the way in.
 """
 import logging
+from datetime import timedelta
 from urllib.parse import urlsplit
 
 from fastapi import status
@@ -244,12 +245,21 @@ def start_checkout(
     # at the gateway at all and must not be handed back to a brand as a live
     # attempt.
     #
-    # THE KNOWN LIMIT, unchanged by this and worth writing down. A prompt that
-    # is never answered leaves the intent pending, and nothing ages it out, so
-    # the brand sees the same attempt until the gateway itself reports a
-    # terminal status on a later read. That is the behaviour redirect
-    # checkouts already had, it is not made worse here, and fixing it is a
-    # sweep over stale pending intents rather than a change to this guard.
+    # THE KNOWN LIMIT THIS NOTE USED TO DESCRIBE IS NOW HALF CLOSED, and by
+    # the sweep it predicted rather than by a change here. A prompt that is
+    # never answered leaves the intent pending, and the brand sees the same
+    # attempt until the gateway reports a terminal status on a later read —
+    # but something now takes those later reads on its own:
+    # run_pending_collections, at the bottom of this module.
+    #
+    # WHAT IS STILL OPEN is the other half. While the gateway holds a
+    # collection at PENDING, this guard hands the same attempt back, so a
+    # brand who typed the wrong number cannot send a prompt to the right one
+    # until that attempt goes terminal. The funding screen offers a "change
+    # the number" button in exactly that state and it cannot deliver on it.
+    # Filed rather than fixed in passing: the fix is a cancel path, and
+    # cancelling a collection the gateway may be about to settle is its own
+    # piece of work.
     existing = (
         db.query(gmodels.PaymentIntent)
         .filter(
@@ -501,10 +511,131 @@ def get_intent(db: Session, user_id: str, intent_id: str) -> dict:
     if intent.status == gmodels.INTENT_PENDING:
         try:
             intent = settle_intent(db, intent)
-        except GatewayError:
+        except GatewayError as exc:
             # A read that cannot reach the gateway answers "still pending"
             # rather than failing the page. The client polls; the webhook is
             # coming; and telling a brand their payment errored because OUR
             # outbound call timed out would be a lie about their money.
-            logger.warning("Could not refresh intent %s from the gateway", intent.id)
+            #
+            # THE GATEWAY'S OWN WORDS GO IN THE LOG. This line used to say
+            # only that the refresh failed, and the first time it mattered
+            # — a real 500 XOF collection on 31 October that FeexPay had
+            # already marked SUCCESSFUL — the log could not distinguish a
+            # timeout from a 404 on a reference we had stored wrong. Both
+            # look like a pending row. GatewayError messages are written for
+            # an operator and carry no credential; fedapay.py and feexpay.py
+            # both build them from the status line and a truncated body.
+            logger.warning("Could not refresh intent %s from the gateway: %s", intent.id, exc)
     return _intent_out(intent)
+
+
+# ----------------------------------------------------------------- the sweep
+
+# How long a pending collection stays worth re-reading. A prompt on a handset
+# lives for minutes; a day of five-minute passes is ~288 reads, which is
+# generous enough to cover a payer who answered late, a gateway that lagged,
+# and a few hours of our own downtime, without turning an abandoned prompt
+# into a permanent cost.
+PENDING_COLLECTION_MAX_AGE_SECONDS = 24 * 60 * 60
+# And how fresh is too fresh. Below this the checkout page is still polling
+# every three seconds and the sweep would only be a second reader of the same
+# row, with the same answer, a few hundred milliseconds apart.
+PENDING_COLLECTION_MIN_AGE_SECONDS = 60
+
+
+def run_pending_collections(db: Session, limit: int = 100) -> dict:
+    """Settle collections that nothing else is going to ask about.
+
+    WHY THIS EXISTS, AND IT IS NOT BELT AND BRACES. The module docstring above
+    says settlement is triggered from two places, the webhook and the return
+    page. On the mobile money prompt path there is neither:
+
+      * NO WEBHOOK. FeexPay's requesttopay/integration call takes four fields
+        and a callback url is not one of them, so nothing is delivered to us
+        when the payer finally types their PIN. See feexpay.start_collection
+        and verify_webhook, which refuses to guess a signature scheme.
+      * NO RETURN PAGE. There is no redirect: the payer never leaves our tab,
+        so there is no landing that asks "what happened".
+
+    Which left exactly one thing able to settle a prompt — an open browser tab
+    polling for four minutes — and that is not a settlement mechanism, it is a
+    user who has not navigated away yet. On 31 October a real 500 XOF
+    collection in Benin went SUCCESSFUL at FeexPay and stayed `pending` here
+    with no escrow, because by the time it settled nothing was asking any
+    more. The money was collected and the contract still showed a Fund button.
+
+    SO THE CLOCK ASKS. Same shape as run_pending_payouts, same container, same
+    five minutes, and it uses the same settle_intent as everything else: every
+    amount and currency check still runs, and an intent that is already
+    terminal is returned untouched.
+
+    OLDER THAN THE WINDOW IS COUNTED, NOT CLOSED. An intent the gateway has
+    left pending for a day is not going to settle, but marking it failed is a
+    statement about somebody's money that this function is not entitled to
+    make on a timer — a gateway we could not reach for a day looks identical
+    from here. So they are counted into `abandoned` and left alone for a human.
+    That count keeps every pass "interesting" to sweeps._interesting while one
+    exists, which is a log line every five minutes: deliberate, because a
+    collection in limbo is money with no owner on our side, and this codebase
+    has no alerting other than the log somebody reads.
+    """
+    now = gmodels.utcnow()
+    oldest = now - timedelta(seconds=PENDING_COLLECTION_MAX_AGE_SECONDS)
+    newest = now - timedelta(seconds=PENDING_COLLECTION_MIN_AGE_SECONDS)
+
+    open_intents = db.query(gmodels.PaymentIntent).filter(
+        gmodels.PaymentIntent.status == gmodels.INTENT_PENDING,
+        # NO REFERENCE MEANS NOTHING TO READ. settle_intent fails those on
+        # sight, and failing them from a background job would retire a row
+        # whose gateway call may still have been in flight when it was
+        # written. The page owns that one; see settle_intent.
+        gmodels.PaymentIntent.provider_ref.isnot(None),
+    )
+
+    due = (
+        open_intents.filter(
+            gmodels.PaymentIntent.created_at <= newest,
+            gmodels.PaymentIntent.created_at >= oldest,
+        )
+        .order_by(gmodels.PaymentIntent.created_at)
+        .limit(limit)
+        .all()
+    )
+    abandoned = open_intents.filter(gmodels.PaymentIntent.created_at < oldest).count()
+
+    result = {"checked": 0, "settled": 0, "closed": 0, "unreachable": 0, "abandoned": abandoned}
+    for intent in due:
+        result["checked"] += 1
+        intent_id = intent.id
+        try:
+            settled = settle_intent(db, intent)
+        except GatewayError as exc:
+            # ROLLED BACK BEFORE THE NEXT ONE. settle_intent writes
+            # provider_status onto the session before it reads anything else,
+            # so a raise here leaves a dirty session that the next intent's
+            # commit would carry along with it.
+            db.rollback()
+            result["unreachable"] += 1
+            logger.warning("Sweep could not read intent %s from the gateway: %s", intent_id, exc)
+            continue
+        except Exception:  # noqa: BLE001 - one bad row must not stop the pass
+            db.rollback()
+            result["unreachable"] += 1
+            logger.exception("Sweep failed while settling intent %s", intent_id)
+            continue
+
+        if settled.status == gmodels.INTENT_SUCCEEDED:
+            result["settled"] += 1
+            # INFO AND NAMED, because this is the line that proves the hole is
+            # closed: money collected on a handset, reconciled by a clock,
+            # with nobody watching a browser tab.
+            logger.info(
+                "Sweep settled intent %s (%s %s, escrow %s)",
+                settled.id,
+                settled.amount,
+                settled.currency,
+                settled.escrow_id,
+            )
+        elif settled.status != gmodels.INTENT_PENDING:
+            result["closed"] += 1
+    return result

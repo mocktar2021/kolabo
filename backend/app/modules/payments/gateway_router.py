@@ -184,3 +184,19 @@ def run_payouts(db: Session = Depends(get_db), admin_id: str = Depends(get_curre
     before the pilot. See docs/PAYMENTS_FEDAPAY.md.
     """
     return payouts.run_pending_payouts(db)
+
+
+@router.post("/collections/run")
+def run_collections(db: Session = Depends(get_db), admin_id: str = Depends(get_current_admin)):
+    """Finish the collections the payer answered after everyone stopped looking.
+
+    The sweeps container runs this every five minutes. This endpoint is the
+    hand crank: it is how a collection is reconciled NOW rather than within
+    the next pass, which is what somebody wants when a brand is on the phone
+    saying their money left and the contract still shows a Fund button.
+
+    Admin-only and side-effect-identical to the clock — same function, same
+    amount and currency checks, no way to force a settlement the gateway has
+    not confirmed. See checkout.run_pending_collections.
+    """
+    return checkout.run_pending_collections(db)

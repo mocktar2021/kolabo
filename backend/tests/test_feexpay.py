@@ -530,34 +530,232 @@ class TestReadPayout:
         assert _gateway(rec).read_payout("r").amount == 0
 
 
-class TestTheLegsThatAreNotWiredRefuse:
-    """Collections and the webhook raise rather than half working.
+def _collect(gateway, *, country="BJ", network="MTN", phone="22966000000", amount=2000):
+    return gateway.start_collection(
+        amount=amount,
+        currency="XOF",
+        description="Kolabo contract abcd1234",
+        callback_url="https://example.test/return",
+        payer_country=country,
+        payer_first_name="A",
+        payer_last_name="B",
+        payer_phone=phone,
+        payer_network=network,
+        merchant_reference="intent-1",
+    )
 
-    Both are deliberate and both are documented in the module. Collections
-    because FeexPay's proven endpoint pushes a prompt to a handset and returns
-    no checkout URL, which the funding flow requires. The webhook because its
-    signature scheme has never been observed, and guessing one either rejects
-    every real callback or accepts forged ones.
+
+class TestCollectionsSendAPromptAndReturnNoUrl:
+    """The shape that made this leg refuse for a month.
+
+    FeexPay's only hosted checkout takes CARDS. It was opened and looked at on
+    27 October: Visa and Mastercard, no mobile money option anywhere. Mobile
+    money is how brands in the four open markets pay, so the funding flow had
+    to learn to start a collection that has nothing to open, rather than the
+    adapter pretending it had a URL.
     """
 
-    def test_start_collection_refuses_rather_than_returning_a_blank_url(self):
-        """A CollectionStart with an empty checkout_url would be stored, reused
-        by checkout.py's duplicate-funding guard, and sent to a brand as a link
-        to nowhere."""
-        with pytest.raises(GatewayError, match="not wired up"):
-            _gateway(_Recorder()).start_collection(
-                amount=2000,
-                currency="XOF",
-                description="d",
-                callback_url="https://example.test/return",
-                payer_country="BJ",
-                payer_first_name="A",
-                payer_last_name="B",
-            )
+    def test_the_network_rides_in_a_field_on_one_endpoint(self):
+        """ONE endpoint with `reseau` as a field, not the twelve path variants
+        under /requesttopay/{network} that the payout leg is stuck with."""
+        rec = _Recorder(reference="hthwUo946aQE", status="PENDING")
+        _collect(_gateway(rec))
+        assert rec.path == "/api/transactions/requesttopay/integration"
+        assert rec.body == {
+            "reseau": "MTN",
+            "amount": 2000,
+            "phoneNumber": "22966000000",
+            "shop": SHOP,
+        }
 
-    def test_read_collection_refuses(self):
-        with pytest.raises(GatewayError, match="not wired up"):
-            _gateway(_Recorder()).read_collection("ref")
+    def test_nothing_unmeasured_is_sent(self):
+        """A FeexPay 400 names required fields and says nothing about optional
+        ones, so first name, last name and email are not sent. An unmeasured
+        field is either ignored or rejected and there is no way to tell which
+        without a live shop."""
+        rec = _Recorder(reference="r", status="PENDING")
+        _collect(_gateway(rec))
+        assert set(rec.body) == {"reseau", "amount", "phoneNumber", "shop"}
+
+    def test_there_is_no_url_and_the_action_says_so(self):
+        """A caller must never infer "poll" from a null. PAYER_ACTION is the
+        field that says it."""
+        started = _collect(_gateway(_Recorder(reference="hthwUo946aQE", status="PENDING")))
+        assert started.reference == "hthwUo946aQE"
+        assert started.checkout_url is None
+        assert started.payer_action == fx.PAYER_ACTION_DEVICE_PROMPT
+
+    @pytest.mark.parametrize(
+        "country,network",
+        [
+            ("BJ", "MTN"), ("BJ", "MOOV"), ("BJ", "CELTIIS BJ"),
+            ("TG", "MOOV TG"), ("TG", "TOGOCOM TG"),
+            ("CI", "MTN CI"), ("CI", "MOOV CI"), ("CI", "WAVE CI"), ("CI", "ORANGE CI"),
+            ("SN", "WAVE SN"), ("SN", "ORANGE SN"), ("SN", "FREE SN"),
+        ],
+    )
+    def test_every_network_in_every_open_market_is_accepted(self, country, network):
+        rec = _Recorder(reference="r", status="PENDING")
+        _collect(_gateway(rec), country=country, network=network)
+        assert rec.body["reseau"] == network
+
+    def test_the_collection_vocabulary_is_not_the_payout_vocabulary(self):
+        """THE TRAP IN THIS FILE. Payouts key Cote d'Ivoire with underscores
+        because those go in a path; collections use spaces because they go in
+        a field. Reusing one list for the other is a 400 at best."""
+        gateway = _gateway(_Recorder())
+        assert "MTN_CI" in gateway.payout_modes("CI")
+        assert "MTN CI" in gateway.collection_networks("CI")
+        assert "MTN CI" not in gateway.payout_modes("CI")
+        assert "MTN_CI" not in gateway.collection_networks("CI")
+
+    def test_a_lowercase_network_is_accepted_and_sent_upper(self):
+        """TikTok-style defensiveness about case. The client sends back what
+        the API gave it, but a hand-built request should not fail on case."""
+        rec = _Recorder(reference="r", status="PENDING")
+        _collect(_gateway(rec), network="moov tg", country="TG")
+        assert rec.body["reseau"] == "MOOV TG"
+
+
+class TestCollectionsRefuseBeforeTheyCall:
+    """Refused locally, so the sentence a brand reads names the field.
+
+    FeexPay's 400 for a bad `reseau` enumerates all twenty five values it
+    accepts, including Kenya and Tanzania. That is not a sentence to put in
+    front of somebody in Cotonou.
+    """
+
+    def test_no_network_is_refused_and_says_it_cannot_be_guessed(self):
+        rec = _Recorder()
+        with pytest.raises(GatewayError, match="cannot be guessed"):
+            _collect(_gateway(rec), network=None)
+        assert rec.requests == [], "nothing should have been sent"
+
+    def test_a_network_from_another_country_is_refused(self):
+        """Portability and reassignment mean a number cannot name its own
+        operator, so the payer picks, and the pick is checked against where
+        they are."""
+        rec = _Recorder()
+        with pytest.raises(GatewayError, match="not a mobile money network"):
+            _collect(_gateway(rec), country="BJ", network="WAVE SN")
+        assert rec.requests == []
+
+    def test_no_phone_is_refused_because_the_phone_is_the_destination(self):
+        """On a redirect flow a missing phone costs a line on a customer
+        record. Here it is the handset the prompt goes to."""
+        rec = _Recorder()
+        with pytest.raises(GatewayError, match="phone number is required"):
+            _collect(_gateway(rec), phone="")
+        assert rec.requests == []
+
+    def test_an_unserved_country_is_refused_without_a_call(self):
+        rec = _Recorder()
+        with pytest.raises(GatewayError, match="not configured for GH"):
+            _collect(_gateway(rec), country="GH", network="MTN GH")
+        assert rec.requests == []
+
+    def test_the_amount_ceiling_applies_to_collections_too(self):
+        rec = _Recorder()
+        with pytest.raises(GatewayError):
+            _collect(_gateway(rec), amount=fx.MAX_AMOUNT + 1)
+        assert rec.requests == []
+
+    def test_an_accepted_collection_with_no_reference_raises_loudly(self):
+        """A prompt may already be lighting up somebody's phone. Without a
+        reference nothing can read its outcome, and an empty one would make
+        the row unreconcilable rather than merely incomplete."""
+        with pytest.raises(GatewayError, match="no reference"):
+            _collect(_gateway(_Recorder(status="PENDING")))
+
+
+class TestReadCollection:
+    """Terminal on creation and pending-then-settled are both normal."""
+
+    def _read(self, **body):
+        rec = _Recorder(**body)
+        state = _gateway(rec).read_collection("TBFYOjnwt6Rn")
+        return rec, state
+
+    def test_it_reads_the_public_status_path(self):
+        rec, _state = self._read(status="PENDING", amount=100)
+        assert rec.path == "/api/transactions/public/single/status/TBFYOjnwt6Rn"
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("SUCCESSFUL", "succeeded"),
+            ("PENDING", "pending"),
+            ("FAILED", "failed"),
+            ("successful", "succeeded"),
+        ],
+    )
+    def test_known_statuses_map(self, raw, expected):
+        _rec, state = self._read(status=raw, amount=100)
+        assert state.status == expected
+
+    def test_an_unknown_status_is_pending_not_success(self, caplog):
+        """Reading an unknown word as succeeded releases an escrow against
+        money that may never have arrived. It is the one mistake in this file
+        with no cheap undo."""
+        _rec, state = self._read(status="QUANTUM", amount=100)
+        assert state.status == "pending"
+        assert state.raw_status == "QUANTUM"
+        assert "QUANTUM" in caplog.text
+
+    def test_the_amount_is_the_requested_one_and_not_the_fee_inclusive_one(self):
+        """A settled card payment on 28 October reported 100 against an
+        amount_to_pay_xof of 104. The three amount fields exist only on the
+        init response; the status payload carries one, and it is the number
+        settle_intent must compare against the contract."""
+        _rec, state = self._read(status="SUCCESSFUL", amount=100, amount_to_pay_xof=104)
+        assert state.amount == 100
+
+    def test_an_unreadable_amount_raises_rather_than_reporting_zero(self):
+        """A zero would read as "they paid nothing" rather than as "we could
+        not tell", which is a refund conversation started by a parse failure."""
+        with pytest.raises(GatewayError, match="not a number"):
+            self._read(status="SUCCESSFUL", amount=None)
+
+    def test_the_currency_is_the_only_one_this_gateway_serves(self):
+        """It is not on the payload. XOF is reported because supports()
+        refuses to route anything else here in the first place."""
+        _rec, state = self._read(status="SUCCESSFUL", amount=100)
+        assert state.currency == "XOF"
+
+    def test_responsecode_is_never_read_on_a_collection_either(self):
+        _rec, state = self._read(status="PENDING", amount=100, responsecode="SUCCESSFUL")
+        assert state.status == "pending"
+
+    def test_a_failure_reason_is_only_carried_on_a_failure(self):
+        """`reason` fills on settlement and is empty while pending, so a
+        reason on a pending row is not expected and is not invented."""
+        _rec, failed = self._read(status="FAILED", amount=100, reason="Solde insuffisant")
+        assert failed.failure_reason == "Solde insuffisant"
+        _rec, ok = self._read(status="SUCCESSFUL", amount=100, reason="Transaction reussie.")
+        assert ok.failure_reason is None
+
+    def test_the_settlement_markers_are_carried_as_metadata(self):
+        """operator_id is the closest thing to a settled-at marker the payload
+        has: empty while pending, filled on settlement. `date` does not move,
+        so reconciliation cannot derive a settlement time from it."""
+        _rec, state = self._read(
+            status="SUCCESSFUL",
+            amount=100,
+            operator_id="sbx_4ee5b0caad4248d59c5d48",
+            transref="TBFYOjnwt6Rn",
+            serviceref="TBFYOjnwt6Rn",
+        )
+        assert state.metadata["operator_id"] == "sbx_4ee5b0caad4248d59c5d48"
+        assert state.metadata["transref"] == "TBFYOjnwt6Rn"
+
+    def test_an_unreported_fee_is_none_not_zero(self):
+        _rec, state = self._read(status="SUCCESSFUL", amount=100)
+        assert state.fee is None
+
+
+class TestTheWebhookStillRefuses:
+    """Its signature scheme has never been observed, and guessing one either
+    rejects every real callback or accepts forged ones."""
 
     def test_verify_webhook_refuses_instead_of_guessing_a_scheme(self):
         with pytest.raises(GatewayError) as caught:

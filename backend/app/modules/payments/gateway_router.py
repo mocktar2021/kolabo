@@ -72,6 +72,8 @@ def start_checkout(
         payer_first_name=payload.payer_first_name,
         payer_last_name=payload.payer_last_name,
         return_url=payload.return_url,
+        payer_network=payload.payer_network,
+        payer_phone=payload.payer_phone,
     )
 
 
@@ -126,6 +128,29 @@ def write_payout_method(
 def payout_modes(country: str):
     """The networks we can pay out to in a country. Drives the form's dropdown."""
     return list(payouts.valid_modes(country.upper()))
+
+
+@router.get("/collection-networks/{country}", response_model=list[str])
+def collection_networks(country: str):
+    """The mobile money networks a brand in this country can pay FROM.
+
+    THE SIBLING OF /payout-modes AND DELIBERATELY A SEPARATE ENDPOINT, because
+    they are separate lists with separate vocabularies. Payouts key Cote
+    d'Ivoire as MTN_CI because that string goes in a URL path; collections
+    send MTN CI in a field. They look almost identical and swapping them is a
+    400 at best, so a client that wants one must ask for that one.
+
+    EMPTY RATHER THAN A 404 for a country with no collection networks, which
+    is the same shape /payout-modes answers with. A funding screen that gets
+    [] can say there is no mobile money option here; one that gets a 404 has
+    to decide whether the country is unsupported or the endpoint is broken.
+
+    Machine values, as /payout-modes returns machine values. The client maps
+    them to the names a brand recognises and falls back to the code itself
+    for one it does not know, so a network added at the provider degrades to
+    ugly rather than to an unpickable blank row. See web/src/lib/checkout.ts.
+    """
+    return list(checkout.collection_networks(country.upper()))
 
 
 @router.post("/payouts/run")

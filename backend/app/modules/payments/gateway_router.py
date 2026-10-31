@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.modules.admin.router import get_current_admin
 from app.modules.auth.deps import get_current_user_id
+from app.modules.auth.models import User
 from app.modules.payments import checkout, gateway_schemas, payouts
 from app.modules.payments.gateways import registry
 
@@ -130,9 +131,25 @@ def payout_modes(country: str):
     return list(payouts.valid_modes(country.upper()))
 
 
-@router.get("/collection-networks/{country}", response_model=list[str])
-def collection_networks(country: str):
-    """The mobile money networks a brand in this country can pay FROM.
+@router.get("/collection-networks", response_model=list[str])
+def collection_networks(
+    db: Session = Depends(get_db),
+    business_user_id: str = Depends(get_current_user_id),
+):
+    """The mobile money networks THIS brand can pay FROM.
+
+    NO COUNTRY IN THE PATH, AND IT HAD ONE FOR AN HOUR. The first version
+    mirrored /payout-modes/{country}, which is right for payouts: a creator
+    picks their country on that form. A brand does not. checkout.start_checkout
+    routes on `business.country_code` and nothing else, so a country in the
+    path is a second source of truth for a question the server has already
+    answered, and the only way for a client to fill it in would be to fetch
+    the account first. One authenticated call asks the question the funding
+    screen actually has.
+
+    Changed rather than added alongside, because nothing consumed the old
+    shape: it shipped in #236 and this is the PR that would have been its
+    first caller.
 
     THE SIBLING OF /payout-modes AND DELIBERATELY A SEPARATE ENDPOINT, because
     they are separate lists with separate vocabularies. Payouts key Cote
@@ -150,7 +167,10 @@ def collection_networks(country: str):
     for one it does not know, so a network added at the provider degrades to
     ugly rather than to an unpickable blank row. See web/src/lib/checkout.ts.
     """
-    return list(checkout.collection_networks(country.upper()))
+    user = db.query(User).filter(User.id == business_user_id).first()
+    if user is None or not user.country_code:
+        return []
+    return list(checkout.collection_networks(user.country_code.upper()))
 
 
 @router.post("/payouts/run")

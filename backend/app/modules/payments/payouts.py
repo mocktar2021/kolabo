@@ -172,7 +172,12 @@ def disburse(
         .first()
     )
     country = method.country if method else _user_country(db, recipient_user_id)
-    gateway = registry.registry().get(country or "")
+    # THE PAYOUT MAP, BY NAME. registry() defaults to collections, and this is
+    # the one caller in the codebase that must not take that default: a
+    # deployment can route a country's collections to one provider and its
+    # payouts to another, and paying a creator through whichever gateway takes
+    # the brand's money is exactly the mix-up the split exists to prevent.
+    gateway = registry.registry(registry.PAYOUTS).get(country or "")
 
     if gateway is None:
         # No live gateway here. Fall back to the legacy provider so the mock

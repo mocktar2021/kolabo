@@ -21,6 +21,21 @@ class CheckoutStartIn(BaseModel):
     # Where the gateway sends the payer afterwards. Mobile passes its own
     # kolabo:// deep link; web leaves it unset and gets the configured default.
     return_url: str | None = None
+    # WHICH MOBILE MONEY NETWORK, and which handset to send the prompt to.
+    #
+    # OPTIONAL AT THE EDGE AND REQUIRED BY SOME GATEWAYS, which is KOL-130
+    # being honoured rather than an oversight. The last mobile build approved
+    # by Apple and Google posts this body without either field. Making one
+    # required here would answer those builds with a 422 naming a field they
+    # have never heard of, on the day this ships, and the only fix would be a
+    # store review. The gateway refuses what it cannot use instead, and that
+    # reaches the brand as a sentence about a network they can pick.
+    #
+    # payer_phone is the wallet being debited, which on a prompt flow is NOT
+    # the same question as the number on the account: a brand may well pay
+    # from a different wallet than the one they registered with.
+    payer_network: str | None = None
+    payer_phone: str | None = None
 
 
 class PaymentIntentOut(BaseModel):
@@ -34,6 +49,20 @@ class PaymentIntentOut(BaseModel):
     # no url, because it takes a payer to an expired page instead of telling
     # them the payment is already done.
     checkout_url: str | None = None
+    # WHAT THE PAYER HAS TO DO NEXT, and the field that decides which screen
+    # the client renders: "redirect" to open checkout_url, or "device_prompt"
+    # for a prompt already waiting on their handset.
+    #
+    # READ THIS, NEVER THE NULLNESS OF checkout_url. The two are not the same
+    # question and the difference is visible above: checkout_url also goes
+    # null once a redirect payment is terminal, so a client inferring the
+    # screen from the url would show "check your phone" to somebody whose card
+    # payment had already succeeded.
+    payer_action: str = "redirect"
+    # Which network the prompt went to, when there was one. Null on a
+    # redirect, because the payer picks their operator on the hosted page and
+    # we never learn which.
+    payer_network: str | None = None
     # Set only when the payment succeeded AND the escrow was created. The
     # client watches for this rather than for status alone: "succeeded" without
     # an escrow id is the amount-mismatch case, which needs a human.

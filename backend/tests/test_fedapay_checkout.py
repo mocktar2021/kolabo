@@ -722,6 +722,44 @@ def test_the_sweep_pays_a_creator_who_adds_their_wallet_later(client, gateway):
         db.close()
 
 
+def test_the_sweep_retries_through_the_payout_gateway_too(client, gateway):
+    """THE SAME BUG AS THE TEST ABOVE, IN THE QUIETEST PLACE IT COULD HIDE.
+
+    disburse() asks for the payout leg by name. run_pending_payouts did not:
+    it took registry()'s collections default, so a first attempt went to the
+    right gateway and a RETRY went to whichever one takes the brand's money.
+
+    Worse than the first-attempt version in every way. The sweep runs
+    unattended, nobody is watching the response, and a payout sent down a
+    network string the receiving provider has never heard of does not bounce.
+    It surfaces days later as a creator who has not been paid.
+
+    Found in review rather than by this suite, which is why the test exists.
+    """
+    collector = FakeGateway()
+    registry.set_gateway("BJ", collector, registry.COLLECTIONS)
+
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, collector, brand, creator, contract)
+    # Released with no wallet on file, so the payout parks as no_method and
+    # only the sweep can finish it.
+    client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+    _set_method(client, creator)
+
+    db = client.session_factory()
+    try:
+        from app.modules.payments import payouts as payouts_module
+
+        assert payouts_module.run_pending_payouts(db)["retried"] == 1
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.status == gmodels.PAYOUT_SENT
+    finally:
+        db.close()
+
+    assert gateway.payouts_sent, "the sweep never reached the payout gateway"
+    assert collector.payouts_sent == [], "the sweep retried through the collection gateway"
+
+
 def test_a_sent_payout_records_what_the_gateway_charged_us(client, gateway):
     """The second cost, and the reason one leg alone cannot state the margin.
 

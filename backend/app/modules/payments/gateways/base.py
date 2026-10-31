@@ -67,20 +67,54 @@ class GatewayError(RuntimeError):
         self.status = status
 
 
+# What the payer has to DO next, which is not the same question as which
+# gateway was used. Two shapes exist and a caller has to be able to tell them
+# apart without guessing.
+#
+#   redirect       send the browser to checkout_url, which is a hosted page
+#                  where the payer enters their details. FedaPay, and
+#                  FeexPay's card endpoint.
+#   device_prompt  nothing to open. The gateway has already pushed a prompt to
+#                  the handset whose number we supplied, and the only thing
+#                  left to do is wait and re-read. FeexPay mobile money.
+#
+# AN EXPLICIT FIELD RATHER THAN `checkout_url is None`, and the difference is
+# worth a constant. Inferring the action from a null means every caller
+# reimplements the inference, and the first one to get it backwards sends a
+# brand to a blank page or sits polling a transaction that is waiting for a
+# browser that will never open. It also makes a third shape, whatever it turns
+# out to be, a value rather than a second null to disambiguate.
+PAYER_ACTION_REDIRECT = "redirect"
+PAYER_ACTION_DEVICE_PROMPT = "device_prompt"
+
+
 @dataclass(frozen=True)
 class CollectionStart:
-    """Where to send the payer, and what to call this attempt afterwards.
+    """What the payer has to do next, and what to call this attempt afterwards.
 
     `reference` is the gateway's id for the transaction and is what
-    read_collection is later called with. `checkout_url` is single-use and
-    short-lived at every gateway I know of (FedaPay: 24 hours), which is why
-    nothing stores it as though it were a permanent property of an order — it
-    belongs to one attempt.
+    read_collection is later called with.
+
+    `checkout_url` is short-lived wherever it exists at all, and the lifetimes
+    are not close: FedaPay's is 24 hours, FeexPay's card page is ONE. That is
+    why nothing stores it as though it were a permanent property of an order,
+    it belongs to one attempt.
+
+    IT IS NOW OPTIONAL, AND THAT IS THE POINT OF THIS DATACLASS CHANGING.
+    A mobile money collection has no page to open: FeexPay's
+    /requesttopay/integration pushes a prompt to the payer's handset and
+    returns no URL at all. Measured, not assumed, on 27 October. The funding
+    flow was built on the assumption that starting a collection always yields
+    somewhere to send a browser, and in the markets Kolabo launches in, the
+    method most brands will actually use does not.
+
+    So read `payer_action`, never the nullness of `checkout_url`.
     """
 
     reference: str
-    checkout_url: str
+    checkout_url: str | None = None
     expires_in_seconds: int | None = None
+    payer_action: str = PAYER_ACTION_REDIRECT
 
 
 @dataclass(frozen=True)
@@ -188,6 +222,22 @@ class PaymentGateway(Protocol):
         # payment that cannot happen.
         payer_phone: str | None = None,
         payer_email: str | None = None,
+        # WHICH MOBILE MONEY NETWORK IS BEING DEBITED, and the one field on
+        # this signature that is not about identifying the payer.
+        #
+        # OPTIONAL HERE AND REQUIRED BY SOME IMPLEMENTATIONS, which is the
+        # same arrangement payer_phone and payer_email already have. A
+        # gateway with a hosted page does not need it, because the payer
+        # picks their network on the gateway's own screen; a gateway that
+        # pushes a prompt to a handset cannot work without it, because there
+        # is no screen on which to ask.
+        #
+        # IT IS NEVER GUESSED FROM THE PHONE NUMBER, for the reason
+        # PayoutTarget.mode already gives at length: number ranges get
+        # reassigned between operators and portability moves a subscriber
+        # without changing their digits. The payer says which network, or
+        # there is no collection.
+        payer_network: str | None = None,
         merchant_reference: str | None = None,
         metadata: dict | None = None,
     ) -> CollectionStart:

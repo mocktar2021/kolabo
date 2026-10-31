@@ -282,6 +282,15 @@ class FedaPayGateway:
         payer_last_name: str,
         payer_phone: str | None = None,
         payer_email: str | None = None,
+        # ACCEPTED AND DELIBERATELY IGNORED. FedaPay's flow is a hosted page
+        # on which the payer picks their own operator, so a network chosen in
+        # Kolabo beforehand would either be overridden there or silently
+        # disagree with what the payer actually taps. The parameter exists on
+        # the protocol for gateways that push a prompt to a handset and so
+        # have no screen on which to ask. Dropping it here is the honest
+        # answer, and it is why the funding screen asks for a network only
+        # when the routed gateway says it needs one.
+        payer_network: str | None = None,
         merchant_reference: str | None = None,
         metadata: dict | None = None,
     ) -> CollectionStart:

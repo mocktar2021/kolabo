@@ -400,32 +400,38 @@ def test_a_prompt_the_payer_refuses_fails_without_funding_anything(client, gatew
 # -------------------------------------------------------- the networks endpoint
 
 
-def test_the_networks_endpoint_answers_from_the_routed_gateway(client, gateway):
-    res = client.get("/payments/collection-networks/BJ")
+def test_the_networks_endpoint_answers_for_the_signed_in_brand(client, gateway):
+    """NO COUNTRY IN THE PATH. The brand's country is the one checkout routes
+    on, so asking the client to supply it would be a second source of truth
+    for a question the server has already answered."""
+    brand, _contract = _seed(client, country="BJ")
+    res = client.get("/payments/collection-networks", headers=_headers(brand))
     assert res.status_code == 200
     assert res.json() == ["MTN", "MOOV", "CELTIIS BJ"]
 
 
-def test_it_is_case_insensitive_on_the_country(client, gateway):
-    assert client.get("/payments/collection-networks/bj").json() == ["MTN", "MOOV", "CELTIIS BJ"]
+def test_a_brand_in_another_country_gets_that_countrys_networks(client, gateway):
+    brand, _contract = _seed(client, country="TG")
+    res = client.get("/payments/collection-networks", headers=_headers(brand))
+    assert res.json() == ["MOOV TG", "TOGOCOM TG"]
+
+
+def test_it_needs_a_token(client, gateway):
+    assert client.get("/payments/collection-networks").status_code in (401, 403)
 
 
 def test_a_redirect_gateway_offers_no_networks_rather_than_raising(client):
     """Empty means "do not show a picker", not "something went wrong". The
     payer chooses their operator on the hosted page instead."""
     registry.set_gateway("BJ", RedirectGateway())
-    assert client.get("/payments/collection-networks/BJ").json() == []
+    brand, _contract = _seed(client, country="BJ")
+    assert client.get("/payments/collection-networks", headers=_headers(brand)).json() == []
 
 
-def test_an_unrouted_country_answers_empty_not_an_error(client, gateway):
+def test_a_brand_in_an_unrouted_country_answers_empty_not_an_error(client, gateway):
     """A screen asking what to offer should get an empty list. A 500 on a
     dropdown is worse than no dropdown."""
-    res = client.get("/payments/collection-networks/CI")
-    assert res.status_code == 200
-    assert res.json() == []
-
-
-def test_a_country_that_does_not_exist_answers_empty_too(client, gateway):
-    res = client.get("/payments/collection-networks/ZZ")
+    brand, _contract = _seed(client, country="CI")
+    res = client.get("/payments/collection-networks", headers=_headers(brand))
     assert res.status_code == 200
     assert res.json() == []

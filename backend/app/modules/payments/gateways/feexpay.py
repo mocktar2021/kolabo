@@ -47,9 +47,13 @@ from typing import Any
 import httpx
 
 from app.modules.payments.gateways.base import (
+    FAILED,
+    PAYER_ACTION_DEVICE_PROMPT,
     PAYOUT_FAILED,
     PAYOUT_PENDING,
     PAYOUT_SENT,
+    PENDING,
+    SUCCEEDED,
     CollectionStart,
     CollectionState,
     GatewayError,
@@ -166,6 +170,74 @@ _PAYOUT_ROUTES: dict[str, dict[str, _Route]] = {
 }
 
 PAYOUT_STATUS_PATH = "/api/payouts/status/public/{reference}"
+
+# ----------------------------------------------------------------- collection
+
+# ONE ENDPOINT, OPERATOR IN A FIELD, and it is the better of the two mobile
+# money shapes FeexPay offers. The alternative is twelve path variants under
+# /requesttopay/{network}, which is the arrangement the payout leg is stuck
+# with and which this leg does not have to inherit.
+#
+# IT RETURNS NO URL. The payer gets a prompt on the handset whose number we
+# send. That is the whole reason CollectionStart grew payer_action.
+COLLECTION_PATH = "/api/transactions/requesttopay/integration"
+
+# PUBLIC, and the word is load bearing: it needs no IP allowlisting, unlike
+# the payout status route. Measured 27 and 28 October.
+COLLECTION_STATUS_PATH = "/api/transactions/public/single/status/{reference}"
+
+# THE COLLECTION VOCABULARY IS NOT THE PAYOUT VOCABULARY, and confusing them
+# is the most likely way to break this file.
+#
+# _PAYOUT_ROUTES above keys Cote d'Ivoire and Senegal with UNDERSCORES
+# (MTN_CI, ORANGE_SN) because those go in a URL path, while Togo uses a SPACE
+# because that one goes in a field. The collection endpoint takes every
+# operator in one `reseau` field and the whole set is uppercase WITH SPACES.
+# So `payout_modes()` must never be used to populate a collection picker and
+# vice versa: the strings look almost the same and the wrong one is a 400 at
+# best.
+#
+# THE SET ITSELF IS MEASURED, the country grouping is partly inferred. POSTing
+# an invalid `reseau` makes FeexPay enumerate every accepted value, and these
+# twelve are quoted from that refusal verbatim. Which country each belongs to
+# follows the suffix, except for bare MTN and MOOV: those carry no suffix and
+# are read as Benin, which is the same convention _PAYOUT_ROUTES["BJ"] already
+# uses for the same two operators on the payout side.
+#
+# The full enum also covers Burkina Faso, Congo, Kenya, Tanzania and Ghana.
+# Those are left out because Kolabo does not open a country until money can
+# move there, and offering a network for a country the product refuses at
+# signup would be a picker that leads nowhere.
+_COLLECTION_NETWORKS: dict[str, tuple[str, ...]] = {
+    "BJ": ("MTN", "MOOV", "CELTIIS BJ"),
+    "TG": ("MOOV TG", "TOGOCOM TG"),
+    "CI": ("MTN CI", "MOOV CI", "WAVE CI", "ORANGE CI"),
+    "SN": ("WAVE SN", "ORANGE SN", "FREE SN"),
+}
+
+# Their words to ours, upper-cased before lookup so a change of case on their
+# side is not an outage.
+#
+# ANYTHING UNRECOGNISED IS PENDING, AND LOGGED, which is the rule both other
+# status maps in this codebase follow. Reading an unknown word as SUCCEEDED
+# releases an escrow against money that may never have arrived, and that is
+# the one mistake in this file with no cheap undo.
+#
+# THE FAILURE VOCABULARY IS PARTLY UNMEASURED. SUCCESSFUL and PENDING are
+# quoted from real sandbox reads on 27 and 28 October. The card matrix proves
+# FAILED exists as a terminal outcome, but the exact strings for a refused
+# mobile money prompt have not been seen, so the usual suspects are mapped on
+# the chance that one of them is the word.
+_COLLECTION_STATUS = {
+    "SUCCESSFUL": SUCCEEDED,
+    "SUCCESS": SUCCEEDED,
+    "PENDING": PENDING,
+    "PROCESSING": PENDING,
+    "FAILED": FAILED,
+    "FAILURE": FAILED,
+    "CANCELED": FAILED,
+    "CANCELLED": FAILED,
+}
 
 # FeexPay's vocabulary -> ours. UPPERCASE because theirs is: statuses came back
 # as SUCCESSFUL and PENDING, not the lowercase FedaPay uses, and the lookup
@@ -426,6 +498,21 @@ class FeexPayGateway:
 
     # ------------------------------------------------------------ collection
 
+    def collection_networks(self, country: str) -> tuple[str, ...]:
+        """The closed set a payer's network choice is validated against.
+
+        THE SIBLING OF payout_modes() AND DELIBERATELY NOT THE SAME LIST. The
+        payout leg keys Cote d'Ivoire and Senegal with underscores because
+        those strings go in a URL path; collections put every operator in one
+        `reseau` field and that vocabulary is uppercase with spaces. Two
+        gateways, two vocabularies, one provider. See _COLLECTION_NETWORKS.
+
+        A method on the gateway rather than a list in the UI, for the reason
+        payout_modes already gives: the choice is validated where it is
+        accepted, not discovered at the moment money is supposed to move.
+        """
+        return _COLLECTION_NETWORKS.get(country, ())
+
     def start_collection(
         self,
         *,
@@ -438,59 +525,187 @@ class FeexPayGateway:
         payer_last_name: str,
         payer_phone: str | None = None,
         payer_email: str | None = None,
+        payer_network: str | None = None,
         merchant_reference: str | None = None,
         metadata: dict | None = None,
     ) -> CollectionStart:
-        """NOT WIRED YET, AND THE REASON IS A SHAPE MISMATCH, NOT AN OVERSIGHT.
+        """Push a payment prompt to the payer's handset. No URL comes back.
 
-        CollectionStart requires a `checkout_url`, because the whole funding
-        flow is a redirect: Checkout.tsx sends the brand's browser out of the
-        app to the provider's hosted page, and checkout.py's duplicate-funding
-        guard literally queries `checkout_url IS NOT NULL`.
+        THE SHAPE MISMATCH THAT USED TO MAKE THIS RAISE IS RESOLVED, and it
+        was resolved by widening CollectionStart rather than by finding a
+        hosted page. A hosted page does exist at /requesttopay/init, and it
+        takes CARDS ONLY: the checkout was opened and looked at on 27 October
+        and there is no mobile money option anywhere on it. Mobile money is
+        how brands in Benin, Togo, Cote d'Ivoire and Senegal pay, so a
+        card-only funding path would exclude most of the market. Card funding
+        remains available as an addition whenever it is wanted, and is
+        deliberately not in this change.
 
-        The only FeexPay collection endpoint proven in sandbox is
-        POST /api/transactions/public/requesttopay/{network}, which is not that
-        shape at all. It needs the payer's phone number AND their operator in
-        the path, pushes a prompt to that handset, and returns no URL. This
-        interface does not even carry a network to put in the path.
+        TWO THINGS ARE REQUIRED HERE THAT ARE OPTIONAL ON THE PROTOCOL, and
+        both are refused locally rather than at FeexPay:
 
-        Closing that gap is either a hosted checkout endpoint nobody has looked
-        for yet, which keeps this a one-file adapter, or a network picker and a
-        polling screen in Kolabo's own UI on web and mobile, which is not.
-        Until that is settled, refusing here is the honest answer: the registry
-        does not route collections to this gateway, and nothing calls this.
+          * THE NETWORK, because there is no screen on which to ask. A
+            redirect gateway lets the payer pick their own operator on the
+            hosted page; a prompt has to be addressed to one network before it
+            is sent. It is never guessed from the number, for the reason
+            PayoutTarget.mode gives: portability moves a subscriber between
+            operators without changing a digit.
+          * THE PHONE, because it IS the destination. On the redirect flow a
+            missing phone costs a line on a customer record; here it is the
+            handset the prompt goes to, so an absent one is not a degraded
+            receipt, it is no payment at all.
 
-        It raises rather than returning something empty because a
-        CollectionStart with a blank checkout_url would be stored, reused by
-        the guard above, and sent to a brand as a link to nowhere.
+        REFUSED BEFORE THE REQUEST, not after, so that the error a brand reads
+        names the field they can fix. FeexPay's 400 for a bad `reseau` helpfully
+        enumerates all twenty five values it accepts, including Kenya and
+        Tanzania, which is not a sentence to put in front of somebody in
+        Cotonou.
+
+        ONLY THE FOUR MEASURED FIELDS ARE SENT. A FeexPay 400 lists required
+        fields and says nothing about optional ones, so first name, last name
+        and email are not sent: an unmeasured field is either ignored or
+        rejected, and there is no way to tell which without trying it against
+        a live shop. The payer's phone is the customer record here.
         """
-        raise GatewayError(
-            "FeexPay collections are not wired up. Its proven endpoint pushes a prompt to a "
-            "handset and returns no checkout URL, which the funding flow requires. Fund "
-            "through the configured collection gateway instead.",
-            retryable=False,
+        self._check_amount(amount)
+
+        network = (payer_network or "").strip().upper()
+        allowed = self.collection_networks(payer_country)
+        if not allowed:
+            raise GatewayError(
+                f"FeexPay collections are not configured for {payer_country}.",
+                retryable=False,
+            )
+        if not network:
+            raise GatewayError(
+                "A mobile money network is required before a payment prompt can be sent, "
+                "and it cannot be guessed from the phone number.",
+                retryable=False,
+            )
+        if network not in allowed:
+            raise GatewayError(
+                f"{network} is not a mobile money network available in {payer_country}.",
+                retryable=False,
+            )
+
+        phone = (payer_phone or "").strip()
+        if not phone:
+            raise GatewayError(
+                "A phone number is required: it is the handset the payment prompt is sent to.",
+                retryable=False,
+            )
+
+        body = self._request(
+            "POST",
+            COLLECTION_PATH,
+            {
+                "reseau": network,
+                # AN INTEGER, 10 to 1,000,000, and _check_amount above has
+                # already held it to that. Note this floor is 10 while the
+                # card endpoint's is 100, which is a difference in the
+                # provider and not a typo here.
+                "amount": int(amount),
+                "phoneNumber": phone,
+                "shop": self.shop_id,
+            },
+        )
+        reference = _reference_of(body)
+        if not reference:
+            # WITHOUT A REFERENCE THERE IS NOTHING TO RE-READ, and a prompt
+            # may already be lighting up somebody's phone. Raising leaves the
+            # intent row with a null provider_ref, which checkout.py commits
+            # BEFORE this call precisely so that the attempt is reconcilable
+            # by hand. Returning an empty reference would make it
+            # unreconcilable instead.
+            raise GatewayError(
+                "FeexPay accepted the collection and returned no reference, so nothing "
+                "can read its outcome.",
+                retryable=False,
+            )
+        return CollectionStart(
+            reference=reference,
+            # NOTHING TO OPEN. Not an oversight and not a gap to fill later:
+            # the payer's next action is on their handset.
+            checkout_url=None,
+            payer_action=PAYER_ACTION_DEVICE_PROMPT,
         )
 
     def read_collection(self, reference: str) -> CollectionState:
-        """Also not wired, and for the same reason as start_collection above.
+        """What FeexPay says about one collection, right now.
 
-        The endpoint is known, GET /api/transactions/public/single/status/
-        {reference}, and two of its behaviours are already measured and worth
-        writing down before anybody implements this:
+        A COLLECTION MAY BE TERMINAL ON CREATION. Cote d'Ivoire returned
+        SUCCESSFUL synchronously from the POST and Togo returned PENDING and
+        settled on a later read. Both are normal, so a caller that always
+        polls wastes a call and a caller that never polls loses Togo. This
+        method answers the same way for both, which is what lets the caller
+        stay simple.
 
-        A collection MAY BE TERMINAL ON CREATION. Cote d'Ivoire returned
-        SUCCESSFUL synchronously from the POST; Togo returned PENDING and
-        settled on a later read. Both are normal, so code that always polls
-        wastes a call and code that never polls loses Togo.
+        `responsecode` IS A MIRROR OF `status`, NOT AN INDEPENDENT SIGNAL, and
+        it has been seen reporting its own state in two different type systems:
+        the integer -1 in one session and the string "PENDING" in another.
+        Nothing branches on it. Status only.
 
-        `responsecode` IS A MIRROR OF `status`, NOT AN INDEPENDENT SIGNAL. It
-        reads -1 while pending and SUCCESSFUL when terminal. A non-zero code
-        that does not mean failure is exactly the field that gets misread.
-        Branch on `status` only.
+        THE CURRENCY IS NOT ON THIS PAYLOAD. It is reported as XOF because XOF
+        is the only currency this gateway supports at all, which SUPPORTED_
+        CURRENCIES states and `supports()` enforces at routing time. If FeexPay
+        ever settles a second currency, this line is wrong and the assertion
+        in supports() is where it would have had to change first.
+
+        THE AMOUNT IS THE REQUESTED ONE, NOT WHAT THE PAYER WAS CHARGED. The
+        init response carries three amount fields and the fee-inclusive
+        amount_to_pay_xof is the largest; the STATUS payload carries exactly
+        one, and a settled card payment on 28 October reported 100 against an
+        amount_to_pay_xof of 104. So there is one number here and it is the
+        one settle_intent must compare against the contract. Were it the other
+        way round, Kolabo would refuse every payment it had successfully
+        collected.
         """
-        raise GatewayError(
-            "FeexPay collections are not wired up; nothing should be reading one.",
-            retryable=False,
+        body = self._request(
+            "GET", COLLECTION_STATUS_PATH.format(reference=reference)
+        )
+        raw_status = str(body.get("status") or "").strip()
+        mapped = _COLLECTION_STATUS.get(raw_status.upper())
+        if mapped is None:
+            logger.warning(
+                "FeexPay reported collection status %r for %s, which is not a word this "
+                "adapter knows; treating it as pending",
+                raw_status,
+                reference,
+            )
+            mapped = PENDING
+
+        amount = body.get("amount")
+        try:
+            amount_value = int(float(amount))
+        except (TypeError, ValueError):
+            # NOT DEFAULTED TO ZERO. settle_intent compares this against the
+            # contract, and a zero would read as "they paid nothing" rather
+            # than as "we could not tell", which is a refund conversation
+            # started by a parsing failure.
+            raise GatewayError(
+                f"FeexPay reported an amount of {amount!r} for {reference}, which is not "
+                "a number, so the payment cannot be checked against the contract.",
+                retryable=False,
+            )
+
+        return CollectionState(
+            reference=_reference_of(body) or reference,
+            status=mapped,
+            amount=amount_value,
+            currency=SUPPORTED_CURRENCIES[0],
+            raw_status=raw_status,
+            # Fills on settlement and is empty while pending, so a failure
+            # reason on a pending row is not expected and not invented.
+            failure_reason=(str(body.get("reason")) or None) if mapped == FAILED else None,
+            metadata={
+                # The closest thing to a settlement marker this payload has:
+                # empty while pending, filled on settlement.
+                "operator_id": body.get("operator_id"),
+                "transref": body.get("transref"),
+                "serviceref": body.get("serviceref"),
+                "comment": body.get("comment"),
+            },
+            fee=_fee(body),
         )
 
     # --------------------------------------------------------------- webhook

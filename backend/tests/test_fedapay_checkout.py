@@ -620,6 +620,35 @@ def test_release_pays_the_creator_net_of_commission(client, gateway):
         db.close()
 
 
+def test_a_payout_goes_to_the_payout_gateway_not_the_collection_one(client, gateway):
+    """THE REGRESSION GUARD ON THE REGISTRY SPLIT.
+
+    A deployment can now route a country's collections to one provider and
+    its payouts to another, which is exactly the arrangement FeexPay
+    collections create: the brand's money comes in through FeexPay and the
+    creator's goes out through FedaPay. Paying a creator through whichever
+    gateway happens to take the brand's money is the mix-up the split exists
+    to prevent, and it does not fail loudly. It sends a payout down a network
+    string the receiving provider has never heard of, and that surfaces days
+    later as money in limbo.
+
+    The collection gateway here is the fixture's; the payout leg gets a
+    second, different one. The assertion is which object received the call.
+    """
+    collector = FakeGateway()
+    registry.set_gateway("BJ", collector, registry.COLLECTIONS)
+
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, collector, brand, creator, contract)
+    _set_method(client, creator)
+
+    res = client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+    assert res.status_code == 200
+    assert gateway.payouts_sent, "the payout leg's gateway was never called"
+    assert collector.payouts_sent == [], "the payout went to the collection gateway"
+    assert gateway.payouts_sent[0]["amount"] == 42500
+
+
 def test_a_failed_payout_does_not_undo_the_release(client, gateway):
     """THE most important test in this file.
 

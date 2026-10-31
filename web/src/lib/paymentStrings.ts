@@ -38,6 +38,29 @@ const fr = {
     "Les paiements en ligne ne sont pas encore ouverts dans votre pays. Nous vous préviendrons dès que c'est disponible.",
   sandbox: "Mode test : aucun argent réel n'est débité.",
 
+  /* The funding form, shown only when the gateway pushes a request to a
+     handset instead of opening a page. A redirect flow never sees these. */
+  fundHow: "Payer par Mobile Money",
+  fundHowHint:
+    "Choisissez votre réseau et le numéro à débiter. Nous enverrons une demande de paiement sur ce téléphone.",
+  fundNetwork: "Réseau Mobile Money",
+  fundNetworkPlaceholder: "Choisissez votre réseau",
+  fundPhone: "Numéro à débiter",
+  fundPhoneHint:
+    "Le numéro du portefeuille qui paie. Il peut être différent du numéro de votre compte.",
+  fundSubmit: "Envoyer la demande",
+  fundPickNetwork: "Choisissez votre réseau Mobile Money.",
+  fundNeedPhone: "Saisissez le numéro à débiter.",
+  /* The pending state for a prompt. Deliberately different wording from
+     `waiting`, which is written for somebody who has just come back from a
+     payment page: here nothing opened and the only instruction that helps is
+     where to look. */
+  promptSent: "Demande envoyée sur votre téléphone",
+  promptSentHint:
+    "Ouvrez la demande de paiement sur votre téléphone et saisissez votre code. Cette page se met à jour automatiquement. Ne la fermez pas.",
+  promptSentTo: "Envoyée au",
+  promptChange: "Changer de réseau ou de numéro",
+
   payoutTitle: "Où souhaitez-vous être payé ?",
   payoutHint:
     "Nous envoyons vos gains sur ce portefeuille Mobile Money. Choisissez le réseau : nous ne le devinons pas à partir du numéro.",
@@ -77,6 +100,23 @@ const en = {
   unavailableHint:
     "Online payments aren't open in your country yet. We'll let you know as soon as they are.",
   sandbox: "Test mode: no real money is charged.",
+
+  fundHow: "Pay with Mobile Money",
+  fundHowHint:
+    "Choose your network and the number to charge. We'll send a payment request to that phone.",
+  fundNetwork: "Mobile Money network",
+  fundNetworkPlaceholder: "Choose your network",
+  fundPhone: "Number to charge",
+  fundPhoneHint:
+    "The wallet that pays. It can be different from the number on your account.",
+  fundSubmit: "Send the request",
+  fundPickNetwork: "Choose your Mobile Money network.",
+  fundNeedPhone: "Enter the number to charge.",
+  promptSent: "Request sent to your phone",
+  promptSentHint:
+    "Open the payment request on your phone and enter your PIN. This page updates on its own. Please don't close it.",
+  promptSentTo: "Sent to",
+  promptChange: "Change network or number",
 
   payoutTitle: "Where should we pay you?",
   payoutHint:

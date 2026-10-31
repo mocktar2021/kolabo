@@ -37,6 +37,23 @@ export type PaymentIntent = {
      url: it takes a payer to an expired page instead of telling them the
      payment is already done. */
   checkout_url: string | null;
+  /* WHAT THE PAYER HAS TO DO NEXT, and the field that picks the screen.
+
+     "redirect"       open checkout_url. A hosted page takes it from there.
+     "device_prompt"  nothing to open. The gateway has already pushed a
+                      payment request to the handset we named, and the only
+                      thing left is to wait and keep polling.
+
+     READ THIS, NEVER THE NULLNESS OF checkout_url. They are different
+     questions and the difference is right above: checkout_url also goes null
+     once a redirect payment is terminal, so a screen that inferred the state
+     from the url would tell somebody whose card payment had already
+     succeeded to go and check their phone. */
+  payer_action: "redirect" | "device_prompt";
+  /* Which network the request went to, when there was one. Null on a
+     redirect, because the payer picks their operator on the hosted page and
+     we never learn which one. */
+  payer_network: string | null;
   /* THE FIELD THE UI ACTUALLY WAITS ON. status "succeeded" without an escrow
      id is the amount-mismatch case — the gateway took money that does not
      match the contract — and that needs a human, not a success screen. So the
@@ -60,7 +77,18 @@ export function paymentConfig(): Promise<PaymentConfig> {
 export function startCheckout(
   contractId: string,
   token: string | null,
-  opts: { firstName?: string; lastName?: string; returnUrl?: string } = {}
+  opts: {
+    firstName?: string;
+    lastName?: string;
+    returnUrl?: string;
+    /* Only sent when the routed gateway asked for them, which is what
+       collectionNetworks() answers. Both are null on a redirect flow, where
+       the payer picks a network and types a number on the hosted page
+       instead, and the API accepts their absence on purpose: the last mobile
+       build approved by the stores posts this body without them. */
+    network?: string;
+    phone?: string;
+  } = {}
 ): Promise<PaymentIntent> {
   return api<PaymentIntent>("/payments/checkout/start", {
     method: "POST",
@@ -70,8 +98,49 @@ export function startCheckout(
       payer_first_name: opts.firstName || null,
       payer_last_name: opts.lastName || null,
       return_url: opts.returnUrl || null,
+      payer_network: opts.network || null,
+      payer_phone: opts.phone || null,
     },
   });
+}
+
+/* Which mobile money networks THIS brand can pay from, for the country on
+   their account. An empty list is a real answer and means "do not show a
+   picker": the routed gateway runs its own hosted page where the payer
+   chooses, so there is nothing for us to ask. */
+export function collectionNetworks(token: string | null): Promise<string[]> {
+  return api<string[]>("/payments/collection-networks", { token });
+}
+
+/* Display names for the collection networks, on the same terms as
+   PAYOUT_MODE_LABELS below and deliberately a SEPARATE map.
+
+   The two vocabularies look almost identical and are not the same: a payout
+   to Cote d'Ivoire is keyed MTN_CI because that string goes in a URL path,
+   while a collection sends MTN CI in a field. One map serving both would
+   have to hold both spellings of every operator and would quietly return the
+   wrong key the first time one of them changed.
+
+   Unknown codes fall back to the code itself, which is the rule the payout
+   map already follows: a network added at the provider should degrade to
+   ugly, not to an unpickable blank row. */
+export const COLLECTION_NETWORK_LABELS: Record<string, string> = {
+  MTN: "MTN Mobile Money",
+  MOOV: "Moov Money",
+  "CELTIIS BJ": "Celtiis Cash",
+  "MOOV TG": "Moov Money",
+  "TOGOCOM TG": "T-Money",
+  "MTN CI": "MTN Mobile Money",
+  "MOOV CI": "Moov Money",
+  "WAVE CI": "Wave",
+  "ORANGE CI": "Orange Money",
+  "WAVE SN": "Wave",
+  "ORANGE SN": "Orange Money",
+  "FREE SN": "Free Money",
+};
+
+export function collectionNetworkLabel(network: string): string {
+  return COLLECTION_NETWORK_LABELS[network] || network;
 }
 
 /* Not a passive status read: a still-pending intent is re-checked against the

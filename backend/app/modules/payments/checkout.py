@@ -39,6 +39,7 @@ from urllib.parse import urlsplit
 from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core import country_config
 from app.core.config import settings
 from app.core.errors import AppError
 from app.modules.auth.models import User
@@ -122,9 +123,55 @@ def _intent_out(intent: gmodels.PaymentIntent) -> dict:
         "status": intent.status,
         "provider": intent.provider,
         "checkout_url": intent.checkout_url,
+        # WHAT THE CLIENT SHOULD RENDER, and the one field that decides which
+        # of two completely different screens a brand sees: a redirect out to
+        # a hosted page, or "check your phone" and a poll.
+        #
+        # A NULL READS AS REDIRECT, which is where the migration's decision to
+        # stay additive gets paid for. Every intent written before
+        # a2f7b1c45d90 was a redirect and none of them carries a value, so the
+        # default lives here rather than in a backfill. One line, one place,
+        # and the previous image still runs against the new schema.
+        "payer_action": intent.payer_action or gwbase.PAYER_ACTION_REDIRECT,
+        "payer_network": intent.payer_network,
         "escrow_id": intent.escrow_id,
         "failure_reason": intent.failure_reason,
     }
+
+
+def collection_networks(country: str) -> tuple[str, ...]:
+    """The mobile money networks a brand in this country can pay FROM.
+
+    EMPTY IS A REAL ANSWER AND MEANS "DO NOT SHOW A PICKER", not "something
+    went wrong". A redirect gateway asks the payer to choose their operator on
+    its own hosted page, so there is nothing for Kolabo to ask and nothing to
+    render. FedaPay is in exactly that position and returns [] here, which is
+    how the funding screen knows to keep its old shape for the countries it
+    routes.
+
+    FOUND WITH getattr, which is the same opt-in the social OAuth providers
+    use for read_audience and list_pages. A gateway grows this method when it
+    needs the payer to choose before the request is sent; one that does not
+    need it changes nothing and is not edited into compliance with an
+    interface it has no use for.
+
+    ASKED OF THE ROUTED GATEWAY RATHER THAN A TABLE HERE, so the list a brand
+    sees is the list the gateway that will actually take their money accepts.
+    A second copy in this module is a second thing to keep in step, and the
+    one in web/src/lib is already as far as that should go.
+
+    A country nobody routes answers [] rather than raising. The caller is a
+    screen asking what to offer, and a 500 on a dropdown is worse than an
+    empty one.
+    """
+    try:
+        gateway = registry.gateway_for(country, country_config.get_country_config(country)["currency"])
+    except (AppError, ValueError):
+        return ()
+    reader = getattr(gateway, "collection_networks", None)
+    if reader is None:
+        return ()
+    return tuple(reader(country))
 
 
 def start_checkout(
@@ -135,6 +182,23 @@ def start_checkout(
     payer_first_name: str | None = None,
     payer_last_name: str | None = None,
     return_url: str | None = None,
+    # BOTH OPTIONAL HERE AND REQUIRED BY SOME GATEWAYS, which is deliberate
+    # and is KOL-130. The last build approved by Apple and Google calls this
+    # endpoint without either field, and making one required at the API edge
+    # would break every installed copy of the app on the day this ships, with
+    # no way to roll it back short of a store review. So the edge stays
+    # permissive and the gateway refuses what it cannot use, which reaches the
+    # caller as a readable error rather than a 422 on a field their build has
+    # never heard of.
+    #
+    # payer_network is which mobile money operator the prompt is addressed to.
+    # payer_phone OVERRIDES the number on the account: on a prompt flow it is
+    # the handset being debited, and a brand may well pay from a wallet that
+    # is not the number they registered with. On a redirect flow it is still
+    # only a line on a customer record, and the account's number remains the
+    # fallback.
+    payer_network: str | None = None,
+    payer_phone: str | None = None,
 ) -> dict:
     """Begin funding a contract. Returns somewhere to send the payer.
 
@@ -159,18 +223,39 @@ def start_checkout(
     country = business.country_code
     gateway = registry.gateway_for(country, contract.rate_currency)
 
-    # A pending intent for this contract is REUSED rather than duplicated, as
-    # long as it still has a live checkout url. A brand who double-clicks Fund,
-    # or reloads the checkout page, should see the same payment attempt — not
-    # two open transactions at the gateway against one contract, which is how
-    # somebody ends up paying twice for one collaboration and needing a refund
-    # to fix it.
+    # A pending intent for this contract is REUSED rather than duplicated. A
+    # brand who double-clicks Fund, or reloads the checkout page, should see
+    # the same payment attempt and not two open transactions at the gateway
+    # against one contract, which is how somebody ends up paying twice for one
+    # collaboration and needing a refund to fix it.
+    #
+    # THE TEST IS NOW provider_ref, AND IT USED TO BE checkout_url. The old
+    # condition meant "the gateway gave us somewhere to send them", which was
+    # the same thing as "the gateway accepted this" only for as long as every
+    # gateway returned a URL. A mobile money collection never does: it pushes
+    # a prompt to a handset. Under the old condition that intent would never
+    # match, so every reload would start ANOTHER collection and the payer
+    # would get a second prompt, and a third, for one contract they are
+    # already being asked to pay once.
+    #
+    # provider_ref is the honest version of what the guard always meant. It is
+    # null for exactly the case that should not be reused: a row written just
+    # before an outbound call that then failed, which carries no transaction
+    # at the gateway at all and must not be handed back to a brand as a live
+    # attempt.
+    #
+    # THE KNOWN LIMIT, unchanged by this and worth writing down. A prompt that
+    # is never answered leaves the intent pending, and nothing ages it out, so
+    # the brand sees the same attempt until the gateway itself reports a
+    # terminal status on a later read. That is the behaviour redirect
+    # checkouts already had, it is not made worse here, and fixing it is a
+    # sweep over stale pending intents rather than a change to this guard.
     existing = (
         db.query(gmodels.PaymentIntent)
         .filter(
             gmodels.PaymentIntent.contract_id == contract_id,
             gmodels.PaymentIntent.status == gmodels.INTENT_PENDING,
-            gmodels.PaymentIntent.checkout_url.isnot(None),
+            gmodels.PaymentIntent.provider_ref.isnot(None),
         )
         .order_by(gmodels.PaymentIntent.created_at.desc())
         .first()
@@ -225,7 +310,11 @@ def start_checkout(
             # on file can still complete a payment perfectly well: what they
             # lose is a phone number on the customer record at FedaPay, not the
             # ability to pay.
-            payer_phone=business.phone,
+            # THE TYPED NUMBER WINS, and falls back to the account's. On a
+            # prompt flow these are not the same question: the account number
+            # is who the brand is, and this one is the wallet being debited.
+            payer_phone=payer_phone or business.phone,
+            payer_network=payer_network,
             payer_country=country,
             payer_first_name=payer_first_name or "Kolabo",
             payer_last_name=payer_last_name or "Client",
@@ -249,6 +338,12 @@ def start_checkout(
 
     intent.provider_ref = started.reference
     intent.checkout_url = started.checkout_url
+    # RECORDED FROM THE GATEWAY'S ANSWER, not from what was asked for. A
+    # gateway is entitled to ignore the requested network and run its own
+    # hosted page instead, and FedaPay does exactly that; what the client
+    # renders has to follow what actually happened.
+    intent.payer_action = started.payer_action
+    intent.payer_network = payer_network if started.payer_action == gwbase.PAYER_ACTION_DEVICE_PROMPT else None
     intent.updated_at = gmodels.utcnow()
     db.commit()
     db.refresh(intent)

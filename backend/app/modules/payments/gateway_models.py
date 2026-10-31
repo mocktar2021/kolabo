@@ -116,7 +116,36 @@ class PaymentIntent(Base):
     # that a gateway call which times out AFTER creating a transaction leaves
     # us a row to reconcile instead of nothing at all.
     provider_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # NULL IS NOW A MEANINGFUL VALUE HERE AND NOT JUST AN EMPTY ONE. A
+    # redirect gateway returns a page to open; a mobile money collection
+    # pushes a prompt to a handset and has nothing to open at all. Read
+    # payer_action below rather than the nullness of this column: a caller
+    # that infers "poll" from a null will one day meet a redirect gateway
+    # whose URL arrived late and will poll a transaction waiting for a browser
+    # that never opens.
     checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the payer has to do next: open checkout_url, or answer the prompt
+    # already on their phone. The gateway decides and this records the answer,
+    # so the web and mobile clients render the right screen without knowing
+    # which provider was routed to.
+    #
+    # NULLABLE WITH A DEFAULT READ AT THE EDGE, not a NOT NULL with a server
+    # default, because this column is additive on an existing table with live
+    # rows. Every intent written before this migration is a redirect, and
+    # _intent_out fills that in rather than a backfill doing it, which keeps
+    # the migration additive and the rollback honest: the previous image runs
+    # against this schema unchanged. See claude/kolabo-release-strategy-1023.
+    payer_action: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Which mobile money network the prompt was addressed to, for the
+    # collections that have one. Stored because reconciliation against a
+    # provider statement needs to know which operator a movement went
+    # through, and because a brand retrying after a failure should not have to
+    # answer the same question twice.
+    #
+    # The gateway's own string, uppercase with spaces, NOT the underscored
+    # vocabulary payout_methods.mode holds. Two legs of one provider, two
+    # spellings. See feexpay._COLLECTION_NETWORKS.
+    payer_network: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default=INTENT_PENDING, nullable=False, index=True)
     # Their word for it, kept verbatim next to our normalised one. When a
     # payment goes wrong at 2am, "declined" versus "canceled" versus a status

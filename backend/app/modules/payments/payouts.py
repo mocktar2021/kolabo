@@ -40,7 +40,6 @@ from app.modules.notifications.service import notify
 from app.modules.payments import gateway_models as gmodels
 from app.modules.payments import models
 from app.modules.payments.gateways import base as gwbase
-from app.modules.payments.gateways import fedapay as fedapay_module
 from app.modules.payments.gateways import registry
 from app.modules.payments.gateways.base import GatewayError, PayoutTarget
 

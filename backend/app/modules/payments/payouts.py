@@ -172,7 +172,12 @@ def disburse(
         .first()
     )
     country = method.country if method else _user_country(db, recipient_user_id)
-    gateway = registry.registry().get(country or "")
+    # THE PAYOUT MAP, BY NAME. registry() defaults to collections, and this is
+    # the one caller in the codebase that must not take that default: a
+    # deployment can route a country's collections to one provider and its
+    # payouts to another, and paying a creator through whichever gateway takes
+    # the brand's money is exactly the mix-up the split exists to prevent.
+    gateway = registry.registry(registry.PAYOUTS).get(country or "")
 
     if gateway is None:
         # No live gateway here. Fall back to the legacy provider so the mock
@@ -371,7 +376,18 @@ def run_pending_payouts(db: Session, limit: int = 100) -> dict:
         )
         if method is None:
             continue
-        gateway = registry.registry().get(method.country)
+        # THE PAYOUT MAP, for the same reason disburse() asks for it by name
+        # and NOT by taking registry()'s collections default.
+        #
+        # THIS LINE WAS THE DEFAULT AND IT WAS WRONG, found in review of the
+        # change that split the registry. A first attempt went to the payout
+        # gateway and a RETRY went to whichever gateway takes the brand's
+        # money, which on a box with two providers is a different one. It is
+        # the quietest possible place for that bug: the sweep runs
+        # unattended, a payout down a network string the receiving provider
+        # has never heard of does not bounce, and it surfaces days later as a
+        # creator who has not been paid.
+        gateway = registry.registry(registry.PAYOUTS).get(method.country)
         if gateway is None:
             continue
         escrow = db.query(models.Escrow).filter(models.Escrow.id == payout.escrow_id).first()

@@ -620,6 +620,35 @@ def test_release_pays_the_creator_net_of_commission(client, gateway):
         db.close()
 
 
+def test_a_payout_goes_to_the_payout_gateway_not_the_collection_one(client, gateway):
+    """THE REGRESSION GUARD ON THE REGISTRY SPLIT.
+
+    A deployment can now route a country's collections to one provider and
+    its payouts to another, which is exactly the arrangement FeexPay
+    collections create: the brand's money comes in through FeexPay and the
+    creator's goes out through FedaPay. Paying a creator through whichever
+    gateway happens to take the brand's money is the mix-up the split exists
+    to prevent, and it does not fail loudly. It sends a payout down a network
+    string the receiving provider has never heard of, and that surfaces days
+    later as money in limbo.
+
+    The collection gateway here is the fixture's; the payout leg gets a
+    second, different one. The assertion is which object received the call.
+    """
+    collector = FakeGateway()
+    registry.set_gateway("BJ", collector, registry.COLLECTIONS)
+
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, collector, brand, creator, contract)
+    _set_method(client, creator)
+
+    res = client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+    assert res.status_code == 200
+    assert gateway.payouts_sent, "the payout leg's gateway was never called"
+    assert collector.payouts_sent == [], "the payout went to the collection gateway"
+    assert gateway.payouts_sent[0]["amount"] == 42500
+
+
 def test_a_failed_payout_does_not_undo_the_release(client, gateway):
     """THE most important test in this file.
 
@@ -691,6 +720,44 @@ def test_the_sweep_pays_a_creator_who_adds_their_wallet_later(client, gateway):
         assert payout.status == gmodels.PAYOUT_SENT
     finally:
         db.close()
+
+
+def test_the_sweep_retries_through_the_payout_gateway_too(client, gateway):
+    """THE SAME BUG AS THE TEST ABOVE, IN THE QUIETEST PLACE IT COULD HIDE.
+
+    disburse() asks for the payout leg by name. run_pending_payouts did not:
+    it took registry()'s collections default, so a first attempt went to the
+    right gateway and a RETRY went to whichever one takes the brand's money.
+
+    Worse than the first-attempt version in every way. The sweep runs
+    unattended, nobody is watching the response, and a payout sent down a
+    network string the receiving provider has never heard of does not bounce.
+    It surfaces days later as a creator who has not been paid.
+
+    Found in review rather than by this suite, which is why the test exists.
+    """
+    collector = FakeGateway()
+    registry.set_gateway("BJ", collector, registry.COLLECTIONS)
+
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, collector, brand, creator, contract)
+    # Released with no wallet on file, so the payout parks as no_method and
+    # only the sweep can finish it.
+    client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+    _set_method(client, creator)
+
+    db = client.session_factory()
+    try:
+        from app.modules.payments import payouts as payouts_module
+
+        assert payouts_module.run_pending_payouts(db)["retried"] == 1
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.status == gmodels.PAYOUT_SENT
+    finally:
+        db.close()
+
+    assert gateway.payouts_sent, "the sweep never reached the payout gateway"
+    assert collector.payouts_sent == [], "the sweep retried through the collection gateway"
 
 
 def test_a_sent_payout_records_what_the_gateway_charged_us(client, gateway):

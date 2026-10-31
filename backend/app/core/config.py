@@ -468,6 +468,34 @@ class Settings(BaseSettings):
     # Going live is an explicit FEEXPAY_SANDBOX=false, exactly as
     # fedapay_sandbox above works.
     feexpay_sandbox: bool = True
+    # WHICH LEG FEEXPAY TAKES, and collections are the only one this switch
+    # can give it.
+    #
+    # OFF BY DEFAULT, SO WIRING FEEXPAY IN CHANGES NOTHING UNTIL SOMEBODY
+    # SAYS SO. Having a key is not the same as wanting a provider to take
+    # live money, and a box handed credentials during setup should not start
+    # routing brands through a gateway nobody has decided on yet.
+    #
+    # ON, IT MOVES COLLECTIONS IN ALL FOUR OPEN MARKETS, including Senegal,
+    # which today has no collection gateway at all because FedaPay does not
+    # serve it. So this is not purely a swap: for BJ, TG and CI it replaces
+    # FedaPay's hosted page with a mobile money prompt, and for SN it is the
+    # difference between funding and a refusal.
+    #
+    # IT IS REVERSIBLE IN SECONDS, which is the point of making it a setting
+    # rather than a code change. A payment that misbehaves is one edit to
+    # deploy/.env and a backend restart away from routing back to FedaPay,
+    # with no deploy, no PR and no store review.
+    #
+    # THERE IS DELIBERATELY NO PAYOUT EQUIVALENT. FeexPay's payout leg is the
+    # better proven of the two, and switching it anyway would break every
+    # creator who has already saved a payout method: payout_methods.mode
+    # holds FedaPay's vocabulary (mtn_open, sbin, mtn_ci) and FeexPay accepts
+    # a different one (MTN, CELTIIS_BJ, MTN_CI). A flag here would let that
+    # happen with one env line and no warning, and the failure would arrive
+    # days later as creators not being paid. Moving payouts needs a migration
+    # of those stored values first, and that is its own ticket.
+    feexpay_collections: bool = False
 
     class Config:
         env_file = ".env"

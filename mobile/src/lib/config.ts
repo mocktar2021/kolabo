@@ -5,10 +5,32 @@ import { Platform } from "react-native";
 
    Resolved in priority order so the same build can point anywhere:
      1. EXPO_PUBLIC_API_URL — an env var read at bundle time (expo start /
-        eas build), the usual way to switch environments.
-     2. expo.extra.apiBaseUrl in app.json — a committed default per build
-        profile.
+        eas build), and now the only way a build reaches a real backend.
+     2. expo.extra.apiBaseUrl in app.json — a committed default. THERE IS NO
+        LONGER ONE, and the absence is the point; see below.
      3. http://localhost:8000 — the docker-compose backend.
+
+   THERE IS NO COMMITTED API URL ANY MORE, AND THAT IS KOL-124. app.json used
+   to commit extra.apiBaseUrl = the DEVELOPMENT api, and eas.json set the same
+   development url in all three build profiles including production. So a
+   production build shipped pointing at the dev box, and the way that fails is
+   the worst available: the app looks correct, logs in, and writes to a
+   database nothing depends on. A pilot creator who signed up in that build
+   would have an account that exists nowhere that matters, and the first
+   anyone would hear of it is when they asked why their profile was missing.
+   It also passes a smoke test, because everything works.
+
+   WHAT REPLACES IT IS NOTHING, deliberately. With no committed default, a
+   build that forgets EXPO_PUBLIC_API_URL falls to localhost, which on a
+   handset resolves to the handset. Every request fails immediately and
+   visibly. That is a bad build you find by opening it once, rather than a
+   bad build that passes every check and corrupts a pilot.
+
+   SO THE PRODUCTION PROFILE MUST SET EXPO_PUBLIC_API_URL, from the EAS
+   project's own environment rather than from this repository, for the same
+   reason the production hostnames are blank in deploy/.env.example: the
+   committed tree should not be able to name production by accident.
+   mobile/tests/apiTarget.test.ts fails if a committed default comes back.
 
    NOTE FOR DEVICE TESTING: a phone running Expo Go cannot reach "localhost" —
    that resolves to the phone itself, not your laptop. Set EXPO_PUBLIC_API_URL

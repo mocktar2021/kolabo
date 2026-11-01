@@ -314,6 +314,31 @@ def _mark(
         payout.provider_ref = ref
     if reason:
         payout.failure_reason = reason[:400]
+    elif status_value == gmodels.PAYOUT_SENT:
+        # CLEARED ON SUCCESS, which it was not, and KOL-152 is what that cost.
+        # The first real payout in production failed on no_payout_method,
+        # the creator saved one, the sweep retried, and the row ended up
+        # `sent` still carrying the reason its first attempt failed:
+        #
+        #   status | provider | attempts |  failure_reason
+        #   sent   | feexpay  |        1 | no_payout_method
+        #
+        # The obvious way to look for trouble in this table is to filter on a
+        # non-empty failure_reason, and that query returned a success. The
+        # more payouts heal themselves the more of them lie, which is the
+        # wrong direction for a retry mechanism to make a table less
+        # trustworthy as it does its job.
+        #
+        # ONLY ON THE WAY TO SENT, not on every call. A PENDING read that
+        # says nothing new must not erase why the previous attempt failed:
+        # that row is still unfinished and the reason is still the best
+        # explanation anyone has for it.
+        #
+        # NO HISTORY IS LOST THAT WAS WORTH KEEPING. `attempts` still counts
+        # the tries and provider_status still holds the gateway's own last
+        # word. What goes is a field describing a current state that is no
+        # longer the current state.
+        payout.failure_reason = None
     if fee is not None:
         # Guarded, and the guard is the point. A payout is read more than once
         # — the send, the sweep, the webhook — and a later read that does not

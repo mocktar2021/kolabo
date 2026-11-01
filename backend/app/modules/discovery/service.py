@@ -1,11 +1,14 @@
 """Discovery business logic (Epic C).
 
 KOL-19: search influencers by category and follower range. Only searchable
-profiles are returned, and verified profiles rank above unverified. At pilot
-data volume the candidate set is small (hundreds), so filtering and ordering
-run in application code; this can move to PostgreSQL indexes or full text search
-when volume grows.
+profiles are returned, ordered by follower count and then by profile age. At
+pilot data volume the candidate set is small (hundreds), so filtering and
+ordering run in application code; this can move to PostgreSQL indexes or full
+text search when volume grows.
 KOL-20: favorites shortlist for a business, persisted and removable.
+KOL-121: the ordering line above used to end "and verified profiles rank above
+unverified". It does not any more, and the flag it referred to was never worth
+ranking on; see sort_key for what it actually recorded.
 
 Results carry the display name, cover image, per platform audience, rating, and
 starting package price so a result card can be shown without a second request
@@ -167,7 +170,6 @@ def _result_card(prof: profiles.InfluencerProfile, user: User, ctx: dict) -> dic
         "categories": prof.categories,
         "follower_count": prof.follower_count,
         "country_code": user.country_code,
-        "is_verified": user.is_verified,
         "starting_price_amount": price[0] if price else None,
         "starting_price_currency": price[1] if price else None,
         "average_stars": avg,
@@ -232,11 +234,23 @@ def search_influencers(
                 continue
         matched.append((prof, user))
 
-    # Verified first, then higher follower count, then oldest profile first.
+    # Higher follower count first, then oldest profile first.
+    #
+    # VERIFIED USED TO LEAD THIS TUPLE AND IT MEANT NOTHING. The term was
+    # `0 if user.is_verified else 1`, and users.is_verified is set by
+    # verify_otp(): it records that somebody opened an email. So the roster a
+    # brand reads was ordered, before follower count, by a near-constant that
+    # says nothing about the creator. KOL-121, approved 3 October.
+    #
+    # The real signals were never consulted here. VerificationDocument.status
+    # and SocialAccount.status are the two things that could carry weight in
+    # an ordering, and discovery has never read either. Replacing the term
+    # rather than removing it would mean deciding what a social connection is
+    # worth in a ranking, which is a product question nobody has asked.
     def sort_key(item):
-        prof, user = item
+        prof, _user = item
         fc = prof.follower_count if prof.follower_count is not None else -1
-        return (0 if user.is_verified else 1, -fc, prof.created_at)
+        return (-fc, prof.created_at)
 
     matched.sort(key=sort_key)
     page = matched[offset : offset + limit]

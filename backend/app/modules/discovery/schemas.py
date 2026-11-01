@@ -20,7 +20,6 @@ class InfluencerSearchResult(BaseModel):
     categories: list[str]
     follower_count: int | None
     country_code: str
-    is_verified: bool
     starting_price_amount: int | None = None
     starting_price_currency: str | None = None
     average_stars: float | None = None

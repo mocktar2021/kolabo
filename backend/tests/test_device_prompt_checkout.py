@@ -73,6 +73,11 @@ class PromptGateway:
         # amount check pass by default. A number here is a gateway reporting
         # a different sum from the one on the contract.
         self.collection_amount = None
+        # A reason carried alongside a NON-terminal status. Unusual, and the
+        # whole point: settle_intent's success path clears failure_reason,
+        # and without a way to put one there on a pending read that line
+        # cannot be exercised at all.
+        self.collection_failure_reason = None
         self.reads = []
         self.reference = "hthwUo946aQE"
 
@@ -112,6 +117,7 @@ class PromptGateway:
             else (self.started[-1]["amount"] if self.started else 0),
             currency="XOF",
             raw_status=self.collection_status.upper(),
+            failure_reason=self.collection_failure_reason,
         )
 
     def send_payout(self, **kw):
@@ -488,6 +494,39 @@ def _intent(client, intent_id):
         return db.query(gmodels.PaymentIntent).filter(gmodels.PaymentIntent.id == intent_id).one()
     finally:
         db.close()
+
+
+def test_a_settled_intent_does_not_keep_a_reason_from_while_it_was_pending(client, gateway):
+    """KOL-152's sibling on the collection leg.
+
+    A succeeded intent carrying a failure reason is a row that contradicts
+    itself, and the obvious way to hunt for trouble in payment_intents is to
+    filter on a non-empty failure_reason. It was found on a payout first:
+    the first real one in production ended up `sent` still saying
+    no_payout_method.
+
+    NARROWER HERE, AND GUARDED ANYWAY. An intent cannot go from failed back
+    to succeeded, because settle_intent returns early for anything already
+    terminal. The only way a reason reaches the success path is a gateway
+    reporting one alongside a status that is not terminal, which is what this
+    fake does and what nothing in production has been seen to do. The line
+    costs nothing and the alternative is trusting that no provider ever will.
+    """
+    brand, contract = _seed(client)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+
+    gateway.collection_failure_reason = "network busy, retrying"
+    assert client.get(f"/payments/checkout/{intent['id']}", headers=_headers(brand)).status_code == 200
+    assert _intent(client, intent["id"]).failure_reason == "network busy, retrying"
+
+    gateway.collection_status = gwbase.SUCCEEDED
+    gateway.collection_failure_reason = None
+    client.get(f"/payments/checkout/{intent['id']}", headers=_headers(brand))
+
+    settled = _intent(client, intent["id"])
+    assert settled.status == "succeeded"
+    assert settled.escrow_id is not None
+    assert settled.failure_reason is None
 
 
 def test_the_sweep_settles_a_prompt_nobody_was_watching(client, gateway):

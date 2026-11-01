@@ -460,6 +460,8 @@ def settle_intent(db: Session, intent: gmodels.PaymentIntent) -> gmodels.Payment
         # to see.
         intent.escrow_id = existing_escrow.id
         intent.status = gmodels.INTENT_SUCCEEDED
+        # See the note on the other success path below.
+        intent.failure_reason = None
         intent.settled_at = gmodels.utcnow()
         intent.updated_at = gmodels.utcnow()
         db.commit()
@@ -474,6 +476,21 @@ def settle_intent(db: Session, intent: gmodels.PaymentIntent) -> gmodels.Payment
     )
     intent.escrow_id = escrow.id
     intent.status = gmodels.INTENT_SUCCEEDED
+    # CLEARED ON SUCCESS, the sibling of the fix KOL-152 made in payouts._mark
+    # after a `sent` payout was found still carrying the reason its first
+    # attempt failed. A succeeded intent with a failure reason on it is a row
+    # that contradicts itself, and the obvious way to hunt for trouble in this
+    # table is to filter on a non-empty failure_reason.
+    #
+    # NARROWER THAN THE PAYOUT CASE, and included anyway. An intent cannot go
+    # from failed back to succeeded, because settle_intent returns early for
+    # anything already terminal, so the only way a reason reaches here is a
+    # non-terminal read that carried one before the settling read. In practice
+    # the pending branch assigns state.failure_reason on every pass and a
+    # pending state does not carry one, so this is usually a no-op. It costs a
+    # line, and the alternative is relying on a gateway never reporting a
+    # reason alongside a non-terminal status.
+    intent.failure_reason = None
     intent.settled_at = gmodels.utcnow()
     intent.updated_at = gmodels.utcnow()
     db.commit()

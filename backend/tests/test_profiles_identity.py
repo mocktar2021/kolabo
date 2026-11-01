@@ -16,7 +16,9 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
 from app.modules.auth.models import User
+from app.modules.profiles import models as profiles_models
 from app.modules.profiles.router import router as profiles_router
+from tests import party_fixtures
 
 
 @pytest.fixture()
@@ -138,10 +140,31 @@ def test_public_payload_has_languages_but_never_birth_date_or_gender(client):
     assert own["gender"] == "female"
 
 
+def _seed_party(client, uid: str) -> None:
+    """State who this creator contracts as, so the live gate is not held by it."""
+    db = client.session_factory()
+    try:
+        profile = (
+            db.query(profiles_models.InfluencerProfile)
+            .filter(profiles_models.InfluencerProfile.user_id == uid)
+            .one()
+        )
+        profile.party_details = party_fixtures.creator_party_block()
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_profile_is_not_live_without_a_birth_date(client):
     uid = _user(client, "+22990000406")
     client.put(f"/profiles/influencer/{uid}", json={"bio": "Hi", "categories": ["fashion"]})
     _add_packages(client, uid)
+    # Seeded so that the birth date really is the last missing piece, which is
+    # what this test is about. KOL-146 added party details to the live gate,
+    # and without this line the final assertion would pass or fail for a
+    # reason that has nothing to do with the 18+ check. Written onto the
+    # column directly, as tests/party_fixtures.py explains.
+    _seed_party(client, uid)
     s = client.get(f"/profiles/{uid}/onboarding-status").json()
     assert s["has_birth_date"] is False
     assert s["is_live"] is False

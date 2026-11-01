@@ -343,15 +343,18 @@ class OnboardingStatusOut(BaseModel):
     has_birth_date: bool
     # Progress toward MIN_LIVE_PACKAGES, so the wizard can say "1 of 3".
     active_package_count: int
+    # ANSWERED, 1 November 2026. This field used to be deliberately absent,
+    # with a note saying spec section 11 question 1 was open: should a creator
+    # who has not stated who they are be discoverable, the way one without a
+    # birth date is not? It is a product decision rather than a tidy-up,
+    # because it changes who appears in search.
+    #
+    # The founder answered gate it, after KOL-146 was hit on production on the
+    # happy path: a brand pressed Accept and was told the creator's contract
+    # details were missing, which is a refusal the brand can do nothing about.
+    # Live now means contractable. See profiles/service.onboarding_status.
+    has_party_details: bool
     is_live: bool
-    # PARTY DETAILS ARE DELIBERATELY NOT ON THIS MODEL, and will look like an
-    # omission to anybody reading the spec beside it. Spec section 4
-    # recommends adding has_party_details here so that a creator who has not
-    # stated who they are is not discoverable, the same way one without a
-    # birth date is not. That is spec section 11 question 1, the founder has
-    # not answered it, and it is a product decision rather than a tidy-up: it
-    # changes who appears in search. Until she answers, party details gate
-    # CONTRACT GENERATION ONLY (contracts/service.py) and nothing else.
 
 
 class VerificationDocumentOut(BaseModel):

@@ -19,6 +19,7 @@ type MediaOut = { id: string; url: string };
 type Status = {
   has_bio: boolean; has_categories: boolean; has_pricing: boolean;
   has_packages: boolean; has_social: boolean; has_birth_date: boolean;
+  has_party_details: boolean;
   active_package_count: number; is_live: boolean;
 };
 
@@ -504,6 +505,9 @@ export default function Onboarding() {
                 { ok: status?.has_bio, label: t("onb.checkBio") },
                 { ok: status?.has_categories, label: t("onb.checkCategories") },
                 { ok: status?.has_birth_date, label: t("onb.checkBirthDate") },
+                /* KOL-146. Without this row a creator sees "not live" and no
+                   reason, which is the same failure one step earlier. */
+                { ok: status?.has_party_details, label: t("onb.checkPartyDetails") },
                 { ok: status?.has_pricing, label: t("onb.checkPricing") },
                 { ok: status?.has_social, label: t("onb.checkSocial") }
               ].map((row) => (

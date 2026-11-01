@@ -112,6 +112,7 @@ export type OnboardingStatus = {
   has_packages: boolean;
   has_social: boolean;
   has_birth_date: boolean;
+  has_party_details: boolean;
   active_package_count: number;
   is_live: boolean;
 };

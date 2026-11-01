@@ -18,6 +18,10 @@ const fr = {
   title3: "Mise en ligne", sub3: "Vérifions que votre profil est complet.",
   checkBio: "Bio renseignée", checkCategories: "Au moins une catégorie",
   checkBirthDate: "Date de naissance renseignée",
+  /* KOL-146. Nommé "informations contractuelles" et pas "coordonnées" :
+     ce sont les mentions qui figureront sur le contrat signé, et une
+     créatrice qui lit "coordonnées" pense à son numéro de téléphone. */
+  checkPartyDetails: "Informations contractuelles renseignées",
   checkPricing: "Au moins 3 offres publiées", checkSocial: "Un réseau social ajouté",
   liveNow: "Votre profil est en ligne et visible dans la recherche.",
   notLive: "Il manque encore des éléments avant la mise en ligne.",
@@ -43,6 +47,7 @@ const en = {
   title3: "Go live", sub3: "Let us check your profile is complete.",
   checkBio: "Bio added", checkCategories: "At least one category",
   checkBirthDate: "Birth date provided",
+  checkPartyDetails: "Contract details provided",
   checkPricing: "At least 3 published packages", checkSocial: "A social profile added",
   liveNow: "Your profile is live and visible in search.",
   notLive: "A few things are still missing before you can go live.",

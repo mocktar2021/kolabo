@@ -22,6 +22,8 @@ second prompt, and a third, for one contract.
 test_a_reload_does_not_send_a_second_prompt is that test, and it fails
 against the old condition.
 """
+from datetime import timedelta
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -33,6 +35,7 @@ from app.core.db import Base, get_db
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.contracts import models as contracts
+from app.modules.payments import checkout
 from app.modules.payments import gateway_models as gmodels
 from app.modules.payments import provider as provider_module
 from app.modules.payments import service as pay_service
@@ -61,6 +64,16 @@ class PromptGateway:
         self.started = []
         self.collection_status = gwbase.PENDING
         self.start_raises = False
+        # SEPARATE FROM start_raises, because the sweep only ever reads. A
+        # fake that could not fail on a read could not express the case the
+        # sweep is built for: a gateway that is unreachable on this pass and
+        # fine on the next one.
+        self.read_raises = False
+        # None -> echo whatever was last asked for, which is what makes the
+        # amount check pass by default. A number here is a gateway reporting
+        # a different sum from the one on the contract.
+        self.collection_amount = None
+        self.reads = []
         self.reference = "hthwUo946aQE"
 
     def supports(self, country, currency):
@@ -88,10 +101,15 @@ class PromptGateway:
         )
 
     def read_collection(self, reference):
+        self.reads.append(reference)
+        if self.read_raises:
+            raise GatewayError("gateway unreachable", retryable=True)
         return CollectionState(
             reference=reference,
             status=self.collection_status,
-            amount=self.started[-1]["amount"] if self.started else 0,
+            amount=self.collection_amount
+            if self.collection_amount is not None
+            else (self.started[-1]["amount"] if self.started else 0),
             currency="XOF",
             raw_status=self.collection_status.upper(),
         )
@@ -435,3 +453,205 @@ def test_a_brand_in_an_unrouted_country_answers_empty_not_an_error(client, gatew
     res = client.get("/payments/collection-networks", headers=_headers(brand))
     assert res.status_code == 200
     assert res.json() == []
+
+
+# ------------------------------------------- the clock, when the tab is gone
+
+
+def _age(client, intent_id, seconds):
+    """Move an intent back in time. THE ONLY WAY TO TEST A WINDOW HONESTLY.
+
+    The alternative is freezing the clock, which would mean the sweep reading
+    a time source the rest of the codebase does not. Rewriting created_at is
+    the same thing the passage of time does, and it is one line.
+    """
+    db = client.session_factory()
+    try:
+        row = db.query(gmodels.PaymentIntent).filter(gmodels.PaymentIntent.id == intent_id).one()
+        row.created_at = gmodels.utcnow() - timedelta(seconds=seconds)
+        db.commit()
+    finally:
+        db.close()
+
+
+def _sweep(client):
+    db = client.session_factory()
+    try:
+        return checkout.run_pending_collections(db)
+    finally:
+        db.close()
+
+
+def _intent(client, intent_id):
+    db = client.session_factory()
+    try:
+        return db.query(gmodels.PaymentIntent).filter(gmodels.PaymentIntent.id == intent_id).one()
+    finally:
+        db.close()
+
+
+def test_the_sweep_settles_a_prompt_nobody_was_watching(client, gateway):
+    """THE BUG THIS FILE'S SWEEP WAS WRITTEN FOR, and it cost real money.
+
+    On 31 October a 500 XOF collection in Benin was answered on the handset,
+    FeexPay recorded it SUCCESSFUL, and Kolabo's row stayed pending with no
+    escrow: the checkout tab had stopped polling, this endpoint takes no
+    callback url, and there is no return page on a prompt. Nothing was ever
+    going to ask again.
+    """
+    brand, contract = _seed(client)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+    _age(client, intent["id"], 300)
+
+    gateway.collection_status = gwbase.SUCCEEDED
+    result = _sweep(client)
+
+    assert result["checked"] == 1
+    assert result["settled"] == 1
+    settled = _intent(client, intent["id"])
+    assert settled.status == "succeeded"
+    assert settled.escrow_id is not None
+
+
+def test_the_sweep_keeps_its_hands_off_a_payment_the_page_is_still_polling(client, gateway):
+    """Fresh intents belong to the browser. Two readers three seconds apart
+    get the same answer from the same gateway and one of them is billable."""
+    brand, contract = _seed(client)
+    _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000")
+
+    gateway.collection_status = gwbase.SUCCEEDED
+    result = _sweep(client)
+
+    assert result["checked"] == 0
+    assert gateway.reads == []
+
+
+def test_an_intent_older_than_the_window_is_counted_not_closed(client, gateway):
+    """A day-old pending intent is not settled and NOT marked failed either.
+
+    Marking it failed would be this function deciding, on a timer, that
+    somebody's money never moved — and a gateway we could not reach for a day
+    looks identical from here. It gets counted so it shows up in the sweeps
+    log every pass until a human looks at it.
+    """
+    brand, contract = _seed(client)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+    _age(client, intent["id"], checkout.PENDING_COLLECTION_MAX_AGE_SECONDS + 60)
+
+    gateway.collection_status = gwbase.SUCCEEDED
+    result = _sweep(client)
+
+    assert result["checked"] == 0
+    assert result["abandoned"] == 1
+    assert gateway.reads == []
+    assert _intent(client, intent["id"]).status == "pending"
+
+
+def test_a_gateway_that_cannot_be_read_leaves_the_intent_alone_and_the_pass_runs(client, gateway):
+    brand, contract = _seed(client)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+    _age(client, intent["id"], 300)
+
+    gateway.read_raises = True
+    result = _sweep(client)
+
+    assert result["checked"] == 1
+    assert result["unreachable"] == 1
+    assert result["settled"] == 0
+    still = _intent(client, intent["id"])
+    assert still.status == "pending"
+    # NOT FAILED, and no reason written. An outage on our side of the wire is
+    # not a payment that failed, and the next pass tries again.
+    assert still.failure_reason is None
+
+
+def test_one_unreadable_intent_does_not_stop_the_rest_of_the_pass(client, gateway):
+    """A pass that stops at the first bad row is a pass that never reaches the
+    good ones, which on this leg means money collected and never recorded."""
+    brand, first = _seed(client)
+    one = _start(client, brand, first, payer_network="MTN", payer_phone="22966000000").json()
+
+    db = client.session_factory()
+    try:
+        second = contracts.Contract(
+            campaign_id="camp-2", proposal_id="prop-2",
+            business_user_id=brand,
+            influencer_user_id=db.query(User).filter(User.role == "influencer").one().id,
+            language="fr", body="terms", rate_amount=50000, rate_currency="XOF",
+            timeline_days=7, deliverables=[], status=contracts.SIGNED,
+        )
+        db.add(second)
+        db.commit()
+        second_id = second.id
+    finally:
+        db.close()
+
+    two = _start(client, brand, second_id, payer_network="MTN", payer_phone="22966000000").json()
+    _age(client, one["id"], 600)
+    _age(client, two["id"], 300)
+
+    # The older one is read first and blows up; the younger one must still be
+    # reached. Raising on the FIRST read only is what makes this a test of the
+    # loop rather than of the error handler.
+    real_read = gateway.read_collection
+    calls = {"n": 0}
+
+    def flaky(reference):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise GatewayError("gateway unreachable", retryable=True)
+        return real_read(reference)
+
+    gateway.read_collection = flaky
+    gateway.collection_status = gwbase.SUCCEEDED
+    result = _sweep(client)
+
+    assert result["checked"] == 2
+    assert result["unreachable"] == 1
+    assert result["settled"] == 1
+    assert _intent(client, one["id"]).status == "pending"
+    assert _intent(client, two["id"]).status == "succeeded"
+
+
+def test_the_sweep_still_refuses_money_that_does_not_match_the_contract(client, gateway):
+    """The sweep settles through settle_intent, so every check it makes still
+    runs. A background job that skipped the amount comparison would be the
+    cheapest way back into the fraud the comparison exists to stop."""
+    brand, contract = _seed(client, amount=50000)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+    _age(client, intent["id"], 300)
+
+    gateway.collection_status = gwbase.SUCCEEDED
+    gateway.collection_amount = 500
+    result = _sweep(client)
+
+    assert result["settled"] == 0
+    assert result["closed"] == 1
+    refused = _intent(client, intent["id"])
+    assert refused.status == "failed"
+    assert refused.failure_reason == "amount_mismatch"
+    assert refused.escrow_id is None
+
+
+def test_an_intent_with_no_reference_is_not_swept(client, gateway):
+    """Nothing to read. settle_intent fails those on sight, and failing one
+    from a timer would retire a row whose gateway call might still have been
+    in flight when it was written. The page owns that case."""
+    brand, contract = _seed(client)
+    intent = _start(client, brand, contract, payer_network="MTN", payer_phone="22966000000").json()
+    db = client.session_factory()
+    try:
+        row = db.query(gmodels.PaymentIntent).filter(
+            gmodels.PaymentIntent.id == intent["id"]
+        ).one()
+        row.provider_ref = None
+        row.created_at = gmodels.utcnow() - timedelta(seconds=300)
+        db.commit()
+    finally:
+        db.close()
+
+    result = _sweep(client)
+
+    assert result["checked"] == 0
+    assert gateway.reads == []
+    assert _intent(client, intent["id"]).status == "pending"

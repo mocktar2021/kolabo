@@ -57,8 +57,15 @@
    in the test that guards the catalogue.
 
    NO EM DASH AND NO EN DASH, like every other bundle: punctuation.test.ts
-   walks web/src and reads the string literals. The narrow no-break spaces
-   before colons are written as escapes so they are visible in a diff. */
+   walks web/src and reads the string literals.
+
+   THE LINE ABOUT NARROW NO-BREAK SPACES THAT USED TO BE HERE WAS NOT TRUE.
+   It said the spaces before colons were written as escapes so they would be
+   visible in a diff. There are none: every space before a colon in this file
+   is a plain ASCII space, and there are no escapes. Checked across the whole
+   bundle, along with U+00A0, U+2009, U+200B and U+FEFF, all absent. A comment
+   describing something that is not there sends the next person looking for
+   it, which costs more than the comment ever saved. */
 import i18n from "../i18n";
 
 const fr = {
@@ -176,7 +183,8 @@ const fr = {
 
     spendTitle: "Suivre vos dépenses",
     spend1: "Votre page de paiements montre ce que vous avez dépensé, ce qui est en attente, ce qui est en litige et ce qui a été remboursé, avec un relevé ligne par ligne.",
-    spend2: "Aucun de ces montants n'est amputé d'une commission. La commission Kolabo est prélevée sur ce que le créateur reçoit, jamais sur ce que vous payez. Ce que vous voyez là est ce qui est parti de votre portefeuille.",
+    spend2:
+      "La commission Kolabo est prélevée sur ce que le créateur reçoit, jamais sur ce que vous payez. Les montants affichés là sont ceux de vos contrats. Votre opérateur Mobile Money ajoute ses propres frais au moment du paiement : ils lui reviennent, pas à Kolabo, et ne figurent pas sur ce relevé.",
 
     disputeTitle: "En cas de désaccord",
     dispute1: "Si le travail remis ne correspond pas au contrat, ouvrez un litige depuis la page du contrat. L'argent reste en séquestre.",
@@ -331,7 +339,8 @@ const en = {
 
     spendTitle: "Following your spend",
     spend1: "Your payments page shows what you have spent, what is pending, what is in dispute and what was refunded, with a line by line statement.",
-    spend2: "None of those figures has a commission taken off. The Kolabo commission comes out of what the creator receives, never out of what you pay. What you see there is what left your wallet.",
+    spend2:
+      "The Kolabo commission comes out of what the creator receives, never out of what you pay. The figures there are your contract amounts. Your Mobile Money operator adds its own fee when you pay: it goes to them, not to Kolabo, and it is not on that statement.",
 
     disputeTitle: "When you disagree",
     dispute1: "If the submitted work does not match the contract, open a dispute from the contract page. The money stays in escrow.",

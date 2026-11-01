@@ -40,7 +40,6 @@ from app.modules.notifications.service import notify
 from app.modules.payments import gateway_models as gmodels
 from app.modules.payments import models
 from app.modules.payments.gateways import base as gwbase
-from app.modules.payments.gateways import fedapay as fedapay_module
 from app.modules.payments.gateways import registry
 from app.modules.payments.gateways.base import GatewayError, PayoutTarget
 
@@ -57,7 +56,36 @@ _PAYOUT_STATUS = {
 
 
 def valid_modes(country: str) -> tuple[str, ...]:
-    return fedapay_module.PAYOUT_MODES.get(country, ())
+    """The networks the gateway that will actually pay this creator accepts.
+
+    ASKED OF THE ROUTED PAYOUT GATEWAY, AND IT USED TO BE A HARDCODED READ of
+    fedapay.PAYOUT_MODES. That was correct while one provider did everything
+    and became a trap the moment the registry could route payouts elsewhere:
+    the form would offer a creator mtn_open while the gateway behind it
+    accepted MTN, and the mismatch would not surface until a real payout
+    failed, days after they saved it.
+
+    The values are identical while FedaPay holds this leg, because
+    FedaPayGateway.payout_modes returns exactly that table. So this is a
+    change of source, not of answer, until somebody flips FEEXPAY_PAYOUTS.
+
+    EMPTY WHEN NOTHING IS ROUTED, which set_payout_method turns into
+    `payout_country_unsupported`. That is the honest answer for a deployment
+    with no payout gateway: offering a dropdown of networks nobody can send
+    to is worse than saying so.
+
+    getattr, NOT AN INTERFACE CHANGE. A gateway that cannot pay out has no
+    business declaring payout networks, and the PaymentGateway protocol does
+    not require the method. Same opt-in the social OAuth providers use for
+    read_audience.
+    """
+    gateway = registry.registry(registry.PAYOUTS).get(country)
+    if gateway is None:
+        return ()
+    reader = getattr(gateway, "payout_modes", None)
+    if reader is None:
+        return ()
+    return tuple(reader(country))
 
 
 def set_payout_method(

@@ -95,18 +95,29 @@ def _build_registry() -> dict[str, dict[str, PaymentGateway]]:
     else:
         logger.info("FEDAPAY_SECRET_KEY is unset; live payments are disabled")
 
-    if settings.feexpay_collections:
+    wanted = [leg for leg, on in (
+        (COLLECTIONS, settings.feexpay_collections),
+        (PAYOUTS, settings.feexpay_payouts),
+    ) if on]
+    if wanted:
         if settings.feexpay_api_key and settings.feexpay_shop_id:
-            collector = FeexPayGateway(
+            # ONE OBJECT FOR BOTH LEGS when both are switched on, not two.
+            # They share a key, a shop and a base url, and two instances
+            # would be two HTTP clients and two chances for a future
+            # per-instance cache to disagree with itself about the same
+            # provider.
+            gateway = FeexPayGateway(
                 api_key=settings.feexpay_api_key,
                 shop_id=settings.feexpay_shop_id,
                 webhook_secret=settings.feexpay_webhook_secret,
                 sandbox=settings.feexpay_sandbox,
             )
-            for country in feexpay.SUPPORTED_COUNTRIES:
-                registry[COLLECTIONS][country] = collector
+            for leg in wanted:
+                for country in feexpay.SUPPORTED_COUNTRIES:
+                    registry[leg][country] = gateway
             logger.info(
-                "FeexPay is taking collections in %s; payouts are unchanged",
+                "FeexPay is taking %s in %s",
+                " and ".join(wanted),
                 ", ".join(feexpay.SUPPORTED_COUNTRIES),
             )
         else:
@@ -114,10 +125,11 @@ def _build_registry() -> dict[str, dict[str, PaymentGateway]]:
             # silently not doing it. The quiet version leaves a box routing to
             # FedaPay while its operator believes otherwise, and the way that
             # surfaces is a brand seeing a card page where a mobile money
-            # prompt was expected.
+            # prompt was expected, or a creator never being paid.
             logger.error(
-                "FEEXPAY_COLLECTIONS is on but FEEXPAY_API_KEY or FEEXPAY_SHOP_ID is "
-                "unset, so collections are still routed to the previous gateway"
+                "FEEXPAY_COLLECTIONS or FEEXPAY_PAYOUTS is on but FEEXPAY_API_KEY or "
+                "FEEXPAY_SHOP_ID is unset, so %s are still routed to the previous gateway",
+                " and ".join(wanted),
             )
     return registry
 

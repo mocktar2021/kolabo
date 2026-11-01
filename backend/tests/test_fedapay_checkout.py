@@ -67,6 +67,25 @@ class FakeGateway:
     def supports(self, country, currency):
         return country in ("BJ", "TG", "CI") and currency == "XOF"
 
+    def payout_modes(self, country):
+        """What this gateway will pay out to, which it now has to declare.
+
+        ADDED WHEN valid_modes STOPPED READING A HARDCODED TABLE. It used to
+        answer from fedapay.PAYOUT_MODES no matter which gateway was routed,
+        so a fake could stay silent about payouts and the payout form worked
+        anyway. That was the bug: the form offered networks the routed
+        gateway had never agreed to. A fake that pays out should say what it
+        pays out to, like a real one.
+
+        FedaPay's own values, because this fake stands in for FedaPay here
+        and _set_method saves mtn_open.
+        """
+        return {
+            "BJ": ("mtn_open", "moov", "sbin"),
+            "TG": ("moov_tg", "togocel"),
+            "CI": ("mtn_ci", "moov_ci", "wave_ci", "orange_ci"),
+        }.get(country, ())
+
     def start_collection(self, *, amount, currency, **kw):
         self.started.append({"amount": amount, "currency": currency, **kw})
         self._last_amount = amount

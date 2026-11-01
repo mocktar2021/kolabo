@@ -143,6 +143,26 @@ export function collectionNetworkLabel(network: string): string {
   return COLLECTION_NETWORK_LABELS[network] || network;
 }
 
+/* A gateway refusal the brand can act on, or the generic line.
+
+   ONE ENTRY, BECAUSE ONE CODE HAS BEEN OBSERVED. FeexPay's full vocabulary
+   has not been measured, and inventing sentences for codes nobody has seen
+   produces confident wrong advice the first time one arrives. An unknown
+   reason therefore keeps "nothing was charged, you can try again", which is
+   always true. Add a line here each time a real refusal is seen, not before.
+
+   Lives here rather than in errorMessages.ts on purpose: that catalogue maps
+   OUR AppError codes, and these are the provider's own strings stored
+   verbatim on payment_intents.failure_reason. Two vocabularies, two homes,
+   and a single catalogue holding both would invite somebody to add a
+   provider string to the parity test that checks ours against the backend. */
+export const FAILURE_HINTS: Record<string, string> = {
+  PAYER_NOT_FOUND: "pay.failedPayerNotFound",
+};
+
+export const failureHint = (reason: string | null): string =>
+  (reason && FAILURE_HINTS[reason]) || "pay.failedHint";
+
 /* Not a passive status read: a still-pending intent is re-checked against the
    gateway inside this request, and the escrow is created here if the money
    arrived. Polling this IS the fastest path to a funded contract; the webhook

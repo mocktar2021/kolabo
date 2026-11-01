@@ -24,6 +24,14 @@ const fr = {
   backToContract: "Retour au contrat",
   failed: "Le paiement n'a pas abouti",
   failedHint: "Aucun montant n'a été débité. Vous pouvez réessayer.",
+  /* LE SEUL CODE OBSERVÉ EN PRODUCTION, et il est affiché parce qu'il est
+     réparable par la personne qui le lit. Le message générique au-dessus est
+     vrai et inutile ici : il invite à réessayer, et une marque qui réessaie
+     avec le même numéro échoue une deuxième fois, ce qui est exactement ce
+     qui s'est produit le 31 octobre. Les codes non reconnus gardent le
+     message générique plutôt que d'être devinés. */
+  failedPayerNotFound:
+    "L'opérateur n'a pas reconnu ce numéro. Vérifiez qu'il est au format international, sans le +, avec l'indicatif du pays et sans espaces.",
   retry: "Réessayer",
   canceled: "Paiement annulé",
   /* The amount-mismatch case. Deliberately does NOT say "payment failed": money
@@ -46,8 +54,19 @@ const fr = {
   fundNetwork: "Réseau Mobile Money",
   fundNetworkPlaceholder: "Choisissez votre réseau",
   fundPhone: "Numéro à débiter",
+  /* LE FORMAT EST DIT AVANT, pas après. KOL-149 : deux paiements réels ont
+     échoué le 31 octobre sur un numéro saisi en local, et le refus de
+     l'opérateur ne dit rien d'utile à quelqu'un qui regarde un numéro qui
+     est le sien et qui lui semble juste. Un champ qui annonce sa forme
+     coûte une ligne; un paiement raté coûte une tentative, une attente et
+     la confiance d'une marque qui vient de payer pour rien.
+
+     UN SEUL EXEMPLE, ET C'EST VOULU. 229 est l'indicatif confirmé par un
+     paiement réellement encaissé. Les trois autres marchés n'ont pas été
+     vérifiés contre une source à jour, et un exemple faux dans un champ de
+     paiement apprend la mauvaise habitude au lieu de corriger l'erreur. */
   fundPhoneHint:
-    "Le numéro du portefeuille qui paie. Il peut être différent du numéro de votre compte.",
+    "Le numéro du portefeuille qui paie. Il peut être différent du numéro de votre compte. Saisissez-le au format international, sans le +, indicatif du pays compris : un numéro béninois commence par 229.",
   /* DIT AVANT DE PAYER, pas après. Le 31 octobre, un financement de 500 XOF
      a débité 509 : l'opérateur ajoute ses frais par-dessus le montant
      demandé et les facture au payeur. Rien ne le disait, et le relevé de la
@@ -98,6 +117,8 @@ const en = {
   backToContract: "Back to the contract",
   failed: "The payment didn't go through",
   failedHint: "Nothing was charged. You can try again.",
+  failedPayerNotFound:
+    "The operator did not recognise that number. Check that it is in international format, without the plus sign, with the country code and no spaces.",
   retry: "Try again",
   canceled: "Payment cancelled",
   mismatch: "Unexpected amount",
@@ -116,7 +137,7 @@ const en = {
   fundNetworkPlaceholder: "Choose your network",
   fundPhone: "Number to charge",
   fundPhoneHint:
-    "The wallet that pays. It can be different from the number on your account.",
+    "The wallet that pays. It can be different from the number on your account. Enter it in international format, without the plus sign and including the country code: a Benin number starts with 229.",
   fundOperatorFee:
     "Your operator adds its own fee on top of the amount above when you pay. That fee goes to them and not to Kolabo, so the total taken from your wallet will be slightly higher.",
   fundSubmit: "Send the request",

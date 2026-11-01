@@ -758,6 +758,35 @@ def onboarding_status(db: Session, user_id: str) -> dict:
     # Going live requires the 18+ gate to have been passed: the birth date is
     # private data, but its presence is a hard prerequisite.
     has_birth_date = bool(profile and profile.birth_date)
+    # WHO THE CREATOR IS, CONTRACTUALLY. Added by KOL-146, and the argument is
+    # that live should mean contractable.
+    #
+    # contracts/service refuses to generate a document when either party's
+    # block is empty, which is right: a signed contract with a blank party is
+    # worse than no contract. But nothing asked the creator for it, and this
+    # function did not look at it, so a creator could finish onboarding, be
+    # marked live, appear in discovery, be ordered from, negotiate, and the
+    # first anybody heard of the problem was the BRAND pressing Accept and
+    # reading that somebody else's profile was incomplete. They could do
+    # nothing about it. It was hit on production on 31 October, on the happy
+    # path, during the first end-to-end test.
+    #
+    # Gating here rather than at accept, because accept is pressed by the
+    # brand on the brief flow and moving the refusal there would land it on
+    # the same wrong person. A creator who cannot be contracted should not be
+    # discoverable in the first place; everything else is a better error
+    # message for a state that should not exist.
+    #
+    # THE COST, AND IT IS REAL: a creator who is live today without a party
+    # block drops out of discovery the moment this deploys, exactly as
+    # happened when pricing came to mean packages (see has_pricing above).
+    # The checklist on both clients names it, so it is visible and fixable in
+    # one form rather than mysterious.
+    #
+    # Empty dict counts as absent, the same reading party_details._stored_block
+    # takes: a block with no fields is nothing stated, and treating it as a
+    # value is how a renderer prints a contract with a blank party on it.
+    has_party_details = bool(profile and profile.party_details)
     return {
         "has_bio": has_bio,
         "has_categories": has_categories,
@@ -765,8 +794,11 @@ def onboarding_status(db: Session, user_id: str) -> dict:
         "has_packages": active_packages > 0,
         "has_social": len(list_social_accounts(db, user_id)) > 0,
         "has_birth_date": has_birth_date,
+        "has_party_details": has_party_details,
         "active_package_count": active_packages,
-        "is_live": has_bio and has_categories and has_pricing and has_birth_date,
+        "is_live": (
+            has_bio and has_categories and has_pricing and has_birth_date and has_party_details
+        ),
     }
 
 

@@ -8,7 +8,9 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db
 from app.modules.auth.models import User
+from app.modules.profiles import models as profiles_models
 from app.modules.profiles.router import router as profiles_router
+from tests import party_fixtures
 
 
 @pytest.fixture()
@@ -108,5 +110,64 @@ def test_onboarding_status_tracks_readiness(client):
         assert s["active_package_count"] == i + 1
         assert s["has_pricing"] is (i + 1 >= 3)
 
+    # STILL NOT LIVE, and this is the KOL-146 gate. Bio, categories, birth
+    # date and three packages used to be the whole of it; a creator who had
+    # never said who they contract as sailed through, appeared in discovery,
+    # and the brand found out at Accept that no contract could be generated.
     s2 = client.get(f"/profiles/{uid}/onboarding-status").json()
-    assert s2["has_packages"] and s2["has_pricing"] and s2["is_live"] is True
+    assert s2["has_packages"] and s2["has_pricing"]
+    assert s2["has_party_details"] is False
+    assert s2["is_live"] is False
+
+    # Written straight onto the column, the way tests/party_fixtures.py writes
+    # it and for the reason given there: what is under test is the readiness
+    # calculation, not the capture rules, and those have their own suite.
+    db = client.session_factory()
+    try:
+        profile = (
+            db.query(profiles_models.InfluencerProfile)
+            .filter(profiles_models.InfluencerProfile.user_id == uid)
+            .one()
+        )
+        profile.party_details = party_fixtures.creator_party_block()
+        db.commit()
+    finally:
+        db.close()
+
+    s3 = client.get(f"/profiles/{uid}/onboarding-status").json()
+    assert s3["has_party_details"] is True
+    assert s3["is_live"] is True
+
+
+def test_an_empty_party_block_is_not_a_party_block(client):
+    """`{}` means nothing stated, not "a block with no fields in it".
+
+    The same reading party_details._stored_block takes. It matters because an
+    empty dict is truthy enough to look filled to a careless check, and the
+    failure it produces is a contract printed with a blank party on it.
+    """
+    uid = _user(client, "+22990000029")
+    client.put(f"/profiles/influencer/{uid}", json={
+        "bio": "Hi", "categories": ["fashion"], "birth_date": "1995-05-14",
+    })
+    for deliverable in ("post", "reel", "story"):
+        client.post(f"/profiles/{uid}/packages", json={
+            "platform": "instagram", "deliverable_type": deliverable,
+            "title": f"1 IG {deliverable}", "price_amount": 30000, "currency": "XOF",
+        })
+
+    db = client.session_factory()
+    try:
+        profile = (
+            db.query(profiles_models.InfluencerProfile)
+            .filter(profiles_models.InfluencerProfile.user_id == uid)
+            .one()
+        )
+        profile.party_details = {}
+        db.commit()
+    finally:
+        db.close()
+
+    status = client.get(f"/profiles/{uid}/onboarding-status").json()
+    assert status["has_party_details"] is False
+    assert status["is_live"] is False

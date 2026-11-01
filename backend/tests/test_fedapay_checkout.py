@@ -728,6 +728,14 @@ def test_the_sweep_pays_a_creator_who_adds_their_wallet_later(client, gateway):
     escrow_id = _fund_and_deliver(client, gateway, brand, creator, contract)
     client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
 
+    db = client.session_factory()
+    try:
+        waiting = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        # Recorded while it is true, which is the half that was always right.
+        assert waiting.failure_reason == "no_payout_method"
+    finally:
+        db.close()
+
     _set_method(client, creator)
     db = client.session_factory()
     try:
@@ -737,6 +745,93 @@ def test_the_sweep_pays_a_creator_who_adds_their_wallet_later(client, gateway):
         assert result["retried"] == 1
         payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
         assert payout.status == gmodels.PAYOUT_SENT
+        # KOL-152, AND THIS IS THE PRODUCTION ROW. The first real payout did
+        # exactly this: failed on no_payout_method, the creator saved one, the
+        # sweep paid them, and the row stayed `sent` with the reason still on
+        # it. A succeeded payout that still says why it failed sends anybody
+        # filtering this column for trouble to a success.
+        assert payout.failure_reason is None
+    finally:
+        db.close()
+
+
+def test_a_payout_that_succeeds_after_a_gateway_failure_stops_saying_it_failed(client, gateway):
+    """The other way in, and the one the retry cap exists for.
+
+    no_payout_method is our own precondition; this is the gateway refusing.
+    Both end up `sent` through the sweep and both used to keep their reason.
+    """
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, gateway, brand, creator, contract)
+    _set_method(client, creator)
+    gateway.payout_raises = True
+    client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+
+    from app.modules.payments import payouts as payouts_module
+
+    db = client.session_factory()
+    try:
+        failed = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert failed.status == gmodels.PAYOUT_FAILED
+        assert failed.failure_reason
+    finally:
+        db.close()
+
+    gateway.payout_raises = False
+    db = client.session_factory()
+    try:
+        payouts_module.run_pending_payouts(db)
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.status == gmodels.PAYOUT_SENT
+        assert payout.failure_reason is None
+        # The history that was worth keeping is still here. attempts counts
+        # the tries, so nothing about the failure is lost by clearing a field
+        # that describes the CURRENT state.
+        assert payout.attempts == 2
+    finally:
+        db.close()
+
+
+def test_a_payout_still_in_flight_keeps_the_reason_its_last_attempt_failed(client, gateway):
+    """The clear is scoped to SENT, and this is what stops it overreaching.
+
+    THE FIRST VERSION OF THIS TEST PROVED NOTHING. It released with no payout
+    method and swept, which leaves the row in awaiting_method without ever
+    reaching _mark, so the reason survived whatever _mark did. Clearing on
+    every call passed it. The case that bites is a retry that lands in
+    PENDING: _mark IS called, with no reason, on a row that already has one.
+
+    A row still in flight must keep it. It is the best account anyone has of
+    why nobody has been paid yet, and a re-read that says nothing new is the
+    gateway being quiet, not the gateway saying the earlier failure never
+    happened. Same reasoning as the fee guard four lines above it.
+    """
+    brand, creator, contract = _seed(client)
+    escrow_id = _fund_and_deliver(client, gateway, brand, creator, contract)
+    _set_method(client, creator)
+    gateway.payout_raises = True
+    client.post(f"/payments/escrow/{escrow_id}/release", headers=_headers(brand))
+
+    from app.modules.payments import payouts as payouts_module
+
+    db = client.session_factory()
+    try:
+        failed = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert failed.status == gmodels.PAYOUT_FAILED
+        reason = failed.failure_reason
+        assert reason
+    finally:
+        db.close()
+
+    # The retry reaches the gateway and comes back not yet terminal.
+    gateway.payout_raises = False
+    gateway.payout_status = gwbase.PAYOUT_PENDING
+    db = client.session_factory()
+    try:
+        payouts_module.run_pending_payouts(db)
+        payout = db.query(gmodels.Payout).filter(gmodels.Payout.escrow_id == escrow_id).one()
+        assert payout.status == gmodels.PAYOUT_PENDING
+        assert payout.failure_reason == reason
     finally:
         db.close()
 

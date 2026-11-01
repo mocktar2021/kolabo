@@ -8,6 +8,7 @@ import { errorText } from "../lib/errorMessages";
 import {
   collectionNetworkLabel,
   collectionNetworks,
+  failureHint,
   paymentConfig,
   readCheckout,
   startCheckout,
@@ -457,7 +458,17 @@ export default function CheckoutPage() {
                     <strong>
                       {intent.status === "canceled" ? t("pay.canceled") : t("pay.failed")}
                     </strong>
-                    <div>{t("pay.failedHint")}</div>
+                    {/* THE GATEWAY'S REASON, WHEN WE HAVE A SENTENCE FOR IT.
+                        KOL-149. The generic hint says nothing was charged and
+                        invites a retry, which is true and, for a number in the
+                        wrong format, useless: the retry fails the same way. It
+                        did, twice, on 31 October.
+
+                        failureHint falls back to the generic line for anything
+                        unrecognised rather than printing the provider's raw
+                        code at a brand. PAYER_NOT_FOUND means nothing to
+                        somebody in Cotonou. */}
+                    <div>{t(failureHint(intent.failure_reason))}</div>
                   </div>
                   <button className="btn btn-teal" disabled={busy} onClick={retry}>
                     {t("pay.retry")}

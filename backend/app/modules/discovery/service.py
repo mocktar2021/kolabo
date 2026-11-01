@@ -5,11 +5,10 @@ profiles are returned, ordered by follower count and then by profile age. At
 pilot data volume the candidate set is small (hundreds), so filtering and
 ordering run in application code; this can move to PostgreSQL indexes or full
 text search when volume grows.
-
-This line used to read "and verified profiles rank above unverified", which
-KOL-121 removed and which was never worth much: see sort_key for what that
-flag actually recorded.
 KOL-20: favorites shortlist for a business, persisted and removable.
+KOL-121: the ordering line above used to end "and verified profiles rank above
+unverified". It does not any more, and the flag it referred to was never worth
+ranking on; see sort_key for what it actually recorded.
 
 Results carry the display name, cover image, per platform audience, rating, and
 starting package price so a result card can be shown without a second request

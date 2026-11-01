@@ -38,9 +38,12 @@ const fr = {
      phrase fausse. Le 31 octobre, un financement de 500 XOF a débité 509 du
      portefeuille de la marque : FeexPay ajoute ses frais par-dessus le
      montant demandé et les facture au payeur, la boutique reçoit bien 500.
-     Cet écran disait pourtant "ce que vous voyez ici est ce qui est parti de
-     votre portefeuille", ce qui était exact tant que personne n'avait payé
-     en Mobile Money. Sur une plateforme dont tout l'argument est qu'on ne
+     Cet écran affirmait pourtant que le chiffre affiché était exactement la
+     somme sortie du portefeuille de la marque, ce qui était exact tant que
+     personne n'avait payé en Mobile Money. La phrase elle-même n'est pas
+     recopiée ici : le test lit ce fichier comme du texte, et une citation
+     ferait passer ou échouer le garde-fou selon l'endroit où la ligne se
+     coupe. Sur une plateforme dont tout l'argument est qu'on ne
      prélève rien en silence, une phrase rassurante et fausse est pire que
      pas de phrase du tout. Voir KOL-153. */
   gross:

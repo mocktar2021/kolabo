@@ -43,11 +43,21 @@ const WALLET_CLAIMS = [
   "left your wallet",
 ];
 
+/* WHITESPACE COLLAPSED BEFORE THE SEARCH, and the reason is a near miss worth
+   recording. The comment in spendStrings.ts that explains this fix originally
+   quoted the offending sentence in full, and the test passed only because the
+   quote happened to wrap between "parti de" and "votre portefeuille". A
+   reflowed paragraph would have turned the comment documenting the fix into a
+   failure describing the bug, and a few characters the other way would have
+   hidden a real reintroduction. A guard that depends on where a line breaks
+   is not a guard. */
+const flat = (text: string) => text.replace(/\s+/g, " ");
+
 describe("the buyer statement's claims about money", () => {
   it("never tells a brand that the figures shown are what left their wallet", () => {
     for (const claim of WALLET_CLAIMS) {
-      expect(SPEND).not.toContain(claim);
-      expect(GUIDE).not.toContain(claim);
+      expect(flat(SPEND)).not.toContain(claim);
+      expect(flat(GUIDE)).not.toContain(claim);
     }
   });
 

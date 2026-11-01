@@ -30,10 +30,14 @@ const STRINGS = readFileSync(resolve(HERE, "../src/strings.ts"), "utf8");
 
 const WALLET_CLAIMS = ["parti de votre portefeuille", "left your wallet"];
 
+/* Collapsed before the search, so the guard does not depend on where a line
+   happens to wrap. The web half explains the near miss that prompted it. */
+const flat = (text: string) => text.replace(/\s+/g, " ");
+
 describe("the buyer statement's claims about money, on mobile", () => {
   it("never tells a brand that the figures shown are what left their wallet", () => {
     for (const claim of WALLET_CLAIMS) {
-      expect(STRINGS).not.toContain(claim);
+      expect(flat(STRINGS)).not.toContain(claim);
     }
   });
 

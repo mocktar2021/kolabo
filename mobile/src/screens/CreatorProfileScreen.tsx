@@ -352,11 +352,15 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
           papers most of them do not have. All three types stay tappable, so a
           creator who has incorporated, or an agency account, can say so.
 
-          onSaved reloads the go-live checklist. It counts nothing about party
-          details today, because onboarding_status has no has_party_details
-          field; the spec recommends it gain one and that is the founder's
-          call. If it does, the checklist refreshes on save rather than needing
-          this screen reopened. */}
+          onSaved reloads the go-live checklist, and that reload now matters.
+          This comment used to say the checklist counted nothing about party
+          details, because onboarding_status had no has_party_details field
+          and whether it should was the founder's call. It was made on 1
+          November: live means contractable, so the field exists, the
+          checklist shows it, and is_live depends on it. Saving here is
+          therefore the last thing standing between a creator and discovery,
+          and the reload is what lets them see the tick without reopening the
+          screen. See KOL-146. */}
       <View style={{ height: space(4) }} />
       <Card>
         <PartyDetailsSection token={token} defaultType="sole_trader" onSaved={loadStatus} />

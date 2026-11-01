@@ -48,6 +48,14 @@ const fr = {
   fundPhone: "Numéro à débiter",
   fundPhoneHint:
     "Le numéro du portefeuille qui paie. Il peut être différent du numéro de votre compte.",
+  /* DIT AVANT DE PAYER, pas après. Le 31 octobre, un financement de 500 XOF
+     a débité 509 : l'opérateur ajoute ses frais par-dessus le montant
+     demandé et les facture au payeur. Rien ne le disait, et le relevé de la
+     marque affirmait ensuite le contraire. Une marque surprise par son
+     propre SMS est une marque qui se demande ce que Kolabo a prélevé en
+     douce, sur une plateforme dont c'est précisément l'argument. KOL-153. */
+  fundOperatorFee:
+    "Votre opérateur ajoute ses propres frais au montant ci-dessus, au moment du paiement. Ces frais lui reviennent et non à Kolabo, donc le total débité de votre portefeuille sera un peu plus élevé.",
   fundSubmit: "Envoyer la demande",
   fundPickNetwork: "Choisissez votre réseau Mobile Money.",
   fundNeedPhone: "Saisissez le numéro à débiter.",
@@ -109,6 +117,8 @@ const en = {
   fundPhone: "Number to charge",
   fundPhoneHint:
     "The wallet that pays. It can be different from the number on your account.",
+  fundOperatorFee:
+    "Your operator adds its own fee on top of the amount above when you pay. That fee goes to them and not to Kolabo, so the total taken from your wallet will be slightly higher.",
   fundSubmit: "Send the request",
   fundPickNetwork: "Choose your Mobile Money network.",
   fundNeedPhone: "Enter the number to charge.",

@@ -326,6 +326,15 @@ export default function CheckoutPage() {
               {t("pay.fundPhoneHint")}
             </p>
 
+            {/* ABOVE THE BUTTON, NOT BELOW IT, because the whole point is that
+                the payer reads it before the prompt goes to their handset. A
+                brand funding 500 XOF is debited 509; the operator adds its fee
+                on top and keeps it. Saying so afterwards would be a receipt,
+                not a warning. See KOL-153. */}
+            <p className="muted" style={{ marginTop: 10 }}>
+              {t("pay.fundOperatorFee")}
+            </p>
+
             <button
               className="btn btn-teal"
               style={{ marginTop: 16 }}

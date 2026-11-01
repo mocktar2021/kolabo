@@ -23,7 +23,7 @@ const fr = {
      le créateur : l'argent revenu est une vraie ligne du registre de
      l'acheteur — il l'a payé, il l'a récupéré — alors que pour le créateur
      c'est de l'argent qui n'est jamais arrivé. */
-  spentHint: "Versé au créateur. La somme entière, telle que vous l'avez payée.",
+  spentHint: "Versé au créateur. Le montant du contrat, sans rien en moins.",
   pendingHint: "Déjà payé et bloqué en séquestre, en attendant la livraison.",
   disputedHint: "Gelé le temps qu'un litige soit tranché. Une partie peut vous revenir.",
   refundedHint: "Revenu chez vous, en totalité ou après un partage.",
@@ -32,8 +32,19 @@ const fr = {
      commission Kolabo est prélevée sur ce que le créateur reçoit, pas sur ce
      que vous payez. Une marque qui a financé 100 000 a payé 100 000, et une
      colonne "net" ici l'inviterait à croire qu'on lui a facturé quelque chose
-     en plus. */
-  gross: "Aucun de ces montants n'est amputé d'une commission : la commission Kolabo est prélevée sur ce que le créateur reçoit, jamais sur ce que vous payez. Ce que vous voyez ici est ce qui est parti de votre portefeuille.",
+     en plus.
+
+     ET LES FRAIS DE L'OPÉRATEUR, qui manquaient et dont l'absence rendait la
+     phrase fausse. Le 31 octobre, un financement de 500 XOF a débité 509 du
+     portefeuille de la marque : FeexPay ajoute ses frais par-dessus le
+     montant demandé et les facture au payeur, la boutique reçoit bien 500.
+     Cet écran disait pourtant "ce que vous voyez ici est ce qui est parti de
+     votre portefeuille", ce qui était exact tant que personne n'avait payé
+     en Mobile Money. Sur une plateforme dont tout l'argument est qu'on ne
+     prélève rien en silence, une phrase rassurante et fausse est pire que
+     pas de phrase du tout. Voir KOL-153. */
+  gross:
+    "La commission Kolabo est prélevée sur ce que le créateur reçoit, jamais sur ce que vous payez : les montants ci-dessus sont ceux de vos contrats, sans rien en moins. Votre opérateur Mobile Money, lui, ajoute ses propres frais au moment du paiement. Ces frais lui reviennent, pas à Kolabo, et n'apparaissent pas ici, donc le relevé de votre opérateur peut indiquer un peu plus.",
 
   currencyGroup: "Montants en {{currency}}",
   currencyRule: "Vos marchés sont comptés séparément : deux devises, deux budgets. Aucun total ne les additionne.",
@@ -73,12 +84,13 @@ const en = {
   disputed: "In dispute",
   refunded: "Refunded",
 
-  spentHint: "Released to the creator. The full amount, exactly as you paid it.",
+  spentHint: "Released to the creator. The contract amount, with nothing taken off.",
   pendingHint: "Already paid and held in escrow, waiting on delivery.",
   disputedHint: "Frozen until a dispute is decided. Some of it may come back to you.",
   refundedHint: "Returned to you, in full or after a split.",
 
-  gross: "None of these figures has a commission taken off: the Kolabo commission comes out of what the creator receives, never out of what you pay. What you see here is what left your wallet.",
+  gross:
+    "The Kolabo commission comes out of what the creator receives, never out of what you pay: the figures above are your contract amounts, with nothing taken off. Your Mobile Money operator does add its own fee when you pay. That fee goes to them, not to Kolabo, and is not shown here, so your operator's statement may read slightly higher.",
 
   currencyGroup: "Amounts in {{currency}}",
   currencyRule: "Your markets are counted separately: two currencies, two budgets. No total adds them together.",

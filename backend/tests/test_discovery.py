@@ -103,13 +103,56 @@ def test_search_returns_only_searchable_and_matches_category(client):
     assert results[0]["categories"] == ["fashion"]
 
 
-def test_verified_profiles_rank_above_unverified(client):
+def test_opening_an_email_does_not_move_a_creator_up_the_roster(client):
+    """The inversion of the test that used to live here, and KOL-121's point.
+
+    It used to read `test_verified_profiles_rank_above_unverified`, and it
+    passed: a creator with 1,000 followers outranked one with 9,000 because
+    the first term of the sort key was `users.is_verified`. That column is
+    set by verify_otp(). It records that somebody opened an email, and it is
+    true of very nearly everybody, so the roster a brand reads was ordered by
+    a near-constant that says nothing about the creator, ahead of a number
+    that does.
+
+    THE SAME TWO PROFILES, THE SAME WAY ROUND, AND NOW THE OTHER ANSWER. The
+    9,000 comes first because it is the larger audience, and the email flag
+    is not consulted at all.
+    """
     _make_influencer(client, "+22990000004", False, ["tech"], 9000)
     _make_influencer(client, "+22990000005", True, ["tech"], 1000)
     results = client.get("/discovery/search", params={"category": "tech"}).json()
     assert len(results) == 2
-    assert results[0]["is_verified"] is True
-    assert results[1]["is_verified"] is False
+    assert results[0]["follower_count"] == 9000
+    assert results[1]["follower_count"] == 1000
+
+
+def test_a_search_card_carries_no_verification_claim_at_all(client):
+    """Not renamed, not downgraded: absent.
+
+    A field called is_verified on a public card is a verification claim
+    whatever the clients choose to draw, and the next person to build a
+    surface from this payload would reasonably render it as one. The two
+    signals that could honestly carry weight, an admin-checked identity
+    document and an admin-decided social account, are not in this payload and
+    are not being quietly substituted. See KOL-121 for why `verified` stays
+    reserved for the first of those.
+    """
+    _make_influencer(client, "+22990000008", True, ["beauty"], 4000)
+    card = client.get("/discovery/search", params={"category": "beauty"}).json()[0]
+    assert "is_verified" not in card
+    # The card still carries what a brand can actually judge.
+    assert card["follower_count"] == 4000
+    assert "categories" in card and "country_code" in card
+
+    # THE SCHEMA IS THE GATE, AND THIS IS WHERE TO ASSERT IT. Both /search and
+    # /featured declare InfluencerSearchResult as their response_model, so a
+    # key put back into _result_card's dict is dropped on the way out and the
+    # assertion above cannot see it. That makes the dict the weaker of the two
+    # places to pin: this line is the one that fails if somebody reinstates
+    # the field where it would actually reach a brand.
+    from app.modules.discovery import schemas as discovery_schemas
+
+    assert "is_verified" not in discovery_schemas.InfluencerSearchResult.model_fields
 
 
 def test_follower_range_filter(client):

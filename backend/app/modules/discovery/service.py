@@ -167,7 +167,6 @@ def _result_card(prof: profiles.InfluencerProfile, user: User, ctx: dict) -> dic
         "categories": prof.categories,
         "follower_count": prof.follower_count,
         "country_code": user.country_code,
-        "is_verified": user.is_verified,
         "starting_price_amount": price[0] if price else None,
         "starting_price_currency": price[1] if price else None,
         "average_stars": avg,
@@ -232,11 +231,23 @@ def search_influencers(
                 continue
         matched.append((prof, user))
 
-    # Verified first, then higher follower count, then oldest profile first.
+    # Higher follower count first, then oldest profile first.
+    #
+    # VERIFIED USED TO LEAD THIS TUPLE AND IT MEANT NOTHING. The term was
+    # `0 if user.is_verified else 1`, and users.is_verified is set by
+    # verify_otp(): it records that somebody opened an email. So the roster a
+    # brand reads was ordered, before follower count, by a near-constant that
+    # says nothing about the creator. KOL-121, approved 3 October.
+    #
+    # The real signals were never consulted here. VerificationDocument.status
+    # and SocialAccount.status are the two things that could carry weight in
+    # an ordering, and discovery has never read either. Replacing the term
+    # rather than removing it would mean deciding what a social connection is
+    # worth in a ranking, which is a product question nobody has asked.
     def sort_key(item):
-        prof, user = item
+        prof, _user = item
         fc = prof.follower_count if prof.follower_count is not None else -1
-        return (0 if user.is_verified else 1, -fc, prof.created_at)
+        return (-fc, prof.created_at)
 
     matched.sort(key=sort_key)
     page = matched[offset : offset + limit]

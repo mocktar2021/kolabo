@@ -803,7 +803,6 @@ export type SearchResult = {
   categories: string[];
   follower_count: number | null;
   country_code: string;
-  is_verified: boolean;
   starting_price_amount: number | null;
   starting_price_currency: string | null;
   average_stars: number | null;

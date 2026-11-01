@@ -1116,7 +1116,15 @@ def test_the_annex_sentence_is_on_every_contract_in_both_languages(client, count
 
     assert sentence in body
     # After the payment terms, because it says it does not modify them.
-    assert body.index(sentence) > body.index("Agreed rate:")
+    #
+    # THE LABEL IS LOCALISED NOW. This used to look for "Agreed rate:" in
+    # every contract, which passed only because the rate line was English in
+    # a French document. Reading the label out of the service rather than
+    # hardcoding it keeps the test about ORDER, which is what it is for.
+    rate_label = contracts_service._FIELD_LABELS[
+        "fr" if country in ("BJ", "TG", "CI", "SN") else "en"
+    ]["rate"]
+    assert body.index(sentence) > body.index(rate_label)
 
 
 def test_the_campaign_title_locks_once_a_contract_exists(client):
@@ -1181,7 +1189,10 @@ def test_the_campaign_title_locks_once_a_contract_exists(client):
         assert campaign.title == "Launch push v2"
     finally:
         db.close()
-    assert "Contract for campaign: Launch push v2" in _contract_row(
+    # French, because the contract language follows the country and this
+    # fixture is Benin. The English string this used to look for was the
+    # localisation gap rather than the lock.
+    assert "Contrat pour la campagne : Launch push v2" in _contract_row(
         client, _contracts_for(client, camp)[0].id
     ).body
 
@@ -1594,3 +1605,71 @@ def test_the_detail_response_carries_all_three_snapshots(client):
     # counsel has to have answered for first (contracts/service.py::_build_body).
     assert "licence" not in detail["body"].lower()
     assert LICENCE_REDISTRIBUTION["licence_duration"] not in detail["body"]
+
+
+def test_a_french_contract_contains_no_english_operative_terms(client):
+    """THE GUARD ON THE HALF THAT WAS NEVER TRANSLATED.
+
+    The document was already bilingual where it was ceremonial: the banner,
+    the headings, the party blocks and the annex sentence all switched on
+    language. The five lines that say what is actually being AGREED did not,
+    so a creator in Cotonou signing in French read "Deliverables", "Agreed
+    rate", "Timeline" and "Campaign deadline" in the middle of their own
+    contract, followed by an English sentence about signatures.
+
+    That is the half of the document that matters most and it was the half
+    still in a language the signer had not chosen. Found by reading a
+    contract generated on production on 31 October.
+
+    ASSERTS THE ABSENCE OF THE ENGLISH, not the presence of the French,
+    because the presence is already covered above and absence is what
+    regresses: somebody adds a sixth line, writes it in English because the
+    four around it used to be, and nothing else notices.
+    """
+    biz, inf, camp, prop = _setup(client, country="BJ")
+    body = _contract_row(client, _generate(client, biz, prop)).body
+
+    for english in (
+        "Contract for campaign",
+        "Deliverables:",
+        "Agreed rate",
+        "Timeline:",
+        "Campaign deadline",
+        "Both parties must sign electronically",
+        "minor units",
+    ):
+        assert english not in body, f"{english!r} is still English in a French contract"
+
+    for french in (
+        "Contrat pour la campagne :",
+        "Livrables :",
+        "Montant convenu :",
+        "Délai de livraison :",
+        "Échéance de la campagne :",
+        "Les deux Parties doivent signer électroniquement.",
+    ):
+        assert french in body, f"{french!r} is missing"
+
+
+def test_an_english_contract_still_reads_as_english(client):
+    """The mirror, so that fixing one language does not quietly break the
+    other. Ghana is not an open market for payments but the contract language
+    follows the country, and the English document has to stay a document."""
+    biz, inf, camp, prop = _setup(client, country="GH")
+    body = _contract_row(client, _generate(client, biz, prop)).body
+
+    assert "Contract for campaign: " in body
+    assert "Agreed rate: " in body
+    assert "Both parties must sign electronically." in body
+    # No French colon spacing leaking into the English document.
+    assert "Agreed rate : " not in body
+
+
+def test_the_rate_line_no_longer_says_minor_units(client):
+    """Developer vocabulary printed into a legal document, and wrong as well:
+    XOF has no minor unit, so the parenthetical said nothing except that an
+    engineer wrote the line. The card above the document reads 500 XOF and
+    the contract now agrees with it."""
+    biz, inf, camp, prop = _setup(client, country="BJ")
+    body = _contract_row(client, _generate(client, biz, prop)).body
+    assert "minor units" not in body

@@ -320,6 +320,65 @@ _REPRESENTED_TYPES = (REGISTERED_COMPANY, ASSOCIATION)
 # the payment terms. Counsel approved the DESIGN on 3 October; the wording that
 # implements it is on her list as drafting review (§7.9), so this sentence is
 # expected to be replaced by hers and must not be treated as settled text.
+# THE OPERATIVE TERMS, IN BOTH LANGUAGES, and they were English in both until
+# a French contract generated on production was read end to end.
+#
+# The document was already half translated: the banner, the headings, the
+# party blocks and the annex sentence all switched on `language`, and the five
+# lines that say what is actually being agreed did not. So a Beninese creator
+# signing in French reached "Deliverables", "Agreed rate", "Timeline" and
+# "Campaign deadline" in the middle of their own contract. That is the half of
+# the document that matters most, and it was the half still in a language the
+# signer had not chosen.
+#
+# A LABEL, NOT A SENTENCE, for the four field lines. The value beside each is
+# a number, a date or a list built elsewhere, so these stay as short as the
+# French will allow rather than growing a grammar that has to agree with
+# whatever follows the colon.
+_FIELD_LABELS = {
+    "fr": {
+        "campaign": "Contrat pour la campagne",
+        "deliverables": "Livrables",
+        "rate": "Montant convenu",
+        "timeline": "Délai de livraison",
+        "deadline": "Échéance de la campagne",
+    },
+    "en": {
+        "campaign": "Contract for campaign",
+        "deliverables": "Deliverables",
+        "rate": "Agreed rate",
+        "timeline": "Timeline",
+        "deadline": "Campaign deadline",
+    },
+}
+
+# "jours" against "days", because the number is interpolated before it.
+_DAYS_WORD = {"fr": "jours", "en": "days"}
+
+def _labelled(language: str, key: str, value: object) -> str:
+    """One `Label: value` line, with the colon spaced the way the language is.
+
+    THE SPACE BEFORE A FRENCH COLON IS NOT A TYPO and is not optional. French
+    typography puts one there, every hand-written French string in this file
+    already has it, and a legal document that gets it wrong reads as machine
+    translated to the people being asked to sign it. Doing it in one function
+    is what stops the next line somebody adds getting it wrong.
+    """
+    separator = " : " if language == "fr" else ": "
+    return f"{_FIELD_LABELS[language][key]}{separator}{value}"
+
+
+_SIGNATURE_SENTENCE = {
+    "fr": (
+        "Les deux Parties doivent signer électroniquement. Le paiement n'est "
+        "débloqué qu'une fois les deux signatures enregistrées."
+    ),
+    "en": (
+        "Both parties must sign electronically. Payment is unlocked only "
+        "after both signatures are recorded."
+    ),
+}
+
 _ANNEX_SENTENCE = {
     "fr": (
         "Tout document que les Parties annexent à la présente collaboration "
@@ -442,7 +501,7 @@ def _build_body(
         # Frozen here, which is why campaigns/editing.py locks `title` once a
         # contract exists. Without that lock the buyer could rename the brief
         # and the card would then disagree with the signed document.
-        f"Contract for campaign: {campaign.title}",
+        _labelled(language, "campaign", campaign.title),
         "",
         _UNDERSIGNED_HEADING[language],
         "",
@@ -452,12 +511,21 @@ def _build_body(
         "",
         _BOTH_PARTIES[language],
         "",
-        f"Deliverables: {deliverables}",
-        f"Agreed rate: {proposal.rate_amount} {proposal.rate_currency} (minor units)",
-        f"Timeline: {proposal.timeline_days} days",
-        f"Campaign deadline: {campaign.deadline}",
+        _labelled(language, "deliverables", deliverables),
+        # "(minor units)" USED TO FOLLOW THE AMOUNT AND IS GONE. It was
+        # developer vocabulary printed into a legal document, and for the only
+        # currency this platform settles in it was also wrong: XOF has no
+        # minor unit, so 500 minor units and 500 francs are the same number
+        # and the parenthetical said nothing except that an engineer wrote the
+        # line. The card above the document already reads "500 XOF" and the
+        # contract now agrees with it.
+        _labelled(language, "rate", f"{proposal.rate_amount} {proposal.rate_currency}"),
+        _labelled(
+            language, "timeline", f"{proposal.timeline_days} {_DAYS_WORD[language]}"
+        ),
+        _labelled(language, "deadline", campaign.deadline),
         "",
-        "Both parties must sign electronically. Payment is unlocked only after both signatures are recorded.",
+        _SIGNATURE_SENTENCE[language],
         "",
         # After the payment terms, because it says it does not modify them.
         _ANNEX_SENTENCE[language],

@@ -193,6 +193,7 @@ export default function CreatorProfileScreen({ navigation }: AppScreenProps<"Cre
         { ok: status.has_bio, label: t("profile.checkBio") },
         { ok: status.has_categories, label: t("profile.checkCategories") },
         { ok: status.has_birth_date, label: t("profile.checkBirthDate") },
+        { ok: status.has_party_details, label: t("profile.checkPartyDetails") },
         { ok: status.has_pricing, label: t("profile.checkPricing") },
         { ok: status.has_social, label: t("profile.checkSocial") },
       ]

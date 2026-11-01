@@ -82,7 +82,7 @@ flock -n 9 || die "another backup is already running"
 # nobody watching.
 get() {
   sed -n "s/^[[:space:]]*$1=//p" ./.env | tail -n 1 \
-    | sed -e 's/^"\\(.*\\)"$/\\1/' -e "s/^'\\(.*\\)'\\$/\\1/"
+    | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 
 POSTGRES_USER="$(get POSTGRES_USER)"
@@ -172,7 +172,7 @@ gzip -t "$DEST" 2>/dev/null || { rm -f "$DEST"; die "the dump is not valid gzip"
 # awk reads to EOF, so nothing closes the pipe early, and both checks happen in
 # one decompression rather than two.
 summary="$(gunzip -c "$DEST" | awk '
-  /CREATE TABLE (public\\.)?users/    { u = 1 }
+  /CREATE TABLE (public\.)?users/    { u = 1 }
   /PostgreSQL database dump complete/ { c = 1 }
   END                                 { print u + 0, c + 0 }
 ')"
@@ -213,7 +213,7 @@ else
   # avoid, sitting twenty lines below the comment that warns about it. The
   # line used to read:
   #
-  #   rclone version | head -1 | sed -n 's/.../\\1/p'
+  #   rclone version | head -1 | sed -n 's/.../\1/p'
   #
   # `head -1` exits the instant it has its line, which closes the pipe, which
   # kills `rclone version` with SIGPIPE, which under `set -o pipefail` fails
@@ -234,7 +234,7 @@ else
   # pipe early. Same rule as the awk block: in this script a pipeline reads
   # to the end or it is a bug waiting for a slow day.
   RCLONE_MINOR="$(rclone version 2>/dev/null \
-    | sed -n '1s/^rclone v1\\.\\([0-9]\\{1,\\}\\)\\..*/\\1/p')"
+    | sed -n '1s/^rclone v1\.\([0-9]\{1,\}\)\..*/\1/p')"
 
   # DEBIAN 13 SHIPS v1.60.1 AND IT DOES NOT WORK PROPERLY WITH R2. Every
   # upload failed on the first attempt with 501 NotImplemented and succeeded
@@ -274,7 +274,7 @@ else
   # verified local dump and a successful-looking upload still leaves the
   # question of whether the bytes arrived, and that question is cheap to close.
   REMOTE_SIZE="$(rclone size "${R2_REMOTE}/${NAME}" --json --s3-no-check-bucket 2>/dev/null \
-    | sed -n 's/.*"bytes":\\([0-9]*\\).*/\\1/p')"
+    | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p')"
   LOCAL_SIZE="$(stat -c %s "$DEST")"
   if [[ "$REMOTE_SIZE" != "$LOCAL_SIZE" ]]; then
     die "uploaded ${LOCAL_SIZE} bytes but the remote reports '${REMOTE_SIZE}'"

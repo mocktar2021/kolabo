@@ -148,23 +148,28 @@ jobs:
       # built here carrying any other value would be one that shows the
       # development banner to real brands, and there is no case where that is
       # wanted. The dev box builds its own with its own value.
+
       # REFUSE RATHER THAN PUBLISH A BROKEN IMAGE. An unset repository
       # variable is an empty string, not an error, so without this the first
       # run after merge would cheerfully build a web bundle whose API base is
       # "" and push it under a tag that looks deployable. Nobody would find
       # out until a brand opened the site and every request went nowhere.
       #
+      # ONLY ONE VARIABLE CAN FAIL THIS, and the comment here used to say
+      # two. The API base is the one with no sane empty value: a bundle
+      # compiled against "" reaches no backend at all. An empty Google
+      # client id is a supported state meaning the button is absent, and the
+      # environment is hardcoded above, so neither of those can stop a
+      # publish and only the first is checked.
+      #
       # Failing here costs a red run on main and nothing else: no deploy
       # reads these images yet, and the three test jobs above have already
       # passed, so a failure in this job says exactly one thing, which is
-      # that the two variables are not set.
-      - name: The web build needs production's values
+      # that PROD_VITE_API_URL is not set.
+      - name: The web build needs production's API base
         run: |
-          missing=""
-          [ -n "${{ vars.PROD_VITE_API_URL }}" ] || missing="$missing PROD_VITE_API_URL"
-          if [ -n "$missing" ]; then
-            echo "::error::Set these repository variables under Settings, Secrets and variables, Actions, Variables:$missing"
-            echo "They are inlined into the public bundle, so they are variables rather than secrets."
+          if [ -z "${{ vars.PROD_VITE_API_URL }}" ]; then
+            echo "::error::Set the repository variable PROD_VITE_API_URL under Settings, Secrets and variables, Actions, Variables. It is inlined into the public bundle, so it is a variable rather than a secret."
             exit 1
           fi
           echo "PROD_VITE_API_URL is set."

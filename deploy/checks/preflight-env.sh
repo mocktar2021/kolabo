@@ -229,6 +229,45 @@ if [[ "$APP_ENV" == "production" ]]; then
   fi
 fi
 
+# ------------------------------------------------------------------- images
+# WHICH BUILD THIS BOX RUNS. KOL-56 moved the image build into CI, so
+# docker-compose.prod.yml names images in ghcr.io and KOLABO_TAG says which of
+# them to run. That is what gives this deployment a rollback: an earlier tag in
+# one line, rather than an old commit rebuilt on a box with one CPU.
+#
+# A BOX CAN STILL BUILD ITS OWN, and one has to. The web bundle is compiled
+# against a single api hostname and a single environment, so production's web
+# image served from the dev box would point that box's visitors at production's
+# api with nothing saying so. The dev box therefore sets KOLABO_BUILD=1, and
+# up.sh adds docker-compose.build.yml for it.
+#
+# AN EMPTY KOLABO_TAG IS NOT A WORKING DEPLOY EITHER WAY. Pulling, it is a
+# build nobody named. Building, it is the name compose would have given the
+# image it just built. Compose refuses both by itself, which is the backstop;
+# this check exists so the refusal arrives before anything is recreated and
+# says where to get the value.
+image_tag="$(get KOLABO_TAG)"
+builds_locally="$(get KOLABO_BUILD)"
+case "$builds_locally" in
+  ""|0|false|no) builds_locally="" ;;
+esac
+
+if [[ -n "$builds_locally" ]]; then
+  if [[ -z "$image_tag" ]]; then
+    fail "KOLABO_BUILD is set but KOLABO_TAG is empty: compose has no name to give the images built here. KOLABO_TAG=dev is the usual value on a building box"
+  else
+    ok "builds its own images here, tagged $image_tag"
+  fi
+elif [[ -z "$image_tag" ]]; then
+  fail "KOLABO_TAG is empty: this box pulls its images from ghcr.io and nothing says which build to run. Take the KOLABO_TAG line out of the CI run summary for the merge you want, or set KOLABO_BUILD=1 to build here instead"
+elif [[ "$image_tag" == "main" || "$image_tag" == "latest" ]]; then
+  warn "KOLABO_TAG=$image_tag moves under this box on the next merge, so nothing records which build is running and there is no earlier tag to go back to. Pin the sha- tag the run printed"
+elif [[ "$image_tag" != sha-* ]]; then
+  warn "KOLABO_TAG=$image_tag is not one of the sha- tags CI publishes. It is pulled as given, so this is only a warning, but check that the tag exists"
+else
+  ok "KOLABO_TAG=$image_tag"
+fi
+
 # ------------------------------------------------------------- informational
 if [[ "$APP_ENV" == "production" && "$(get FEDAPAY_SANDBOX)" == "true" ]]; then
   echo
@@ -244,6 +283,18 @@ if [[ "$APP_ENV" == "production" && "$acme_ca" == "$le_staging" ]]; then
   echo "        wrong one for a box anybody is using. Switch ACME_CA to the"
   echo "        production endpoint, run up.sh again, and check the served"
   echo "        certificate from somewhere other than this box."
+fi
+
+if [[ -z "$builds_locally" ]]; then
+  echo
+  echo "  note  This box pulls its web image, so the VITE_ values in this file"
+  echo "        are NOT what reached the bundle. CI compiled it from the"
+  echo "        repository variables PROD_VITE_API_URL and"
+  echo "        PROD_VITE_GOOGLE_CLIENT_ID. They are still required and still"
+  echo "        checked here because they are what a building box uses and"
+  echo "        what the api URL agreement above is checked against, but"
+  echo "        editing one and redeploying the same tag changes nothing a"
+  echo "        browser downloads."
 fi
 
 # --------------------------------------------------------------------- done

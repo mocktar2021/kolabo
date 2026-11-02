@@ -11,9 +11,9 @@
    reason is that those two differ per box while this one does not: the
    Turnstile site is configured with both hostnames, so production and the dev
    box hand back the same key. Threading a third ARG through web/Dockerfile,
-   docker-compose.prod.yml and the preflight check to carry a constant would
-   be three more places to get wrong for no value. If a second site ever
-   exists, it becomes an ARG then.
+   docker-compose.build.yml, the CI workflow that builds the published image
+   and the preflight check to carry a constant would be four more places to get
+   wrong for no value. If a second site ever exists, it becomes an ARG then.
 
    ONE SCRIPT TAG, ONE PROMISE. Two forms on one page, or a form that mounts
    twice, must not fetch api.js twice: the second load would re-register the

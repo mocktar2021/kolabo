@@ -69,3 +69,142 @@ jobs:
       # sentence — a seam `tsc` cannot see across, because its far side is
       # Python. actions/checkout has already put that tree on disk.
       - run: npm run test
+
+  # ---------------------------------------------------------------- publish
+  #
+  # KOL-56. Build the two deployable images once, here, and push them to
+  # GitHub's own registry so the production box can pull a known artifact
+  # instead of building one.
+  #
+  # WHAT THIS BUYS, AND IT IS NOT BUILD SPEED. Today `up.sh` builds on the
+  # server, so there is no image anywhere and therefore no rollback: the
+  # previous version of the web app exists only as a git commit that has to be
+  # rebuilt on the box to get back to. A tagged image turns a bad deploy from
+  # an incident into one edited line and a restart. deploy/README.md has said
+  # this was the fix since the day it recorded the problem.
+  #
+  # IT DOES NOT CHANGE ANY DEPLOY YET, deliberately. The compose file still
+  # says `build:`, so nothing on either box behaves differently until a second
+  # change switches it to `image:`. Shipping it this way round means there are
+  # already published images to pull when that switch lands, rather than a
+  # deploy that fails because the tag it wants has never been built.
+  #
+  # ONLY ON main. A pull request gets the three test jobs above and no
+  # publish: a registry full of images for branches nobody merged is a bill
+  # and a haystack.
+  #
+  # NEEDS THE TESTS TO PASS FIRST. An image that failed CI must never be
+  # pullable, because the whole point of a tag is that somebody can deploy it
+  # without re-reading what is in it.
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [backend, web, mobile]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The only non-default permission, and it is what lets GITHUB_TOKEN push
+      # to ghcr.io. No account, no personal access token and no secret to
+      # rotate: the token is minted per run and expires with it.
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # TWO TAGS, AND THE SHA IS THE REAL ONE. `main` is a convenience for
+      # "whatever is newest"; the sha tag is what deploy/.env pins and what a
+      # rollback names. A deployment pinned to `main` would move under the box
+      # on the next merge, which is the behaviour this ticket exists to end.
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/kolabo-backend:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/kolabo-backend:main
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # THE WEB IMAGE IS ENVIRONMENT SPECIFIC AND THAT IS UNAVOIDABLE HERE.
+      # Vite inlines these three at build time, so the bundle is compiled
+      # against one API hostname and one environment. The image published
+      # here is therefore the PRODUCTION web image and must not be run on the
+      # dev box; the dev box keeps building its own, which is what
+      # docker-compose.local.yml is for.
+      #
+      # NONE OF THESE THREE IS A SECRET. All three are inlined into the
+      # JavaScript every visitor downloads, so they are repository variables
+      # rather than secrets: putting them in `secrets` would imply a
+      # confidentiality that the shipped bundle does not have, and would mean
+      # a masked value in the build log for no benefit.
+      #
+      # VITE_KOLABO_ENV IS HARDCODED to production rather than read from a
+      # variable. This image exists to be deployed to production; an image
+      # built here carrying any other value would be one that shows the
+      # development banner to real brands, and there is no case where that is
+      # wanted. The dev box builds its own with its own value.
+      # REFUSE RATHER THAN PUBLISH A BROKEN IMAGE. An unset repository
+      # variable is an empty string, not an error, so without this the first
+      # run after merge would cheerfully build a web bundle whose API base is
+      # "" and push it under a tag that looks deployable. Nobody would find
+      # out until a brand opened the site and every request went nowhere.
+      #
+      # Failing here costs a red run on main and nothing else: no deploy
+      # reads these images yet, and the three test jobs above have already
+      # passed, so a failure in this job says exactly one thing, which is
+      # that the two variables are not set.
+      - name: The web build needs production's values
+        run: |
+          missing=""
+          [ -n "${{ vars.PROD_VITE_API_URL }}" ] || missing="$missing PROD_VITE_API_URL"
+          if [ -n "$missing" ]; then
+            echo "::error::Set these repository variables under Settings, Secrets and variables, Actions, Variables:$missing"
+            echo "They are inlined into the public bundle, so they are variables rather than secrets."
+            exit 1
+          fi
+          echo "PROD_VITE_API_URL is set."
+          if [ -z "${{ vars.PROD_VITE_GOOGLE_CLIENT_ID }}" ]; then
+            echo "::notice::PROD_VITE_GOOGLE_CLIENT_ID is empty, so the Google button will be absent. That is a supported state and matches the backend when GOOGLE_CLIENT_IDS is unset."
+          fi
+
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: true
+          build-args: |
+            VITE_API_URL=${{ vars.PROD_VITE_API_URL }}
+            VITE_GOOGLE_CLIENT_ID=${{ vars.PROD_VITE_GOOGLE_CLIENT_ID }}
+            VITE_KOLABO_ENV=production
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/kolabo-web:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/kolabo-web:main
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # THE TAG TO DEPLOY, PRINTED WHERE SOMEBODY WILL SEE IT. Without this
+      # line, using the feature means going to the Actions tab, opening a run
+      # and copying a forty character sha out of a log. The summary puts it on
+      # the run's front page with the two commands beside it.
+      - name: Say how to deploy it
+        run: |
+          {
+            echo "## Deployable tag"
+            echo
+            echo '```'
+            echo "KOLABO_TAG=sha-${{ github.sha }}"
+            echo '```'
+            echo
+            echo "Put that in \`deploy/.env\` on the production box, then:"
+            echo
+            echo '```'
+            echo "cd ~/kolabo/deploy && bash up.sh"
+            echo '```'
+            echo
+            echo "To roll back, set KOLABO_TAG to an earlier sha and run the same command."
+          } >> "$GITHUB_STEP_SUMMARY"

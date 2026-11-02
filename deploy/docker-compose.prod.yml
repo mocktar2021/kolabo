@@ -87,7 +87,24 @@ services:
       retries: 20
 
   backend:
-    build: ../backend
+    # PULLED, NOT BUILT. KOL-56. CI builds this image on every merge to main
+    # and pushes it to ghcr.io; deploy/.env names the tag this box runs. A
+    # deploy is then a pull and a restart, and a rollback is an earlier tag in
+    # that one line rather than a rebuild of an old commit on a box with one
+    # CPU and no second chance.
+    #
+    # THE TAG IS REQUIRED AND NOT DEFAULTED. An unset or empty KOLABO_TAG
+    # stops compose with the message below rather than resolving to something
+    # nobody chose. checks/preflight-env.sh says the same thing earlier and in
+    # more words, so the compose message is the backstop for a compose command
+    # run by hand.
+    #
+    # A BOX THAT BUILDS ITS OWN sets KOLABO_BUILD=1 in deploy/.env. up.sh then
+    # adds docker-compose.build.yml, which carries the build sections this file
+    # used to have, and `up -d --build` tags the result as this image name. The
+    # dev box works that way and has to, because the bundle it serves is
+    # compiled against its own hostnames.
+    image: "ghcr.io/mocktar2021/kolabo-backend:${KOLABO_TAG:?set KOLABO_TAG in deploy/.env, or KOLABO_BUILD=1 to build on this box. deploy/README.md section 9 has both}"
     restart: unless-stopped
     # Migrations run on every start so the running schema always matches the
     # models. Alembic is idempotent: a no-op when already at head.
@@ -147,7 +164,9 @@ services:
   # cannot take request handling with it, and so its logs are readable on their
   # own.
   sweeps:
-    build: ../backend
+    # THE SAME IMAGE AS backend ON PURPOSE: one build, two containers, two
+    # commands. Compose pulls it once and starts it twice.
+    image: "ghcr.io/mocktar2021/kolabo-backend:${KOLABO_TAG:?set KOLABO_TAG in deploy/.env, or KOLABO_BUILD=1 to build on this box. deploy/README.md section 9 has both}"
     restart: unless-stopped
     command: python -m app.jobs.sweeps
     env_file:
@@ -177,42 +196,24 @@ services:
         condition: service_healthy
 
   web:
-    build:
-      context: ../web
-      args:
-        # Baked into the bundle at build time, see web/Dockerfile. Changing
-        # this requires a rebuild, not a restart.
-        VITE_API_URL: ${VITE_API_URL}
-        # Same rule, and the one place it is easiest to get wrong. This has to
-        # be a BUILD ARG and not an `environment:` entry: the web service is
-        # nginx serving static files, so it has no process that reads its
-        # environment at all. A value put under `environment:` here would be
-        # accepted by compose, set on a container nothing reads it from, and
-        # the button would simply never appear, with nothing anywhere saying
-        # why.
-        #
-        # Empty is a supported state and means the Google button is absent.
-        # That is the intended configuration until the OAuth client ids exist,
-        # and it matches the backend, whose GOOGLE_CLIENT_IDS being empty makes
-        # POST /auth/google answer 503.
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-        # Fed from the ENV this file already requires, rather than from a
-        # second variable of its own. A box that declared itself development
-        # for the backend and production for the web app would be telling two
-        # different stories about the same deployment, and the whole point of
-        # the banner is that it agrees with reality.
-        #
-        # No `:-` default on purpose. An unset ENV reaches the bundle as a
-        # value that is not "production", so the banner appears, which is the
-        # right way to fail. checks/preflight-env.sh refuses an empty ENV
-        # anyway, well before this is reached.
-        #
-        # ONE SUBTLETY IF THE BANNER APPEARS ON PRODUCTION. Compose resolves
-        # ${...} from the shell environment BEFORE this file's .env, and ENV
-        # is a name some shells set for their own rc file. If a production
-        # build shows the banner and deploy/.env says production, check
-        # `echo $ENV` in the deploying shell before suspecting anything here.
-        VITE_KOLABO_ENV: ${ENV}
+    # THE PRODUCTION WEB IMAGE, and the one service where pulling carries a
+    # condition. Vite inlines VITE_API_URL, VITE_GOOGLE_CLIENT_ID and
+    # VITE_KOLABO_ENV into the bundle at build time, so this image is compiled
+    # against ONE api hostname and ONE environment. CI builds it from the
+    # repository variables PROD_VITE_API_URL and PROD_VITE_GOOGLE_CLIENT_ID
+    # with the environment hardcoded to production.
+    #
+    # WHICH MEANS THE VITE_ LINES IN deploy/.env DO NOT REACH THIS IMAGE on a
+    # box that pulls. They are still required and still checked, because they
+    # are what a building box compiles with and what the preflight compares the
+    # two api URLs against, but editing one here and restarting changes nothing
+    # in the bundle a browser downloads. The repository variable is the thing
+    # to change, and then a new tag has to be built and deployed.
+    #
+    # AND IT MUST NOT RUN ON THE DEV BOX. It would serve that box's visitors a
+    # bundle pointed at production's api, with no error anywhere. The dev box
+    # sets KOLABO_BUILD=1 and builds its own.
+    image: "ghcr.io/mocktar2021/kolabo-web:${KOLABO_TAG:?set KOLABO_TAG in deploy/.env, or KOLABO_BUILD=1 to build on this box. deploy/README.md section 9 has both}"
     restart: unless-stopped
     logging: *default-logging
     depends_on:

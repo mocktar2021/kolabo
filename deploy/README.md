@@ -97,13 +97,19 @@ ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw enable
 git clone https://github.com/mocktar2021/kolabo.git
 cd kolabo/deploy
 bash bootstrap-env.sh   # generates the three secrets into a new .env, mode 600
-$EDITOR .env            # ENV, the two hostnames, the five URLs, FedaPay keys
+$EDITOR .env            # ENV, the two hostnames, the five URLs, FedaPay keys,
+                        # and KOLABO_TAG, which names the build to run (§9)
 
-bash up.sh              # preflights, refuses if wrong, then builds and starts
+# Once per box, because the images are private: the repository is.
+docker login ghcr.io -u mocktar2021   # password is a CLASSIC PAT, read:packages
+
+bash up.sh              # preflights, refuses if wrong, then pulls and starts
 docker compose -f docker-compose.prod.yml logs -f
 ```
 
-The first build takes a few minutes (the web image runs `tsc && vite build`, so a type error fails the build rather than shipping a broken bundle). Watch for Caddy reporting `certificate obtained successfully` for both hostnames.
+The images are built by CI on every merge to main, after the three test jobs pass, so the web bundle this box serves was type-checked and built somewhere that is not this box, and the first deploy moves layers over the network rather than compiling anything here. Watch for Caddy reporting `certificate obtained successfully` for both hostnames.
+
+> **The login is a classic personal access token with the `read:packages` scope**, not a fine-grained one. GitHub's own documentation for the Container registry states that GitHub Packages supports authentication by classic token only. A fine-grained token fails with a denial that reads like the image does not exist. Never put the token in `deploy/.env`; `docker login` keeps it in `~/.docker/config.json`.
 
 > **`deploy/.env` is the one the server reads**, not `backend/.env`. The prod compose injects it through `env_file:` into the `backend` **and** `sweeps` containers. Editing `backend/.env` on your laptop changes nothing about what this box serves — and the symptom is `/payments/config` answering `"enabled": false` while you stare at a file that looks correct.
 
@@ -255,10 +261,35 @@ A quiet pass logs nothing at INFO — that is deliberate, so the pass that actua
 
 ```bash
 cd kolabo && git pull
-cd deploy && bash up.sh
+cd deploy && $EDITOR .env          # KOLABO_TAG=sha-<the sha that was merged>
+bash up.sh
 ```
 
 Migrations run automatically on backend start.
+
+**Where that sha comes from.** Every merge to `main` runs CI, and after the three test jobs pass a fourth job builds the backend and web images and pushes them to `ghcr.io`. The run's summary page prints the line to paste:
+
+```
+KOLABO_TAG=sha-<forty characters>
+```
+
+Actions tab, the run for your merge, the summary at the top. The Packages page on the repository lists every tag that exists, which is the place to look when a pull is refused for a tag you are sure about.
+
+`git pull` is still needed, because the compose file, the Caddyfile, the preflight and this README live on the box. What it no longer does is decide what runs: the tag does.
+
+### Rolling back
+
+Set `KOLABO_TAG` to the previous sha and run `bash up.sh`. That is the whole procedure. It compiles nothing, so it does not need a working build on the box, a correct git state, or free memory to spare.
+
+```bash
+cd ~/kolabo/deploy
+$EDITOR .env        # KOLABO_TAG back to the sha that was working
+bash up.sh
+```
+
+**What a rollback does not undo is a migration.** `alembic upgrade head` runs on every backend start, and the older image will not downgrade a schema the newer one upgraded. A backward-compatible migration rolls back cleanly; one that drops or renames a column does not, and the honest answer there is to fix forward. This is the reason a migration that removes something should land in a separate release from the code that stops using it.
+
+**A box that builds its own images instead** sets `KOLABO_BUILD=1` in `deploy/.env`, which makes `up.sh` include `docker-compose.build.yml` and build. The dev box does that, and has to: the web bundle carries one api hostname and one environment, so production's web image on the dev box would point that box's visitors at production's api. On such a box `KOLABO_TAG` is only a local name, and `KOLABO_TAG=dev` is the usual value.
 
 **`git pull` refusing with "local changes would be overwritten" is the system working.** Somebody has edited a tracked file on this box. Find out what it was before you discard it, because on a box that fronts more than one product those edits may be the only copy of another product's routing:
 
@@ -269,7 +300,7 @@ git diff -- deploy/ > ~/deploy-local-changes.patch && cat ~/deploy-local-changes
 
 Anything in that diff that is genuinely per box belongs in `deploy/caddy-extra/` or `deploy/docker-compose.local.yml`, both gitignored. Anything that is not belongs in a pull request.
 
-**Changing `VITE_API_URL` needs a rebuild, not a restart.** Vite substitutes it into the bundle at build time, so there is no runtime environment left to read. `bash up.sh web`.
+**Changing `VITE_API_URL` needs a new image, not a restart.** Vite substitutes it into the bundle at build time, so there is no runtime environment left to read. On a box that pulls, the value came from the repository variable `PROD_VITE_API_URL` under Settings, Secrets and variables, Actions, Variables; changing it means changing that variable, pushing anything to `main` so a new image gets built, and deploying the new tag. Editing `VITE_API_URL` in `deploy/.env` on such a box changes nothing a browser downloads, and the preflight says so on every run. On a box with `KOLABO_BUILD=1` it is still `bash up.sh web`.
 
 ### Backups
 
@@ -319,7 +350,7 @@ Two things a dump does not carry, both covered in `RESTORE.md`:
 
 - ~~**`init_db()` still runs `create_all` on boot**~~ **Resolved.** Alembic is now the only thing that builds schema outside the test suite. Checked before removing it: all 37 tables in the model registry are created by a migration under `alembic/versions`, and the difference in both directions is empty. Two migration docstrings claim `notifications` is owned by no migration and exists only through `create_all`; both are wrong, the baseline `5f3a9c80d26f` creates it at line 117, and their inspector guards are harmless either way. A missing migration is now a missing table, loudly, instead of a table conjured from model metadata after `alembic upgrade head` has already reported success.
 - ~~**The `postgres:16` and `caddy:2-alpine` tags are moving**~~ **Resolved.** Both are pinned by digest, to the images the dev box was already running on 24 September, so pinning them changed nothing at the time. Moving a pin forward is now a deliberate act with a pull request behind it: `docker pull postgres:16`, then `docker image inspect postgres:16 --format '{{index .RepoDigests 0}}'`, then that value into the compose file. The trade is that no upstream fix reaches either service until somebody does that, so it is worth doing on purpose every few months rather than never.
-- **The build happens on the server.** `npm ci && vite build` on a small VPS is the likeliest way a deploy fails, and it fails by being OOM-killed rather than by saying so. There is no image artifact anywhere, so there is also no rollback: the previous version exists only as a git commit that has to be rebuilt. Moving the build into CI and having the server pull a tagged image is the fix, and it is its own change.
+- ~~**The build happens on the server.**~~ **Resolved, KOL-56.** CI builds both images on every merge to `main` and pushes them to `ghcr.io`; `docker-compose.prod.yml` names them and `KOLABO_TAG` in `deploy/.env` pins the one this box runs, so a deploy is a pull and a rollback is an earlier sha in that line. Two things the change leaves standing. The web image is **production specific**, because Vite inlines the api hostname and the environment, so a box that serves anything else has to build its own with `KOLABO_BUILD=1`. And the registry is private, so a box needs one `docker login ghcr.io` with a classic token carrying `read:packages`, which is a credential on the box that was not there before.
 - **Single box, no redundancy.** Losing it loses the environment. Postgres data survives in a named volume unless you `docker compose down -v`.
 - **No log aggregation, metrics or alerting.** Diagnosis is `docker compose logs`.
 - **Payments are UEMOA-only** (Benin, Togo, Côte d'Ivoire). Ghana and Cameroon refuse by design — see `docs/PAYMENTS_FEDAPAY.md`.

@@ -4,9 +4,16 @@
    carries ENV=development or ENV=production. It is shipped empty on purpose
    because there is no safe default, and checks/preflight-env.sh refuses
    anything but those two values, so it is a required and validated choice on
-   every box already. deploy/docker-compose.prod.yml hands it to the web image
-   as a build arg, which means one setting per box rather than two that can
-   drift apart.
+   every box already. deploy/docker-compose.build.yml hands it to the web image
+   as a build arg on a box that builds its own, which means one setting per box
+   rather than two that can drift apart.
+
+   THE PUBLISHED IMAGE DOES NOT TAKE IT FROM A BOX AT ALL. KOL-56 moved the
+   build into CI, and .github/workflows/ci.yml hardcodes production for the
+   image it publishes: that image exists to be deployed to production, and one
+   built carrying any other value would be one that shows this banner to real
+   brands. A box that needs a different value builds its own, which is what
+   KOLABO_BUILD=1 in deploy/.env is for.
 
    BAKED IN AT BUILD TIME, like every other VITE_ value here. The web container
    is nginx serving static files and has no process that reads an environment,

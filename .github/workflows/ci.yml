@@ -135,7 +135,10 @@ jobs:
       # against one API hostname and one environment. The image published
       # here is therefore the PRODUCTION web image and must not be run on the
       # dev box; the dev box keeps building its own, which is what
-      # docker-compose.local.yml is for.
+      # KOLABO_BUILD=1 and deploy/docker-compose.build.yml are for. That was
+      # docker-compose.local.yml when this job was written, and the gitignored
+      # per box file turned out to be the wrong home for three build args that
+      # have to agree with web/Dockerfile and with this workflow.
       #
       # NONE OF THESE THREE IS A SECRET. All three are inlined into the
       # JavaScript every visitor downloads, so they are repository variables

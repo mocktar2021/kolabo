@@ -24,9 +24,12 @@
    `vite build`, so there is no process environment left to read when the
    browser runs it. Adding the variable to a running container's environment
    changes nothing at all: web/Dockerfile has to take it as a build ARG and
-   deploy/docker-compose.prod.yml has to pass it there, and the image has to be
-   REBUILT rather than restarted. Both of those were changed with this file;
-   deploy/.env on the server is the third piece and has to be edited by hand.
+   something has to pass it there, and the image has to be BUILT rather than
+   restarted. Which something depends on the box. One that builds its own
+   passes it out of deploy/.env through deploy/docker-compose.build.yml. One
+   that pulls runs an image CI built from the repository variable
+   PROD_VITE_GOOGLE_CLIENT_ID, so that variable is what has to be set and a new
+   tag has to be deployed; editing deploy/.env on such a box changes nothing.
 
    ONE initialize() FOR THE WHOLE PAGE, AND WHY THERE IS A REGISTRY BELOW.
    google.accounts.id.initialize is global and holds exactly one callback, so a

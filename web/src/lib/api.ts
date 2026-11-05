@@ -2,7 +2,30 @@
    VITE_API_URL so the same build points at local, staging, or production. */
 import { getStoredToken } from "./auth";
 
-const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+/* A TRAILING SLASH ON THE BASE BROKE PRODUCTION, so it is stripped here and
+   not merely forbidden somewhere else.
+
+   WHAT HAPPENED, 5 November 2026. The base was set to
+   "https://api.kolaboafrica.com/" and every call built `${BASE}${path}` with
+   a path that already starts with "/", so each request went to
+   "https://api.kolaboafrica.com//auth/...". A GET survives that: measured,
+   //health answered 200. A POST does not: //auth/password-reset/request
+   answered 404. So the site looked fine while every login, registration,
+   password reset and checkout silently failed, which is the worst shape a
+   fault can take.
+
+   THE RULE ALREADY EXISTED AND WAS BYPASSED. checks/preflight-env.sh has
+   refused a trailing slash on VITE_API_URL for months, with a comment saying
+   exactly what it causes. KOL-56 moved the web build into CI, where the value
+   comes from a repository variable that no preflight ever sees, and the rule
+   did not travel with it. Hence two defences now: the workflow refuses the
+   shape, and this line stops caring about it.
+
+   EXPORTED SO A TEST CAN PIN IT. See apiBase.test.ts. */
+export const apiBase = (raw: string | undefined | null): string =>
+  (raw ?? "").trim().replace(/\/+$/, "");
+
+const BASE = apiBase(import.meta.env.VITE_API_URL) || "http://localhost:8000";
 
 export const API_BASE = BASE;
 

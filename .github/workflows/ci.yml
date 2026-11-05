@@ -169,14 +169,45 @@ jobs:
       # reads these images yet, and the three test jobs above have already
       # passed, so a failure in this job says exactly one thing, which is
       # that PROD_VITE_API_URL is not set.
+      # CHECKS THE SHAPE, NOT ONLY THE PRESENCE, because presence was all it
+      # checked on 5 November and a trailing slash took production's write
+      # paths down for an afternoon. The value became
+      # "https://api.kolaboafrica.com/", web/src/lib/api.ts builds
+      # `${BASE}${path}` where every path already starts with "/", and the
+      # doubled slash answered 200 on a GET and 404 on a POST. The site looked
+      # healthy while no login, registration, reset or checkout worked.
+      #
+      # deploy/checks/preflight-env.sh has refused this exact shape on
+      # VITE_API_URL for months. Moving the build into CI moved the value out
+      # from behind that check without bringing the rule along. This is the
+      # rule, brought along.
+      #
+      # READ THROUGH env RATHER THAN INTERPOLATED INTO THE SCRIPT. A ${{ }}
+      # expansion is pasted into the shell before bash sees it, so a value
+      # containing a quote or a backtick would run as a command. Through env
+      # it is only ever data.
       - name: The web build needs production's API base
+        env:
+          API_BASE: ${{ vars.PROD_VITE_API_URL }}
+          GOOGLE_CLIENT_ID: ${{ vars.PROD_VITE_GOOGLE_CLIENT_ID }}
         run: |
-          if [ -z "${{ vars.PROD_VITE_API_URL }}" ]; then
-            echo "::error::Set the repository variable PROD_VITE_API_URL under Settings, Secrets and variables, Actions, Variables. It is inlined into the public bundle, so it is a variable rather than a secret."
+          fail() {
+            echo "::error::$1 Set it under Settings, Secrets and variables, Actions, Variables. It is inlined into the public bundle, so it is a variable rather than a secret."
             exit 1
-          fi
-          echo "PROD_VITE_API_URL is set."
-          if [ -z "${{ vars.PROD_VITE_GOOGLE_CLIENT_ID }}" ]; then
+          }
+          [ -n "$API_BASE" ] || fail "PROD_VITE_API_URL is not set."
+          case "$API_BASE" in
+            https://*) ;;
+            *) fail "PROD_VITE_API_URL must start with https://, and is '$API_BASE'." ;;
+          esac
+          case "$API_BASE" in
+            */) fail "PROD_VITE_API_URL must not end with a slash, and is '$API_BASE'. Every request would be built with a doubled slash, which answers 404 on a POST." ;;
+          esac
+          case "${API_BASE#https://}" in
+            */*) fail "PROD_VITE_API_URL must be scheme and host only, with no path, and is '$API_BASE'." ;;
+          esac
+          echo "PROD_VITE_API_URL is set and well formed: $API_BASE"
+          if [ -z "$GOOGLE_CLIENT_ID" ]; then
             echo "::notice::PROD_VITE_GOOGLE_CLIENT_ID is empty, so the Google button will be absent. That is a supported state and matches the backend when GOOGLE_CLIENT_IDS is unset."
           fi
 

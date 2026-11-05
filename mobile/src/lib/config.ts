@@ -42,8 +42,19 @@ const extra = (Constants.expoConfig?.extra ?? {}) as {
   googleIosClientId?: string;
 };
 
+/* NORMALISED, FOR THE REASON web/src/lib/api.ts SPELLS OUT AT LENGTH. A
+   trailing slash on the base produces a doubled slash in every path built
+   from it, which GETs survive and POSTs do not, so the app looks alive while
+   nothing a user does works. It cost production an afternoon on 5 November
+   2026. The value here arrives from the EAS production environment, which
+   has no preflight in front of it, so the stripping belongs here. */
+const apiBase = (raw: string | undefined | null): string =>
+  (raw ?? "").trim().replace(/\/+$/, "");
+
 export const API_BASE: string =
-  process.env.EXPO_PUBLIC_API_URL || extra.apiBaseUrl || "http://localhost:8000";
+  apiBase(process.env.EXPO_PUBLIC_API_URL) ||
+  apiBase(extra.apiBaseUrl) ||
+  "http://localhost:8000";
 
 /* The two Google OAuth client ids the sign in button needs, resolved through
    the SAME two steps apiBaseUrl above is resolved through: an EXPO_PUBLIC_

@@ -16,6 +16,8 @@ import {
 } from "../lib/cartTotals";
 import { formatAmount } from "../lib/money";
 import { PLATFORM_LABELS, deliverableLabel } from "../lib/platforms";
+import { EMPTY_DRAFT, draftIsComplete, draftPayload, type LicenceDraft } from "../lib/licenceTerms";
+import { LicenceFields } from "../components/campaigns/LicenceFields";
 import { Banner, Card, GhostButton, Hint, PrimaryButton, Screen, SectionTitle } from "../components/ui";
 import { colors, family, font, radius, space } from "../theme";
 /* Side-effect import: registers the cart.* and public.* copy on the i18n
@@ -86,6 +88,23 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
      the bug would be a paid order missing a line. */
   const [deselected, setDeselected] = useState<Selection>(new Set());
 
+  /* WHAT THE BRAND MAY DO WITH THE CONTENT, stated ONCE for the whole
+     checkout.
+
+     ONE LICENCE, NOT ONE PER LINE, and that is not a shortcut: the server fans
+     a checkout out into one direct order per creator and each order becomes
+     one campaign, so a licence per line would have to be reconciled into one
+     answer per creator before anything could be written. cart.py::_one_licence
+     refuses with licence_terms_invalid when two lines of the same creator
+     disagree, so one statement covering everything is the shape that survives
+     the fan-out. Same decision as web's pages/CartPage.tsx.
+
+     IT IS NOT STORED WITH THE BASKET. A licence that outlived the tab would be
+     a clause the buyer agreed to days ago and no longer remembers. It survives
+     a successful checkout within the same visit, because a buyer who ordered
+     two piles and kept a third usually means the same terms for it. */
+  const [licence, setLicence] = useState<LicenceDraft>(EMPTY_DRAFT);
+
   const money = (n: number, currency: string) => formatAmount(n, currency, i18n.language);
 
   const groups = groupByCreator(lines);
@@ -116,6 +135,10 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
        sends back has to be resolved against exactly what was sent. */
     const posted = selectedLines;
     if (posted.length === 0) return;
+    /* Null only for an unanswered option, and the button is disabled until one
+       is chosen. */
+    const terms = draftPayload(licence);
+    if (!terms) return;
     setBusy(true);
     setError(null);
     setRejectedId(null);
@@ -123,7 +146,15 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
       const res = await api<CartCheckoutResult>("/campaigns/orders/checkout", {
         method: "POST",
         token,
-        body: { items: posted.map(checkoutItem) },
+        /* ON EVERY ITEM, not beside the list. licence_terms is a key
+           CartCheckoutIn does not declare: pydantic ignores it, every line
+           resolves with no licence at all, and the first anybody hears of it is
+           contract_licence_terms_missing on the creator's side days later.
+           cart.py::_one_licence refuses with licence_terms_invalid when two
+           lines of one creator disagree, which is exactly why one draft fills
+           them all: the same object on every line cannot disagree with
+           itself. */
+        body: { items: posted.map((line) => ({ ...checkoutItem(line), ...terms })) },
       });
       setOrders(res.orders);
       setOrderedLines(posted);
@@ -396,7 +427,17 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
         {selectedTotals.length > 1 ? <Hint>{t("cart.totalsNote")}</Hint> : null}
         <Hint>{t("cart.rule")}</Hint>
         {groups.length > 1 ? <Hint>{t("cart.selectionNote")}</Hint> : null}
+        {/* In the totals card rather than on any one pile, because it is a
+            statement about every order in the checkout and not about any one of
+            them: see the note on the `licence` state above. No SectionTitle
+            over it, LicenceFields draws its own heading. */}
+        <View style={{ marginTop: space(3) }}>
+          <LicenceFields value={licence} onChange={setLicence} />
+        </View>
         <View style={{ height: space(3) }} />
+        {/* The licence gates the button the same way the selection does. The
+            sentence saying which half is missing lives under the control
+            itself, in components/campaigns/LicenceFields.tsx. */}
         <PrimaryButton
           title={
             busy
@@ -407,7 +448,7 @@ export default function CartScreen({ navigation }: AppScreenProps<"Cart">) {
           }
           onPress={checkout}
           loading={busy}
-          disabled={selectedGroups.length === 0}
+          disabled={selectedGroups.length === 0 || !draftIsComplete(licence)}
         />
       </Card>
     </Screen>

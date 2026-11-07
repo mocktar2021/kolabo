@@ -101,8 +101,8 @@ describe("the facts that declaration rests on", () => {
        what is searched for here is the way a crypto API is actually reached:
        an import of one, or a call into one. */
     const patterns: [string, RegExp][] = [
-      ["an import of node crypto", /from\s+[\"']crypto[\"']|require\(\s*[\"']crypto[\"']\s*\)/],
-      ["an import of expo-crypto", /[\"']expo-crypto[\"']/],
+      ["an import of node crypto", /from\s+["']crypto["']|require\(\s*["']crypto["']\s*\)/],
+      ["an import of expo-crypto", /["']expo-crypto["']/],
       ["the Web Crypto API", /crypto\s*\.\s*subtle/],
       ["a node cipher or hash", /create(?:Cipher|Decipher|Hash|Hmac)\w*\s*\(/],
       ["CryptoJS", /\bCryptoJS\b/],

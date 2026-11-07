@@ -11,6 +11,8 @@ import { MIN_PACKAGE_PRICE, minPrice } from "../lib/pricing";
 import type { DirectOrder, PublicProfileData } from "../lib/discoveryTypes";
 import type { Package, SocialAccount } from "../lib/profileTypes";
 import { followerNote, socialStatusChip } from "../lib/socialStatus";
+import { EMPTY_DRAFT, draftIsComplete, draftPayload, type LicenceDraft } from "../lib/licenceTerms";
+import { LicenceFields } from "../components/campaigns/LicenceFields";
 import {
   Banner,
   Card,
@@ -190,6 +192,29 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
   const [negCurrency, setNegCurrency] = useState(CURRENCIES[0] ?? "XOF");
   const [negDays, setNegDays] = useState("");
 
+  /* WHAT THE BRAND MAY DO WITH THE CONTENT, stated before the order exists.
+
+     Shared by both order sheets, like note, busy and orderError above, and for
+     the same reason: only one of the two can be open, and a buyer who chose an
+     option and typed a territory list into one should not do it again in the
+     other.
+
+     THIS IS FRICTION ON THE SHORTEST JOURNEY IN THE APP, AND IT IS THE PRICE
+     OF THE FEATURE. Article 10 of the collaboration contract makes the parties
+     choose how the brand may use the content, and a contract cannot be
+     generated with that clause blank: contracts/service.py::_licence_snapshot
+     refuses with contract_licence_terms_missing, and that refusal lands on the
+     CREATOR, days later, for the one thing only the buyer can fix. One radio
+     group here is cheaper than that, and a creator who can read the licence
+     before accepting is the entire point.
+
+     NOT NEEDED BY THE TWO ADD-TO-CART BUTTONS. A basket line carries no
+     licence: the statement is made once per checkout, on CartScreen, because
+     the server fans a checkout out into one order per creator and one answer
+     has to cover all of them. So those buttons are deliberately NOT gated on
+     it. Same split as web's pages/PublicProfile.tsx. */
+  const [licence, setLicence] = useState<LicenceDraft>(EMPTY_DRAFT);
+
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
     try {
@@ -255,6 +280,11 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
 
   async function sendOrder() {
     if (!selectedPackage) return;
+    /* Null only for an unanswered option, and the button is disabled until one
+       is chosen. A guard rather than a branch anybody reaches: the same two
+       lines stand in CampaignNewScreen and in web's PublicProfile. */
+    const terms = draftPayload(licence);
+    if (!terms) return;
     setBusy(true);
     setOrderError(null);
     try {
@@ -262,7 +292,9 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
       const res = await api<DirectOrder>("/campaigns/orders", {
         method: "POST",
         token,
-        body: { package_id: selectedPackage.id, note: trimmed || null },
+        /* The whole licence_terms block, with explicit nulls for the fields
+           this option does not use. See toPayload in lib/licenceTerms.ts. */
+        body: { package_id: selectedPackage.id, ...terms, note: trimmed || null },
       });
       setOrdered(res);
       setConfirming(false);
@@ -279,6 +311,8 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
      than written twice. */
   async function sendNegotiatedOrder() {
     if (!profile) return;
+    const terms = draftPayload(licence);
+    if (!terms) return;
     setBusy(true);
     setOrderError(null);
     try {
@@ -294,6 +328,7 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
           rate_amount: Number(negRate),
           currency: negCurrency,
           timeline_days: Number(negDays),
+          ...terms,
           ...(trimmed ? { note: trimmed } : {}),
         },
       });
@@ -493,12 +528,26 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
                     multiline
                     numberOfLines={3}
                   />
+                  {/* The licence, inside the confirm sheet rather than above
+                      the order button, so it is read by somebody who has
+                      already decided to order and is now settling the terms of
+                      it. The creator sees the answer before they accept, which
+                      is where this ends up mattering. No SectionTitle above it:
+                      LicenceFields draws its own heading. */}
+                  <View style={{ marginTop: space(3) }}>
+                    <LicenceFields value={licence} onChange={setLicence} />
+                  </View>
                   <Hint>{t("public.orderRule")}</Hint>
                   <View style={{ height: space(3) }} />
+                  {/* Gated on the licence. The sentence saying which half is
+                      missing lives under the control itself, in
+                      components/campaigns/LicenceFields.tsx, so this sheet
+                      holds no second copy of it. */}
                   <PrimaryButton
                     title={busy ? t("common.working") : t("public.orderSend")}
                     onPress={sendOrder}
                     loading={busy}
+                    disabled={!draftIsComplete(licence)}
                   />
                   <View style={{ height: space(2) }} />
                   <GhostButton title={t("public.orderCancel")} onPress={() => setConfirming(false)} />
@@ -579,20 +628,35 @@ export default function CreatorPublicScreen({ navigation, route }: AppScreenProp
                     multiline
                     numberOfLines={3}
                   />
+                  {/* The same control as the pack sheet above, and the same
+                      shared state behind it: a buyer who opened one sheet,
+                      chose an option and switched to the other keeps their
+                      answer. */}
+                  <View style={{ marginTop: space(3) }}>
+                    <LicenceFields value={licence} onChange={setLicence} />
+                  </View>
                   <Hint>{t("public.orderRule")}</Hint>
                   <View style={{ height: space(3) }} />
                   <PrimaryButton
                     title={busy ? t("common.working") : t("public.negotiateSend")}
                     onPress={sendNegotiatedOrder}
                     loading={busy}
-                    disabled={!negComplete}
+                    disabled={!negComplete || !draftIsComplete(licence)}
                   />
                   <View style={{ height: space(2) }} />
                   {/* The custom offer put aside instead of sent. A brand
                       assembling one basket across several profiles needs this
                       as much as it needs it for a listed pack — and a bespoke
                       offer is exactly the line most likely to be one of
-                      four. */}
+                      four.
+
+                      DELIBERATELY NOT GATED ON THE LICENCE, unlike the button
+                      above it. A basket line carries no licence: the statement
+                      is made once for the whole checkout, on CartScreen,
+                      because one checkout becomes one order per creator and one
+                      answer has to cover all of them. Gating this would ask the
+                      buyer for the same clause twice and let the two answers
+                      disagree. */}
                   <GhostButton
                     title={t("cart.add")}
                     onPress={addNegotiatedToCart}

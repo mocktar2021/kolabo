@@ -8,7 +8,7 @@ This checklist identifies where qualified legal counsel is required before launc
 - [ ] Privacy Policy reviewed by counsel (EN and FR). Owner: Founder plus counsel.
 - [ ] Influencer agreement reviewed by counsel. Owner: counsel.
 - [ ] Business agreement reviewed by counsel. Owner: counsel.
-- [ ] Collaboration contract template reviewed by counsel. The current in-app template carries a placeholder banner (NOT LEGALLY REVIEWED / MODELE PROVISOIRE) and that banner must be removed only after counsel sign off. Owner: counsel.
+- [ ] Collaboration contract template reviewed by counsel. The placeholder banner (NOT LEGALLY REVIEWED / MODELE PROVISOIRE) was removed on 10 November on the founder's instruction that counsel has read a generated document. Still open and recorded as an open question, not as sign off: whether what counsel read was the generated in-app body or the approved French model it was built from, and whether the drafting items she listed (annex questions 6 and 7.9, the content licence clause) are closed. Contracts generated before 10 November keep the banner permanently, because the body is hashed at generation and never rewritten. Owner: counsel.
 - [ ] Refund and cancellation policy reviewed by counsel. Owner: counsel.
 - [ ] Dispute resolution and governing law clause set per market. Owner: counsel.
 

@@ -233,12 +233,16 @@ def test_generate_contract_from_submitted_proposal(client):
     assert p.status == "accepted"
 
 
-def test_generated_body_is_french_placeholder_for_bj(client):
+def test_a_benin_contract_generates_in_french(client):
+    """Renamed from ..._is_french_placeholder_for_bj, which asserted on the
+    warning banner. The banner is gone, and what this test was always really
+    about is that a BJ contract is written in French, body and all. So it now
+    reads a sentence out of the document rather than a label on top of it."""
     biz, inf, camp, prop = _setup(client, country="BJ")
     contract = client.post(f"/contracts/from-proposal/{prop}", headers=_headers(biz)).json()
     detail = client.get(f"/contracts/{contract['id']}", headers=_headers(biz)).json()
     assert detail["language"] == "fr"
-    assert "MODELE PROVISOIRE" in detail["body"]
+    assert "ENTRE LES SOUSSIGNÉS" in detail["body"]
 
 
 def test_generate_requires_ownership(client):
@@ -896,9 +900,11 @@ def test_the_french_body_names_both_parties_the_way_the_approved_model_does(clie
     # The two lines this replaced, gone from both languages.
     assert "Business party (user id)" not in body
     assert "Influencer party (user id)" not in body
-    # And the warning label stays. Naming the parties is what makes the
-    # document worth reviewing; it is not the review.
-    assert "MODELE PROVISOIRE" in body
+    # AND THE WARNING LABEL IS GONE, asserted rather than left to chance.
+    # It stood on every contract until counsel had read a generated document,
+    # and the assertion is kept pointing the other way so it cannot come back
+    # by accident on a document people sign.
+    assert "MODELE PROVISOIRE" not in body
     assert "pièce d'identité" not in body.lower()
 
 
@@ -943,7 +949,8 @@ def test_the_english_body_names_both_parties(client):
         'Hereinafter together "the Parties" and individually "a Party".',
     ])
     assert expected in row.body
-    assert "PLACEHOLDER TEMPLATE" in row.body
+    # Gone, for the reason given on the French twin above.
+    assert "PLACEHOLDER TEMPLATE" not in row.body
 
 
 def test_the_party_type_decides_the_fields_and_the_side_decides_the_heading(client):

@@ -13,7 +13,10 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.kolaboafrica.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.kolaboafrica.app",

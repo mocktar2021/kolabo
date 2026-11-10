@@ -41,6 +41,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.core.identity import creator_identities
+from app.core.platforms import deliverable_phrase
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
 from app.modules.campaigns import service as campaigns_service
@@ -165,12 +166,12 @@ def _language_for(country_code: str) -> str:
 # is out of scope here: this renders an identification block, it does not draft
 # clauses.
 #
-# ACCENTED FRENCH, unlike the legacy placeholder banner a few lines down which
-# is plain ASCII. The banner is a warning label and it is pinned by an existing
-# test; this is the part of the document that names a human being and a company
-# on something they sign. "Siege" and "Representee" in a party block would be
-# wrong on a document going to counsel, and the rest of this backend already
-# writes proper French to users (see auth/otp.py).
+# ACCENTED FRENCH. This is the part of the document that names a human being
+# and a company on something they sign. "Siege" and "Representee" in a party
+# block would be wrong on a document a creator reads before agreeing to it, and
+# the rest of this backend already writes proper French to users (see
+# auth/otp.py). The one place that was plain ASCII was the old placeholder
+# banner, and that banner is gone (see _build_body below).
 # ---------------------------------------------------------------------------
 
 # The three party types come from profiles.models, which owns the closed set
@@ -454,14 +455,32 @@ def _build_body(
     business_party: dict | None,
     influencer_party: dict | None,
 ) -> str:
-    banner_en = "PLACEHOLDER TEMPLATE. NOT LEGALLY REVIEWED. Do not use in production until reviewed by qualified counsel per country."
-    banner_fr = "MODELE PROVISOIRE. NON REVISE JURIDIQUEMENT. Ne pas utiliser en production avant revision par un conseil juridique qualifie par pays."
-    deliverables = ", ".join(f"{d.get('quantity')} x {d.get('type')} on {d.get('platform')}" for d in (campaign.deliverables or []))
-    banner = banner_fr if language == "fr" else banner_en
-    # STAYS UNTIL COUNSEL HAS READ A GENERATED DOCUMENT. Naming the parties is
-    # what makes the document worth reviewing; it is not the review. Removing
-    # the banner is a one-line change the day she signs off and is tracked
-    # separately from this work.
+    # EACH DELIVERABLE IN THE SIGNER'S OWN LANGUAGE. This line used to read
+    # "1 x video on tiktok" on a French contract: an English connector and two
+    # raw ids, on the one line that says what is being bought. The labels and
+    # the fallback live in core/platforms.py, beside the vocabulary they
+    # describe, so a new deliverable type cannot ship without one.
+    #
+    # An empty phrase is dropped rather than joined, so a malformed entry
+    # cannot leave ", , " in the middle of the list.
+    deliverables = ", ".join(
+        phrase
+        for phrase in (
+            deliverable_phrase(
+                language, d.get("quantity"), d.get("type"), d.get("platform")
+            )
+            for d in (campaign.deliverables or [])
+        )
+        if phrase
+    )
+    # THE "NOT LEGALLY REVIEWED" BANNER IS GONE, on the founder's instruction
+    # that counsel has now read a generated document. It stood at the top of
+    # every contract from the first one until that review.
+    #
+    # WHAT THAT MEANS FOR CONTRACTS ALREADY SIGNED: nothing. The body is hashed
+    # at generation and never rewritten, so every document generated before
+    # this change still carries the banner and still hashes to what was signed.
+    # This affects the next contract and no earlier one.
     #
     # THE CONTENT LICENCE IS DELIBERATELY NOT PRINTED HERE, and this is the
     # place somebody will come looking for it.
@@ -496,8 +515,6 @@ def _build_body(
     # licence is part of the brief or the order both of them read, and the
     # snapshot is the record of it.
     lines = [
-        banner,
-        "",
         # Frozen here, which is why campaigns/editing.py locks `title` once a
         # contract exists. Without that lock the buyer could rename the brief
         # and the card would then disagree with the signed document.
@@ -523,7 +540,14 @@ def _build_body(
         _labelled(
             language, "timeline", f"{proposal.timeline_days} {_DAYS_WORD[language]}"
         ),
-        _labelled(language, "deadline", campaign.deadline),
+        # DROPPED WHEN THERE IS NONE, rather than printed as "None". A direct
+        # order carries no campaign deadline at all, which is most of the
+        # contracts this platform generates, and every one of them printed
+        # "Échéance de la campagne : None" into a document somebody signs.
+        # Same rule _party_lines already applies to an empty party field: a
+        # line that is absent reads as a field that does not apply, and a line
+        # with nothing after the colon reads as one somebody forgot.
+        *([_labelled(language, "deadline", campaign.deadline)] if campaign.deadline else []),
         "",
         _SIGNATURE_SENTENCE[language],
         "",

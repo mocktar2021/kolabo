@@ -12,7 +12,7 @@ contract exists, and the contract freezes it.
 """
 import hashlib
 import re
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -161,6 +161,7 @@ def _setup(
     business_party=BUSINESS_PARTY,
     creator_party=CREATOR_PARTY,
     licence_terms=LICENCE_REDISTRIBUTION,
+    deadline=None,
 ):
     """Create a business, an influencer, a published campaign, and a proposal.
 
@@ -181,6 +182,12 @@ def _setup(
     from a social platform's API, so it is often a handle. A creator who has
     stated who they are for a contract and has not chosen a storefront name is
     a real state, and the contract list is tested against it below.
+
+    THE BRIEF CARRIES NO DEADLINE by default, because most of what this
+    platform generates is a direct order and a direct order has none. That is
+    the state the document used to print as "Echeance de la campagne : None",
+    so it is the state the fixture should default to. Pass a date to get the
+    line; it has to be today or later or generation refuses it.
 
     The dicts are copied in rather than handed over, so a test that mutates a
     stored block cannot reach back into the module constants above.
@@ -205,7 +212,7 @@ def _setup(
             business_user_id=biz.id, title="Launch push", budget_amount=50000, budget_currency="XOF",
             deliverables=[{"platform": "instagram", "type": "post", "quantity": 2}],
             licence_terms=dict(licence_terms) if licence_terms else None,
-            deadline=None, status=campaigns.PUBLISHED,
+            deadline=deadline, status=campaigns.PUBLISHED,
         )
         db.add(camp); db.commit(); db.refresh(camp)
         prop = campaigns.Proposal(
@@ -1632,8 +1639,17 @@ def test_a_french_contract_contains_no_english_operative_terms(client):
     because the presence is already covered above and absence is what
     regresses: somebody adds a sixth line, writes it in English because the
     four around it used to be, and nothing else notices.
+
+    AND THIS CAMPAIGN CARRIES A DEADLINE, which the fixture's default does
+    not. The deadline line is dropped from the document when there is none, so
+    without one the two assertions about it below would both pass on an absent
+    line rather than on a translated one, which is the quietest kind of green.
+    Relative to today rather than a fixed date, so it cannot expire into a
+    failure.
     """
-    biz, inf, camp, prop = _setup(client, country="BJ")
+    biz, inf, camp, prop = _setup(
+        client, country="BJ", deadline=date.today() + timedelta(days=30)
+    )
     body = _contract_row(client, _generate(client, biz, prop)).body
 
     for english in (

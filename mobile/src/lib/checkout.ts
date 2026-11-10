@@ -36,6 +36,23 @@ export type PaymentIntent = {
      url: it takes a payer to an expired page instead of telling them the
      payment is already done. */
   checkout_url: string | null;
+  /* WHAT THE PAYER HAS TO DO NEXT, and the field that picks the screen.
+
+     "redirect"       open checkout_url. A hosted page takes it from there.
+     "device_prompt"  nothing to open. The gateway has already pushed a
+                      payment request to the handset we named, and the only
+                      thing left is to wait and keep polling.
+
+     READ THIS, NEVER THE NULLNESS OF checkout_url. They are different
+     questions and the difference is right above: checkout_url also goes null
+     once a redirect payment is terminal, so a screen that inferred the state
+     from the url would tell somebody whose payment had already succeeded to
+     go and check their phone. */
+  payer_action: "redirect" | "device_prompt";
+  /* Which network the request went to, when there was one. Null on a
+     redirect, because the payer picks their operator on the hosted page and
+     we never learn which one. */
+  payer_network: string | null;
   /* THE FIELD THE UI ACTUALLY WAITS ON. status "succeeded" without an escrow
      id is the amount-mismatch case — the gateway took money that does not
      match the contract — and that needs a human, not a success screen. So the
@@ -59,7 +76,17 @@ export function paymentConfig(): Promise<PaymentConfig> {
 export function startCheckout(
   contractId: string,
   token: string | null,
-  opts: { firstName?: string; lastName?: string; returnUrl?: string } = {}
+  opts: {
+    firstName?: string;
+    lastName?: string;
+    returnUrl?: string;
+    /* Only sent when the routed gateway asked for them, which is what
+       collectionNetworks() answers. Both are null on a redirect flow, where
+       the payer picks a network and types a number on the gateway's own page
+       instead, and the API accepts their absence on purpose. */
+    network?: string;
+    phone?: string;
+  } = {}
 ): Promise<PaymentIntent> {
   return api<PaymentIntent>("/payments/checkout/start", {
     method: "POST",
@@ -69,9 +96,70 @@ export function startCheckout(
       payer_first_name: opts.firstName || null,
       payer_last_name: opts.lastName || null,
       return_url: opts.returnUrl || null,
+      payer_network: opts.network || null,
+      payer_phone: opts.phone || null,
     },
   });
 }
+
+/* Which mobile money networks THIS brand can pay from, for the country on
+   their account. An empty list is a real answer and means "do not show a
+   picker": the routed gateway runs its own hosted page where the payer
+   chooses, so there is nothing for us to ask. */
+export function collectionNetworks(token: string | null): Promise<string[]> {
+  return api<string[]>("/payments/collection-networks", { token });
+}
+
+/* Display names for the collection networks, on the same terms as
+   PAYOUT_MODE_LABELS below and deliberately a SEPARATE map.
+
+   The two vocabularies look almost identical and are not the same: a payout
+   to Cote d'Ivoire is keyed mtn_ci because that string goes in a URL path,
+   while a collection sends MTN CI in a field. One map serving both would have
+   to hold both spellings of every operator and would quietly return the wrong
+   key the first time one of them changed.
+
+   Unknown codes fall back to the code itself, which is the rule the payout
+   map already follows: a network added at the provider should degrade to
+   ugly, not to an unpickable blank chip. */
+export const COLLECTION_NETWORK_LABELS: Record<string, string> = {
+  MTN: "MTN Mobile Money",
+  MOOV: "Moov Money",
+  "CELTIIS BJ": "Celtiis Cash",
+  "MOOV TG": "Moov Money",
+  "TOGOCOM TG": "T-Money",
+  "MTN CI": "MTN Mobile Money",
+  "MOOV CI": "Moov Money",
+  "WAVE CI": "Wave",
+  "ORANGE CI": "Orange Money",
+  "WAVE SN": "Wave",
+  "ORANGE SN": "Orange Money",
+  "FREE SN": "Free Money",
+};
+
+export function collectionNetworkLabel(network: string): string {
+  return COLLECTION_NETWORK_LABELS[network] || network;
+}
+
+/* A gateway refusal the brand can act on, or the generic line.
+
+   ONE ENTRY, BECAUSE ONE CODE HAS BEEN OBSERVED. FeexPay's full vocabulary
+   has not been measured, and inventing sentences for codes nobody has seen
+   produces confident wrong advice the first time one arrives. An unknown
+   reason therefore keeps "nothing was charged, you can try again", which is
+   always true. Add a line here each time a real refusal is seen, not before.
+
+   Lives here rather than in errorMessages.ts on purpose: that catalogue maps
+   OUR AppError codes, and these are the provider's own strings stored
+   verbatim on payment_intents.failure_reason. Two vocabularies, two homes,
+   and a single catalogue holding both would invite somebody to add a provider
+   string to the parity test that checks ours against the backend. */
+export const FAILURE_HINTS: Record<string, string> = {
+  PAYER_NOT_FOUND: "pay.failedPayerNotFound",
+};
+
+export const failureHint = (reason: string | null): string =>
+  (reason && FAILURE_HINTS[reason]) || "pay.failedHint";
 
 /* Not a passive status read: a still-pending intent is re-checked against the
    gateway inside this request, and the escrow is created here if the money

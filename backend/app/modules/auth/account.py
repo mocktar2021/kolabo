@@ -38,7 +38,7 @@ from app.core.config import settings
 from app.core.emails import normalized_email
 from app.core.errors import AppError
 from app.core.security import hash_password, verify_password
-from app.modules.auth import google, otp
+from app.modules.auth import apple, google, otp
 from app.modules.auth.models import PasswordResetToken, User, utcnow
 from app.modules.auth.schemas import (
     AccountPatch,
@@ -167,13 +167,19 @@ def _me_out(db: Session, user: User) -> dict:
         # assembled by excluding fields would have started shipping the column
         # the day it was added.
         "google_linked": user.google_sub is not None,
+        "apple_linked": user.apple_sub is not None,
         "created_at": user.created_at,
         "display_name": display_name,
         "avatar_url": avatar_url,
     }
 
 
-def require_reauth(user: User, password: str | None, google_token: str | None) -> None:
+def require_reauth(
+    user: User,
+    password: str | None,
+    google_token: str | None,
+    apple_token: str | None = None,
+) -> None:
     """Prove the caller is the OWNER, not merely the holder of a session.
 
     THE RULE HAS NOT BEEN RELAXED, IT HAS BEEN GIVEN A SECOND FORM. A bearer
@@ -215,12 +221,12 @@ def require_reauth(user: User, password: str | None, google_token: str | None) -
     telling somebody who sent a Google token that their password is wrong
     sends them to look for a password they may not have.
     """
-    supplied = [proof for proof in (password, google_token) if proof]
+    supplied = [proof for proof in (password, google_token, apple_token) if proof]
     if len(supplied) != 1:
         raise AppError(
             status.HTTP_403_FORBIDDEN,
             code="auth_reauth_required",
-            detail="We could not confirm it is you. Enter your current password, or confirm with Google, and try again.",
+            detail="We could not confirm it is you. Enter your current password, or confirm with Google or Apple, and try again.",
         )
 
     if password:
@@ -231,6 +237,36 @@ def require_reauth(user: User, password: str | None, google_token: str | None) -
                 # that the CURRENT password supplied does not match.
                 code="auth_password_incorrect",
                 detail="Current password is incorrect",
+            )
+        return
+
+    if apple_token:
+        apple_identity = apple.verify(apple_token)
+        # THE SUBJECT HAS TO BE THIS ACCOUNT'S, which is the Apple shaped
+        # version of the comparison below and a stricter one. The Google
+        # branch compares addresses because a Google token always carries a
+        # confirmed one; an Apple token carries an address only on the first
+        # authorisation and it may be a per app relay, so there is usually
+        # nothing to compare. What there always is, is `sub`, and the account
+        # already knows which one is its own.
+        #
+        # AN ACCOUNT WITH NO apple_sub CANNOT RE-AUTHENTICATE THIS WAY AT ALL,
+        # and the `user.apple_sub is None` test is what says so. Without it,
+        # None == None would be true on an unlinked row and ANY valid Apple
+        # token from ANY Apple account would prove ownership of it, which is
+        # the worst bug this function could have. The honest answer for such
+        # an account is that it has a password, and should use it.
+        if (
+            apple_identity is None
+            or user.apple_sub is None
+            or apple_identity.subject != user.apple_sub
+        ):
+            # Logged, not disclosed, exactly as the Google branch does it.
+            _log.warning("Re-authentication with an Apple token refused for user %s", user.id)
+            raise AppError(
+                status.HTTP_403_FORBIDDEN,
+                code="auth_reauth_required",
+                detail="We could not confirm it is you. Enter your current password, or confirm with Google or Apple, and try again.",
             )
         return
 
@@ -249,7 +285,7 @@ def require_reauth(user: User, password: str | None, google_token: str | None) -
         raise AppError(
             status.HTTP_403_FORBIDDEN,
             code="auth_reauth_required",
-            detail="We could not confirm it is you. Enter your current password, or confirm with Google, and try again.",
+            detail="We could not confirm it is you. Enter your current password, or confirm with Google or Apple, and try again.",
         )
 
 
@@ -356,7 +392,7 @@ def update_me(db: Session, user_id: str, payload: AccountPatch) -> dict:
     # Checked before anything is looked up or written, and before the 409 on a
     # taken phone: a caller who cannot prove they own this account must not be
     # able to use it to discover whether a number is registered.
-    require_reauth(user, payload.current_password, payload.google_token)
+    require_reauth(user, payload.current_password, payload.google_token, payload.apple_token)
 
     if new_phone is not None and new_phone != user.phone:
         # Any row at all, verified or not. An unverified registration still

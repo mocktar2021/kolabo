@@ -206,6 +206,20 @@ export const error_fr = {
   auth_google_token_invalid: "Nous n'avons pas pu vous connecter avec Google. Réessayez, et vérifiez que votre adresse e-mail Google est confirmée.",
   auth_google_profile_required: "Indiquez votre pays et si vous êtes créateur ou entreprise, puis reconnectez-vous avec Google.",
 
+  /* Apple, et deux phrases que Google n'a pas besoin de dire. Un jeton Apple
+     ne porte une adresse qu'à la première autorisation, et elle peut être une
+     adresse relais propre à cette application. auth_apple_unlinked est donc
+     la personne qui revient alors que le lien a été perdu : rien à retrouver
+     et rien pour ouvrir un compte, et la seule chose qui aide est le
+     formulaire e-mail et mot de passe. auth_apple_email_unavailable est une
+     adresse que ce jeton n'a pas le droit de revendiquer et qu'un compte
+     détient déjà. */
+  auth_apple_unavailable: "La connexion avec Apple n'est pas disponible. Utilisez votre adresse e-mail et votre mot de passe.",
+  auth_apple_token_invalid: "Nous n'avons pas pu vous connecter avec Apple. Réessayez.",
+  auth_apple_profile_required: "Indiquez votre pays et si vous êtes créateur ou entreprise, puis reconnectez-vous avec Apple.",
+  auth_apple_unlinked: "Ce compte Apple n'est relié à aucun compte Kolabo. Connectez-vous avec votre adresse e-mail et votre mot de passe.",
+  auth_apple_email_unavailable: "Cette adresse e-mail a déjà un compte Kolabo. Connectez-vous avec votre adresse e-mail et votre mot de passe.",
+
   /* L'autre moitié du même changement. Supprimer son compte ou en changer les
      identifiants demande de prouver qu'on en est le titulaire, et deux preuves
      valent désormais l'une pour l'autre, une seule à la fois : le mot de passe
@@ -216,7 +230,7 @@ export const error_fr = {
 
      Pas auth_password_incorrect : cette phrase-là parle d'un mot de passe, et
      enverrait chercher un mot de passe que ce compte n'a peut-être jamais eu. */
-  auth_reauth_required: "Nous n'avons pas pu confirmer que c'est bien vous. Saisissez votre mot de passe actuel, ou confirmez avec Google, puis réessayez.",
+  auth_reauth_required: "Nous n'avons pas pu confirmer que c'est bien vous. Saisissez votre mot de passe actuel, ou confirmez avec Google ou Apple, puis réessayez.",
 
   /* Profiles: setting up a creator page, its packages and its portfolio. */
   profile_not_found: "Profil introuvable.",
@@ -573,6 +587,19 @@ export const error_en = {
   auth_google_token_invalid: "We could not sign you in with Google. Try again, and check that your Google email address is confirmed.",
   auth_google_profile_required: "Tell us your country and whether you are a creator or a business, then sign in with Google again.",
 
+  /* Apple, and two sentences Google never has to say. An Apple token carries
+     an address only on the first authorisation, and that address may be a per
+     app relay. auth_apple_unlinked is therefore the returning person whose
+     link was lost: nothing to find and nothing to open an account with, and
+     the only thing that helps is the email and password form.
+     auth_apple_email_unavailable is an address this token may not claim that
+     some account already holds. */
+  auth_apple_unavailable: "Signing in with Apple is not available. Use your email address and password.",
+  auth_apple_token_invalid: "We could not sign you in with Apple. Try again.",
+  auth_apple_profile_required: "Tell us your country and whether you are a creator or a business, then sign in with Apple again.",
+  auth_apple_unlinked: "This Apple account is not connected to a Kolabo account. Sign in with your email address and password.",
+  auth_apple_email_unavailable: "That email address already has a Kolabo account. Sign in with your email address and password.",
+
   /* The other half of the same change. Deleting an account, or changing what
      it is reached by, costs proof that you own it, and two proofs now stand
      for each other, exactly one at a time: the current password, or a freshly
@@ -582,7 +609,7 @@ export const error_en = {
 
      Not auth_password_incorrect: that sentence is about a password, and it
      would send somebody hunting for one this account may never have had. */
-  auth_reauth_required: "We could not confirm it is you. Enter your current password, or confirm with Google, and try again.",
+  auth_reauth_required: "We could not confirm it is you. Enter your current password, or confirm with Google or Apple, and try again.",
 
   profile_not_found: "Profile not found.",
   profile_under_age: "You must be at least {{min}} to create a creator profile.",

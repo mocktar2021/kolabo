@@ -88,6 +88,36 @@ class GoogleSignInRequest(BaseModel):
     referral_code: str | None = None
 
 
+class AppleSignInRequest(BaseModel):
+    """An Apple identity token, and the two things Apple cannot tell us.
+
+    THE SAME SHAPE AS GoogleSignInRequest AND NOT THE SAME FLOW. role and
+    country_code are optional here for the same two step reason, and
+    referral_code is here for the same reason. What differs is when the second
+    step happens, and it is worth knowing before reading the service.
+
+    A GOOGLE TOKEN ALWAYS NAMES THE PERSON. An Apple token names them by `sub`
+    always, and by address ONLY on the first authorisation, so a returning
+    person arrives with no address at all. The service therefore looks up by
+    apple_sub first and asks for role and country only when that finds nothing
+    AND the token carries nothing to fall back on. The practical consequence
+    for a client: `auth_apple_profile_required` can arrive on a device whose
+    owner already has a Kolabo account made with a password, because nothing
+    in that token can connect the two. That is not a bug, it is what Hide My
+    Email means.
+
+    THE TOKEN IS SHORT LIVED, shorter than Google's, so a client that holds
+    one while asking for a country should ask quickly. On expiry the second
+    call answers auth_apple_token_invalid and the button has to be tapped
+    again, which is the behaviour to design the screen around.
+    """
+
+    identity_token: str
+    role: str | None = None
+    country_code: str | None = Field(default=None, min_length=2, max_length=2)
+    referral_code: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -114,13 +144,23 @@ class DeleteAccountRequest(BaseModel):
     protection regimes expect to work.
 
     The answer is not to drop the check. It is to accept a different proof of
-    the same fact: a freshly verified Google ID token for the same address.
+    the same fact: a freshly verified Google ID token for the same address, or
+    an Apple identity token whose subject is the one this account is linked to.
+
+    EXACTLY ONE OF THE THREE, never two and never none. See require_reauth.
     """
 
     password: str | None = None
     # A Google ID token, verified exactly as a sign in verifies one and then
     # required to carry THIS account's address. See auth.account.require_reauth.
     google_token: str | None = None
+    # An Apple identity token, verified the same way and then required to carry
+    # THIS account's linked subject. The comparison is against apple_sub rather
+    # than against the address, because an Apple token stops carrying an
+    # address after the first authorisation and may never have carried a real
+    # one. It is the stronger check of the two: a subject cannot be asserted,
+    # only presented inside something Apple signed.
+    apple_token: str | None = None
 
 
 class MeOut(BaseModel):
@@ -192,6 +232,17 @@ class MeOut(BaseModel):
     # did, and no address can be turned back into a `sub`. Such an account
     # starts answering true the next time its owner signs in with Google.
     google_linked: bool = False
+    # The same boolean for Apple, withheld in the same way and for the same
+    # reasons: the subject itself never travels, only whether there is one.
+    #
+    # IT MEANS MORE THAN ITS NEIGHBOUR DOES, though, and a settings screen
+    # should say so. An account with google_linked false can still sign in
+    # with Google tomorrow, because the address in the token will find it. An
+    # account with apple_linked false CANNOT sign in with Apple and arrive
+    # here: a second Apple sign in carries no address, so it would make a
+    # second account rather than reach this one. False therefore means "not
+    # reachable by Apple", not merely "not recorded yet".
+    apple_linked: bool = False
     created_at: datetime
     # WHO THE CALLER IS TO LOOK AT, which nothing else on this row answers: a
     # phone number, a role and a country are not things a person recognises
@@ -243,6 +294,11 @@ class AccountPatch(BaseModel):
     # and until this field existed it was gated behind a current password that
     # such an account could never have. See auth.account.require_reauth.
     google_token: str | None = None
+    # And the Apple equivalent, which matters more here than it looks: an
+    # account created through Apple with Hide My Email has no usable password
+    # AND no address its owner recognises, so this field is the only route by
+    # which such a person can set a password or correct their address.
+    apple_token: str | None = None
     phone: str | None = Field(default=None, min_length=6, max_length=20)
     # THE LOGIN IDENTITY, so changing it is the single most consequential
     # thing on this schema: it moves where a reset code goes and it moves what

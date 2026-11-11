@@ -40,7 +40,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.modules.auth import google, otp, referrals
+from app.modules.auth import apple, google, otp, referrals
 from app.modules.auth.models import (
     REFEREE,
     OtpChallenge,
@@ -50,6 +50,7 @@ from app.modules.auth.models import (
     utcnow,
 )
 from app.modules.auth.schemas import (
+    AppleSignInRequest,
     DeleteAccountRequest,
     GoogleSignInRequest,
     LoginRequest,
@@ -781,6 +782,230 @@ def google_sign_in(db: Session, payload: GoogleSignInRequest) -> dict:
     return {"access_token": create_access_token(user.id), "role": user.role}
 
 
+def _link_apple_identity(db: Session, user: User, identity: apple.AppleIdentity) -> None:
+    """Record WHICH Apple account this is. Best effort, but not cheap to lose.
+
+    THE SAME SHAPE AS _link_google_identity AND NOT THE SAME STAKES, which is
+    the only thing worth reading twice in this docstring. Failing to write a
+    google_sub costs a settings screen a row. Failing to write an apple_sub
+    costs the person the ability to sign in with Apple AT ALL on this account
+    ever again, because the next token will carry no address to fall back on
+    and will therefore look like a brand new person. So the branches below are
+    the same branches, and the log levels are not.
+
+    A SUBJECT ANOTHER ACCOUNT ALREADY HOLDS IS STILL NOT TAKEN FROM IT. The
+    unique index exists to stop two accounts being one Apple identity, and the
+    row that claimed it first keeps it. Reaching this on Apple is rarer than on
+    Google (there is no second address for one Apple account to arrive under),
+    so it is logged at ERROR: it means either a genuine race or a bug, and it
+    leaves somebody unable to use the button they just tapped.
+
+    THE COMMIT IS GUARDED FOR THE SAME REASON AS NEXT DOOR: the query and the
+    write are not one atomic step, and a 500 on a sign in that has otherwise
+    succeeded is not an answer anybody can use.
+
+    THE SUBJECT IS NEVER WRITTEN TO THE LOG, on any branch, exactly as next
+    door. The account id says which row is being talked about.
+    """
+    if user.apple_sub == identity.subject:
+        return
+
+    claimed_by = (
+        db.query(User)
+        .filter(User.apple_sub == identity.subject, User.id != user.id)
+        .first()
+    )
+    if claimed_by is not None:
+        _log.error(
+            "Apple identity is already linked to account %s, leaving %s unlinked; "
+            "that account can no longer sign in with Apple",
+            claimed_by.id,
+            user.id,
+        )
+        return
+
+    if user.apple_sub is not None:
+        # Apple does not reissue `sub` for one app, so this is not the
+        # recreated-Workspace-address case its Google counterpart handles. It
+        # means something unexpected, and it is worth a louder line than the
+        # re-link it is about to do.
+        _log.error("Apple identity for account %s has changed, re-linking", user.id)
+
+    user.apple_sub = identity.subject
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _log.error(
+            "Apple identity was claimed concurrently, account %s left unlinked",
+            user.id,
+        )
+
+
+def apple_sign_in(db: Session, payload: AppleSignInRequest) -> dict:
+    """Sign somebody in with an Apple identity token, creating the account if needed.
+
+    THREE WAYS TO FIND THE ACCOUNT, TRIED IN THIS ORDER, and the order is the
+    design. google_sign_in has one way (the address) because a Google token
+    always carries a confirmed one. An Apple token carries an address at most
+    once in its life, so:
+
+      1. BY apple_sub. This is the path every sign in after the first takes,
+         and the only one that works when the token carries no address. It is
+         tried first because it is the most reliable thing we have: a subject
+         inside something Apple signed, compared against a column only a
+         previous successful sign in could have written.
+
+      2. BY ADDRESS, AND ONLY A REAL ONE. First authorisation only, and only
+         when the address is verified and is NOT a Hide My Email relay. The
+         rule google_sign_in rests on (the mailbox is the login identity, so
+         proving you hold it is enough to enter the account under it) is
+         sound here for exactly the same reason, as long as the address is a
+         real mailbox Apple has confirmed. A RELAY ADDRESS MUST NEVER CLAIM AN
+         EXISTING ACCOUNT: it is minted per app, it proves nothing about any
+         other mailbox, and treating it as proof would be inventing a trust
+         that Apple never asserted. It cannot collide with a real address in
+         practice, and the check is here so that it cannot in principle.
+
+      3. BY CREATING ONE, which needs a role and a country and therefore the
+         same two step dance google_sign_in does, with the same shape of 400.
+
+    AND ONE WAY TO FIND NOTHING AT ALL, which has no Google equivalent and is
+    the case worth understanding. A returning person whose link was never
+    recorded (step 1 of this function failed to write it once, or an admin
+    cleared the column) arrives with a subject nothing knows and no address to
+    fall back on. There is nothing to sign in to and nothing to create an
+    account from, so they are refused with auth_apple_unlinked and told to use
+    their email address and password. Inventing an address to get past it
+    would create a duplicate account under a name its owner cannot read.
+
+    NO OTP ON THE CREATE PATH, and the row is verified from birth, for the
+    reason google_sign_in gives: registration sends a code to prove the
+    mailbox, and Apple has just proved it.
+
+    A RELAY ADDRESS IS A REAL DELIVERABLE ADDRESS and is stored as the account
+    email on the create path. Apple forwards it, so verification mail, payout
+    notifications and password resets all reach the person. What it is not is
+    something they will recognise when they come back to a login form, which
+    is why the account created this way is one that signs in with the button
+    rather than with a password, and why losing apple_sub is so expensive.
+    """
+    if not apple.client_ids():
+        raise AppError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="auth_apple_unavailable",
+            detail="Signing in with Apple is not available. Use your email address and password.",
+        )
+
+    identity = apple.verify(payload.identity_token)
+    if identity is None:
+        # One refusal for every way a token can be refused. auth.apple has
+        # already written the reason to the log.
+        raise AppError(
+            status.HTTP_401_UNAUTHORIZED,
+            code="auth_apple_token_invalid",
+            detail="We could not sign you in with Apple. Try again.",
+        )
+
+    # 1. The subject, which is the only identifier every token carries.
+    user = db.query(User).filter(User.apple_sub == identity.subject).first()
+    if user is not None:
+        if not user.is_verified:
+            user.is_verified = True
+            db.commit()
+        return {"access_token": create_access_token(user.id), "role": user.role}
+
+    # 2. The address, on the one sign in that carries one, and only when it is
+    #    a confirmed real mailbox. See the docstring for why a relay is not.
+    claimable = (
+        identity.email is not None
+        and identity.email_verified
+        and not identity.is_private_email
+    )
+    if claimable:
+        user = db.query(User).filter(User.email == identity.email).first()
+        if user is not None:
+            if not user.is_verified:
+                # A half finished signup completed by another route, exactly
+                # as on the Google path.
+                user.is_verified = True
+                db.commit()
+            _link_apple_identity(db, user, identity)
+            return {"access_token": create_access_token(user.id), "role": user.role}
+
+    if identity.email is None:
+        # Nothing to find the account by and nothing to create one from. See
+        # the docstring: this is the returning person whose link was lost.
+        raise AppError(
+            status.HTTP_409_CONFLICT,
+            code="auth_apple_unlinked",
+            detail="This Apple account is not connected to a Kolabo account. Sign in with your email address and password.",
+        )
+
+    if not claimable:
+        # An address arrived, and it was not one we would let claim an
+        # account: unverified, or a relay. If some account already holds it,
+        # creating a second row under it would hit the unique index and become
+        # a 500 on a sign in button. Refused with a sentence instead.
+        taken = db.query(User).filter(User.email == identity.email).first()
+        if taken is not None:
+            raise AppError(
+                status.HTTP_409_CONFLICT,
+                code="auth_apple_email_unavailable",
+                detail="That email address already has a Kolabo account. Sign in with your email address and password.",
+            )
+
+    # 3. A new account.
+    if payload.role is None or payload.country_code is None:
+        # Not an error, the first leg of a two step flow, same as Google.
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_apple_profile_required",
+            detail="Tell us your country and whether you are a creator or a business, then sign in with Apple again.",
+        )
+
+    if payload.role not in ROLES:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_role_unknown",
+            detail=f"Role must be one of {sorted(ROLES)}",
+            values={"roles": ", ".join(sorted(ROLES))},
+        )
+    if payload.country_code not in get_enabled_countries():
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="auth_country_unavailable",
+            detail="Country is not available yet",
+        )
+
+    user = User(
+        email=identity.email,
+        # Unusable on purpose, exactly as on the Google create path. See
+        # _unusable_password_hash, and auth.account.require_reauth for how
+        # such an account still proves it owns itself (with an Apple token,
+        # which is why that function grew a third branch).
+        password_hash=_unusable_password_hash(),
+        country_code=payload.country_code,
+        role=payload.role,
+        is_verified=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # THE LINK, AND ON THIS PROVIDER IT IS NOT BOOKKEEPING. The row that was
+    # just created is reachable by this subject and, if the address is a
+    # relay, by nothing else its owner could type. _link_apple_identity logs
+    # at ERROR when it cannot write, which is the right level for "this
+    # account exists and its owner cannot get back into it".
+    _link_apple_identity(db, user, identity)
+
+    if payload.referral_code:
+        _attribute_referral(db, user, payload.referral_code)
+
+    return {"access_token": create_access_token(user.id), "role": user.role}
+
+
 def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> None:
     """Hard-delete an account and everything that is only theirs.
 
@@ -813,7 +1038,7 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     # that in at import time would invert the dependency direction.
     from app.modules.auth.account import require_reauth
 
-    require_reauth(user, payload.password, payload.google_token)
+    require_reauth(user, payload.password, payload.google_token, payload.apple_token)
 
     # Imported here rather than at module level, like the trust_safety import
     # in the profiles service: auth is imported by every module, so top-level

@@ -176,6 +176,35 @@ def google_sign_in(payload: schemas.GoogleSignInRequest, db: Session = Depends(g
     return service.google_sign_in(db, payload)
 
 
+@router.post("/apple", response_model=schemas.TokenResponse)
+def apple_sign_in(payload: schemas.AppleSignInRequest, db: Session = Depends(get_db)):
+    """Sign in, or sign up, with an Apple identity token.
+
+    ONE ENDPOINT FOR BOTH, unauthenticated, no redirect uri and no client
+    secret, all for the reasons the Google endpoint above gives. What stands
+    in for a bearer token is the token in the body: a signature Apple made,
+    over an audience that is ours. See app.modules.auth.apple.
+
+    SIX ANSWERS RATHER THAN FOUR, and the two extra ones exist because an
+    Apple token does not always name an address. 503 `auth_apple_unavailable`
+    means the button should not be there. 401 `auth_apple_token_invalid` means
+    try again. 400 `auth_apple_profile_required` is not an error: ask for a
+    country and a role and call again with the SAME TOKEN, quickly, because
+    these expire faster than Google's.
+
+    409 `auth_apple_unlinked` is the one worth designing a screen for. It
+    means this Apple account is not connected to anything here and the token
+    carried no address to open one with, which happens to a returning person
+    whose link was lost. The only thing that helps is the email and password
+    form, so the client should show it rather than the button.
+
+    409 `auth_apple_email_unavailable` means the address on the token already
+    belongs to an account that this token is not allowed to claim. Same
+    remedy, same screen.
+    """
+    return service.apple_sign_in(db, payload)
+
+
 @router.get("/me/referral", response_model=schemas.ReferralOut)
 def my_referral(
     user_id: str = Depends(get_current_user_id),

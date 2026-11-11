@@ -98,6 +98,29 @@ class User(Base):
     # carries google_linked, a boolean, because whether the link exists is the
     # only part of it a client has any use for.
     google_sub: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
+    # THE APPLE ACCOUNT THIS ONE IS LINKED TO, as Apple's `sub` claim. Same
+    # shape as google_sub above and same guarantees: unique so two Kolabo
+    # accounts can never claim one Apple identity, indexed because it is looked
+    # up by value, nullable because almost no row has one.
+    #
+    # A SECOND COLUMN RATHER THAN THE identities TABLE google_sub's comment
+    # said a second provider would earn. The comment's own argument is what
+    # decided it: a table would be justified by rows this product cannot have,
+    # many providers per user or many links per provider, and adding Apple
+    # creates neither. It is still at most one link per provider per account,
+    # so a table would buy a join on the sign in path and give one fact two
+    # homes in exchange for nothing. A third provider is a different
+    # conversation; two columns is where this one honestly lands.
+    #
+    # IT IS LOOKED UP BEFORE THE ADDRESS IS, WHICH google_sub NEVER IS, and
+    # that asymmetry is the whole reason this column carries more weight than
+    # its neighbour. A Google token always names a confirmed mailbox, so the
+    # Google path can find the account by address and treat the link as
+    # bookkeeping. An Apple token names an address ONCE, at first
+    # authorisation, and may name a per app relay address instead of a real
+    # one, so after that first sign in this column is the only thing that can
+    # find the account at all. See app.modules.auth.apple.
+    apple_sub: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
     # Referral: a shareable code (minted lazily, see the auth service) and who
     # brought this user in. What that attribution is worth, and when, is
     # decided in app.modules.auth.referrals.

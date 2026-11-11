@@ -372,6 +372,26 @@ class Settings(BaseSettings):
     # youtube_api_key, the Meta credentials and fedapay_secret_key above.
     google_client_ids: str = ""
 
+    # ---------------------------------------------------------- apple sign in
+    # The audiences an Apple identity token posted to POST /auth/apple may be
+    # addressed to, comma separated. Everything google_client_ids says about
+    # why this is a list, why it is not a secret, and why empty means the
+    # feature is UNAVAILABLE rather than unrestricted applies here unchanged.
+    #
+    # WHAT GOES IN IT IS NOT ONE KIND OF STRING, which is the part that catches
+    # people. The native iOS flow stamps the app's BUNDLE ID into `aud`
+    # (com.kolaboafrica.app). The web flow stamps a SERVICES ID, a separate
+    # identifier created by hand in the Apple developer portal, conventionally
+    # written like a reversed domain with a suffix. Both are ours and neither
+    # substitutes for the other, so both belong here once web sign in exists.
+    #
+    # THERE IS STILL NO PRIVATE KEY ANYWHERE NEAR THIS. The .p8 key and the
+    # team id that Apple's documentation talks about are for the server side
+    # code exchange, which is the OTHER Apple flow. This one reads an identity
+    # token the client already holds, so there is nothing to sign and nothing
+    # to keep secret. See app.modules.auth.apple.
+    apple_client_ids: str = ""
+
     # -------------------------------------------------------------------- mail
     # Transactional email, through Resend. The only thing it carries today
     # is the address verification code, which is why it arrives alongside

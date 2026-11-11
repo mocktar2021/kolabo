@@ -33,6 +33,7 @@ quietly reversed by somebody making the Apple path "consistent" with Google's:
     assertion standing in front of that.
 """
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -143,12 +144,25 @@ class _FakeApple:
 
 @pytest.fixture()
 def fake_apple(monkeypatch):
-    """Two audiences configured, Apple's keys and decoder replaced."""
+    """Two audiences configured, Apple's keys and decoder replaced.
+
+    THE NAME IN apple's NAMESPACE IS REBOUND, NOT jose's FUNCTIONS. `apple.jwt`
+    IS the jose.jwt module, so setattr(apple.jwt, "decode", ...) would patch
+    jose for the whole process, and jose is also what verifies OUR access
+    tokens in core.security. The first version of this fixture did exactly
+    that, and the symptom was a test calling /auth/me with a perfectly good
+    Kolabo token and being told "Signature verification failed": the endpoint
+    was being refused by the stub meant for Apple. Rebinding the module
+    attribute on `apple` leaves jose alone.
+    """
     monkeypatch.setattr(settings, "apple_client_ids", f"{BUNDLE_ID},{SERVICES_ID}")
     fake = _FakeApple()
-    monkeypatch.setattr(apple.jwt, "get_unverified_header", lambda raw: {"kid": "test-kid"})
+    stub = SimpleNamespace(
+        get_unverified_header=lambda raw: {"kid": "test-kid"},
+        decode=fake.decode,
+    )
+    monkeypatch.setattr(apple, "jwt", stub)
     monkeypatch.setattr(apple, "_signing_key", lambda kid: {"kid": kid})
-    monkeypatch.setattr(apple.jwt, "decode", fake.decode)
     return fake
 
 

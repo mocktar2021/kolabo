@@ -29,6 +29,16 @@ else once it has. A message carrying a phone number, an email address or a
 handle is refused rather than edited — see the comment at the check in
 send_message for the rule and for the honest limits of it.
 
+AND WHO MAY STOP IT. A block mutes the thread in both directions: neither
+party can send a new message, and both can still read every message already
+in it. That asymmetry is the marketplace answer to a control social apps
+implement by making people disappear. A contract with money in escrow does
+not vanish because somebody pressed a button, and the thread is exactly what
+a dispute reads afterwards, so deleting access to it would destroy the
+evidence the blocking party is most likely to need. See
+trust_safety.blocks.require_not_blocked for why the refused sender is told
+plainly rather than failing silently.
+
 WHO MAY READ. Both parties to the contract, and nobody else. That includes an
 admin: there is deliberately no admin path into a thread in this module.
 Reading two parties' private working conversation is a real privacy cost, and
@@ -45,9 +55,9 @@ WHAT LIVES HERE AND WHAT LIVES NEXT DOOR. This file owns the PER-CAMPAIGN
 send and read — one job's thread, addressed by the campaign it hangs off — and
 the gate helpers. Addressing a COUNTERPARTY instead, and the inbox that groups
 by person rather than by contract, live in messaging.conversations, which
-calls the same gate and the same contact guard. Both are kept: the
-per-campaign pair is what the web app calls and is still the precise way to
-reach one job's thread.
+calls the same gate, the same block guard and the same contact guard. Both are
+kept: the per-campaign pair is what the web app calls and is still the precise
+way to reach one job's thread.
 """
 from fastapi import status
 from sqlalchemy import and_, or_
@@ -59,6 +69,7 @@ from app.modules.campaigns import models as campaigns
 from app.modules.contracts import models as contracts
 from app.modules.messaging.models import Message, utcnow
 from app.modules.notifications.service import notify
+from app.modules.trust_safety.blocks import require_not_blocked
 
 # Said the same way whether somebody tried to write or to read: the reason is
 # identical, and it names the thing that would unlock it.
@@ -143,6 +154,21 @@ def send_message(db: Session, campaign_id: str, sender_id: str, to_user_id: str,
     # needed: a contract names exactly two people.
     _require_contract(db, campaign_id, sender_id, to_user_id)
 
+    # A BLOCK MUTES THE THREAD WITHOUT CLOSING IT, and this is where it bites.
+    #
+    # AFTER THE GATE, so the order of disclosure never changes: somebody with
+    # no contract here still learns nothing about a thread they cannot see,
+    # and only a real party to a real contract is ever told about a block.
+    #
+    # BEFORE THE CONTACT GUARD, because of which answer is more useful. To
+    # somebody whose message was never going to be delivered, "this person is
+    # not accepting contact from you" is the fact; "your message contains a
+    # phone number" would send them away to rewrite a message that still
+    # would not arrive.
+    #
+    # READING IS NOT GUARDED, deliberately — see get_thread below.
+    require_not_blocked(db, sender_id, to_user_id)
+
     # THE PRODUCT RULE. Swapping a phone number or an email is how a deal
     # leaves Kolabo, and it takes the contract, the escrow and the fee with it:
     # what the two of them agree afterwards has nothing behind it if it goes
@@ -154,11 +180,9 @@ def send_message(db: Session, campaign_id: str, sender_id: str, to_user_id: str,
     # messages. What this stops is the habit — "here's my number, call me" —
     # which is most of them.
     #
-    # After the gate, so authorisation still answers first and a stranger
-    # learns nothing about a thread they cannot see. Before the row is
-    # written, so a refusal saves nothing. Never a redaction: an altered
-    # message is worse than a refused one, because the sender believes they
-    # said something they did not say.
+    # Before the row is written, so a refusal saves nothing. Never a
+    # redaction: an altered message is worse than a refused one, because the
+    # sender believes they said something they did not say.
     check_no_contact_details(body, "message")
 
     message = Message(
@@ -183,6 +207,14 @@ def get_thread(db: Session, campaign_id: str, user_id: str, with_user_id: str) -
     Only the caller's INCOMING messages are stamped. Stamping their own would
     make read_at meaningless in a dispute, where the question is always when
     the other person saw something.
+
+    A BLOCK DOES NOT CLOSE THIS, and the omission is the decision. Sending is
+    refused; reading is not. What is already in the thread is the evidence a
+    dispute runs on — when a delivery was promised, when a revision was asked
+    for, when it went quiet — and the party most likely to need it is the one
+    who just blocked somebody. Taking the history away at the moment they
+    reach for the safety control would be the product helping with one hand
+    and robbing them with the other.
 
     Scoped to one campaign, deliberately. The whole relationship reads through
     messaging.conversations.get_conversation; this stays the way to look at

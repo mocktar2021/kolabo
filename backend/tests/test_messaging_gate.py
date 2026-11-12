@@ -11,6 +11,10 @@ evidence trail a dispute reads.
 Nobody outside the contract gets in, including an admin: this module has no
 admin path, so an administrator is simply a third party here, which is what
 the third-party test is really pinning down.
+
+Blocking is the one thing that closes a thread the gate has opened, and it
+only closes it halfway: see test_blocks_messaging.py, which holds the line
+between sending (refused) and reading (not).
 """
 import pytest
 from fastapi import FastAPI
@@ -19,7 +23,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.db import Base, get_db
+from app.core.db import Base, get_db, import_all_models
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
@@ -38,6 +42,17 @@ def client():
         future=True,
     )
     ts = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    # THE WHOLE METADATA, not the subset this module's imports happen to
+    # reach. messaging imports trust_safety.blocks for the block guard, which
+    # brings trust_safety.models with it, and Review carries a foreign key to
+    # escrows; without every model registered, create_all has nothing to
+    # resolve that reference against.
+    #
+    # The fixture was the thing that was wrong, not the import. A real boot
+    # imports every model, so a fixture that works only because one of them
+    # was absent passes in a full run and fails on its own — the worst of
+    # both, as test_trust_safety.py puts it.
+    import_all_models()
     Base.metadata.create_all(bind=engine)
 
     def override_get_db():

@@ -33,6 +33,12 @@ WHAT DOES NOT CHANGE, AND WHY.
     phone number — a guard with a hole in it is worse than none, because it
     looks finished.
 
+  * THE BLOCK GUARD, and for exactly that argument. send_to refuses a blocked
+    pair the same way service.send_message does, because two ways to write a
+    message must not mean one way to be blocked. Reading is untouched on both
+    paths: a muted thread is still readable, because its history is what a
+    dispute runs on.
+
   * campaign_id STAYS ON THE MESSAGE ROW. It would have been tidy to drop it
     now that messages are addressed by person, and it would have thrown away
     history: every message ever sent knows which job it was about, and that
@@ -68,6 +74,7 @@ from app.modules.messaging.models import Message, utcnow
 from app.modules.messaging.service import _out
 from app.modules.notifications.service import notify
 from app.modules.profiles.models import BusinessProfile
+from app.modules.trust_safety.blocks import require_not_blocked
 
 # The counterparty-scoped version of service.GATE_DETAIL. Worded for the wider
 # question this gate asks: not "not on this campaign" but "not with this
@@ -149,6 +156,10 @@ def list_threads(db: Session, user_id: str) -> list[dict]:
     contract ids on it instead of four rows with the same name. Ordered by the
     newest contract in each relationship, so somebody just signed with appears
     at the top even with an empty thread — which is exactly when it is empty.
+
+    A BLOCKED COUNTERPARTY STILL HAS A ROW HERE. The contract exists and the
+    work may still be owed; hiding the thread would hide the job, and the
+    history in it is what a dispute reads. Sending is what a block stops.
 
     Identity is resolved in bulk and from the shared sources: creators through
     app.core.identity so the inbox names a creator exactly as their proposal
@@ -274,6 +285,10 @@ def get_conversation(db: Session, user_id: str, other_user_id: str) -> list[dict
     and has not read it. Only INCOMING messages are stamped; stamping their
     own would make read_at meaningless in a dispute, where the question is
     always when the OTHER person saw something.
+
+    NO BLOCK GUARD, matching service.get_thread. A block stops new messages
+    and leaves the record alone, because the record is the evidence and the
+    person who most often needs it is the one who just blocked somebody.
     """
     shared = _require_contracts(db, user_id, other_user_id)
     thread = _pair_messages(db, {c.campaign_id for c in shared}, user_id, other_user_id)
@@ -312,6 +327,13 @@ def send_to(db: Session, sender_id: str, to_user_id: str, body: str) -> dict:
         )
 
     shared = _require_contracts(db, sender_id, to_user_id)
+
+    # The same block guard as the per-campaign send, in the same position
+    # relative to the gate and the contact guard, and for the same reason the
+    # comment below gives about the contact guard: two ways to write a message
+    # must not mean one way to be stopped. See
+    # trust_safety.blocks.require_not_blocked.
+    require_not_blocked(db, sender_id, to_user_id)
 
     # The same rule as the per-campaign send, deliberately not a different
     # one: swapping contact details is how a deal leaves Kolabo with the

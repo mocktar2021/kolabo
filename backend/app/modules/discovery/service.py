@@ -14,6 +14,14 @@ Results carry the display name, cover image, per platform audience, rating, and
 starting package price so a result card can be shown without a second request
 per creator.
 
+BLOCKS ARE A FILTER HERE AND NEVER A REFUSAL. Both list-returning functions
+take a viewer_id and drop anyone that viewer is blocked with, in either
+direction. A list does not argue: it is simply shorter, and it says nothing
+about why. Telling the reader a result was removed would hand the blocked
+person back the fact of the block, which is the one thing a block is for.
+The write paths that have to refuse an action and name a reason live
+elsewhere and carry their own error codes.
+
 The landing page's featured strip lives next door in discovery.featured. It
 reuses _is_searchable, _card_context and _result_card from here rather than
 restating any of them: two definitions of "who is live" would mean a creator
@@ -32,6 +40,7 @@ from app.modules.auth.models import User
 from app.modules.discovery.models import Favorite
 from app.modules.profiles import models as profiles
 from app.modules.trust_safety import models as trust_safety
+from app.modules.trust_safety.blocks import blocked_pair_ids
 
 
 def _is_searchable(p: profiles.InfluencerProfile, active_package_count: int) -> bool:
@@ -187,7 +196,15 @@ def search_influencers(
     platform: str | None = None,
     limit: int = 20,
     offset: int = 0,
+    viewer_id: str | None = None,
 ) -> list[dict]:
+    """The creator roster, filtered, ordered and paged.
+
+    viewer_id is WHO IS ASKING, and None is a real answer rather than a
+    missing one: this endpoint is public, so most callers are visitors with
+    no account and no blocks. A visitor sees everybody. A signed-in viewer
+    does not see anyone they are blocked with, in either direction.
+    """
     # An unknown platform can match nobody. Treat it like an unknown category
     # (empty results) rather than erroring the whole search page: the filter
     # values come from a UI selector, not free text, so a mismatch means a
@@ -202,9 +219,17 @@ def search_influencers(
     )
     ctx = _card_context(db)
     package_platforms = _active_package_platforms(db) if platform else set()
+    # One indexed query, and only when somebody is signed in.
+    hidden = blocked_pair_ids(db, viewer_id) if viewer_id else set()
 
     matched = []
     for prof, user in rows:
+        # FIRST, BEFORE EVERY OTHER TEST. Not for speed: so that no filter
+        # added below this line can ever be written in a way that lets a
+        # blocked creator through. The cheapest place to be certain is the
+        # top of the loop.
+        if prof.user_id in hidden:
+            continue
         if not _is_searchable(prof, ctx["package_counts"].get(prof.user_id, 0)):
             continue
         if country and user.country_code != country:
@@ -323,6 +348,13 @@ def list_favorites(db: Session, business_user_id: str) -> list[dict]:
     campaign page's invitations and proposals now carry — a business should
     not have to recognise the same creator from two different card layouts.
 
+    A BLOCKED CREATOR DROPS OUT OF THE LIST AND THE ROW IS LEFT ALONE. The
+    favourite is the business's own note to itself and deleting it on their
+    behalf would be destroying data over a reversible decision; unblocking
+    brings the shortlist back as it was. Filtering here rather than at the
+    row means the viewer's own block and the creator's block on them do the
+    same thing, which is what everywhere else in discovery does too.
+
     Three queries for the whole shortlist regardless of its length, not three
     per row: a twenty-creator list used to be what turned into forty round
     trips.
@@ -333,6 +365,8 @@ def list_favorites(db: Session, business_user_id: str) -> list[dict]:
         .order_by(Favorite.created_at.asc())
         .all()
     )
+    hidden = blocked_pair_ids(db, business_user_id)
+    favs = [f for f in favs if f.influencer_user_id not in hidden]
     user_ids = [f.influencer_user_id for f in favs]
     identities = creator_identities(db, user_ids)
     countries = _countries(db, user_ids)

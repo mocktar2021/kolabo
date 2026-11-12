@@ -15,7 +15,9 @@ So: same searchable creators, same card, random order. Nothing here decides
 who is eligible — service._is_searchable does, and it is called rather than
 restated, because two definitions of "who is live" would mean a creator
 visible on the landing page and missing from search, which nobody reports
-because each screen looks correct on its own.
+because each screen looks correct on its own. The same argument is why blocks
+are honoured here and not only in search: a face somebody blocked coming back
+on the home page is the version of that bug that hurts most.
 
 THE ORDERING IS THE DATABASE'S, AND HERE IS THE TRADE-OFF WE ACCEPTED. ORDER
 BY random() makes the database assign a random value to every candidate row
@@ -40,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.modules.auth.models import User
 from app.modules.discovery import service
 from app.modules.profiles import models as profiles
+from app.modules.trust_safety.blocks import blocked_pair_ids
 
 # What the landing page asks for. A strip, not a page.
 DEFAULT_FEATURED_LIMIT = 8
@@ -65,7 +68,11 @@ def _random_order():
     return func.random()
 
 
-def featured_creators(db: Session, limit: int = DEFAULT_FEATURED_LIMIT) -> list[dict]:
+def featured_creators(
+    db: Session,
+    limit: int = DEFAULT_FEATURED_LIMIT,
+    viewer_id: str | None = None,
+) -> list[dict]:
     """A random sample of searchable creators, as ordinary search cards.
 
     The random ordering is applied by the database and the searchability rule
@@ -75,6 +82,17 @@ def featured_creators(db: Session, limit: int = DEFAULT_FEATURED_LIMIT) -> list[
     and the cut to `limit` has to happen after the filter — taking eight rows
     from the database first would return two or three cards on a roster where
     most profiles are half-finished, which is the exact page this replaces.
+
+    viewer_id is WHO IS LOOKING, and None means a visitor with no account,
+    which is the ordinary case on a landing page. A visitor has no blocks, so
+    they see the whole roster; a signed-in viewer does not see anyone they are
+    blocked with, in either direction.
+
+    THE STRIP IS SHORTER RATHER THAN BACKFILLED when somebody is dropped. The
+    loop takes the first `wanted` survivors of a random ordering, so a blocked
+    creator simply is not among the candidates and the next one takes the
+    place. Nothing tells the viewer a card was removed, which is the point:
+    the alternative leaks the block back to the person who made it.
 
     The loop stops as soon as it has enough, so a large roster does not build
     a card for every profile in it.
@@ -91,9 +109,14 @@ def featured_creators(db: Session, limit: int = DEFAULT_FEATURED_LIMIT) -> list[
         .all()
     )
     ctx = service._card_context(db)
+    # One indexed query, and only when somebody is signed in. An empty set is
+    # the overwhelmingly common answer and costs nothing to check against.
+    hidden = blocked_pair_ids(db, viewer_id) if viewer_id else set()
 
     out: list[dict] = []
     for prof, user in rows:
+        if prof.user_id in hidden:
+            continue
         if not service._is_searchable(prof, ctx["package_counts"].get(prof.user_id, 0)):
             continue
         out.append(service._result_card(prof, user, ctx))

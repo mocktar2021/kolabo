@@ -34,8 +34,6 @@ def create_report(
 ):
     """Report suspicious behavior into the admin queue. KOL-32."""
     return service.create_report(
-        db, payload.target_type, payload.target_id, payload.reason_code, payload.details
-    ) if False else service.create_report(
         db, user_id, payload.target_type, payload.target_id, payload.reason_code, payload.details
     )
 

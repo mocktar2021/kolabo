@@ -6,14 +6,24 @@ been released. Reviews are double blind: each side's review stays hidden until
 both parties have submitted, so neither can be swayed by the other's rating.
 KOL-32: a user can report suspicious behavior. A report becomes an open case in
 the admin queue tagged with a reason code, for an admin to investigate.
+
+Blocking lives here too, and it is the one control in this module that acts
+without an admin ever reading it. A report asks somebody to look; a block
+takes effect the moment it is written. The enforcement is spread across the
+surfaces that have to honour it and asks its questions through
+trust_safety.blocks; what lives here is creating, removing and listing the
+rows themselves.
 """
 from fastapi import status
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.core.identity import creator_identities
 from app.modules.admin.models import AdminActionLog
+from app.modules.auth.models import User
 from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
+from app.modules.profiles.models import BusinessProfile
 from app.modules.trust_safety import models
 
 REASON_CODES = {
@@ -246,3 +256,150 @@ def resolve_report(db: Session, admin_id: str, report_id: str, decision: str) ->
         "reason_code": report.reason_code,
         "status": report.status,
     }
+
+
+# ---------------------------------------------------------------------------
+# Blocks
+# ---------------------------------------------------------------------------
+
+
+def _blocked_names(db: Session, user_ids: list[str]) -> dict[str, dict]:
+    """A name and a face for each blocked account, whichever side it is on.
+
+    A blocked account can be a creator or a business, and the two carry their
+    public identity in different places: a creator through app.core.identity,
+    a business through its company name, which is the only public identity a
+    buyer has. The inbox already resolves both the same way, and a blocked
+    list that could only name creators would show a brand's own blocks as
+    blank rows.
+
+    Two queries for the whole list however long it is. Nothing else about the
+    person travels: no phone number, no address, for the reason
+    app.core.identity spells out.
+    """
+    if not user_ids:
+        return {}
+    names = {
+        user_id: {"display_name": identity["display_name"], "avatar_url": identity["avatar_url"]}
+        for user_id, identity in creator_identities(db, user_ids).items()
+    }
+    # Only where the creator side came back empty: a user is one or the other,
+    # and this keeps a creator's own display name winning if both ever exist.
+    companies = (
+        db.query(BusinessProfile.user_id, BusinessProfile.company_name)
+        .filter(BusinessProfile.user_id.in_(set(user_ids)))
+        .all()
+    )
+    for user_id, company_name in companies:
+        row = names.setdefault(user_id, {"display_name": None, "avatar_url": None})
+        if row["display_name"] is None:
+            row["display_name"] = company_name
+    return names
+
+
+def _block_out(block: models.Block, name: dict | None) -> dict:
+    name = name or {}
+    return {
+        "user_id": block.blocked_user_id,
+        "display_name": name.get("display_name"),
+        "avatar_url": name.get("avatar_url"),
+        "reason_code": block.reason_code,
+        "created_at": block.created_at,
+    }
+
+
+def block_user(db: Session, blocker_id: str, blocked_id: str, reason_code: str | None = None) -> dict:
+    """Stop dealing with somebody. Pressing it twice is not an error.
+
+    IDEMPOTENT BY DESIGN. A second press is a person on a slow connection
+    tapping a button again, and answering 409 to that would be the product
+    arguing with somebody who is trying to protect themselves. The unique
+    constraint on the pair is what makes the second press safe; this hands
+    back the row that is already there.
+
+    ONE DIRECTION. This writes the caller's row and nothing else. If the
+    other person has also blocked them, that row is theirs and is untouched,
+    so changing your mind later restores your own listings and never
+    overrides somebody else's decision.
+
+    THE TARGET HAS TO EXIST, and the check is not ceremony: both columns are
+    foreign keys, so an unknown id would be an integrity error surfacing as a
+    500 on a safety control, which is the worst possible moment for the
+    product to look broken.
+    """
+    if blocker_id == blocked_id:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="block_self",
+            detail="You cannot block yourself",
+        )
+    if reason_code is not None and reason_code not in REASON_CODES:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_reason_unknown",
+            detail="Unknown reason code",
+        )
+    if db.query(User).filter(User.id == blocked_id).first() is None:
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="block_target_not_found",
+            detail="That account no longer exists",
+        )
+
+    block = (
+        db.query(models.Block)
+        .filter(
+            models.Block.blocker_user_id == blocker_id,
+            models.Block.blocked_user_id == blocked_id,
+        )
+        .first()
+    )
+    if block is None:
+        block = models.Block(
+            blocker_user_id=blocker_id,
+            blocked_user_id=blocked_id,
+            reason_code=reason_code,
+        )
+        db.add(block)
+        db.commit()
+        db.refresh(block)
+    return _block_out(block, _blocked_names(db, [blocked_id]).get(blocked_id))
+
+
+def unblock_user(db: Session, blocker_id: str, blocked_id: str) -> None:
+    """Undo your own block, and only your own.
+
+    Silent when there is nothing to undo, for the same reason blocking twice
+    is not a conflict: the caller asked for a state, not for an operation,
+    and they have it either way.
+    """
+    block = (
+        db.query(models.Block)
+        .filter(
+            models.Block.blocker_user_id == blocker_id,
+            models.Block.blocked_user_id == blocked_id,
+        )
+        .first()
+    )
+    if block is not None:
+        db.delete(block)
+        db.commit()
+
+
+def list_blocks(db: Session, blocker_id: str) -> list[dict]:
+    """The caller's own blocked accounts, newest first.
+
+    ONLY THE ROWS THEY CREATED. Somebody who blocked the caller does not
+    appear here, and that is the whole privacy line of this feature: a list
+    that showed it would turn the settings screen into a way to find out who
+    has blocked you, which is exactly the thing a block exists to prevent
+    them learning.
+    """
+    rows = (
+        db.query(models.Block)
+        .filter(models.Block.blocker_user_id == blocker_id)
+        .order_by(models.Block.created_at.desc())
+        .all()
+    )
+    names = _blocked_names(db, [b.blocked_user_id for b in rows])
+    return [_block_out(b, names.get(b.blocked_user_id)) for b in rows]

@@ -16,6 +16,13 @@ in place by tests, because every instinct pulls towards the social-app answer:
   reading      allowed, both paths, for both parties
   the inbox    the row stays
   the contract untouched
+
+THE ASSERTIONS READ THE CODE, NOT THE SENTENCE. The code is the stable
+contract between this API and the two clients' string dictionaries; the
+English prose is the fallback for a client that has not learned the code yet,
+and it is allowed to be reworded. A test pinned to the sentence would stay
+green while the clients broke. That is also why the fixture registers the real
+error handler: see the comment on it.
 """
 import pytest
 from fastapi import FastAPI
@@ -25,6 +32,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.db import Base, get_db, import_all_models
+from app.core.errors import AppError, app_error_handler
 from app.core.security import create_access_token
 from app.modules.auth.models import User
 from app.modules.campaigns import models as campaigns
@@ -53,6 +61,16 @@ def client():
 
     app = FastAPI()
     app.include_router(messaging_router, prefix="/messaging")
+    # THE REAL HANDLER, NOT A BARE APP. Without this line an AppError falls
+    # through to FastAPI's own HTTPException handler, which serialises
+    # `detail` and drops `code` and `values` on the floor. Every assertion
+    # below would then fail with KeyError: 'code' while the guard underneath
+    # was behaving perfectly, which is a confusing afternoon.
+    #
+    # core/errors.py keeps app_error_handler out of main.py for exactly this
+    # reason, and says so: a handler that only RESEMBLES the one in production
+    # is a test that passes while the wiring is wrong.
+    app.add_exception_handler(AppError, app_error_handler)
     app.dependency_overrides[get_db] = override_get_db
     c = TestClient(app)
     c.session_factory = ts

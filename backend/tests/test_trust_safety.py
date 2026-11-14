@@ -62,6 +62,57 @@ def _released_escrow(client, status=pay_models.RELEASED):
         db.close()
 
 
+def _reportable_user(client, suffix):
+    """A real account to point a report at.
+
+    THESE TESTS USED TO POINT AT "u-9" AND "camp-1", which did not exist.
+    create_report now checks that the target is a row that is actually there,
+    because a case pointing at nothing is an admin opening a screen to look at
+    a target that was never created. So every report below names something
+    real, and tests/test_report_guards.py owns the refusals.
+    """
+    db = client.session_factory()
+    try:
+        user = User(
+            phone=f"+2299000{suffix}",
+            email=f"{suffix}@kolabo.test",
+            password_hash="x",
+            country_code="BJ",
+            role="influencer",
+            is_verified=True,
+        )
+        db.add(user); db.commit(); db.refresh(user)
+        return user.id
+    finally:
+        db.close()
+
+
+def _reportable_campaign(client):
+    """A real brief to point a report at, with a real owner behind it."""
+    from app.modules.campaigns import models as campaign_models
+
+    owner = _reportable_user(client, "7100")
+    db = client.session_factory()
+    try:
+        campaign = campaign_models.Campaign(
+            business_user_id=owner,
+            title="A brief",
+            budget_amount=100000,
+            budget_currency="XOF",
+            deliverables=[{"platform": "instagram", "type": "post", "quantity": 1}],
+            deadline=None,
+            status=campaign_models.PUBLISHED,
+            is_direct=False,
+            is_open=True,
+            target_categories=[],
+            target_countries=[],
+        )
+        db.add(campaign); db.commit(); db.refresh(campaign)
+        return campaign.id
+    finally:
+        db.close()
+
+
 # ---- Reviews (KOL-31) ----
 
 def test_cannot_review_before_escrow_released(client):
@@ -117,9 +168,10 @@ def test_review_requires_auth(client):
 # ---- Reports (KOL-32) ----
 
 def test_report_creates_open_case(client):
+    target = _reportable_user(client, "7001")
     r = client.post(
         "/trust-safety/reports",
-        json={"target_type": "user", "target_id": "u-9", "reason_code": "fake_followers", "details": "bought"},
+        json={"target_type": "user", "target_id": target, "reason_code": "fake_followers", "details": "bought"},
         headers=_headers("reporter-1"),
     )
     assert r.status_code == 201
@@ -128,6 +180,9 @@ def test_report_creates_open_case(client):
 
 
 def test_report_rejects_unknown_reason(client):
+    """Still 400 and not 404: the shape of the request is answered before
+    anything is read, so an unknown reason wins even though this target does
+    not exist. tests/test_report_guards.py asserts that order directly."""
     r = client.post(
         "/trust-safety/reports",
         json={"target_type": "user", "target_id": "u-9", "reason_code": "banana"},
@@ -137,9 +192,10 @@ def test_report_rejects_unknown_reason(client):
 
 
 def test_report_appears_in_admin_queue_and_resolves(client, admin_headers):
+    campaign_id = _reportable_campaign(client)
     rid = client.post(
         "/trust-safety/reports",
-        json={"target_type": "campaign", "target_id": "camp-1", "reason_code": "fraud"},
+        json={"target_type": "campaign", "target_id": campaign_id, "reason_code": "fraud"},
         headers=_headers("reporter-1"),
     ).json()["id"]
     queue = client.get("/trust-safety/reports", headers=admin_headers).json()
@@ -174,8 +230,10 @@ def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client,
         ).json()["id"]
         client.post(f"/trust-safety/reports/{rid}/resolve", json={"decision": decision}, headers=admin_headers)
 
-    _resolve("u-1", "reviewed")
-    _resolve("u-2", "dismissed")
+    first = _reportable_user(client, "7011")
+    second = _reportable_user(client, "7012")
+    _resolve(first, "reviewed")
+    _resolve(second, "dismissed")
 
     db = client.session_factory()
     try:
@@ -193,7 +251,7 @@ def test_resolving_tells_the_reporter_it_closed_and_not_what_was_decided(client,
     assert "reviewed and the case is closed" in message
     assert "dismissed" not in message
     # And never the account it was about.
-    assert "u-1" not in message and "u-2" not in message
+    assert first not in message and second not in message
 
 
 def test_admin_queue_requires_an_admin(client):

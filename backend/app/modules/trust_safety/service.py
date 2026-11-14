@@ -14,6 +14,8 @@ surfaces that have to honour it and asks its questions through
 trust_safety.blocks; what lives here is creating, removing and listing the
 rows themselves.
 """
+from datetime import timedelta
+
 from fastapi import status
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,8 @@ from app.core.errors import AppError
 from app.core.identity import creator_identities
 from app.modules.admin.models import AdminActionLog
 from app.modules.auth.models import User
+from app.modules.campaigns.models import Campaign
+from app.modules.messaging.models import Message
 from app.modules.notifications.service import notify
 from app.modules.payments import models as payments
 from app.modules.profiles.models import BusinessProfile
@@ -37,7 +41,33 @@ REASON_CODES = {
     "other",
 }
 
-TARGET_TYPES = {"user", "campaign", "message"}
+# WHAT CAN BE REPORTED, AND THE ROW THAT PROVES IT EXISTS, in one place.
+# TARGET_TYPES is derived from this map rather than written beside it, because
+# the two drifting is the exact bug that shipped: the validator accepted three
+# target types and nothing checked that any of them named a real row, so a
+# typo in a client produced an open admin case pointing at nothing. A fourth
+# reportable thing added here gets its existence check for free; added to a
+# separate list, it would not.
+_TARGET_MODELS = {"user": User, "campaign": Campaign, "message": Message}
+
+TARGET_TYPES = frozenset(_TARGET_MODELS)
+
+# HOW MANY REPORTS ONE ACCOUNT MAY FILE IN A ROLLING HOUR. Reporting is the
+# only signal the platform gets about behaviour that never touches a contract,
+# so the ceiling is set where an honest user never reaches it: ten in an hour
+# is far more than somebody clearing out a spam wave, and a script wants
+# thousands. Every report is a case a human opens, which is the real cost
+# being protected here.
+#
+# PER ACCOUNT RATHER THAN PER IP, which is the opposite choice from
+# app/core/ratelimit.py, deliberately. That module exists for endpoints a
+# stranger can reach with no account, and it says in its own docstring that
+# these markets put whole cities behind one carrier NAT. Reporting needs a
+# token, so the account is available and is the honest bucket: an IP ceiling
+# here would let one abuser silence the reporting tool for every other
+# subscriber on their network.
+REPORTS_PER_WINDOW = 10
+REPORT_WINDOW = timedelta(hours=1)
 
 DECISIONS = {models.REVIEWED, models.DISMISSED}
 
@@ -131,9 +161,71 @@ def user_reviews(db: Session, user_id: str) -> dict:
     }
 
 
+def _report_target_exists(db: Session, target_type: str, target_id: str) -> bool:
+    """Whether the thing being reported is a row that is actually there.
+
+    Reads the primary key column only: the question is existence, and loading
+    a whole campaign to answer it would pull a brief, a budget and a JSON blob
+    into memory to throw away.
+
+    target_type has already been checked against TARGET_TYPES by the caller,
+    so the lookup cannot miss. The KeyError if it ever did is the right
+    failure: a reportable type with no model here must not quietly pass.
+    """
+    model = _TARGET_MODELS[target_type]
+    return db.query(model.id).filter(model.id == target_id).first() is not None
+
+
+def _reports_in_window(db: Session, reporter_id: str) -> int:
+    """How many reports this account has filed inside the current window.
+
+    COUNTS ROWS THAT WERE CREATED, not attempts that were refused, and the
+    consequence is worth stating rather than discovering: a caller whose
+    reports are all rejected for some other reason is never rate limited by
+    this, because they never produced a case for anybody to read. What they
+    cost is one indexed read each, which is what any authenticated GET costs.
+    A ceiling on attempts belongs at the edge with the rest of the per IP
+    limits, not here.
+
+    A COUNT RATHER THAN THE IN PROCESS COUNTERS in app/core/ratelimit.py, for
+    a reason beyond the per account choice above: those counters are cleared
+    by every deploy, which is fine against a flood that lives for seconds and
+    useless against a person filing one malicious report every six minutes
+    for a week. The rows survive, so the window is real.
+    """
+    since = models.utcnow() - REPORT_WINDOW
+    return (
+        db.query(models.Report)
+        .filter(
+            models.Report.reporter_user_id == reporter_id,
+            models.Report.created_at >= since,
+        )
+        .count()
+    )
+
+
 def create_report(
     db: Session, reporter_id: str, target_type: str, target_id: str, reason_code: str, details: str | None
 ) -> dict:
+    """Open a case in the admin queue, once the request is worth opening one for.
+
+    THE ORDER OF THESE CHECKS IS THE DESIGN. Each one refuses on strictly less
+    information than the one below it, so nothing is read from the database
+    until the request is self-consistent, and no refusal tells the caller
+    something a cheaper refusal would have hidden.
+
+      1. The shape of the request: an unknown target type or reason code is
+         wrong on its own terms and needs nothing else to say so.
+      2. Reporting yourself, which is about the caller and the body and no
+         other row. Harmless as a misclick, and as a deliberate act it is a
+         way to put noise in the queue that no moderator can act on.
+      3. The ceiling, BEFORE the target is looked up, so somebody over their
+         allowance gets the same answer whatever they send. The other order
+         would make report_target_not_found something only an over quota
+         caller could learn, which is a strange thing to have built.
+      4. Whether the target is real, last, because it is the only check that
+         reads another table.
+    """
     if target_type not in TARGET_TYPES:
         raise AppError(
             status.HTTP_400_BAD_REQUEST,
@@ -145,6 +237,29 @@ def create_report(
             status.HTTP_400_BAD_REQUEST,
             code="report_reason_unknown",
             detail="Unknown reason code",
+        )
+    if target_type == "user" and target_id == reporter_id:
+        raise AppError(
+            status.HTTP_400_BAD_REQUEST,
+            code="report_self",
+            detail="You cannot report yourself",
+        )
+    if _reports_in_window(db, reporter_id) >= REPORTS_PER_WINDOW:
+        raise AppError(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            code="report_rate_limited",
+            detail="You have sent a lot of reports recently, wait a while before sending another",
+        )
+    if not _report_target_exists(db, target_type, target_id):
+        # THE SAME ANSWER FOR ALL THREE TARGET TYPES, and the sentence says
+        # "item" rather than naming one. target_type is a database enum
+        # ("user", "campaign"), and a message keyed on it would either put an
+        # English word inside a French sentence or need three codes to say the
+        # same thing. The reporter knows what they were looking at.
+        raise AppError(
+            status.HTTP_404_NOT_FOUND,
+            code="report_target_not_found",
+            detail="That item no longer exists",
         )
 
     report = models.Report(

@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.errors import AppError
-from app.modules.auth.deps import get_current_user_id
+from app.modules.auth.deps import get_current_user_id, get_optional_user_id
 from app.modules.profiles import oauth_service, party_details, schemas, service
 
 router = APIRouter()
@@ -83,15 +83,31 @@ def upsert_influencer_profile(
 
 
 @router.get("/influencer/{user_id}/public", response_model=schemas.PublicProfileOut)
-def public_influencer_profile(user_id: str, language: str | None = None, db: Session = Depends(get_db)):
+def public_influencer_profile(
+    user_id: str,
+    language: str | None = None,
+    db: Session = Depends(get_db),
+    viewer_id: str | None = Depends(get_optional_user_id),
+):
     """Public creator page: profile, packages, portfolio, rating, socials.
 
-    Unauthenticated on purpose — see the module docstring.
+    STILL UNAUTHENTICATED, and the module docstring above says why. The
+    optional dependency names the caller when there is one and answers None
+    when there is not, exactly as /discovery/search and /discovery/featured
+    use it: a visitor with no account sees the page as before, and a token
+    buys a DIFFERENT answer rather than the right to an answer.
+
+    WHAT A TOKEN CHANGES IS ONE THING: a signed-in reader who is blocked with
+    this creator, in either direction, gets the same 404 the page gives for a
+    creator who does not exist. The lists already drop that face
+    (/discovery/search and /discovery/featured since the blocks work landed),
+    so without this the one way left to see it was to keep the URL, which is
+    the one way somebody who has been blocked is most likely to try.
 
     `language` (fr or en) picks which bio to show, falling back to the other
     when the creator has only filled one.
     """
-    return service.get_public_profile(db, user_id, language)
+    return service.get_public_profile(db, user_id, language, viewer_id=viewer_id)
 
 
 @router.get("/influencer/{user_id}", response_model=schemas.InfluencerProfileOut)

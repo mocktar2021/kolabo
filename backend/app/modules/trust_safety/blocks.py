@@ -20,6 +20,17 @@ id it must drop, once, before it filters. A write path wants a yes or no
 about one counterparty and should not pay for a set it will look at once. A
 write path that is about to refuse wants the row, so it can say which way
 round the block went.
+
+AND TWO SHAPES OF REFUSAL, WHICH IS NOT AN INCONSISTENCY. A write path
+answers 403 and says which way round the block went, because the two people
+on it may be bound by a contract and a silent failure would leave one of
+them believing they had answered when they had not. The public storefront
+answers 404 instead, reusing profile_not_found so a blocked page is the same
+bytes as a deleted one. The difference is who is reading: a write path is
+reached by somebody who already knows the other party exists, and a
+storefront is reached by anybody with a link. require_not_blocked is for the
+first case only; a read path that wants to disappear calls is_blocked_pair
+and raises its own surface's not-found.
 """
 from fastapi import status
 from sqlalchemy import and_, or_
@@ -86,7 +97,12 @@ def block_between(db: Session, user_id: str, other_user_id: str) -> Block | None
 
 
 def is_blocked_pair(db: Session, user_id: str, other_user_id: str) -> bool:
-    """Yes or no for one pair, for write paths that do not need the reason."""
+    """Yes or no for one pair, for any path that does not need the reason.
+
+    Used by write paths that only have to stop, and by the public storefront,
+    which has to answer as though the page were not there and therefore must
+    not learn the direction it would be tempted to put in a message.
+    """
     return block_between(db, user_id, other_user_id) is not None
 
 
@@ -102,14 +118,21 @@ def require_not_blocked(db: Session, actor_id: str, other_user_id: str) -> None:
     the product tells on behalf of one user to another it has obligations to.
 
     WHAT IS STILL NOT DISCLOSED is who blocked whom anywhere else. This fires
-    only at the moment somebody tries to act. No list, no search result and
-    no profile says anything, so a block cannot be used to go fishing for
-    whether a particular person has blocked you without trying to contact
-    them, which is a thing they would then see.
+    only at the moment somebody tries to act. No list and no search result
+    says anything, so a block cannot be used to go fishing for whether a
+    particular person has blocked you without trying to contact them, which
+    is a thing they would then see.
 
-    403 rather than 404. A 404 would be the concealing answer and it is not
-    available anyway: both parties already know the other exists, because a
-    contract names them.
+    THE STOREFRONT IS THE ONE SURFACE THAT ANSWERS BEFORE AN ACTION, and it
+    says 404 rather than anything about a block, which is why it is not a
+    hole in the paragraph above. A reader who gets profile_not_found has
+    learned that the page is not there, and a deleted account, a creator who
+    never finished a profile and a block are all that same answer. What they
+    cannot learn is which, or in which direction.
+
+    403 here rather than 404, though. A 404 is the concealing answer and
+    concealment is not available on a write path anyway: both parties already
+    know the other exists, because a contract names them.
     """
     block = block_between(db, actor_id, other_user_id)
     if block is None:

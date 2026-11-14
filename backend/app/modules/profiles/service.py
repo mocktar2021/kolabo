@@ -1059,7 +1059,53 @@ def remove_portfolio_item(db: Session, item_id: str, user_id: str) -> None:
 
 # ---- Public profile aggregate ----
 
-def get_public_profile(db: Session, user_id: str, language: str | None = None) -> dict:
+def get_public_profile(
+    db: Session, user_id: str, language: str | None = None, viewer_id: str | None = None
+) -> dict:
+    """The creator storefront, as a visitor or a signed-in reader sees it.
+
+    viewer_id IS OPTIONAL AND USUALLY NONE. This page is public: a brand has
+    to be able to look at the roster before it has an account, so a request
+    with no token is the common case and gets the whole page.
+
+    A BLOCK MAKES THE PAGE NOT EXIST, which is the last of the eleven
+    surfaces trust_safety.blocks names and the only one that conceals rather
+    than refuses. Search and the featured strip already drop a blocked face,
+    so leaving this reachable meant the URL was the way back in, and a kept
+    URL is exactly what somebody who has been blocked still has.
+
+    IT REUSES profile_not_found RATHER THAN SAYING ANYTHING ABOUT A BLOCK, and
+    that is the whole point of doing it here instead of calling
+    require_not_blocked. A 403 naming the block would turn this page into a
+    way to test whether a particular person has blocked you, without ever
+    contacting them and so without them ever finding out. The same 404 is
+    already what a deleted account, a creator who never made a profile and a
+    wrong id all return, so the answer carries no new fact. Nothing about the
+    block reaches the response, in either direction.
+
+    IN EITHER DIRECTION, deliberately, and it is the asymmetric option that
+    would be the odd one. If it hid only the blocker from the blocked, then a
+    creator who blocked a brand would still have that brand's page in their
+    own search results and their own favourites, which is the face they
+    pressed the button to stop seeing. blocks.is_blocked_pair reads the pair
+    for that reason and this call inherits it.
+
+    CHECKED BEFORE THE PROFILE IS LOADED, so a blocked reader costs one
+    indexed query rather than the reviews, socials and package reads below,
+    and so the two 404s are produced by the same line of code whichever is
+    true. An anonymous reader costs nothing at all: there is no viewer to
+    look up.
+    """
+    if viewer_id is not None and viewer_id != user_id:
+        from app.modules.trust_safety.blocks import is_blocked_pair
+
+        if is_blocked_pair(db, viewer_id, user_id):
+            raise AppError(
+                status.HTTP_404_NOT_FOUND,
+                code="profile_not_found",
+                detail="Profile not found",
+            )
+
     profile = db.query(models.InfluencerProfile).filter(models.InfluencerProfile.user_id == user_id).first()
     if profile is None:
         raise AppError(

@@ -58,6 +58,7 @@ from app.modules.profiles.models import (
     BusinessProfile,
     InfluencerProfile,
 )
+from app.modules.trust_safety.blocks import require_not_blocked
 
 # Language per country. Kept local to avoid coupling to optional country_config
 # fields; Cameroon defaults to French for the contract body for now.
@@ -828,6 +829,25 @@ def generate_from_proposal(
             code="order_expired",
             detail="This order has expired.",
         )
+
+    # THE LAST PLACE A BLOCK CAN STOP A DEAL, and the only one where missing it
+    # binds two people who cannot speak to each other. A contract opens the
+    # message thread, funds an escrow and names a deadline; between them, the
+    # messaging guard would then refuse every message on the contract it just
+    # created. Either the guard belongs here or it belongs nowhere.
+    #
+    # BOTH ACCEPT PATHS COME THROUGH THIS FUNCTION, which is why one line
+    # covers both. The buyer accepting a creator's bid passes its own id, and
+    # campaigns/orders.accept_direct_order passes the BUYER's id too even
+    # though the creator is the one accepting (see allow_business_offer
+    # above). The pair is the same either way, and require_not_blocked reads
+    # the pair rather than the direction, so the refusal is correct on both
+    # even though the actor argument is the business on both.
+    #
+    # WITH THE OTHER GUARDS AND BEFORE THE FIRST WRITE, like every refusal in
+    # this function: marking the chain accepted is what takes the creator's
+    # decline away, so a refusal after it would strand them.
+    require_not_blocked(db, business_user_id, latest.influencer_user_id)
 
     business = db.query(User).filter(User.id == business_user_id).first()
     influencer = db.query(User).filter(User.id == latest.influencer_user_id).first()

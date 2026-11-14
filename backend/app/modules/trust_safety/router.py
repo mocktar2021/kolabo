@@ -1,5 +1,5 @@
-"""Trust and safety routes (Epic H): reviews and reports."""
-from fastapi import APIRouter, Depends
+"""Trust and safety routes (Epic H): reviews, reports and blocks."""
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -57,3 +57,53 @@ def resolve_report(
 ):
     """Mark a reported case reviewed or dismissed, logged to the admin trail. KOL-32."""
     return service.resolve_report(db, admin_id, report_id, payload.decision)
+
+
+@router.post("/blocks/{user_id}", response_model=schemas.BlockOut, status_code=status.HTTP_201_CREATED)
+def block_user(
+    user_id: str,
+    payload: schemas.BlockIn | None = None,
+    db: Session = Depends(get_db),
+    me: str = Depends(get_current_user_id),
+):
+    """Stop dealing with somebody.
+
+    The body is optional: a plain block from a profile menu sends none, and
+    the combined block-and-report action sends the reported reason so the two
+    rows can be read together later.
+
+    ALWAYS 201, including when the block already existed. Pressing block twice
+    is somebody on a slow connection tapping again, not a conflict worth
+    arguing about, so the second call hands back the same row rather than an
+    error on a safety control.
+    """
+    return service.block_user(db, me, user_id, payload.reason_code if payload else None)
+
+
+@router.delete("/blocks/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unblock_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    me: str = Depends(get_current_user_id),
+):
+    """Undo your own block. Silent when there was nothing to undo.
+
+    Removes only the caller's row. If the other person blocked them too, that
+    decision is theirs and is untouched.
+    """
+    service.unblock_user(db, me, user_id)
+
+
+@router.get("/blocks", response_model=list[schemas.BlockOut])
+def list_blocks(
+    db: Session = Depends(get_db),
+    me: str = Depends(get_current_user_id),
+):
+    """The caller's own blocked accounts, newest first, for a settings screen.
+
+    Only rows the caller created. Somebody who blocked THEM never appears
+    here: a list that showed it would turn this screen into a way of finding
+    out who has blocked you, which is the one thing a block exists to keep
+    somebody from learning.
+    """
+    return service.list_blocks(db, me)

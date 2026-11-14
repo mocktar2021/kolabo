@@ -1061,7 +1061,7 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
         SocialToken,
         VerificationDocument,
     )
-    from app.modules.trust_safety.models import Report, Review
+    from app.modules.trust_safety.models import Block, Report, Review
 
     has_contract = (
         db.query(Contract)
@@ -1161,6 +1161,22 @@ def delete_account(db: Session, user_id: str, payload: DeleteAccountRequest) -> 
     ).delete(synchronize_session=False)
     db.query(Dispute).filter(Dispute.opened_by_user_id == user_id).delete(synchronize_session=False)
     db.query(Report).filter(Report.reporter_user_id == user_id).delete(synchronize_session=False)
+    # BOTH DIRECTIONS, because a block names two people and either of them
+    # leaving makes the row meaningless.
+    #
+    # NOT DEFENSIVE, unlike the reviews and disputes above. Those hang off a
+    # contract or an escrow, so the 409 earlier means they should already be
+    # absent and the delete is insurance. A block hangs off nothing: it is
+    # written by an ordinary button on a profile, with no deal anywhere near
+    # it, so rows genuinely are here. Without these two lines the first
+    # person who blocks somebody and then closes their account meets a
+    # foreign key violation instead of a deleted account.
+    #
+    # SQLite does not enforce foreign keys, so the test suite would not have
+    # caught the omission. PostgreSQL would have, on the production box, on
+    # somebody who was already trying to leave.
+    db.query(Block).filter(Block.blocker_user_id == user_id).delete(synchronize_session=False)
+    db.query(Block).filter(Block.blocked_user_id == user_id).delete(synchronize_session=False)
     db.query(OtpChallenge).filter(OtpChallenge.user_id == user_id).delete(synchronize_session=False)
     db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user_id).delete(synchronize_session=False)
     # Referral credits the user owns leave with them. Rows where they were

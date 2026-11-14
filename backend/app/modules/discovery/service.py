@@ -14,13 +14,20 @@ Results carry the display name, cover image, per platform audience, rating, and
 starting package price so a result card can be shown without a second request
 per creator.
 
-BLOCKS ARE A FILTER HERE AND NEVER A REFUSAL. Both list-returning functions
-take a viewer_id and drop anyone that viewer is blocked with, in either
-direction. A list does not argue: it is simply shorter, and it says nothing
-about why. Telling the reader a result was removed would hand the blocked
-person back the fact of the block, which is the one thing a block is for.
-The write paths that have to refuse an action and name a reason live
-elsewhere and carry their own error codes.
+BLOCKS ARE A FILTER IN THE LISTS AND A REFUSAL IN THE ONE WRITE PATH. Both
+list-returning functions take a viewer_id and drop anyone that viewer is
+blocked with, in either direction. A list does not argue: it is simply
+shorter, and it says nothing about why. Telling the reader a result was
+removed would hand the blocked person back the fact of the block, which is
+the one thing a block is for.
+
+add_favorite is the exception, because it is not a list: it is an action
+aimed at one named person, and an action that silently did nothing would
+leave a buyer believing they had shortlisted somebody they had not. It
+refuses with a code, like every other write path in the application. See
+trust_safety.blocks.require_not_blocked for why the refused party is told
+plainly, and the comment on add_favorite for why remove_favorite is not
+guarded at all.
 
 The landing page's featured strip lives next door in discovery.featured. It
 reuses _is_searchable, _card_context and _result_card from here rather than
@@ -40,7 +47,7 @@ from app.modules.auth.models import User
 from app.modules.discovery.models import Favorite
 from app.modules.profiles import models as profiles
 from app.modules.trust_safety import models as trust_safety
-from app.modules.trust_safety.blocks import blocked_pair_ids
+from app.modules.trust_safety.blocks import blocked_pair_ids, require_not_blocked
 
 
 def _is_searchable(p: profiles.InfluencerProfile, active_package_count: int) -> bool:
@@ -312,6 +319,19 @@ def add_favorite(db: Session, business_user_id: str, influencer_user_id: str) ->
             code="campaign_influencer_not_found",
             detail="Influencer not found",
         )
+    # AFTER the 404, so somebody who does not exist is still reported as not
+    # existing. A block refusal on a deleted account would be a sentence about
+    # a person who is not there.
+    #
+    # AND THIS ONE REFUSES RATHER THAN FILTERS, unlike everything else in this
+    # file. The module docstring's rule is about LISTS: a shorter list says
+    # nothing, so it discloses nothing. Shortlisting is an action taken against
+    # one named person the caller is looking at, and an action that silently
+    # did nothing would leave a buyer believing they had saved somebody they
+    # had not. remove_favorite is deliberately NOT guarded: undoing has to work
+    # whatever has happened since, or a block would strand rows a buyer can see
+    # (list_favorites filters them, so they would be invisible AND unremovable).
+    require_not_blocked(db, business_user_id, influencer_user_id)
     existing = (
         db.query(Favorite)
         .filter(Favorite.business_user_id == business_user_id, Favorite.influencer_user_id == influencer_user_id)

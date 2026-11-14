@@ -369,8 +369,21 @@ export const error_fr = {
   review_not_completed: "Vous pourrez laisser un avis une fois la collaboration terminée et payée.",
   review_already_submitted: "Vous avez déjà laissé un avis sur cette collaboration.",
 
+  /* Signaler quelqu'un ou quelque chose. Les cinq premiers suivent l'ordre
+     dans lequel l'API les vérifie. report_target_not_found ne dit pas de
+     quel type d'élément il s'agit : les valeurs du backend sont des mots
+     anglais ("user", "campaign"), et les insérer ici aurait mis un mot
+     anglais au milieu d'une phrase française. Celui qui signale sait ce
+     qu'il regardait.
+
+     report_not_found, plus bas, est un autre code pour une autre chose :
+     c'est le signalement lui-même qui est introuvable, côté
+     administration. */
   report_target_type_unknown: "Type de signalement inconnu.",
   report_reason_unknown: "Motif de signalement inconnu.",
+  report_self: "Vous ne pouvez pas vous signaler vous-même.",
+  report_rate_limited: "Vous avez envoyé beaucoup de signalements récemment. Patientez un moment avant d'en envoyer un autre.",
+  report_target_not_found: "Cet élément n'existe plus.",
   report_decision_unknown: "La décision doit être « examiné » ou « rejeté ».",
   report_not_found: "Signalement introuvable.",
   report_already_resolved: "Ce signalement est déjà traité.",
@@ -736,8 +749,19 @@ export const error_en = {
   review_not_completed: "You can leave a review once the collaboration is completed and paid.",
   review_already_submitted: "You have already reviewed this collaboration.",
 
+  /* Reporting somebody or something. The first five are in the order the API
+     checks them, and report_target_not_found says "item" rather than naming a
+     type: "user" and "campaign" are database values, so keying the sentence on
+     one would either put an English word inside the French or need three codes
+     to say the same thing. The reporter knows what they were looking at.
+
+     report_not_found, further down, is a different code for a different thing:
+     the report itself cannot be found, on the admin side. */
   report_target_type_unknown: "Unknown report target type.",
   report_reason_unknown: "Unknown report reason.",
+  report_self: "You cannot report yourself.",
+  report_rate_limited: "You have sent a lot of reports recently. Wait a while before sending another.",
+  report_target_not_found: "That item no longer exists.",
   report_decision_unknown: "The decision must be \"reviewed\" or \"dismissed\".",
   report_not_found: "Report not found.",
   report_already_resolved: "That report has already been dealt with.",

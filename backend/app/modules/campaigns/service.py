@@ -74,6 +74,7 @@ from app.core.platforms import PLATFORM_DELIVERABLES, is_valid_pair
 from app.modules.auth.models import User
 from app.modules.campaigns import licence, models, negotiated, schemas
 from app.modules.notifications.service import notify
+from app.modules.trust_safety.blocks import require_not_blocked
 from app.modules.profiles.models import BusinessProfile, Package
 
 # Nobody briefs a hundred-plus of anything in one campaign; past that the
@@ -541,6 +542,12 @@ def invite_influencer(db: Session, campaign_id: str, business_user_id: str, infl
             code="campaign_influencer_not_verified",
             detail="This influencer is not verified yet and cannot be invited",
         )
+    # A BLOCK STOPS THE INVITATION, not the brief. The campaign stays open to
+    # everybody else; what is refused is pointing it at this one person. Asked
+    # after the verified check so the creator-side reasons are given first:
+    # those are about the creator's own account and are the same for every
+    # buyer, while this one is about these two people and nobody else.
+    require_not_blocked(db, business_user_id, influencer_user_id)
     # ONE INVITATION PER CREATOR PER CAMPAIGN. Nothing checked, so a buyer
     # double-tapping the button — or working a favourites list twice — wrote a
     # second row and sent a second "you were invited to X", and the creator's
@@ -868,6 +875,11 @@ def resolve_negotiated_terms(db: Session, business_user_id: str, offer) -> dict:
             code="order_target_not_creator",
             detail="You can only send an offer to a creator.",
         )
+    # IN THE RESOLVER AND NOT IN _place_order, for the reason this function
+    # exists apart from the builder at all: a cart has to be refused before it
+    # has written any of its rows. The same argument the note and the licence
+    # checks below carry, applied to the one party-level rule.
+    require_not_blocked(db, business_user_id, offer.creator_user_id)
 
     return {
         "creator_user_id": offer.creator_user_id,
@@ -941,6 +953,11 @@ def resolve_package_terms(
             code="order_own_package",
             detail="You cannot order your own package.",
         )
+    # Here rather than in _place_order, exactly as in resolve_negotiated_terms
+    # and for the same reason: every cart line runs through one of these two,
+    # so a basket holding one blocked creator is refused whole instead of
+    # half written.
+    require_not_blocked(db, business_user_id, package.user_id)
 
     timeline_days = DEFAULT_ORDER_TIMELINE_DAYS
     if package.duration_unit == "days" and package.duration_value:
@@ -1217,6 +1234,17 @@ def submit_proposal(
             ),
         )
 
+    # THE CREATOR SIDE OF THE SAME RULE, and one guard for all three callers:
+    # an invited creator pricing a brief, a creator countering a direct order,
+    # and board.apply_to_campaign, which delegates the write to this function
+    # rather than building a proposal of its own. Guarding board separately
+    # would be a second copy of this rule in the one place the codebase has
+    # deliberately kept single.
+    #
+    # Before the chain is touched, with the note check below, so a refusal
+    # leaves the previous version standing.
+    require_not_blocked(db, influencer_user_id, campaign.business_user_id)
+
     # Before the chain is touched, so a refused note leaves the previous
     # version live rather than superseded by something that was never written.
     note = _checked_note(payload.note)
@@ -1464,6 +1492,12 @@ def reply_to_proposal(
             code="order_expired",
             detail="This order has expired.",
         )
+
+    # The buyer's half of submit_proposal's guard. A counter-offer is a write
+    # aimed at one named person, so it is refused rather than silently
+    # dropped; and it is asked before the supersede below, for the same reason
+    # the note check is, so a refusal leaves the creator's offer standing.
+    require_not_blocked(db, business_user_id, latest.influencer_user_id)
 
     # Before the supersede below, for the same reason as in submit_proposal: a
     # refused reply must leave the creator's offer standing.

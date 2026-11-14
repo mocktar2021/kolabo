@@ -91,6 +91,15 @@ const fr = {
      plateforme porte la date de sa lecture, un nombre saisi par le créateur
      le dit. Le mot « vérifié » ne sert jamais au second.
 
+     LA FORME LONGUE NOMME LES ABONNÉS PLUTÔT QUE LA VÉRIFICATION. Elle
+     lisait « Vérifié auprès de la plateforme le ... », qui décrit le
+     COMPTE, alors que ces colonnes décrivent le CHIFFRE. La vérification du
+     compte vit dans `status` et s'affiche à côté, si bien qu'un compte
+     ajouté en tapant son identifiant portait « en attente » et « vérifié »
+     sur la même ligne. La forme courte garde « vérifié » : elle tient dans
+     la pastille collée au nombre, où sa position dit déjà de quoi elle
+     parle.
+
      followerUnknown couvre les lignes écrites avant que l'origine soit
      enregistrée. Elles gardent leur nombre et ne reçoivent aucune des deux
      autres mentions : nous ne savons pas d'où vient ce chiffre, et choisir
@@ -100,7 +109,7 @@ const fr = {
      Les formes courtes tiennent dans la pastille de la page publique, juste
      après le nombre lui-même ; les formes longues portent la date et
      s'affichent sous le grand chiffre et sur le formulaire du créateur. */
-  followerChecked: "Vérifié auprès de la plateforme le {{date}}",
+  followerChecked: "Abonnés confirmés par la plateforme le {{date}}",
   followerDeclared: "Déclaré par le créateur, non vérifié",
   followerUnknown: "Origine non enregistrée : ce compte est antérieur au suivi de la provenance des chiffres",
   followerCheckedShort: "vérifié",
@@ -122,7 +131,7 @@ const en = {
   socialPageUnnamed: "Unnamed Page",
   socialConnectedBadge: "Connected",
   socialRejected: "Rejected",
-  followerChecked: "Verified with the platform on {{date}}",
+  followerChecked: "Followers confirmed by the platform on {{date}}",
   followerDeclared: "Declared by the creator, not checked",
   followerUnknown: "Source not recorded: this account predates the tracking of where follower numbers come from",
   followerCheckedShort: "checked",

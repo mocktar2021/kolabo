@@ -1,4 +1,6 @@
 """Schemas for the trust and safety module."""
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -47,3 +49,31 @@ class ReportOut(BaseModel):
 
 class ResolveReportIn(BaseModel):
     decision: str  # reviewed or dismissed
+
+
+class BlockIn(BaseModel):
+    """The optional body on a block.
+
+    reason_code is carried only when the block arrived through the combined
+    block-and-report action, so the two rows can be read together later. A
+    plain block from a profile menu sends no body at all, which is why every
+    field here is optional and the endpoint accepts a missing body.
+    """
+
+    reason_code: str | None = None
+
+
+class BlockOut(BaseModel):
+    """One row of a blocked-accounts list.
+
+    Carries a name and a face because the list has to be readable: "you
+    blocked 4f3a9c21" is not something anybody can act on. Nothing else about
+    the person travels, and never a phone number, for the reason
+    app.core.identity gives.
+    """
+
+    user_id: str
+    display_name: str | None
+    avatar_url: str | None
+    reason_code: str | None
+    created_at: datetime

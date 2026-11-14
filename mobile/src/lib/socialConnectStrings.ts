@@ -101,11 +101,21 @@ const fr = {
      corrigent : sur la page qu'une marque lit avant de dépenser, un chiffre
      tapé dans un formulaire s'affichait comme un chiffre contrôlé.
 
-     Le mot « vérifié » ne sort JAMAIS pour un chiffre déclaré, et il nomme
-     la plateforme : c'est le compte qui a été vérifié, pas l'identité de la
-     personne. */
-  socialFollowersChecked: "Vérifié auprès de {{platform}} le {{date}}",
-  socialFollowersCheckedUndated: "Vérifié auprès de {{platform}}",
+     Le mot « vérifié » ne sort JAMAIS pour un chiffre déclaré.
+
+     ET CES PHRASES PARLENT DU NOMBRE, PAS DU COMPTE. La version précédente
+     disait « Vérifié auprès de Instagram le 14/11/2026 », et ce commentaire
+     affirmait que c'était le compte qui avait été vérifié. C'était faux. La
+     vérification du compte vit dans `status`, que socialStatusChip affiche
+     sur la même carte, et un compte ajouté en tapant son identifiant y reste
+     « en attente » jusqu'à la décision d'un administrateur. Le créateur lisait
+     donc « en attente » et « vérifié » côte à côte, ce qui ne veut rien dire.
+
+     Les deux mentions nomment maintenant les abonnés, comme le fait déjà la
+     ligne du chiffre déclaré juste en dessous. « Vérifié » est rendu au
+     compte, qui est la seule chose que ce mot a jamais décrite ici. */
+  socialFollowersChecked: "Abonnés confirmés par {{platform}} le {{date}}",
+  socialFollowersCheckedUndated: "Abonnés confirmés par {{platform}}",
   socialFollowersSelf: "Chiffre annoncé par le créateur, non vérifié",
 
   /* Le titre de la section sur la page publique, là où une marque lit ces
@@ -135,8 +145,8 @@ const en = {
   socialStatusConnected: "Connected",
   socialStatusRejected: "Rejected",
 
-  socialFollowersChecked: "Verified with {{platform}} on {{date}}",
-  socialFollowersCheckedUndated: "Verified with {{platform}}",
+  socialFollowersChecked: "Followers confirmed by {{platform}} on {{date}}",
+  socialFollowersCheckedUndated: "Followers confirmed by {{platform}}",
   socialFollowersSelf: "The creator's own figure, not checked",
 
   socialAudienceTitle: "Audience by platform",

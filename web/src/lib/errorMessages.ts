@@ -375,6 +375,17 @@ export const error_fr = {
   report_not_found: "Signalement introuvable.",
   report_already_resolved: "Ce signalement est déjà traité.",
 
+  /* Bloquer quelqu'un. Les deux derniers nomment le côté du blocage, et
+     c'est volontaire : celui qui a bloqué peut débloquer, celui qui a été
+     bloqué ne peut rien y faire. Un code unique aurait donné une phrase qui
+     conseille à la mauvaise personne une action qu'elle ne peut pas faire.
+     Et on le lui dit franchement, contrairement à l'usage des réseaux
+     sociaux, parce qu'un contrat en cours peut encore l'engager. */
+  block_self: "Vous ne pouvez pas vous bloquer vous-même.",
+  block_target_not_found: "Ce compte n'existe plus.",
+  blocked_user: "Vous avez bloqué cette personne. Débloquez-la pour continuer.",
+  blocked_by_user: "Cette personne n'accepte pas d'être contactée par vous.",
+
   message_gate: "La messagerie s'ouvre en même temps que le contrat. Il n'y a pas de contrat entre vous et cette personne sur cette campagne.",
   message_self: "Choisissez un autre destinataire.",
 
@@ -730,6 +741,17 @@ export const error_en = {
   report_decision_unknown: "The decision must be \"reviewed\" or \"dismissed\".",
   report_not_found: "Report not found.",
   report_already_resolved: "That report has already been dealt with.",
+
+  /* Blocking somebody. The last two name which side of the block the reader
+     is on, deliberately: whoever blocked can unblock, and whoever was blocked
+     can do nothing about it. One code would have given a sentence that offers
+     the wrong person an action they cannot take. And they are told plainly,
+     unlike the convention on social apps, because a live contract may still
+     bind them. */
+  block_self: "You cannot block yourself.",
+  block_target_not_found: "That account no longer exists.",
+  blocked_user: "You blocked this person. Unblock them to continue.",
+  blocked_by_user: "This person is not accepting contact from you.",
 
   message_gate: "Messaging opens when a contract does. There is no contract between you and this person on this campaign.",
   message_self: "Choose a different recipient.",

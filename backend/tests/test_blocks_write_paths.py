@@ -332,7 +332,9 @@ def test_a_brand_cannot_counter_a_blocked_creators_offer(db):
     offer = _creator_offer(db, campaign.id, creator)
     _block(db, biz, creator)
 
-    payload = cschemas.ProposalReplyIn(rate_amount=25000)
+    # note is REQUIRED on this schema (min_length=1): a reply always says
+    # something, and countering is the optional half.
+    payload = cschemas.ProposalReplyIn(note="Can you do 25k?", rate_amount=25000)
     with pytest.raises(AppError) as excinfo:
         campaigns_service.reply_to_proposal(db, campaign.id, offer.id, biz, payload)
     assert _refusal(excinfo) == (403, "blocked_user")
@@ -350,7 +352,11 @@ def test_a_brand_cannot_counter_an_offer_from_a_creator_who_blocked_it(db):
 
     with pytest.raises(AppError) as excinfo:
         campaigns_service.reply_to_proposal(
-            db, campaign.id, offer.id, biz, cschemas.ProposalReplyIn(rate_amount=25000)
+            db,
+            campaign.id,
+            offer.id,
+            biz,
+            cschemas.ProposalReplyIn(note="Can you do 25k?", rate_amount=25000),
         )
     assert _refusal(excinfo) == (403, "blocked_by_user")
 
